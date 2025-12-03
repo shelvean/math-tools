@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="description" content="A web-based tool to compute the Singular Value Decomposition (SVD) of a matrix with MATLAB sign convention. Input matrix dimensions and values to calculate A = UΣV^T, with options for full or economy SVD." />
+  <meta name="keywords" content="singular value decomposition, SVD, matrix decomposition, linear algebra, matrix calculator, numerical analysis, UΣV^T, full SVD, economy SVD" />
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-5B8PRB2WZT");
+  </script>
+  <title>Singular Value Decomposition</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <style>
+    .katex-display { margin: 1em 0; overflow-x: auto; }
+    .matrix-cell { width: 4rem; padding: 0.5rem; text-align: center; border: 2px solid #d1d5db; border-radius: 0.375rem; }
+    .matrix-cell:hover { border-color: #3b82f6; border-width: 3px; }
+    .matrix-cell:focus { outline: none; border-color: #3b82f6; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="fixed top-0 left-0 w-full bg-white shadow-md z-10">
+    <div class="max-w-4xl mx-auto px-4 py-2">
+      <ul class="flex justify-center space-x-4">
+        <li><a href="https://people.tamu.edu/~kapita/index.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Home</a></li>
+        <li><a href="https://people.tamu.edu/~kapita/teaching.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+        <li><a href="https://people.tamu.edu/~kapita/projects.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="https://people.tamu.edu/~kapita/linear.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+		<li><a href="https://people.tamu.edu/~kapita/numerical.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+
+      </ul>
+    </div>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">Find the Singular Value Decomposition (SVD) of a Matrix</h2>
+    <p class="text-center text-gray-600 mb-6">Enter matrix size $m,n$, generate input fields, fill in $A$, compute $A = U\Sigma V^T$.</p>
+    <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+      <span class="text-gray-700">Rows $m$:</span>
+      <input type="number" id="m" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <span class="text-gray-700">Columns $n$:</span>
+      <input type="number" id="n" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+    </div>
+    <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+    <div class="flex justify-center mb-6 space-x-6">
+      <span class="text-gray-700">SVD Type:</span>
+      <label class="flex items-center"><input type="radio" name="svdType" value="full" checked class="mr-2">Full</label>
+      <label class="flex items-center"><input type="radio" name="svdType" value="economy" class="mr-2">Economy (reduced rank)</label>
+    </div>
+    <div class="flex justify-center mb-6 space-x-6">
+      <span class="text-gray-700">Display:</span>
+      <select id="displayType" class="p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="decimals">Decimals</option>
+        <option value="surds" selected>Surds</option>
+      </select>
+    </div>
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="calcBtn" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Compute SVD</button>
+      <button id="clearBtn" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+    </div>
+    <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+      &copy; 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: August 11, 2025
+    </div>
+  </div>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        strict: false
+      });
+    });
+
+    class Fraction {
+      constructor(numerator, denominator = 1) {
+        if (denominator === 0) throw new Error('Denominator cannot be zero');
+        const absNum = Math.abs(numerator);
+        const absDen = Math.abs(denominator);
+        const gcd = this.gcd(absNum, absDen);
+        this.numerator = (numerator < 0 ? -absNum : absNum) / gcd * Math.sign(denominator);
+        this.denominator = absDen / gcd;
+        if (this.denominator < 0) {
+          this.numerator = -this.numerator;
+          this.denominator = -this.denominator;
+        }
+      }
+
+      gcd(a, b) {
+        while (b !== 0) {
+          const t = b;
+          b = a % b;
+          a = t;
+        }
+        return a;
+      }
+
+      static from(value) {
+        return value instanceof Fraction ? value : new Fraction(value);
+      }
+
+      static fromDecimal(decimal, maxDenominator = 100) {
+        if (Number.isInteger(decimal)) return new Fraction(decimal);
+        let sign = decimal < 0 ? -1 : 1;
+        decimal = Math.abs(decimal);
+        let bestNum = 1, bestDen = 1, bestError = Math.abs(decimal - 1);
+        for (let den = 1; den <= maxDenominator; den++) {
+          let num = Math.round(decimal * den);
+          if (Math.abs(num) <= 500 && den <= 500) {
+            let error = Math.abs(decimal - num / den);
+            if (error < bestError) {
+              bestNum = num;
+              bestDen = den;
+              bestError = error;
+            }
+          }
+        }
+        return new Fraction(sign * bestNum, bestDen);
+      }
+
+      toLatex() {
+        if (this.numerator === 0) return "0";
+        const sign = this.numerator < 0 ? "-" : "";
+        const absNum = Math.abs(this.numerator);
+        if (this.denominator === 1) return sign + absNum.toString();
+        return sign + absNum + "/" + this.denominator;
+      }
+    }
+
+    function generateMatrix() {
+      let m = parseInt(document.getElementById("m").value, 10);
+      let n = parseInt(document.getElementById("n").value, 10);
+      if (isNaN(m) || m <= 0 || isNaN(n) || n <= 0) {
+        alert("Enter valid positive integers for m and n.");
+        return;
+      }
+      let matrixDiv = document.getElementById("matrixInput");
+      matrixDiv.innerHTML = "";
+      let statementDiv = document.createElement("div");
+      statementDiv.className = "text-center mb-4";
+      let statement = document.createElement("div");
+      statement.className = "latex";
+      statement.textContent = "$$ \\text{Compute the SVD } A = U \\Sigma V^T $$";
+      statementDiv.appendChild(statement);
+      matrixDiv.appendChild(statementDiv);
+      let aDiv = document.createElement("div");
+      aDiv.className = "flex flex-col items-center";
+      let aLabel = document.createElement("p");
+      aLabel.className = "text-center font-semibold latex";
+      aLabel.textContent = "Matrix $A$";
+      aDiv.appendChild(aLabel);
+      let aTable = document.createElement("table");
+      aTable.className = "border-collapse";
+      for (let i = 0; i < m; i++) {
+        let tr = document.createElement("tr");
+        for (let j = 0; j < n; j++) {
+          let td = document.createElement("td");
+          td.className = "p-1";
+          let input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell";
+          input.id = "A_" + i + "_" + j;
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        aTable.appendChild(tr);
+      }
+      aDiv.appendChild(aTable);
+      matrixDiv.appendChild(aDiv);
+      renderMathInElement(matrixDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        strict: false
+      });
+    }
+
+    function clearAll() {
+      document.getElementById("m").value = "";
+      document.getElementById("n").value = "";
+      document.getElementById("matrixInput").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+      document.getElementById("displayType").value = "surds";
+      document.querySelector('input[name="svdType"][value="full"]').checked = true;
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+    function parseFraction(str) {
+      str = str.trim();
+      if (str === "") return 0; // Treat empty entries as zeros
+      if (str.includes('/')) {
+        let parts = str.split('/');
+        if (parts.length === 2) {
+          let numerator = parseFloat(parts[0]);
+          let denominator = parseFloat(parts[1]);
+          if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+            return numerator / denominator;
+          }
+        }
+      }
+      let num = parseFloat(str);
+      if (isNaN(num)) {
+        alert("Please enter valid numbers or fractions in all cells.");
+        return null;
+      }
+      return num;
+    }
+
+    function readMatrix() {
+      let m = parseInt(document.getElementById("m").value, 10);
+      let n = parseInt(document.getElementById("n").value, 10);
+      let A = [];
+      for (let i = 0; i < m; i++) {
+        let row = [];
+        for (let j = 0; j < n; j++) {
+          let num = parseFraction(document.getElementById(`A_${i}_${j}`).value);
+          if (num === null) return null;
+          row.push(num);
+        }
+        A.push(row);
+      }
+      return A;
+    }
+
+    function transposeMatrix(A) {
+      const m = A.length, n = A[0].length;
+      const At = Array(n).fill().map(() => Array(m));
+      for (let i = 0; i < m; i++)
+        for (let j = 0; j < n; j++)
+          At[j][i] = A[i][j];
+      return At;
+    }
+
+    function multiplyMatrices(A, B) {
+      const m = A.length, n = B[0].length, p = A[0].length;
+      const C = Array(m).fill().map(() => Array(n).fill(0));
+      for (let i = 0; i < m; i++)
+        for (let j = 0; j < n; j++)
+          for (let k = 0; k < p; k++)
+            C[i][j] += A[i][k] * B[k][j];
+      return C;
+    }
+
+    function identityMatrix(size) {
+      const I = Array(size).fill().map(() => Array(size).fill(0));
+      for (let i = 0; i < size; i++) I[i][i] = 1;
+      return I;
+    }
+
+    function isZeroMatrix(A) {
+      for (let r of A)
+        for (let v of r)
+          if (Math.abs(v) > 1e-7) return false;
+      return true;
+    }
+
+    function dot(a, b) {
+      return a.reduce((s, v, i) => s + v * b[i], 0);
+    }
+
+    function norm2(v) {
+      return Math.sqrt(dot(v, v));
+    }
+
+    function scalarMult(v, s) {
+      return v.map(e => e * s);
+    }
+
+    function addVecs(a, b) {
+      return a.map((e, i) => e + b[i]);
+    }
+
+    function gramSchmidtColumns(vecs, outCount) {
+      let m = vecs[0] ? vecs[0].length : outCount;
+      let Q = [];
+      for (let v of vecs) {
+        let u = v.slice();
+        for (let q of Q) {
+          let proj = dot(u, q);
+          u = addVecs(u, scalarMult(q, -proj));
+        }
+        let nu = norm2(u);
+        if (nu > 1e-7) Q.push(scalarMult(u, 1 / nu));
+      }
+      for (let i = 0; Q.length < outCount && i < m; i++) {
+        let e = Array(m).fill(0);
+        e[i] = 1;
+        for (let q of Q) {
+          let proj = dot(e, q);
+          e = addVecs(e, scalarMult(q, -proj));
+        }
+        let ne = norm2(e);
+        if (ne > 1e-7) Q.push(scalarMult(e, 1 / ne));
+      }
+      return Q;
+    }
+
+    function jacobiEigenDecomposition(A, maxIter = 100, tol = 1e-7) {
+      const n = A.length;
+      let V = identityMatrix(n);
+      let B = A.map(row => row.slice());
+      let iter = 0;
+      while (iter < maxIter) {
+        let maxVal = 0, p = 0, q = 1;
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            if (Math.abs(B[i][j]) > maxVal) {
+              maxVal = Math.abs(B[i][j]);
+              p = i;
+              q = j;
+            }
+          }
+        }
+        if (maxVal < tol) break;
+        const theta = 0.5 * Math.atan2(2 * B[p][q], B[q][q] - B[p][p]);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        const Bpp = B[p][p], Bqq = B[q][q], Bpq = B[p][q];
+        B[p][p] = c * c * Bpp + s * s * Bqq - 2 * s * c * Bpq;
+        B[q][q] = s * s * Bpp + c * c * Bqq + 2 * s * c * Bpq;
+        B[p][q] = B[q][p] = 0;
+        for (let i = 0; i < n; i++) {
+          if (i !== p && i !== q) {
+            const Bip = B[i][p], Biq = B[i][q];
+            B[i][p] = B[p][i] = c * Bip - s * Biq;
+            B[i][q] = B[q][i] = s * Bip + c * Biq;
+          }
+        }
+        for (let i = 0; i < n; i++) {
+          const Vip = V[i][p], Viq = V[i][q];
+          V[i][p] = c * Vip - s * Viq;
+          V[i][q] = s * Vip + c * Viq;
+        }
+        iter++;
+      }
+      let eigenvalues = B.map((row, i) => row[i]);
+      const indices = eigenvalues.map((_, idx) => idx).sort((a, b) => eigenvalues[b] - eigenvalues[a]);
+      const sortedEigenvalues = indices.map(i => eigenvalues[i]);
+      const sortedV = Array(n).fill().map(() => Array(n));
+      for (let j = 0; j < n; j++) {
+        const idx = indices[j];
+        for (let i = 0; i < n; i++)
+          sortedV[i][j] = V[i][idx];
+      }
+      return { eigenvalues: sortedEigenvalues, eigenvectors: sortedV };
+    }
+
+    function lcm(a, b) {
+      const gcd = (x, y) => (!y ? x : gcd(y, x % y));
+      return Math.abs(a * b) / gcd(a, b);
+    }
+
+    function computeLCM(numbers) {
+      if (numbers.length === 0) return 1;
+      return numbers.reduce((a, b) => lcm(a, b));
+    }
+
+    function toSurd(val) {
+      if (Math.abs(val) < 1e-7) return "0";
+      let sign = val < 0 ? "-" : "";
+      val = Math.abs(val);
+      let tol = 1e-8;
+      for (let rden = 1; rden <= 20; rden++) {
+        let scaled = val * rden;
+        for (let a = 1; a <= 100; a++) {
+          let sq = Math.sqrt(a);
+          if (Math.abs(scaled - Math.round(scaled / sq) * sq) < tol) {
+            let coeff = Math.round(scaled / sq);
+            if (Math.abs(coeff) <= 500 && rden <= 500) {
+              if (a === 1) return sign + (coeff / rden).toString();
+              return sign + (coeff === 1 ? "" : coeff.toString()) + "\\sqrt{" + a + "}" + (rden === 1 ? "" : "/" + rden);
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    function isRepeatingOrShortDecimal(val) {
+      if (Math.abs(val) < 1e-7) return false;
+      const s = Math.abs(val).toFixed(10);
+      const decimalPart = s.split('.')[1] || '';
+      const frac = Fraction.fromDecimal(val, 100);
+      const decimalVal = frac.numerator / frac.denominator;
+      if (Math.abs(decimalVal - val) < 1e-8 && Math.abs(frac.numerator) <= 500 && frac.denominator <= 500) {
+        return frac;
+      }
+      return false;
+    }
+
+    function formatForLatex(val, mode) {
+      if (Math.abs(val) < 1e-7) return "0";
+      if (mode === "decimals") {
+        return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+      }
+      const frac = isRepeatingOrShortDecimal(val);
+      if (frac) {
+        return frac.toLatex();
+      }
+      let surd = toSurd(val);
+      if (surd) return surd;
+      return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function matrixToLatex(M, mode) {
+      const r = M.length, c = M[0].length;
+      let L = "\\begin{bmatrix}";
+      for (let i = 0; i < r; i++) {
+        for (let j = 0; j < c; j++) {
+          L += formatForLatex(M[i][j], mode);
+          if (j < c - 1) L += " & ";
+        }
+        if (i < r - 1) L += mode === "decimals" ? " \\\\ " : " \\\\[0.5em] ";
+      }
+      L += "\\end{bmatrix}";
+      return L;
+    }
+
+    function computeSVD(A) {
+      const m = A.length, n = A[0].length;
+      if (isZeroMatrix(A)) {
+        return {
+          U: identityMatrix(m),
+          Sigma: Array(m).fill().map(() => Array(n).fill(0)),
+          Vt: identityMatrix(n),
+          singularValues: Array(Math.min(m, n)).fill(0)
+        };
+      }
+      const At = transposeMatrix(A);
+      const AtA = multiplyMatrices(At, A);
+      const { eigenvalues: lambda_V, eigenvectors: V } = jacobiEigenDecomposition(AtA);
+      let singvals = lambda_V.map(x => Math.sqrt(Math.max(x, 0)));
+      const sortedIndices = singvals.map((_, idx) => idx).sort((a, b) => singvals[b] - singvals[a]);
+      const sortedSingularValues = sortedIndices.map(i => singvals[i]);
+      let sorted_V = Array(n).fill().map(() => Array(n));
+      for (let j = 0; j < n; j++) {
+        const idx = sortedIndices[j];
+        for (let i = 0; i < n; i++)
+          sorted_V[i][j] = V[i][idx];
+      }
+      const k = Math.min(m, n);
+      let Ucols = [];
+      for (let i = 0; i < k; i++) {
+        if (sortedSingularValues[i] > 1e-7) {
+          let v = sorted_V.map(r => r[i]);
+          let Av = Array(m).fill(0);
+          for (let r = 0; r < m; r++)
+            for (let c = 0; c < n; c++)
+              Av[r] += A[r][c] * v[c];
+          let u = scalarMult(Av, 1 / sortedSingularValues[i]);
+          let nu = norm2(u);
+          if (nu > 1e-7) {
+            u = scalarMult(u, 1 / nu);
+            Ucols.push(u);
+          }
+        }
+      }
+      Ucols = gramSchmidtColumns(Ucols, m);
+      let U = Array(m).fill().map(() => Array(m));
+      for (let j = 0; j < m; j++)
+        for (let i = 0; i < m; i++)
+          U[i][j] = Ucols[j][i];
+      let Sigma = Array(m).fill().map(() => Array(n).fill(0));
+      for (let i = 0; i < k; i++)
+        Sigma[i][i] = sortedSingularValues[i];
+      let Vt = transposeMatrix(sorted_V);
+      for (let j = 0; j < Math.min(U[0].length, k); j++) {
+        let col = U.map(row => row[j]);
+        let maxIdx = 0;
+        for (let i = 1; i < col.length; i++)
+          if (Math.abs(col[i]) > Math.abs(col[maxIdx]))
+            maxIdx = i;
+        if (col[maxIdx] < 0) {
+          for (let i = 0; i < U.length; i++)
+            U[i][j] *= -1;
+          for (let i = 0; i < Vt[j].length; i++)
+            Vt[j][i] *= -1;
+        }
+      }
+      return { U, Sigma, Vt, singularValues: sortedSingularValues };
+    }
+
+    document.getElementById("calcBtn").addEventListener("click", () => {
+      try {
+        let resultDiv = document.getElementById("result");
+        resultDiv.innerHTML = "";
+        let A = readMatrix();
+        if (!A) return;
+        let { U, Sigma, Vt, singularValues } = computeSVD(A);
+        let svdType = document.querySelector('input[name="svdType"]:checked').value;
+        let displayType = document.getElementById("displayType").value;
+        let U_disp, S_disp, Vt_disp, th = 1e-7;
+        if (svdType === "economy") {
+          let keep = [];
+          for (let i = 0; i < singularValues.length; i++)
+            if (singularValues[i] > th)
+              keep.push(i);
+          U_disp = U.map(r => keep.map(i => r[i]));
+          S_disp = keep.map(i => keep.map(j => (i === j ? singularValues[i] : 0)));
+          Vt_disp = keep.map(i => Vt[i]);
+        } else {
+          U_disp = U;
+          S_disp = Sigma;
+          Vt_disp = Vt;
+        }
+        let A_label = "\\mathbf{A}", U_label = "\\mathbf{U}", S_label = "\\boldsymbol{\\Sigma}", Vt_label = "\\mathbf{V}^T";
+        let resultLatex = `${A_label} = ${U_label} ${S_label} ${Vt_label} \\\\${matrixToLatex(A, displayType)} = ${matrixToLatex(U_disp, displayType)} \\; ${matrixToLatex(S_disp, displayType)} \\; ${matrixToLatex(Vt_disp, displayType)}`;
+        resultDiv.innerHTML = `<div class="latex">$$${resultLatex}$$</div>`;
+        renderMathInElement(resultDiv, {
+          delimiters: [{ left: "$$", right: "$$", display: true }],
+          throwOnError: false,
+          strict: false
+        });
+      } catch (e) {
+        console.error(e);
+        alert("An error occurred during SVD computation: " + e.message);
+      }
+    });
+  </script>
+</body>
+</html>
