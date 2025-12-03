@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="description" content="A web-based tool to compute the eigenvalues and eigenvectors of a square matrix A. Enter matrix size and elements to get the eigenvalues with algebraic multiplicities (if 2 or more) and corresponding eigenvectors as column vectors, with complex eigenvectors in a + bi form, scaled so the smallest (by magnitude) non-positive number is 1 for real eigenvectors, or the smallest magnitude non-zero entry is 1 using complex scaling for complex eigenvectors. Short decimals (≤4 non-zero digits) and repeating decimals (e.g., 1.3333..., 0.66666...) are converted to fractions if numerator and denominator are less than 500. Eigenvalues and eigenvectors use surd form (e.g., \sqrt{b} when coefficient is 1 or -1, a\sqrt{b} otherwise), with perfect squares simplified (e.g., \sqrt{9} = 3). Eigenvalues of -0 and 0 are treated as identical." />
+  <meta name="keywords" content="eigenvalues, eigenvectors, matrix calculator, linear algebra, math tool" />
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-5B8PRB2WZT");
+  </script>
+  <title>Eigenvalues and Eigenvectors Solver</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
+  <style>
+    .katex-display { margin: 1em 0; overflow-x: auto; }
+    body { padding-left: 12.5vw; padding-right: 12.5vw; }
+    @media (max-width: 900px) { body { padding-left: 3vw; padding-right: 3vw; }}
+    .matrix-cell { width: 4rem; padding: 0.5rem; text-align: center; border: 2px solid #d1d5db; border-radius: 0.375rem; }
+    .matrix-cell:hover { border-color: #3b82f6; border-width: 3px; }
+    .matrix-cell:focus { outline: none; border-color: #3b82f6; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <nav class="fixed top-0 left-0 w-full z-10 bg-white shadow-md">
+    <div class="max-w-4xl mx-auto px-4 py-2">
+      <ul class="flex justify-center space-x-4">
+        <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+		<li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+
+      </ul>
+    </div>
+  </nav>
+  <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16 mx-auto">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">Eigenvalues and Eigenvectors</h2>
+    <p class="text-center text-gray-600 mb-6"> Enter the size $n$ of your square matrix $A$, generate the matrix, fill in its entries, and compute the eigenvalues and eigenvectors.<br> Matrix entries can be real, complex, fractions (e.g. <span class="font-mono">3+2i</span>, <span class="font-mono">1/2-i</span>, <span class="font-mono">2</span>), or mathematical expressions like pi, exp(2), sin(pi/3) etc. </p>
+    <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+      <span class="text-gray-700">Matrix size:</span>
+      <input type="number" id="n" min="1" required class="w-12 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+    </div>
+    <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Compute Eigen</button>
+      <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+    </div>
+    <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm"> © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: September 7, 2025 </div>
+  </div>
+  <script>
+    // Initialize KaTeX rendering after scripts are loaded
+    document.addEventListener("DOMContentLoaded", function() {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) {
+          console.error("KaTeX rendering error:", err);
+        }
+      });
+    });
+
+    function generateMatrix() {
+      var n = parseInt(document.getElementById("n").value, 10);
+      if (isNaN(n) || n <= 0) {
+        alert("Please enter a valid positive integer for n.");
+        return;
+      }
+      var matrixDiv = document.getElementById("matrixInput");
+      matrixDiv.innerHTML = "";
+      var statementDiv = document.createElement("div");
+      statementDiv.className = "text-center mb-4";
+      var statement = document.createElement("div");
+      statement.className = "latex";
+      statement.textContent = `$$ \\text{Compute the Eigenvalues and Eigenvectors of } A $$`;
+      statementDiv.appendChild(statement);
+      var emptyStatement = document.createElement("div");
+      emptyStatement.className = "latex";
+      emptyStatement.textContent = `$$ \\text{(empty spaces are treated as 0)} $$`;
+      statementDiv.appendChild(emptyStatement);
+      matrixDiv.appendChild(statementDiv);
+      var aDiv = document.createElement("div");
+      aDiv.className = "flex flex-col items-center";
+      var aLabel = document.createElement("p");
+      aLabel.className = "text-center font-semibold latex";
+      aLabel.textContent = "Matrix $A$";
+      aDiv.appendChild(aLabel);
+      var aTable = document.createElement("table");
+      aTable.className = "border-collapse";
+      for (var i = 0; i < n; i++) {
+        var tr = document.createElement("tr");
+        for (var j = 0; j < n; j++) {
+          var td = document.createElement("td");
+          td.className = "p-1";
+          var input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell";
+          input.id = "A_" + i + "_" + j;
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        aTable.appendChild(tr);
+      }
+      aDiv.appendChild(aTable);
+      matrixDiv.appendChild(aDiv);
+      renderMathInElement(matrixDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false
+      });
+    }
+
+    function clearAll() {
+      document.getElementById("n").value = "";
+      document.getElementById("matrixInput").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+    }
+
+    function parseComplex(str) {
+      str = str.trim();
+      if (str === '') return math.complex(0, 0);
+      
+      // Handle simple imaginary cases
+      if (str === 'i') return math.complex(0, 1);
+      if (str === '-i') return math.complex(0, -1);
+      if (str === '+i') return math.complex(0, 1);
+      
+      // Check if the string contains 'i' (indicating a complex number)
+      if (str.includes('i')) {
+        // Handle cases where it's just a pure imaginary number (like "2i", "-3i")
+        if (!str.includes('+') && !str.includes('-', 1)) {
+          // Extract the numeric part
+          let imagPart = str.replace('i', '');
+          if (imagPart === '' || imagPart === '+') imagPart = '1';
+          if (imagPart === '-') imagPart = '-1';
+          
+          try {
+            const imagValue = math.evaluate(imagPart);
+            return math.complex(0, imagValue);
+          } catch (e) {
+            console.error("Error parsing imaginary part:", str, e);
+          }
+        } else {
+          // Handle cases with both real and imaginary parts (like "1+2i", "3-4i")
+          // Use a more robust regex to capture all cases
+          const complexRegex = /^([+-]?\d*\.?\d*)([+-]\d*\.?\d*)i$/;
+          const match = str.match(complexRegex);
+          
+          if (match) {
+            let realPart = match[1] || '0';
+            let imagPart = match[2] || '+1';
+            
+            // Handle cases where real part is empty but has sign
+            if (realPart === '+' || realPart === '-') realPart += '0';
+            
+            // Handle cases where imaginary coefficient is just a sign
+            if (imagPart === '+' || imagPart === '-') imagPart += '1';
+            
+            try {
+              const realValue = math.evaluate(realPart);
+              const imagValue = math.evaluate(imagPart);
+              return math.complex(realValue, imagValue);
+            } catch (e) {
+              console.error("Error parsing complex number:", str, e);
+            }
+          }
+        }
+      }
+      
+      // Fallback to math.evaluate for other expressions
+      try {
+        let evaluated = math.evaluate(str);
+        if (typeof evaluated === 'number') {
+          return math.complex(evaluated, 0);
+        } else if (evaluated.re !== undefined && evaluated.im !== undefined) {
+          return evaluated;
+        } else {
+          console.error("Invalid matrix entry:", str);
+          return math.complex(0, 0);
+        }
+      } catch (e) {
+        console.error("Error parsing matrix entry:", str, e);
+        return math.complex(0, 0);
+      }
+    }
+
+    function cloneMatrix(matrix) {
+      if (!matrix || !Array.isArray(matrix)) {
+        console.error("Invalid matrix for cloning:", matrix);
+        return [];
+      }
+      return matrix.map(row => row.slice());
+    }
+
+    function computeRREF(origMatrix) {
+      if (!origMatrix || origMatrix.length === 0) {
+        console.error("Empty matrix in computeRREF");
+        return { result: [], pivotRows: [], zeroRows: 0 };
+      }
+      var matrix = cloneMatrix(origMatrix);
+      var m = matrix.length;
+      var n = matrix[0].length;
+      var lead = 0;
+      var pivotRows = [];
+      var type = typeof matrix[0][0];
+      var isComplex = type !== 'number';
+      var zero = isComplex ? math.complex(0, 0) : 0;
+      for (var r = 0; r < m; r++) {
+        if (lead >= n) break;
+        var i = r;
+        while (math.abs(matrix[i][lead]) < 1e-7) {
+          i++;
+          if (i === m) {
+            i = r;
+            lead++;
+            if (lead === n) break;
+          }
+        }
+        if (lead === n) break;
+        if (i !== r) {
+          var temp = matrix[r];
+          matrix[r] = matrix[i];
+          matrix[i] = temp;
+        }
+        var pivotValue = matrix[r][lead];
+        if (math.abs(pivotValue) > 1e-7) {
+          for (var j = 0; j < n; j++) {
+            try {
+              matrix[r][j] = math.divide(matrix[r][j], pivotValue);
+            } catch (e) {
+              console.error(`Error in RREF division at row ${r}, col ${j}:`, e);
+              matrix[r][j] = zero;
+            }
+            // Round to avoid floating point errors
+            if (typeof matrix[r][j] === 'number') {
+              matrix[r][j] = Math.abs(matrix[r][j]) < 1e-10 ? 0 : matrix[r][j];
+            } else {
+              if (Math.abs(matrix[r][j].re) < 1e-10) matrix[r][j].re = 0;
+              if (Math.abs(matrix[r][j].im) < 1e-10) matrix[r][j].im = 0;
+            }
+          }
+        }
+        for (var i = 0; i < m; i++) {
+          if (i !== r) {
+            var factor = matrix[i][lead];
+            for (var j = 0; j < n; j++) {
+              try {
+                matrix[i][j] = math.subtract(matrix[i][j], math.multiply(factor, matrix[r][j]));
+                if (math.abs(matrix[i][j]) < 1e-7) matrix[i][j] = zero;
+              } catch (e) {
+                console.error(`Error in RREF subtraction at row ${i}, col ${j}:`, e);
+                matrix[i][j] = zero;
+              }
+              // Round to avoid floating point errors
+              if (typeof matrix[i][j] === 'number') {
+                matrix[i][j] = Math.abs(matrix[i][j]) < 1e-10 ? 0 : matrix[i][j];
+              } else {
+                if (Math.abs(matrix[i][j].re) < 1e-10) matrix[i][j].re = 0;
+                if (Math.abs(matrix[i][j].im) < 1e-10) matrix[i][j].im = 0;
+              }
+            }
+          }
+        }
+        pivotRows.push(r);
+        lead++;
+      }
+      var zeroRows = 0;
+      for (var r = 0; r < m; r++) {
+        var isZeroRow = true;
+        for (var j = 0; j < n; j++) {
+          if (math.abs(matrix[r][j]) > 1e-7) {
+            isZeroRow = false;
+            break;
+          }
+        }
+        if (isZeroRow) zeroRows++;
+      }
+      return { result: matrix, pivotRows: pivotRows, zeroRows: zeroRows };
+    }
+
+    function getPivotColumns(rref) {
+      var m = rref.length;
+      if (m === 0) return [];
+      var n = rref[0].length;
+      var pivots = [];
+      var col = 0;
+      for (var row = 0; row < m; row++) {
+        while (col < n && math.abs(rref[row][col]) < 1e-7) {
+          col++;
+        }
+        if (col < n) {
+          pivots.push(col);
+          col++;
+        }
+      }
+      return pivots;
+    }
+
+    function computeNullSpace(A) {
+      if (!A || A.length === 0) {
+        console.error("Empty matrix in computeNullSpace");
+        return { basis: [], zeroRows: 0 };
+      }
+      var computation = computeRREF(A);
+      var rref = computation.result;
+      var pivotCols = getPivotColumns(rref);
+      var rank = pivotCols.length;
+      var n = A[0].length;
+      var freeColumns = [];
+      for (var j = 0; j < n; j++) {
+        if (!pivotCols.includes(j)) {
+          freeColumns.push(j);
+        }
+      }
+      var nullSpaceBasis = [];
+      var type = typeof A[0][0];
+      var isComplex = type !== 'number';
+      var zero = isComplex ? math.complex(0, 0) : 0;
+      var one = isComplex ? math.complex(1, 0) : 1;
+      for (var k = 0; k < freeColumns.length; k++) {
+        var j = freeColumns[k];
+        var vec = new Array(n).fill(zero);
+        vec[j] = one;
+        for (var i = 0; i < rank; i++) {
+          var p = pivotCols[i];
+          vec[p] = math.multiply(rref[i][j], -1);
+        }
+        nullSpaceBasis.push(vec);
+      }
+      return { basis: nullSpaceBasis, zeroRows: computation.zeroRows };
+    }
+
+    function gcd(a, b) {
+      a = Math.abs(a);
+      b = Math.abs(b);
+      while (b !== 0) {
+        let temp = b;
+        b = a % b;
+        a = temp;
+      }
+      return a;
+    }
+
+    function lcm(a, b) {
+      return Math.abs(a * b) / gcd(a, b);
+    }
+
+    function isShortDecimal(num) {
+      if (Math.abs(num) < 1e-12) return false;
+      let str = num.toFixed(10).replace(/\.?0+$/, '');
+      let decimalPart = str.split('.')[1];
+      if (!decimalPart) return false;
+      let nonZeroCount = (decimalPart.match(/[1-9]/g) || []).length;
+      return nonZeroCount <= 4;
+    }
+
+    function floatToFraction(num, tolerance = 1e-6, maxIter = 30) {
+      if (Math.abs(num) < 1e-12) return { numer: 0, denom: 1 };
+      let sign = Math.sign(num);
+      num = Math.abs(num);
+      let a = Math.floor(num);
+      let h = a;
+      let k = 1;
+      let hPrev = 1;
+      let kPrev = 0;
+      let x = num - a;
+      let iter = 0;
+      while (x > tolerance && iter < maxIter) {
+        x = 1 / x;
+        a = Math.floor(x);
+        let hTemp = a * h + hPrev;
+        let kTemp = a * k + kPrev;
+        hPrev = h;
+        kPrev = k;
+        h = hTemp;
+        k = kTemp;
+        x -= a;
+        iter++;
+        if (Math.abs(num - h / k) < tolerance) break;
+      }
+      return { numer: sign * h, denom: k };
+    }
+
+    function isPerfectSquare(n) {
+      let sqrt = Math.floor(Math.sqrt(n));
+      return sqrt * sqrt === n ? sqrt : null;
+    }
+
+    function decimalToSurd(num, tolerance = 1e-6) {
+      if (Math.abs(num) < 1e-12) return null;
+      let sign = Math.sign(num);
+      num = Math.abs(num);
+      const maxB = 100; // Limit for b in a*sqrt(b)
+      const coefficients = [1, 0.5, 2, 0.25, 0.3333333333, 0.6666666667, 1.5]; // Common a values (1, 1/2, 2, 1/4, 1/3, 2/3, 3/2)
+      for (let a of coefficients) {
+        for (let b = 1; b <= maxB; b++) {
+          let sqrtB = isPerfectSquare(b);
+          let value = sqrtB ? a * sqrtB : a * Math.sqrt(b);
+          if (Math.abs(num - value) < tolerance) {
+            if (sqrtB) {
+              // Perfect square: return simplified integer or fraction
+              let newA = a * sqrtB;
+              let frac = floatToFraction(newA);
+              if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
+                return { coef: sign * frac.numer, denom: frac.denom, radicand: null };
+              }
+              return { coef: sign * newA, denom: 1, radicand: null };
+            }
+            if (a === 1) return { coef: sign, radicand: b };
+            let frac = floatToFraction(a);
+            if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
+              return { coef: sign * frac.numer, denom: frac.denom, radicand: b };
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    function formatForLatex(val, isEigenvalueOrVector = false) {
+      if (typeof val === 'number') {
+        if (Math.abs(val) < 1e-12) return "0";
+        if (Math.abs(val - Math.round(val)) < 1e-12) return Math.round(val).toString();
+        if (isEigenvalueOrVector) {
+          let surd = decimalToSurd(val);
+          if (surd) {
+            if (surd.radicand === null) {
+              if (surd.denom === 1) return surd.coef.toString();
+              return `\\dfrac{${surd.coef}}{${surd.denom}}`;
+            }
+            let coefStr = Math.abs(surd.coef) === 1 ? (surd.coef === -1 ? '-' : '') : Math.abs(surd.coef);
+            if (surd.denom) {
+              return `\\dfrac{${coefStr === '' ? 1 : coefStr}\\sqrt{${surd.radicand}}}{${surd.denom}}`;
+            }
+            return `${coefStr === '' ? '' : coefStr}\\sqrt{${surd.radicand}}`;
+          }
+        }
+        let fraction = floatToFraction(val);
+        let isFraction = Math.abs(val - fraction.numer / fraction.denom) < 1e-6;
+        // MODIFIED: Only show fraction if numerator and denominator are both less than 10
+        if ((isShortDecimal(val) || isFraction) && Math.abs(fraction.numer) < 10 && fraction.denom < 10) {
+          if (fraction.denom === 1) return fraction.numer.toString();
+          return `\\dfrac{${fraction.numer}}{${fraction.denom}}`;
+        } else {
+          return val.toFixed(4).replace(/\.?0+$/, '');
+        }
+      } else if (val.re !== undefined && val.im !== undefined) {
+        let re = Math.abs(val.re) < 1e-12 ? 0 : val.re;
+        let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
+        let reFrac = floatToFraction(re);
+        let imFrac = floatToFraction(Math.abs(im));
+        // MODIFIED: Only show fraction if numerator and denominator are both less than 10
+        let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
+        let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
+        let rePart, imPart;
+        if (isEigenvalueOrVector) {
+          let reSurd = decimalToSurd(re);
+          let imSurd = decimalToSurd(Math.abs(im));
+          rePart = re === 0 ? "0" : (reSurd ? (reSurd.radicand === null ? (reSurd.denom === 1 ? reSurd.coef.toString() : `\\dfrac{${reSurd.coef}}{${reSurd.denom}}`) : (reSurd.denom ? `\\dfrac{${Math.abs(reSurd.coef) === 1 ? (reSurd.coef === -1 ? '-' : '') : Math.abs(reSurd.coef)}\\sqrt{${reSurd.radicand}}}{${reSurd.denom}}` : `${reSurd.coef === -1 ? '-' : reSurd.coef === 1 ? '' : reSurd.coef}\\sqrt{${reSurd.radicand}}`)) : (isReFraction ? (reFrac.denom === 1 ? reFrac.numer.toString() : `\\dfrac{${reFrac.numer}}{${reFrac.denom}}`) : re.toFixed(4).replace(/\.?0+$/, '')));
+          imPart = im === 0 ? "0" : (imSurd ? (imSurd.radicand === null ? (imSurd.denom === 1 ? imSurd.coef.toString() : `\\dfrac{${imSurd.coef}}{${imSurd.denom}}`) : (imSurd.denom ? `\\dfrac{${Math.abs(imSurd.coef) === 1 ? (imSurd.coef === -1 ? '-' : '') : imSurd.coef}\\sqrt{${imSurd.radicand}}}{${imSurd.denom}}` : `${imSurd.coef === 1 ? '' : imSurd.coef}\\sqrt{${imSurd.radicand}}`)) : (isImFraction ? (imFrac.denom === 1 ? imFrac.numer.toString() : `\\dfrac{${imFrac.numer}}{${imFrac.denom}}`) : Math.abs(im).toFixed(4).replace(/\.?0+$/, '')));
+        } else {
+          rePart = re === 0 ? "0" : (isReFraction ? (reFrac.denom === 1 ? reFrac.numer.toString() : `\\dfrac{${reFrac.numer}}{${reFrac.denom}}`) : re.toFixed(4).replace(/\.?0+$/, ''));
+          imPart = im === 0 ? "0" : (isImFraction ? (imFrac.denom === 1 ? imFrac.numer.toString() : `\\dfrac{${imFrac.numer}}{${imFrac.denom}}`) : Math.abs(im).toFixed(4).replace(/\.?0+$/, ''));
+        }
+        if (rePart === "0" && imPart === "0") return "0";
+        if (imPart === "0") return rePart;
+        let imSign = im < 0 ? '-' : '+';
+        if (imPart === "1") imPart = '';
+        let imStr = imPart ? `${imPart}i` : 'i';
+        if ((isImFraction || (isEigenvalueOrVector && decimalToSurd(Math.abs(im)))) && imStr.includes('i')) {
+          let [numer, denom] = imStr.replace('i', '').split('/').map(s => s.trim());
+          if (numer === '' || numer === '1') {
+            imStr = 'i' + (denom ? `/${denom}` : '');
+          } else {
+            imStr = `${numer}i` + (denom ? `/${denom}` : '');
+          }
+          imStr = denom && denom !== '1' ? `\\dfrac{${numer === '' || numer === '1' ? 1 : numer}}{${denom}}i` : (numer === '' || numer === '1' ? 'i' : `${numer}i`);
+        }
+        if (rePart === "0") {
+          return im < 0 ? `-${imStr}` : imStr;
+        }
+        return `${rePart} ${imSign} ${imStr}`;
+      }
+      return val.toString();
+    }
+
+    function matrixToLatex(M) {
+      if (!M || M.length === 0) return '';
+      const rows = M.length;
+      const cols = M[0].length;
+      if (rows === 1 && cols === 1) return formatForLatex(M[0][0]);
+      let hasFractions = M.some(row => row.some(val => {
+        if (typeof val === 'number') {
+          return isShortDecimal(val) || (Math.abs(val - Math.round(val)) > 1e-12 && Math.abs(val - floatToFraction(val).numer / floatToFraction(val).denom) < 1e-6);
+        } else {
+          let re = Math.abs(val.re) < 1e-12 ? 0 : val.re;
+          let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
+          if (Math.abs(im) < 1e-12) return false;
+          let reFrac = floatToFraction(re);
+          let imFrac = floatToFraction(im);
+          // MODIFIED: Only show fraction if numerator and denominator are both less than 10
+          let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
+          let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
+          return isReFraction || isImFraction;
+        }
+      }));
+      let latex = "\\begin{bmatrix}";
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          latex += formatForLatex(M[i][j]);
+          if (j < cols - 1) latex += " & ";
+        }
+        if (i < rows - 1) {
+          latex += hasFractions ? " \\\\[0.5em] " : " \\\\ ";
+        }
+      }
+      latex += "\\end{bmatrix}";
+      return latex;
+    }
+
+    function vectorToLatex(v) {
+      if (!v || v.length === 0) {
+        console.error("Empty or invalid vector in vectorToLatex");
+        return { latex: '\\begin{bmatrix} 0 \\end{bmatrix}', scaledVector: [0] };
+      }
+      const rows = v.length;
+      // Determine if vector is complex (has non-zero imaginary part)
+      let isComplexVector = v.some(x => typeof x !== 'number' && Math.abs(x.im) > 1e-12);
+      let scaleEntry;
+      if (isComplexVector) {
+        // Collect non-zero magnitudes for complex entries
+        let nonZero = [];
+        v.forEach(x => {
+          let mag = math.abs(x);
+          if (mag > 1e-12) {
+            nonZero.push({ mag, entry: x });
+          }
+        });
+        if (nonZero.length === 0) {
+          console.warn("Zero vector encountered in vectorToLatex");
+          return { latex: matrixToLatex([v]), scaledVector: v };
+        }
+        // Find entry with smallest non-zero magnitude
+        let minItem = nonZero.reduce((min, item) => item.mag < min.mag ? item : min, nonZero[0]);
+        scaleEntry = minItem.entry;
+      } else {
+        // Collect non-positive non-zero real numbers (treating -0 as 0)
+        let nonPositive = [];
+        v.forEach(x => {
+          let realVal = typeof x === 'number' ? x : x.re;
+          if (Math.abs(realVal) > 1e-12 && realVal <= 0) {
+            nonPositive.push({ val: realVal, mag: Math.abs(realVal) });
+          }
+        });
+        if (nonPositive.length === 0) {
+          // If no non-positive, use smallest magnitude non-zero
+          let nonZero = [];
+          v.forEach(x => {
+            let realVal = typeof x === 'number' ? x : x.re;
+            if (Math.abs(realVal) > 1e-12) {
+              nonZero.push({ val: realVal, mag: Math.abs(realVal) });
+            }
+          });
+          if (nonZero.length === 0) {
+            console.warn("Zero vector encountered in vectorToLatex");
+            return { latex: matrixToLatex([v]), scaledVector: v };
+          }
+          let minItem = nonZero.reduce((min, item) => item.mag < min.mag ? item : min, nonZero[0]);
+          scaleEntry = minItem.val;
+        } else {
+          let minItem = nonPositive.reduce((min, item) => item.mag < min.mag ? item : min, nonPositive[0]);
+          scaleEntry = minItem.val;
+        }
+      }
+      // Scale the vector
+      let adjustedV = [];
+      try {
+        adjustedV = v.map(x => math.divide(x, scaleEntry));
+      } catch (e) {
+        console.error("Error scaling vector in vectorToLatex:", e);
+        return { latex: matrixToLatex([v]), scaledVector: v };
+      }
+      // Fraction to integer logic
+      let denoms = [];
+      adjustedV.forEach(x => {
+        let re = typeof x === 'number' ? x : x.re;
+        let im = typeof x === 'number' ? 0 : x.im;
+        // MODIFIED: Only consider fractions if numerator and denominator are both less than 10
+        if (Math.abs(re - Math.round(re)) > 1e-12 && (isShortDecimal(re) || Math.abs(re - floatToFraction(re).numer / floatToFraction(re).denom) < 1e-6)) {
+          let frac = floatToFraction(re);
+          if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
+            denoms.push(frac.denom);
+          }
+        }
+        if (Math.abs(im - Math.round(im)) > 1e-12 && (isShortDecimal(im) || Math.abs(im - floatToFraction(im).numer / floatToFraction(im).denom) < 1e-6)) {
+          let frac = floatToFraction(im);
+          if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
+            denoms.push(frac.denom);
+          }
+        }
+      });
+      if (denoms.length > 0) {
+        let lcmDenom = denoms.reduce((a, b) => lcm(a, b), 1);
+        try {
+          adjustedV = adjustedV.map(x => math.multiply(x, lcmDenom));
+          let gcdVal = 0;
+          adjustedV.forEach(x => {
+            let re = Math.round(typeof x === 'number' ? x : x.re);
+            let im = Math.round(typeof x === 'number' ? 0 : x.im);
+            if (Math.abs(re) > 0.5) gcdVal = gcd(gcdVal, Math.abs(re));
+            if (Math.abs(im) > 0.5) gcdVal = gcd(gcdVal, Math.abs(im));
+          });
+          if (gcdVal > 1) {
+            adjustedV = adjustedV.map(x => math.divide(x, gcdVal));
+          }
+        } catch (e) {
+          console.error("Error in fraction conversion in vectorToLatex:", e);
+        }
+      }
+      // Sign adjustment
+      let positiveCount = 0;
+      let negativeCount = 0;
+      adjustedV.forEach(x => {
+        let re = typeof x === 'number' ? x : x.re;
+        let im = typeof x === 'number' ? 0 : x.im;
+        if (Math.abs(re) > 1e-12) {
+          if (re > 0) positiveCount++;
+          if (re < 0) negativeCount++;
+        }
+        if (Math.abs(im) > 1e-12) {
+          if (im > 0) positiveCount++;
+          if (im < 0) negativeCount++;
+        }
+      });
+      if (negativeCount > positiveCount) {
+        adjustedV = adjustedV.map(x => math.multiply(x, -1));
+      }
+      let canNegate = adjustedV.every(x => {
+        let re = typeof x === 'number' ? x : x.re;
+        let im = typeof x === 'number' ? 0 : x.im;
+        return (Math.abs(re) < 1e-12 || re <= 0) && (Math.abs(im) < 1e-12 || im <= 0);
+      });
+      if (canNegate) {
+        adjustedV = adjustedV.map(x => math.multiply(x, -1));
+      }
+      // Check for fractions in vector
+      let hasFractions = adjustedV.some(val => {
+        if (typeof val === 'number') {
+          return isShortDecimal(val) || (Math.abs(val - Math.round(val)) > 1e-12 && Math.abs(val - floatToFraction(val).numer / floatToFraction(val).denom) < 1e-6);
+        } else {
+          let re = Math.abs(val.re) < 1e-12 ? 0 : val.re;
+          let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
+          if (Math.abs(im) < 1e-12) return false;
+          let reFrac = floatToFraction(re);
+          let imFrac = floatToFraction(im);
+          // MODIFIED: Only show fraction if numerator and denominator are both less than 10
+          let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
+          let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
+          return isReFraction || isImFraction;
+        }
+      });
+      // Build LaTeX
+      let latex = "\\begin{bmatrix}";
+      for (let i = 0; i < rows; i++) {
+        latex += formatForLatex(adjustedV[i], true);
+        if (i < rows - 1) {
+          latex += hasFractions ? " \\\\[0.5em] " : " \\\\ ";
+        }
+      }
+      latex += "\\end{bmatrix}";
+      return { latex, scaledVector: adjustedV };
+    }
+
+    function isComplexFraction(val) {
+      if (typeof val !== 'object' || val.re === undefined || val.im !== undefined) return false;
+      let re = Math.abs(val.re) < 1e-12 ? 0 : val.re;
+      let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
+      if (Math.abs(im) < 1e-12) return false;
+      let reFrac = floatToFraction(re);
+      let imFrac = floatToFraction(im);
+      // MODIFIED: Only show fraction if numerator and denominator are both less than 10
+      let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
+      let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
+      return isReFraction || isImFraction;
+    }
+
+    function getKey(val) {
+      if (typeof val === 'number') {
+        return Math.abs(val) < 1e-7 ? '0' : val.toFixed(10);
+      } else {
+        let re = Math.abs(val.re) < 1e-7 ? 0 : val.re;
+        let im = Math.abs(val.im) < 1e-7 ? 0 : val.im;
+        return re.toFixed(10) + ',' + im.toFixed(10);
+      }
+    }
+
+    function isZeroValue(val) {
+      if (typeof val === 'number') {
+        return Math.abs(val) < 1e-7;
+      } else {
+        return Math.abs(val.re) < 1e-7 && Math.abs(val.im) < 1e-7;
+      }
+    }
+
+    function computeEigenvectors(A, lambda, algMultiplicity, isComplex) {
+      const n = A.length;
+      let eigenvectors = [];
+      let geometricMultiplicity = 0;
+      if (isComplex) {
+        // Use math.eigs for complex eigenvalues
+        try {
+          const A_math = math.matrix(A);
+          const result = math.eigs(A_math);
+          const evs = result.eigenvectors;
+          for (let ev of evs) {
+            if (Math.abs(math.subtract(ev.value, lambda).re) < 1e-7 && Math.abs(math.subtract(ev.value, lambda).im) < 1e-7) {
+              let vec = ev.vector.toArray().flat();
+              if (vec.every(v => isZeroValue(v))) {
+                console.warn("Zero eigenvector skipped for eigenvalue:", lambda);
+                continue;
+              }
+              eigenvectors.push(vec);
+            }
+          }
+          geometricMultiplicity = eigenvectors.length;
+        } catch (e) {
+          console.error(`Failed to compute eigenvectors for complex eigenvalue ${lambda}:`, e);
+          return { vectors: [], geometricMultiplicity: 0 };
+        }
+      } else {
+        // Compute generalized eigenvectors for real eigenvalues
+        let currentMatrix = math.identity(n);
+        for (let k = 1; k <= algMultiplicity; k++) {
+          let A_minus_lambdaI = A.map((row, i) => row.map((val, j) => {
+            let result = i === j ? math.subtract(val, lambda) : val;
+            return typeof result === 'number' ? result : math.complex(result.re, result.im);
+          }));
+          let tempMatrix;
+          try {
+            tempMatrix = k === 1 ? math.matrix(A_minus_lambdaI) : math.multiply(currentMatrix, math.matrix(A_minus_lambdaI));
+          } catch (e) {
+            console.error(`Matrix multiplication failed at k=${k}:`, e);
+            return { vectors: eigenvectors, geometricMultiplicity };
+          }
+          currentMatrix = tempMatrix.toArray ? tempMatrix.toArray() : tempMatrix;
+          let nullspaceResult = computeNullSpace(currentMatrix);
+          let newVectors = nullspaceResult.basis;
+          newVectors.forEach(vec => {
+            let isIndependent = true;
+            if (eigenvectors.length > 0) {
+              let testMatrix = eigenvectors.map(ev => ev.slice());
+              testMatrix.push(vec.slice());
+              let rank = computeRREF(testMatrix).pivotRows.length;
+              if (rank <= eigenvectors.length) isIndependent = false;
+            }
+            if (isIndependent) eigenvectors.push(vec);
+          });
+          if (k === 1) geometricMultiplicity = eigenvectors.length;
+          if (eigenvectors.length >= algMultiplicity) break;
+        }
+      }
+      return { vectors: eigenvectors.slice(0, algMultiplicity), geometricMultiplicity };
+    }
+
+    function readMatrix() {
+      var n = parseInt(document.getElementById("n").value, 10);
+      if (isNaN(n) || n <= 0) {
+        console.error("Invalid matrix size:", n);
+        return null;
+      }
+      var A = [];
+      for (var i = 0; i < n; i++) {
+        var row = [];
+        for (var j = 0; j < n; j++) {
+          var cell = document.getElementById("A_" + i + "_" + j);
+          if (!cell) {
+            console.error(`Matrix input element A_${i}_${j} not found`);
+            return null;
+          }
+          var value = cell.value.trim();
+          var num = parseComplex(value);
+          row.push(num);
+        }
+        A.push(row);
+      }
+      return A;
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+    document.getElementById("calcBtn").addEventListener("click", function () {
+      var A = readMatrix();
+      if (A === null) {
+        document.getElementById("result").innerHTML = `<div class="text-red-700 text-center font-bold">Error: Invalid matrix input</div>`;
+        return;
+      }
+      var resultDiv = document.getElementById("result");
+      var n = A.length;
+      try {
+        const A_math = math.matrix(A);
+        let result;
+        try {
+          result = math.eigs(A_math);
+        } catch (e) {
+          console.error("Error in eigenvalue computation:", e);
+          throw new Error("Failed to compute eigenvalues: " + e.message);
+        }
+        const eigenvalues = result.values.toArray();
+        if (!eigenvalues || eigenvalues.length === 0) {
+          throw new Error("No eigenvalues computed");
+        }
+        const evGroups = new Map();
+        for (let val of eigenvalues) {
+          let key = getKey(val);
+          if (!evGroups.has(key)) evGroups.set(key, []);
+          evGroups.get(key).push(val);
+        }
+        const algMultMap = new Map();
+        const distinctLambdas = [];
+        for (let [key, list] of evGroups) {
+          let sum = list.reduce((acc, v) => math.add(math.complex(v), acc), math.complex(0, 0));
+          let avg = math.divide(sum, list.length);
+          if (Math.abs(avg.im) < 1e-7) avg.im = 0;
+          if (Math.abs(avg.re) < 1e-7) avg.re = 0;
+          if (avg.im === 0) avg = avg.re;
+          distinctLambdas.push(avg);
+          let newKey = getKey(avg);
+          algMultMap.set(newKey, list.length);
+        }
+        const eigenMap = new Map();
+        let hasGeneralizedEigenvectors = false;
+        for (let lambda of distinctLambdas) {
+          const key = getKey(lambda);
+          const algMultiplicity = algMultMap.get(key) || 1;
+          const isComplex = typeof lambda !== 'number' && Math.abs(lambda.im) > 1e-7;
+          let evResult;
+          try {
+            evResult = computeEigenvectors(A, lambda, algMultiplicity, isComplex);
+          } catch (e) {
+            console.error(`Error computing eigenvectors for lambda ${lambda}:`, e);
+            throw new Error(`Failed to compute eigenvectors for eigenvalue ${lambda}: ${e.message}`);
+          }
+          if (evResult.vectors.length > 0) {
+            eigenMap.set(key, { value: lambda, vectors: evResult.vectors, geometricMultiplicity: evResult.geometricMultiplicity });
+            if (!isComplex && evResult.vectors.length > evResult.geometricMultiplicity) {
+              hasGeneralizedEigenvectors = true;
+            }
+          }
+        }
+        let sortedPairs = Array.from(eigenMap.values()).sort((a, b) => math.abs(a.value) - math.abs(b.value));
+        const A_latex = matrixToLatex(A);
+        let align_content = sortedPairs.map((pair, index) => {
+          const lambda_latex = formatForLatex(pair.value, true);
+          const key = getKey(pair.value);
+          const algMultiplicity = algMultMap.get(key) || pair.vectors.length;
+          const mult_latex = algMultiplicity >= 2 ? `(\\text{multiplicity } ${algMultiplicity})` : '';
+          const vecs_latex = pair.vectors.map((vec, vecIndex) => {
+            try {
+              const { latex } = vectorToLatex(vec);
+              if (vecIndex < pair.geometricMultiplicity) {
+                return latex;
+              } else {
+                return `\\textcolor{blue}{${latex}}`;
+              }
+            } catch (e) {
+              console.error(`Error formatting vector ${vecIndex} for eigenvalue ${pair.value}:`, e);
+              return "\\text{error}";
+            }
+          }).join(', \\quad ');
+          return `\\lambda_{${index + 1}} = ${lambda_latex}${mult_latex ? '\\,' : ''}${mult_latex}, \\quad ${vecs_latex}`;
+        }).join(' \\\\ ');
+        let resultHtml = `
+          <div class="latex">$$ A = ${A_latex} $$</div>
+          <div class="latex">$$ \\begin{align*} ${align_content} \\end{align*} $$</div>
+        `;
+        if (hasGeneralizedEigenvectors) {
+          resultHtml += `
+            <div class="latex">$$ \\text{Eigenvectors}, \\quad \\textcolor{blue}{\\text{Generalized Eigenvectors}} $$</div>
+          `;
+        }
+        resultDiv.innerHTML = resultHtml;
+        renderMathInElement(resultDiv, {
+          delimiters: [{ left: "$$", right: "$$", display: true }],
+          throwOnError: false
+        });
+      } catch (e) {
+        console.error("Detailed error in computation:", e);
+        resultDiv.innerHTML = `<div class="text-red-700 text-center font-bold">Error: ${e.message || "Computation failed, please check matrix input"}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>
