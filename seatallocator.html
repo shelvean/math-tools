@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-5B8PRB2WZT');
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seat Allocator</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS CDN for file parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Plotly CDN for visualization -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="bg-white p-6 rounded-lg shadow-md" style="width: 900px;">
+    <h1 class="text-4xl font-bold mb-8 text-blue-800 text-center">Seat Allocator</h1>
+    <!-- Instructions Buttons -->
+    <div class="flex justify-center space-x-4 mb-6">
+      <button onclick="document.getElementById('howToUseModal').classList.remove('hidden')" class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300 font-medium rounded-full text-sm px-5 py-2.5 text-center shadow-lg transition duration-300">
+        How to Use the Seat Allocator
+      </button>
+      <button onclick="document.getElementById('excelModal').classList.remove('hidden')" class="text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-4 focus:ring-green-300 font-medium rounded-full text-sm px-5 py-2.5 text-center shadow-lg transition duration-300">
+        Opening TXT in Excel
+      </button>
+    </div>
+    <!-- How to Use Modal -->
+    <div id="howToUseModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white p-6 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <h2 class="text-2xl font-semibold mb-4 text-blue-700">How to Use the Seat Allocator</h2>
+        <ul class="list-disc list-inside text-gray-700 space-y-2">
+          <li>Enter the number of students.</li>
+          <li>Upload a classroom chart in CSV, XLSX, or ODS format. Currently acceptable classrooms: BLOC 102, BLOC 117, BLOC 128, BLOC 160, BLOC 166, BLOC 169, HECC 108, HECC 105, HECC 110, HECC 200, HECC 203, HECC 207, HELD 100, HELD 105, HELD 107, HELD 109, HELD 111, HELD 113, HELD 200, RICH 114.</li>
+          <li>Click the "Allocate Seats" button to allocate seats randomly. Allocations change each time you press "Allocate Seats". The assignment attempts to maximize space between students.</li>
+          <li>To see seat assignments, hover over the allocated seats.</li>
+          <li>Download the allocated roster with seat assignments.</li>
+        </ul>
+        <button onclick="document.getElementById('howToUseModal').classList.add('hidden')" class="mt-6 bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 transition duration-200">
+          Close
+        </button>
+      </div>
+    </div>
+    <!-- Excel Modal -->
+    <div id="excelModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white p-6 rounded-lg shadow-xl max-w-lg w-full mx-4">
+        <h3 class="text-xl font-semibold mb-4 text-blue-700">Opening the Downloaded TXT in Excel</h3>
+        <ol class="list-decimal list-inside text-gray-700 space-y-2">
+          <li>Open Excel > Data > From Text/CSV.</li>
+          <li>Select the downloaded allocated_seats.txt file.</li>
+          <li>Set delimiter to Tab > Load.</li>
+        </ol>
+        <button onclick="document.getElementById('excelModal').classList.add('hidden')" class="mt-6 bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 transition duration-200">
+          Close
+        </button>
+      </div>
+    </div>
+    <!-- Horizontal Line Separator -->
+    <hr class="my-6 border-gray-300">
+    <!-- Number of Students -->
+    <div class="mb-6">
+      <label for="numStudents" class="block text-sm font-medium text-gray-800 mb-2 text-center">Enter Number of Students</label>
+      <input type="number" id="numStudents" placeholder="Number of students" min="1" class="w-[200px] p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 mx-auto block">
+    </div>
+    <!-- Upload Classroom Seats -->
+    <div class="mb-6 flex flex-col items-center">
+      <label for="seatsFile" class="block text-sm font-medium text-gray-800 mb-2 text-center">Upload Classroom Seats (chart with seats in CSV, XLSX, ODS)</label>
+      <input type="file" id="seatsFile" accept=".csv,.xlsx,.ods" class="mt-1 block text-sm text-gray-500 file:mr-4 file:py-3 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-800 hover:file:bg-blue-200 max-w-md">
+    </div>
+    <!-- Additional Empty Seats -->
+    <div class="mb-4">
+      <label class="block text-blue-700 font-medium mb-2 text-center" for="emptySeats">(Optional) Leave these seats empty (e.g., A5, H12, etc)</label>
+      <input type="text" id="emptySeats" placeholder="A5, H12" class="w-[400px] p-2 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 mx-auto block">
+    </div>
+    <!-- Buttons Container -->
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="allocateBtn" class="text-white bg-blue-700 hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-300 font-medium rounded-full text-sm px-5 py-2.5 text-center shadow-lg transition duration-300">
+        Allocate Seats
+      </button>
+      <button id="clearBtn" class="text-white bg-red-700 hover:bg-red-800 focus:outline-none focus:ring-4 focus:ring-red-300 font-medium rounded-full text-sm px-5 py-2.5 text-center shadow-lg transition duration-300">
+        Clear All
+      </button>
+    </div>
+    <!-- Output Area -->
+    <div id="output" class="mt-4 text-center"></div>
+    <!-- Plotly Checkerboard -->
+    <div id="checkerboard" class="mt-4 mx-auto" style="width: 840px;"></div>
+    <div class="text-center mt-4 text-sm text-gray-600">
+      <p>&copy; 2025 Shelvean Kapita: kapita@tamu.edu | Last modified November 02, 2025</p>
+    </div>
+  </div>
+  <script>
+    let students = [];
+    document.getElementById('allocateBtn').addEventListener('click', async () => {
+      const numStudentsInput = document.getElementById('numStudents').value;
+      const seatsFile = document.getElementById('seatsFile').files[0];
+      let additionalEmptySeats = document.getElementById('emptySeats').value
+        .split(',')
+        .map(s => s.trim().toUpperCase())
+        .map(s => {
+          const match = s.match(/([A-Z])(\d+)/);
+          if (match) {
+            const row = match[1];
+            const col = parseInt(match[2], 10).toString();
+            return `${row}${col}`;
+          }
+          return s;
+        })
+        .filter(s => s);
+      console.log('Empty seats provided:', additionalEmptySeats);
+      const outputDiv = document.getElementById('output');
+      outputDiv.innerHTML = '';
+      if (!seatsFile) {
+        outputDiv.innerHTML = '<p class="text-red-500">Please upload a seats file.</p>';
+        return;
+      }
+      if (!numStudentsInput) {
+        outputDiv.innerHTML = '<p class="text-red-500">Please enter the number of students.</p>';
+        return;
+      }
+      try {
+        const seatsData = await parseFile(seatsFile);
+        let { grid, rowLabels, cols, usableSeats } = extractSeatsFromGrid(seatsData, additionalEmptySeats);
+        rowLabels.reverse();
+        grid.reverse();
+        const numStudents = parseInt(numStudentsInput, 10);
+        if (isNaN(numStudents) || numStudents < 1) {
+          throw new Error('Please enter a valid number of students.');
+        }
+        if (usableSeats.length < numStudents) {
+          throw new Error('Not enough usable seats for the specified number of students.');
+        }
+        let selectedSeats = allocateSeatsWithSpacing(groupSeatsByRow(usableSeats), numStudents);
+        if (usableSeats.length > numStudents) {
+          selectedSeats = maximizeSpacingAcrossGrid(usableSeats, numStudents, rowLabels);
+        }
+        shuffleArray(selectedSeats);
+        console.log('Allocated seats:', selectedSeats);
+        generateCheckerboard(grid, rowLabels, cols, selectedSeats, additionalEmptySeats, numStudents);
+        const outputData = selectedSeats.map((seat, i) => [(i + 1).toString(), seat]);
+        const outputFileType = 'txt';
+        let fileData = outputData.map(row => row.join('\t')).join('\n');
+        const blob = new Blob([fileData], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `allocated_seats.${outputFileType}`;
+        a.textContent = 'Download Allocated Seats';
+        a.className = 'text-blue-600 underline text-2xl font-semibold';
+        outputDiv.appendChild(a);
+      } catch (error) {
+        outputDiv.innerHTML = `<p class="text-red-500">Error: ${error.message}</p>`;
+        console.error('Error details:', error);
+      }
+    });
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      document.getElementById('numStudents').value = '';
+      document.getElementById('seatsFile').value = '';
+      document.getElementById('emptySeats').value = '';
+      document.getElementById('output').innerHTML = '';
+      Plotly.purge('checkerboard');
+      students = [];
+    });
+    async function parseFile(file) {
+      const reader = new FileReader();
+      return new Promise((resolve, reject) => {
+        reader.onload = (e) => {
+          const data = e.target.result;
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          resolve(XLSX.utils.sheet_to_json(sheet, { header: 1 }));
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsBinaryString(file);
+      });
+    }
+    function extractSeatsFromGrid(seatsData, additionalEmptySeats) {
+      const grid = [];
+      const rowLabels = [];
+      let maxCols = 0;
+      seatsData.forEach((row, rowIndex) => {
+        let rowLabel = null;
+        let labelIndex = -1;
+        for (let colIndex = 0; colIndex < row.length; colIndex++) {
+          const cell = String(row[colIndex]).trim();
+          if (/^[A-Z]$/.test(cell)) {
+            rowLabel = cell;
+            labelIndex = colIndex;
+            break;
+          }
+        }
+        if (rowLabel) {
+          rowLabels.push(rowLabel);
+          const gridRow = row.map(cell => cell ? String(cell).trim() : '');
+          grid.push(gridRow);
+          maxCols = Math.max(maxCols, gridRow.length);
+        }
+      });
+      if (rowLabels.length === 0) {
+        throw new Error("No valid rows found in the seats file.");
+      }
+      const paddedGrid = grid.map(row => {
+        const paddedRow = [...row];
+        while (paddedRow.length < maxCols) {
+          paddedRow.push('');
+        }
+        return paddedRow;
+      });
+      const usableSeats = [];
+      paddedGrid.forEach((row, rowIndex) => {
+        const rowLabel = rowLabels[rowIndex];
+        row.forEach((cell, colIndex) => {
+          if (cell && !isNaN(cell)) {
+            const colNumber = parseInt(cell, 10).toString();
+            const seat = `${rowLabel}${colNumber}`;
+            if (!additionalEmptySeats.includes(seat)) {
+              usableSeats.push(seat);
+            }
+          }
+        });
+      });
+      const cols = Array.from({ length: maxCols }, (_, i) => (i + 1).toString());
+      return { grid: paddedGrid, rowLabels, cols, usableSeats };
+    }
+    function groupSeatsByRow(seats) {
+      const seatsByRow = {};
+      seats.forEach(seat => {
+        const match = seat.match(/([A-Z])(\d+)/);
+        if (match) {
+          const row = match[1];
+          const col = parseInt(match[2], 10);
+          if (!seatsByRow[row]) seatsByRow[row] = [];
+          seatsByRow[row].push(col);
+        }
+      });
+      for (const row in seatsByRow) {
+        seatsByRow[row].sort((a, b) => a - b);
+      }
+      return seatsByRow;
+    }
+    function allocateSeatsWithSpacing(seatsByRow, numStudents) {
+      const selectedSeats = [];
+      const rows = Object.keys(seatsByRow);
+      const basePerRow = Math.floor(numStudents / rows.length);
+      const extra = numStudents % rows.length;
+      rows.forEach((row, i) => {
+        const seats = seatsByRow[row];
+        const studentsInRow = basePerRow + (i < extra ? 1 : 0);
+        if (studentsInRow === 0) return;
+        const maxWithGaps = Math.floor((seats.length + 1) / 2);
+        if (studentsInRow <= maxWithGaps) {
+          const step = Math.floor((seats.length - 1) / (studentsInRow - 1)) || 1;
+          for (let j = 0; j < studentsInRow; j++) {
+            const idx = Math.min(j * step, seats.length - 1);
+            selectedSeats.push(`${row}${seats[idx]}`);
+          }
+        } else {
+          for (let j = 0; j < studentsInRow; j++) {
+            selectedSeats.push(`${row}${seats[j]}`);
+          }
+        }
+      });
+      return selectedSeats.slice(0, numStudents);
+    }
+    function maximizeSpacingAcrossGrid(usableSeats, numStudents, rowLabels) {
+      const seatPositions = usableSeats.map(seat => {
+        const match = seat.match(/([A-Z])(\d+)/);
+        return { seat: seat, row: match[1], col: parseInt(match[2], 10) };
+      });
+      seatPositions.sort((a, b) => {
+        if (a.row === b.row) return a.col - b.col;
+        return a.row.localeCompare(b.row);
+      });
+      const totalSeats = seatPositions.length;
+      const selectedSeats = [];
+      if (numStudents <= totalSeats / 2) {
+        const step = Math.floor((totalSeats - 1) / (numStudents - 1)) || 1;
+        for (let i = 0; i < numStudents; i++) {
+          const idx = i * step;
+          if (idx < totalSeats) {
+            selectedSeats.push(seatPositions[idx].seat);
+          }
+        }
+      } else {
+        const maxWithSpacing = Math.floor((totalSeats + 1) / 2);
+        const step = Math.floor((totalSeats - 1) / (maxWithSpacing - 1)) || 1;
+        let i = 0;
+        while (selectedSeats.length < maxWithSpacing && selectedSeats.length < numStudents) {
+          const idx = i * step;
+          if (idx < totalSeats) {
+            selectedSeats.push(seatPositions[idx].seat);
+          }
+          i++;
+        }
+        i = 0;
+        while (selectedSeats.length < numStudents && i < totalSeats) {
+          const seat = seatPositions[i].seat;
+          if (!selectedSeats.includes(seat)) {
+            selectedSeats.push(seat);
+          }
+          i++;
+        }
+      }
+      return selectedSeats.slice(0, numStudents);
+    }
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+    function generateCheckerboard(grid, rows, cols, selectedSeats, emptySeats, numStudents) {
+      const z = [];
+      const text = [];
+      rows.forEach((row, rowIndex) => {
+        const zRow = [];
+        const textRow = [];
+        grid[rowIndex].forEach(cell => {
+          if (cell && !isNaN(cell)) {
+            const colNumber = parseInt(cell, 10).toString();
+            const seat = `${row}${colNumber}`;
+            if (emptySeats.includes(seat)) {
+              zRow.push(0);
+              textRow.push(seat);
+            } else if (selectedSeats.includes(seat)) {
+              zRow.push(2);
+              const studentNum = selectedSeats.indexOf(seat) + 1;
+              textRow.push(`${seat}\nStudent ${studentNum}`);
+            } else {
+              zRow.push(1);
+              textRow.push(seat);
+            }
+          } else if (cell && cell.toLowerCase().includes("table")) {
+            zRow.push(3);
+            textRow.push(cell);
+          } else {
+            zRow.push(0);
+            textRow.push(cell || 'N/A');
+          }
+        });
+        z.push(zRow);
+        text.push(textRow);
+      });
+      const data = [{
+        z: z,
+        x: cols,
+        y: rows,
+        type: 'heatmap',
+        colorscale: [
+          [0, '#A9A9A9'],
+          [0.249999, '#A9A9A9'],
+          [0.25, '#3498DB'],
+          [0.499999, '#3498DB'],
+          [0.5, '#27AE60'],
+          [0.749999, '#27AE60'],
+          [0.75, '#8D6E63'],
+          [1, '#8D6E63']
+        ],
+        zmin: 0,
+        zmax: 3,
+        showscale: true,
+        colorbar: {
+          x: 1.02,
+          y: 0.5,
+          len: 0.7,
+          thickness: 25,
+          tickmode: 'array',
+          tickvals: [0.375, 1.125, 1.875, 2.625],
+          ticktext: ['Empty/Unassigned Seats', 'Available Seats', 'Allocated Seats', 'Tables'],
+          tickfont: { size: 12 }
+        },
+        text: text,
+        hoverinfo: 'text',
+        hovertemplate: '%{text}<extra></extra>',
+        xgap: 2,
+        ygap: 2
+      }];
+      const layout = {
+        title: 'Classroom Seat Allocation',
+        xaxis: { title: 'Column', tickvals: cols, ticktext: cols },
+        yaxis: { title: 'Row', tickvals: rows, ticktext: rows },
+        margin: { t: 50, b: 50, l: 50, r: 180 },
+        height: 600,
+        width: 840
+      };
+      Plotly.newPlot('checkerboard', data, layout);
+    }
+  </script>
+</body>
+</html>
