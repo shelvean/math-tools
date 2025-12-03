@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="An interactive function plotter, allowing visualization and analysis of multiple mathematical functions.">
+    <meta name="keywords" content="function plotter, mathematics, function plotting, function-plot.js, calculus">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag("js", new Date());
+        gtag("config", "G-5B8PRB2WZT");
+    </script>
+    <title>Function Plotter</title>
+    <!-- KaTeX CDN links -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+    <!-- d3.js and function-plot.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/function-plot@1.22.4/dist/function-plot.js"></script>
+    <!-- math.js for symbolic computation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/13.1.1/math.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+        .katex-display {
+            overflow-x: auto;
+            padding: 1rem 0;
+        }
+        .current-function {
+            font-size: 1.25rem;
+            padding: 0.5rem;
+            text-align: center;
+            background-color: #f1f5f9;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
+        .control-panel {
+            background-color: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            width: 400px;
+        }
+        #graph {
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            width: 700px;
+            height: 400px;
+        }
+        .function-button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        .instructions {
+            text-align: center;
+            color: #4b5563;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        .analysis-output div {
+            font-size: 1rem;
+        }
+        .analysis-output ul {
+            margin-left: 1.5rem;
+        }
+        .color-0 { color: #00008b; } /* Navy */
+        .color-1 { color: #006400; } /* Forest Green */
+        .color-2 { color: #8B0000; } /* Dark Red */
+        .color-3 { color: #2F4F4F; } /* Dark Slate Gray */
+        .color-4 { color: #4B0082; } /* Indigo */
+        .results-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .results-grid li {
+            flex: 1;
+            min-width: 150px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Function Plotter</h1>
+        </header>
+        <div class="bg-white rounded-lg shadow p-6 mb-6 flex flex-row gap-4">
+            <div class="flex-1">
+                <div id="current-function" class="current-function">\[ f(x) = x^2 - 2*cosh(x/4) \]</div>
+                <div id="graph-container" class="relative w-full h-[500px] flex justify-center">
+                    <div id="graph"></div>
+                </div>
+            </div>
+            <div class="control-panel">
+                <div class="mb-4">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Enter Function(s)</h3>
+                    <div class="flex items-center mb-2">
+                        <span class="mr-2">\[ f(x) = \]</span>
+                        <input type="text" id="function-input" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., x^2, sin(x)">
+                    </div>
+                    <div class="flex gap-2 mb-2">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">\[ x \text{ min} \]</label>
+                            <input type="text" inputmode="numeric" id="x-min" value="-10" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">\[ x \text{ max} \]</label>
+                            <input type="text" inputmode="numeric" id="x-max" value="10" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <button onclick="plotFunction()" class="w-full function-button bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200">Plot Function(s)</button>
+                </div>
+                <div class="mb-4">
+                    <div class="grid grid-cols-1 gap-2">
+                        <button onclick="findYIntercept()" class="function-button bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 text-left">Find \( y\text{-intercept} \)</button>
+                        <button onclick="findXIntercepts()" class="function-button bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-blue-200 text-left">Find \( x\text{-intercepts} \)</button>
+                        <button onclick="findCriticalPoints()" class="function-button bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-blue-200 text-left">Find Critical Points</button>
+                        <button onclick="findAsymptotes()" class="function-button bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-md border border-blue-200 text-left">Find Asymptotes</button>
+                    </div>
+                </div>
+                <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-md hidden text-sm"></div>
+            </div>
+        </div>
+        <div class="mt-6 bg-white rounded-lg shadow p-6 analysis-output">
+            <div id="y-intercept" class="mb-2"></div>
+            <div id="x-intercepts" class="mb-2"></div>
+            <div id="critical-points" class="mb-2"></div>
+            <div id="asymptotes" class="mb-2"></div>
+        </div>
+    </div>
+    <script>
+        let nodes = [], fs = [], derivNodes = [], dfs = [], denomFs = [], xMin = -10, xMax = 10;
+        const colors = ['#00008b', '#006400', '#8B0000', '#2F4F4F', '#4B0082']; // Dark colors: navy, forest green, dark red, dark slate gray, indigo
+        const PI = Math.PI;
+        const PI_TOLERANCE = 1e-6; // Tolerance for detecting multiples of π
+        function formatNumber(n) {
+            if (!isFinite(n)) return n.toString();
+            const decimalStr = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+            if (Math.abs(n - parseFloat(decimalStr)) < 1e-4) return decimalStr;
+            const quotient = n / PI;
+            const roundedQuotient = Math.round(quotient * 10000) / 10000;
+            if (Math.abs(quotient - roundedQuotient) < PI_TOLERANCE) {
+                if (Math.abs(roundedQuotient) < PI_TOLERANCE) return '0';
+                let sign = '';
+                let absQuot = Math.abs(roundedQuotient);
+                if (roundedQuotient < 0) sign = '-';
+                if (absQuot === 1) return `${sign}\\pi`;
+                if (Number.isInteger(absQuot)) return `${sign}${absQuot}\\pi`;
+                let intPart = Math.floor(absQuot);
+                let fracPart = absQuot - intPart;
+                if (fracPart < PI_TOLERANCE) return `${sign}${intPart}\\pi`;
+                let denom = Math.round(1 / fracPart);
+                let numer = 1;
+                if (Math.abs(fracPart - 1/denom) < PI_TOLERANCE) {
+                    numer = intPart * denom + 1;
+                    return `${sign}\\dfrac{${numer}\\pi}{${denom}}`;
+                }
+            }
+            return decimalStr;
+        }
+        function renderKaTeX() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "\\[", right: "\\]", display: true },
+                    { left: "\\(", right: "\\)", display: false }
+                ],
+                throwOnError: false,
+                output: 'html'
+            });
+        }
+        function init() {
+            document.getElementById('function-input').value = 'x^2-2*cosh(x/4)';
+            document.getElementById('x-min').value = -10;
+            document.getElementById('x-max').value = 10;
+            plotFunction();
+            renderKaTeX();
+        }
+        function bisect(func, a, b, tol = 1e-6, maxIter = 100) {
+            let fa = func(a), fb = func(b);
+            if (isNaN(fa) || isNaN(fb) || fa * fb > 0) return null;
+            while (Math.abs(b - a) > tol && maxIter--) {
+                let m = (a + b) / 2;
+                let fm = func(m);
+                if (isNaN(fm)) return null;
+                if (fm * fa < 0) {
+                    b = m;
+                    fb = fm;
+                } else {
+                    a = m;
+                    fa = fm;
+                }
+            }
+            return (a + b) / 2;
+        }
+        function findRoots(func, min, max, steps = 1000, tol = 1e-6) {
+            const dx = (max - min) / steps;
+            const roots = [];
+            let prevX = min;
+            let prevF = func(min);
+            for (let i = 1; i <= steps; i++) {
+                const x = min + i * dx;
+                const currF = func(x);
+                if (isNaN(currF) || isNaN(prevF)) {
+                    prevX = x;
+                    prevF = currF;
+                    continue;
+                }
+                if (prevF * currF < 0) {
+                    const root = bisect(func, prevX, x, tol);
+                    if (root !== null && !roots.some(r => Math.abs(r - root) < tol)) {
+                        roots.push(root);
+                    }
+                } else if (currF === 0 && !roots.some(r => Math.abs(r - x) < tol)) {
+                    roots.push(x);
+                }
+                prevX = x;
+                prevF = currF;
+            }
+            return roots.sort((a, b) => a - b);
+        }
+        function plotFunction() {
+            hideError();
+            const input = document.getElementById('function-input').value.trim();
+            if (!input) {
+                showError('Please enter at least one function');
+                return;
+            }
+            const minStr = document.getElementById('x-min').value;
+            const maxStr = document.getElementById('x-max').value;
+            xMin = parseFloat(minStr) || -10;
+            xMax = parseFloat(maxStr) || 10;
+            if (xMin >= xMax) {
+                showError('Invalid domain: \\( x \\text{ min} \\) must be less than \\( x \\text{ max} \\)');
+                return;
+            }
+            const functionStrings = input.split(/[,;\s]+/).filter(str => str.trim() !== '');
+            nodes = [];
+            fs = [];
+            derivNodes = [];
+            dfs = [];
+            denomFs = [];
+            const currentFunctionDiv = document.getElementById('current-function');
+            let latexStr = '';
+            try {
+                functionStrings.forEach((fnStr, index) => {
+                    const node = math.parse(fnStr);
+                    nodes.push(node);
+                    fs.push(x => node.evaluate({ x }));
+                    derivNodes.push(math.derivative(node, 'x'));
+                    dfs.push(x => derivNodes[index].evaluate({ x }));
+                    const simplified = math.simplify(node);
+                    denomFs.push(null);
+                    if (simplified.isOperatorNode && simplified.op === '/') {
+                        const denomNode = simplified.args[1];
+                        denomFs[index] = x => denomNode.evaluate({ x });
+                    }
+                    latexStr += `f_${index + 1}(x) = ${node.toTex()}`;
+                    if (index < functionStrings.length - 1) {
+                        latexStr += ',\\quad ';
+                    }
+                });
+                currentFunctionDiv.innerHTML = `\\[ ${latexStr} \\]`;
+                renderKaTeX();
+                drawGraph(functionStrings);
+                document.getElementById('y-intercept').innerHTML = '';
+                document.getElementById('x-intercepts').innerHTML = '';
+                document.getElementById('critical-points').innerHTML = '';
+                document.getElementById('asymptotes').innerHTML = '';
+            } catch (e) {
+                showError(`Invalid function: ${e.message}`);
+            }
+        }
+        function drawGraph(fnStrings) {
+            const graphContainer = document.getElementById('graph');
+            graphContainer.innerHTML = ''; // Clear previous plot
+            // Calculate y-domain
+            let yMin = Infinity, yMax = -Infinity;
+            const samples = 2000; // Match nSamples
+            const dx = (xMax - xMin) / (samples - 1);
+            fs.forEach(f => {
+                for (let i = 0; i < samples; i++) {
+                    const x = xMin + i * dx;
+                    try {
+                        const y = f(x);
+                        if (isFinite(y)) {
+                            yMin = Math.min(yMin, y);
+                            yMax = Math.max(yMax, y);
+                        }
+                    } catch {}
+                }
+            });
+            // Add padding (e.g., 10% of the range) and handle edge cases
+            if (!isFinite(yMin) || !isFinite(yMax) || yMin === yMax) {
+                yMin = -10; // Default fallback
+                yMax = 10;
+            } else {
+                const padding = (yMax - yMin) * 0.1 || 1; // Ensure non-zero padding
+                yMin -= padding;
+                yMax += padding;
+            }
+            let data = fnStrings.map((fnStr, index) => ({
+                fn: fnStr,
+                color: colors[index % colors.length],
+                sampler: 'builtIn',
+                graphType: 'polyline',
+                attr: { 'stroke-width': 1, 'opacity': 1 },
+                nSamples: 2000 // Increased for better resolution
+            }));
+            try {
+                functionPlot({
+                    target: '#graph',
+                    width: 700,
+                    height: 400,
+                    xAxis: { domain: [xMin, xMax], label: 'x', labelColor: '#000000', labelWeight: 'bold' },
+                    yAxis: { domain: [yMin, yMax], label: 'y', labelColor: '#000000', labelWeight: 'bold' },
+                    grid: true,
+                    disableZoom: false, // Enable zooming and panning
+                    data: data
+                });
+                const graphElement = document.getElementById('graph');
+                renderMathInElement(graphElement, {
+                    delimiters: [
+                        { left: "$$", right: "$$", display: true },
+                        { left: "\\[", right: "\\]", display: true },
+                        { left: "\\(", right: "\\)", display: false }
+                    ],
+                    throwOnError: false,
+                    output: 'html'
+                });
+            } catch (e) {
+                console.error('Graph rendering error:', e);
+                showError(`Graph rendering failed: ${e.message}`);
+            }
+        }
+        function findYIntercept() {
+            if (!fs.length) return;
+            const yIntDiv = document.getElementById('y-intercept');
+            let output = `\\[ \\mathbf{\\underline{y\\text{-intercepts}}:} \\]`;
+            let items = [];
+            fs.forEach((f, index) => {
+                try {
+                    const y = f(0);
+                    const formattedY = formatNumber(y);
+                    const fnTex = nodes[index].toTex();
+                    if (isFinite(y)) {
+                        items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\left(0, ${formattedY}\\right) \\]</span></li>`);
+                    } else {
+                        items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None or undefined} \\]</span></li>`);
+                    }
+                } catch {
+                    const fnTex = nodes[index].toTex();
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None or undefined} \\]</span></li>`);
+                }
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            }
+            yIntDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function findXIntercepts() {
+            if (!fs.length) return;
+            const xIntDiv = document.getElementById('x-intercepts');
+            let output = `\\[ \\mathbf{\\underline{x\\text{-intercepts}}:} \\]`;
+            let items = [];
+            fs.forEach((f, index) => {
+                const roots = findRoots(f, xMin, xMax);
+                const fnTex = nodes[index].toTex();
+                if (roots.length === 0) {
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None found in domain} \\]</span></li>`);
+                } else {
+                    let str = `f_${index + 1}(x) = ${fnTex}: `;
+                    str += roots.map(r => `\\left(${formatNumber(r)}, 0\\right)`).join(',\\quad ');
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ ${str} \\]</span></li>`);
+                }
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            }
+            xIntDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function findCriticalPoints() {
+            if (!dfs.length) return;
+            const critDiv = document.getElementById('critical-points');
+            let output = `\\[ \\mathbf{\\underline{\\text{Critical Points}}:} \\]`;
+            let items = [];
+            dfs.forEach((df, index) => {
+                const roots = findRoots(df, xMin, xMax);
+                const fnTex = nodes[index].toTex();
+                if (roots.length === 0) {
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None found in domain} \\]</span></li>`);
+                } else {
+                    let str = `f_${index + 1}(x) = ${fnTex}: `;
+                    str += roots.map(r => {
+                        const fr = fs[index](r);
+                        return `\\left(${formatNumber(r)}, ${formatNumber(fr)}\\right)`;
+                    }).join(',\\quad ');
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ ${str} \\]</span></li>`);
+                }
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            }
+            critDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function findAsymptotes() {
+            if (!nodes.length) return;
+            const asyDiv = document.getElementById('asymptotes');
+            let output = `\\[ \\mathbf{\\underline{\\text{Asymptotes}}:} \\]`;
+            let items = [];
+            nodes.forEach((node, index) => {
+                let fnItems = [];
+                let hasAny = false;
+                const fnTex = node.toTex();
+                try {
+                    let limP = math.limit(node, 'x', Infinity);
+                    if (typeof limP !== 'number') limP = limP.valueOf();
+                    if (isFinite(limP)) {
+                        fnItems.push(`\\text{Horizontal: } y = ${formatNumber(limP)} \\text{ (as } x \\to +\\infty\\text{)}`);
+                        hasAny = true;
+                    } else if (limP === Infinity || limP === -Infinity) {
+                        fnItems.push(`\\text{Approaches } ${limP > 0 ? '+\\infty' : '-\\infty'} \\text{ as } x \\to +\\infty`);
+                        hasAny = true;
+                    }
+                } catch {}
+                try {
+                    let limN = math.limit(node, 'x', -Infinity);
+                    if (typeof limN !== 'number') limN = limN.valueOf();
+                    if (isFinite(limN)) {
+                        fnItems.push(`\\text{Horizontal: } y = ${formatNumber(limN)} \\text{ (as } x \\to -\\infty\\text{)}`);
+                        hasAny = true;
+                    } else if (limN === Infinity || limN === -Infinity) {
+                        fnItems.push(`\\text{Approaches } ${limN > 0 ? '+\\infty' : '-\\infty'} \\text{ as } x \\to -\\infty`);
+                        hasAny = true;
+                    }
+                } catch {}
+                if (denomFs[index]) {
+                    const poles = findRoots(denomFs[index], xMin, xMax);
+                    poles.forEach(p => {
+                        try {
+                            const fp = fs[index](p);
+                            if (!isFinite(fp)) {
+                                fnItems.push(`\\text{Vertical: } x = ${formatNumber(p)}`);
+                                hasAny = true;
+                            }
+                        } catch {}
+                    });
+                }
+                if (!hasAny) {
+                    fnItems.push(`\\text{None found}`);
+                }
+                items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: ${fnItems.join(',\\quad ')} \\]</span></li>`);
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            } else {
+                output += `\\[ \\text{None found} \\]`;
+            }
+            asyDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.innerHTML = message;
+            errorDiv.classList.remove('hidden');
+            renderKaTeX();
+        }
+        function hideError() {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.classList.add('hidden');
+        }
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
