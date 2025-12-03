@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="description" content="Phase Diagram, Phase Portrait Nonlinear System Trajectories Direction Fields" />
+  <meta name="keywords" content="Nonlinear, System, Direction Field, Phase Diagram, Portrait, Slope Fields, Trajectories, Phase Portrait, Phase Plane Plotter, Phase Spaces, Phase Portrait Plotter, 2D Phase Plane, Systems of Differential Equations," />
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-5B8PRB2WZT");
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nonlinear System Phase Plane Plotter</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes float {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(-5px); }
+    }
+    #plot-container { position: relative; }
+    #field-canvas, #traj-canvas { position: absolute; top:0; left:0; }
+    #traj-canvas { pointer-events:none; }   /* clicks go to the field canvas */
+  </style>
+</head>
+<body class="font-sans bg-gray-100 flex flex-col justify-center items-center min-h-screen">
+  <div class="nav-container max-w-6xl mx-auto py-4">
+    <nav>
+      <ul class="flex justify-center gap-8">
+        <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Numerical Methods</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div class="flex flex-col md:flex-row gap-5 max-w-6xl mx-auto w-full">
+    <!-- Main Content -->
+    <div class="bg-white p-8 rounded-lg shadow-md flex-1">
+      <h1 class="text-center text-gray-800 text-2xl font-bold">Phase Portraits of Nonlinear Systems</h1>
+      <div class="equation text-center" id="equation-display"></div>
+
+      <!-- Function Inputs -->
+      <div class="mb-4 flex flex-col sm:flex-row gap-4">
+        <div class="flex-1 flex items-center gap-2">
+          <div class="latex-label" id="f-label"></div>
+          <input type="text" id="fInput" value="y" class="w-full sm:w-3/4 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+        <div class="flex-1 flex items-center gap-2">
+          <div class="latex-label" id="g-label"></div>
+          <input type="text" id="gInput" value="-0.1*y - sin(x)" class="w-full sm:w-3/4 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+      </div>
+
+      <!-- Range Inputs -->
+      <div class="mb-4 flex items-center gap-4">
+        <div class="input-group flex items-center gap-1">
+          <div class="latex-label" id="xmin-label"></div>
+          <input type="number" id="xMin" value="-7" class="w-20 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+        <div class="input-group flex items-center gap-1">
+          <div class="latex-label" id="xmax-label"></div>
+          <input type="number" id="xMax" value="7" class="w-20 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+        <div class="input-group flex items-center gap-1">
+          <div class="latex-label" id="ymin-label"></div>
+          <input type="number" id="yMin" value="-5" class="w-20 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+        <div class="input-group flex items-center gap-1">
+          <div class="latex-label" id="ymax-label"></div>
+          <input type="number" id="yMax" value="5" class="w-20 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+      </div>
+
+      <!-- Arrow Count -->
+      <div class="mb-4">
+        <div class="input-group">
+          <label for="arrowCount" class="block mb-1 text-sm">Number of Arrows per Axis:</label>
+          <input type="number" id="arrowCount" value="35" class="w-1/4 p-2 border border-gray-300 rounded text-sm" />
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-2 mb-4">
+        <button class="flex-1 bg-blue-500 text-white py-2 px-4 rounded cursor-pointer text-base hover:bg-blue-600" onclick="drawPhasePlane()">Generate Phase Plane</button>
+        <button class="flex-1 bg-red-500 text-white py-2 px-4 rounded cursor-pointer text-base hover:bg-red-600" onclick="clearTrajectories()">Clear Trajectories</button>
+      </div>
+
+      <!-- Canvas container (two canvases) -->
+      <div id="plot-container" class="relative mt-4">
+        <canvas id="field-canvas" class="border border-gray-300 w-full h-[300px] sm:h-[400px] md:h-[500px] lg:h-[600px]"></canvas>
+        <canvas id="traj-canvas"  class="border border-gray-300 w-full h-[300px] sm:h-[400px] md:h-[500px] lg:h-[600px]"></canvas>
+        <div class="absolute top-5 left-1/2 transform -translate-x-1/2 bg-white/90 p-2 rounded-full text-sm font-semibold text-blue-900 shadow-md animate-[float_3s_ease-in-out_infinite]" id="instruction">Click anywhere on the graph to draw trajectories</div>
+      </div>
+    </div>
+
+    <!-- Examples -->
+    <div class="w-full md:w-80 bg-white p-4 rounded-lg shadow-md">
+      <h2 class="text-center text-gray-800 text-xl font-bold">Example Systems (click)</h2>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="y" data-g="-0.1*y - sin(x)" data-xmin="-6.25" data-xmax="6.25" data-ymin="-5" data-ymax="5">
+        <h3 class="text-lg font-semibold">Damped Pendulum</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = y \\ \dot{y} = -0.1 y - \sin(x) \end{cases}</div>
+        <div class="domain">Domain: [-6.25, 6.25] × [-5, 5]</div>
+      </div>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="y" data-g="(1 - x^2)*y - x" data-xmin="-3.75" data-xmax="3.75" data-ymin="-3" data-ymax="3">
+        <h3 class="text-lg font-semibold">Van der Pol Oscillator</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = y \\ \dot{y} = (1 - x^2) y - x \end{cases}</div>
+        <div class="domain">Domain: [-3.75, 3.75] × [-3, 3]</div>
+      </div>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="1*x - 0.1*x*y" data-g="0.075*x*y - 1.5*y" data-xmin="0" data-xmax="50" data-ymin="0" data-ymax="30">
+        <h3 class="text-lg font-semibold">Lotka-Volterra</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = x - 0.1 \cdot x y \\ \dot{y} = 0.075 \cdot x y - 1.5 \cdot y \end{cases}</div>
+        <div class="domain">Domain: [0, 50] × [0, 30]</div>
+      </div>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="y" data-g="x - x^3 - 0.15*y" data-xmin="-2" data-xmax="2" data-ymin="-2" data-ymax="2">
+        <h3 class="text-lg font-semibold">Duffing Oscillator</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = y \\ \dot{y} = x - x^3 - 0.15 y \end{cases}</div>
+        <div class="domain">Domain: [-2, 2] × [-2, 2]</div>
+      </div>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="2*x-y+3*(x^2-y^2)+2*x*y" data-g="x-3*y-3*(x^2-y^2)+3*x*y" data-xmin="-2" data-xmax="4" data-ymin="-4" data-ymax="2">
+        <h3 class="text-lg font-semibold">Simple Nonlinear</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = 2x-y+3(x^2-y^2)+2xy \\ \dot{y} = x-3y-3(x^2-y^2)+3xy \end{cases}</div>
+        <div class="domain">Domain: [-5, 5] × [-5, 5]</div>
+      </div>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="-y + x*(1 - x^2 - y^2)" data-g="x + y*(1 - x^2 - y^2)" data-xmin="-2.5" data-xmax="2.5" data-ymin="-2" data-ymax="2">
+        <h3 class="text-lg font-semibold">Limit Cycle</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = -y + x(1 - x^2 - y^2) \\ \dot{y} = x + y(1 - x^2 - y^2) \end{cases}</div>
+        <div class="domain">Domain: [-2.5, 2.5] × [-2, 2]</div>
+      </div>
+      <div class="example cursor-pointer mb-4 hover:bg-gray-50" data-f="y" data-g="-0.1*y-x*(1-x)" data-xmin="-2.5" data-xmax="2.5" data-ymin="-2" data-ymax="2">
+        <h3 class="text-lg font-semibold">Escape Equation</h3>
+        <div class="system-equations">\begin{cases} \dot{x} = y \\ \dot{y} = -0.1y-x(1-x) \end{cases}</div>
+        <div class="domain">Domain: [-2.5, 2.5] × [-2, 2]</div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="text-center mt-8 p-4 text-gray-600 text-sm w-full">
+    © 2025 Shelvean Kapita: kapita@tamu.edu.<br> Last modified: November 14, 2025
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.7.0/math.min.js"></script>
+
+  <script>
+    // ------------------------------------------------------------------
+    //  Globals
+    // ------------------------------------------------------------------
+    let userPoints = [];          // starting points
+    let fCompiled, gCompiled;
+    const fieldCanvas = document.getElementById("field-canvas");
+    const trajCanvas  = document.getElementById("traj-canvas");
+    const fieldCtx = fieldCanvas.getContext("2d");
+    const trajCtx  = trajCanvas.getContext("2d");
+    let scaleLabels = [];
+    const instruction = document.getElementById("instruction");
+
+    // ------------------------------------------------------------------
+    //  Canvas sizing
+    // ------------------------------------------------------------------
+    function setCanvasResolution() {
+      const w = fieldCanvas.clientWidth;
+      const h = fieldCanvas.clientHeight;
+      fieldCanvas.width = trajCanvas.width = w;
+      fieldCanvas.height = trajCanvas.height = h;
+    }
+
+    // ------------------------------------------------------------------
+    //  Init
+    // ------------------------------------------------------------------
+    document.addEventListener("DOMContentLoaded", () => {
+      setCanvasResolution();
+      renderKaTeXLabels();
+      setupCanvasClick();
+      setupExamples();
+      drawPhasePlane();               // draws field + axes
+    });
+
+    function renderKaTeXLabels() {
+      katex.render("f(x,y)=", document.getElementById("f-label"));
+      katex.render("g(x,y)=", document.getElementById("g-label"));
+      katex.render(`\\begin{cases}\\dot{x}=f(x,y) \\\\ \\dot{y}=g(x,y) \\end{cases}`,
+                  document.getElementById("equation-display"),
+                  { throwOnError:false, displayMode:true });
+      katex.render("x_{{min}} =", document.getElementById("xmin-label"));
+      katex.render("x_{{max}} =", document.getElementById("xmax-label"));
+      katex.render("y_{{min}} =", document.getElementById("ymin-label"));
+      katex.render("y_{{max}} =", document.getElementById("ymax-label"));
+      document.querySelectorAll('.system-equations').forEach(el => {
+        katex.render(el.textContent, el, { throwOnError:false, displayMode:true });
+      });
+    }
+
+    // ------------------------------------------------------------------
+    //  Click → new trajectory (only on trajCanvas)
+    // ------------------------------------------------------------------
+    function setupCanvasClick() {
+      fieldCanvas.addEventListener("click", e => {
+        const rect = fieldCanvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        const normX = clickX / fieldCanvas.width;
+        const normY = clickY / fieldCanvas.height;
+
+        const xMin = +document.getElementById("xMin").value;
+        const xMax = +document.getElementById("xMax").value;
+        const yMin = +document.getElementById("yMin").value;
+        const yMax = +document.getElementById("yMax").value;
+
+        const sysX = xMin + normX * (xMax - xMin);
+        const sysY = yMax - normY * (yMax - yMin);
+
+        const path = computeTrajectory(fCompiled, gCompiled, sysX, sysY, xMin, xMax, yMin, yMax);
+        drawTrajectoryOnTrajCanvas(path, xMin, xMax, yMin, yMax);
+
+        userPoints.push({ x: sysX, y: sysY });
+        instruction.style.display = "none";
+      });
+    }
+
+    // ------------------------------------------------------------------
+    //  Example selector
+    // ------------------------------------------------------------------
+    function setupExamples() {
+      document.querySelectorAll('.example').forEach(ex => {
+        ex.addEventListener('click', () => {
+          userPoints = [];
+          document.getElementById('fInput').value = ex.dataset.f;
+          document.getElementById('gInput').value = ex.dataset.g;
+          document.getElementById('xMin').value = ex.dataset.xmin;
+          document.getElementById('xMax').value = ex.dataset.xmax;
+          document.getElementById('yMin').value = ex.dataset.ymin;
+          document.getElementById('yMax').value = ex.dataset.ymax;
+          drawPhasePlane();   // redraws field + clears trajectories
+        });
+      });
+    }
+
+    // ------------------------------------------------------------------
+    //  Full redraw of the *field* (axes + arrows)
+    // ------------------------------------------------------------------
+    function drawPhasePlane() {
+      setCanvasResolution();
+      fieldCtx.clearRect(0,0,fieldCanvas.width,fieldCanvas.height);
+      trajCtx.clearRect(0,0,trajCanvas.width,trajCanvas.height);
+      scaleLabels.forEach(l => l.remove());
+      scaleLabels = [];
+
+      const f = document.getElementById("fInput").value;
+      const g = document.getElementById("gInput").value;
+      fCompiled = math.compile(f);
+      gCompiled = math.compile(g);
+
+      const xMin = +document.getElementById("xMin").value;
+      const xMax = +document.getElementById("xMax").value;
+      const yMin = +document.getElementById("yMin").value;
+      const yMax = +document.getElementById("yMax").value;
+      const arrowCount = +document.getElementById("arrowCount").value;
+
+      drawAxes(xMin, xMax, yMin, yMax);
+      drawVectorField(fCompiled, gCompiled, xMin, xMax, yMin, yMax, arrowCount);
+
+      // redraw any previously stored trajectories (they are already on trajCanvas)
+      if (userPoints.length === 0) instruction.style.display = "block";
+    }
+
+    // ------------------------------------------------------------------
+    //  RK4 – smooth & fast
+    // ------------------------------------------------------------------
+    function computeTrajectory(f, g, x0, y0, xMin, xMax, yMin, yMax) {
+      const dt = 0.005;
+      const maxSteps = 10000;
+      const points = [{ x: x0, y: y0 }];
+
+      // forward
+      let x = x0, y = y0;
+      for (let i = 0; i < maxSteps; i++) {
+        try {
+          const k1x = f.evaluate({x,y}), k1y = g.evaluate({x,y});
+          const k2x = f.evaluate({x:x+k1x*dt/2, y:y+k1y*dt/2});
+          const k2y = g.evaluate({x:x+k1x*dt/2, y:y+k1y*dt/2});
+          const k3x = f.evaluate({x:x+k2x*dt/2, y:y+k2y*dt/2});
+          const k3y = g.evaluate({x:x+k2x*dt/2, y:y+k2y*dt/2});
+          const k4x = f.evaluate({x:x+k3x*dt,   y:y+k3y*dt});
+          const k4y = g.evaluate({x:x+k3x*dt,   y:y+k3y*dt});
+
+          x += (k1x+2*k2x+2*k3x+k4x)/6*dt;
+          y += (k1y+2*k2y+2*k3y+k4y)/6*dt;
+
+          if (x<xMin||x>xMax||y<yMin||y>yMax) break;
+          points.push({x,y});
+        } catch(e) { break; }
+      }
+
+      // backward
+      x = x0; y = y0;
+      for (let i = 0; i < maxSteps; i++) {
+        try {
+          const k1x = f.evaluate({x,y}), k1y = g.evaluate({x,y});
+          const k2x = f.evaluate({x:x-k1x*dt/2, y:y-k1y*dt/2});
+          const k2y = g.evaluate({x:x-k1x*dt/2, y:y-k1y*dt/2});
+          const k3x = f.evaluate({x:x-k2x*dt/2, y:y-k2y*dt/2});
+          const k3y = g.evaluate({x:x-k2x*dt/2, y:y-k2y*dt/2});
+          const k4x = f.evaluate({x:x-k3x*dt,   y:y-k3y*dt});
+          const k4y = g.evaluate({x:x-k3x*dt,   y:y-k3y*dt});
+
+          x -= (k1x+2*k2x+2*k3x+k4x)/6*dt;
+          y -= (k1y+2*k2y+2*k3y+k4y)/6*dt;
+
+          if (x<xMin||x>xMax||y<yMin||y>yMax) break;
+          points.unshift({x,y});
+        } catch(e) { break; }
+      }
+      return points;
+    }
+
+    // ------------------------------------------------------------------
+    //  Draw ONE trajectory on the *trajectory* canvas
+    // ------------------------------------------------------------------
+    function drawTrajectoryOnTrajCanvas(points, xMin, xMax, yMin, yMax) {
+      trajCtx.strokeStyle = "#B7410E";
+      trajCtx.lineWidth = 1.5;
+      trajCtx.beginPath();
+
+      points.forEach((p,i) => {
+        const cx = ((p.x-xMin)/(xMax-xMin))*trajCanvas.width;
+        const cy = ((yMax-p.y)/(yMax-yMin))*trajCanvas.height;
+        if (i===0) trajCtx.moveTo(cx,cy);
+        else       trajCtx.lineTo(cx,cy);
+      });
+      trajCtx.stroke();
+    }
+
+    // ------------------------------------------------------------------
+    //  Axes + labels (on field canvas)
+    // ------------------------------------------------------------------
+    function drawAxes(xMin, xMax, yMin, yMax) {
+      fieldCtx.strokeStyle = "#95a5a6";
+      fieldCtx.lineWidth = 1;
+      const y0 = (yMax/(yMax-yMin))*fieldCanvas.height;
+      fieldCtx.beginPath(); fieldCtx.moveTo(0,y0); fieldCtx.lineTo(fieldCanvas.width,y0); fieldCtx.stroke();
+      const x0 = (-xMin/(xMax-xMin))*fieldCanvas.width;
+      fieldCtx.beginPath(); fieldCtx.moveTo(x0,0); fieldCtx.lineTo(x0,fieldCanvas.height); fieldCtx.stroke();
+
+      [xMin,0,xMax].forEach(v=>addAxisLabel(v,true,xMin,xMax));
+      [yMin,0,yMax].forEach(v=>addAxisLabel(v,false,yMin,yMax));
+    }
+    function addAxisLabel(val,isX,min,max) {
+      const pos = isX
+        ? ((val-min)/(max-min))*fieldCanvas.width
+        : fieldCanvas.height-((val-min)/(max-min))*fieldCanvas.height;
+      const el = document.createElement("div");
+      el.className = "absolute text-xs text-gray-600";
+      el.textContent = val.toFixed(1);
+      if (isX){ el.style.left=`${pos}px`; el.style.bottom="-25px"; }
+      else    { el.style.top =`${pos}px`; el.style.left ="-25px"; }
+      document.getElementById("plot-container").appendChild(el);
+      scaleLabels.push(el);
+    }
+
+    // ------------------------------------------------------------------
+    //  Vector field (arrows) – ALWAYS blue
+    // ------------------------------------------------------------------
+    function drawVectorField(f,g,xMin,xMax,yMin,yMax,density) {
+      const maxLen = 20;
+      fieldCtx.strokeStyle = "#007BFF";
+      fieldCtx.lineWidth = 1.0;
+
+      for (let i=0;i<density;i++) {
+        for (let j=0;j<density;j++) {
+          const x = xMin + (xMax-xMin)*i/(density-1);
+          const y = yMin + (yMax-yMin)*j/(density-1);
+          let dx,dy;
+          try{ dx=f.evaluate({x,y}); dy=g.evaluate({x,y}); }
+          catch(e){ continue; }
+          const mag = Math.hypot(dx,dy);
+          if (mag===0) continue;
+          dx/=mag; dy/=mag;
+          const len = Math.min(maxLen,12);
+          const cx = ((x-xMin)/(xMax-xMin))*fieldCanvas.width;
+          const cy = fieldCanvas.height-((y-yMin)/(yMax-yMin))*fieldCanvas.height;
+          drawArrow(cx,cy,cx+dx*len,cy-dy*len);
+        }
+      }
+    }
+    function drawArrow(x1,y1,x2,y2) {
+      const dx = x2-x1, dy = y2-y1;
+      const len = Math.hypot(dx,dy);
+      const head = Math.min(len/3,10);
+      const ang = Math.atan2(dy,dx);
+      fieldCtx.beginPath();
+      fieldCtx.moveTo(x1,y1); fieldCtx.lineTo(x2,y2); fieldCtx.stroke();
+      fieldCtx.save(); fieldCtx.lineWidth = 0.7;
+      fieldCtx.beginPath();
+      fieldCtx.moveTo(x2,y2);
+      fieldCtx.lineTo(x2-head*Math.cos(ang-Math.PI/6), y2-head*Math.sin(ang-Math.PI/6));
+      fieldCtx.moveTo(x2,y2);
+      fieldCtx.lineTo(x2-head*Math.cos(ang+Math.PI/6), y2-head*Math.sin(ang+Math.PI/6));
+      fieldCtx.stroke(); fieldCtx.restore();
+    }
+
+    // ------------------------------------------------------------------
+    //  Clear button
+    // ------------------------------------------------------------------
+    function clearTrajectories() {
+      userPoints = [];
+      trajCtx.clearRect(0,0,trajCanvas.width,trajCanvas.height);
+      drawPhasePlane();   // redraw field only
+      instruction.style.display = "block";
+    }
+  </script>
+</body>
+</html>
