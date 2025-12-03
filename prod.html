@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="description" content="Matrix Product Calculator">
+  <meta name="keywords" content="Matrix Multiplication, Linear Algebra, Matrix Product">
+  <meta charset="UTF-8" />
+  <title>Matrix Product Calculator</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.2/lib/browser/math.js"></script>
+  <style>
+    .katex-display { margin: 1em 0; overflow-x: auto; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <nav class="fixed top-0 left-0 w-full z-10 bg-white shadow-md">
+    <div class="max-w-4xl mx-auto px-4 py-2">
+      <ul class="flex justify-center space-x-4">
+        <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mx-auto mt-8">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800 latex">Find the Matrix Product</h2>
+    <p class="text-center text-gray-600 mb-6 latex">Enter the dimensions for matrices $A$ and $B$, generate the input fields, fill in the matrices with numbers, fractions, or expressions (e.g., pi/3, sqrt(3), cos(pi/6), i), and compute the product $C = A B$.</p>
+
+    <div class="bg-gray-50 p-4 rounded-lg mb-6 flex flex-wrap justify-center items-center gap-4">
+      <span class="text-gray-700">Rows of $A$</span>
+      <input type="number" id="m" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <span class="text-gray-700">Columns of $A$ / Rows of $B$</span>
+      <input type="number" id="p" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <span class="text-gray-700">Columns of $B$</span>
+      <input type="number" id="n" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrices</button>
+    </div>
+
+    <!-- RANDOM BUTTONS – changed real to integer -->
+    <div class="flex justify-center items-center gap-6 mb-12">
+      <button type="button" onclick="generateRandomInteger()" class="bg-blue-900 text-white px-8 py-4 rounded-xl hover:bg-blue-950 transition duration-300 font-bold text-lg shadow-2xl transform hover:scale-110">
+        Generate Random Integer Matrix
+      </button>
+      <button type="button" onclick="generateRandomComplex()" class="bg-purple-600 text-white px-8 py-4 rounded-xl hover:bg-purple-700 transition duration-300 font-bold text-lg shadow-2xl transform hover:scale-110">
+        Generate Random Complex Matrix
+      </button>
+    </div>
+
+    <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+
+    <div class="flex justify-center mb-6 space-x-6">
+      <span class="text-gray-700">Display Values as:</span>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="decimal" checked class="mr-2">
+        <span>Decimal</span>
+      </label>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="fraction" class="mr-2">
+        <span>Fraction</span>
+      </label>
+    </div>
+
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="computeBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Compute</button>
+      <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+    </div>
+
+    <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+      © 2025 Shelvean Kapita: kapita@tamu.edu <br>
+      Last modified: November 25, 2025
+    </div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false
+      });
+    };
+
+    var currentDisplayMode = "decimal";
+    document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+      radio.addEventListener("change", function() {
+        currentDisplayMode = this.value;
+      });
+    });
+
+    var rowColors = ['red', 'blue', 'green', 'purple', 'orange', 'teal', 'magenta', 'brown', 'olive', 'navy'];
+    var colBackgrounds = ['#ffebee', '#e3f2fd', '#e8f5e9', '#f3e5f5', '#fffde7', '#e0f7fa', '#fff3e0', '#f1f8e9', '#e8eaf6', '#e1f5fe'];
+
+    // RANDOM GENERATORS - integer in [-10, 10]
+    function generateRandomInteger() {
+      const m = parseInt(document.getElementById("m").value, 10);
+      const p = parseInt(document.getElementById("p").value, 10);
+      const n = parseInt(document.getElementById("n").value, 10);
+
+      if (isNaN(m) || isNaN(p) || isNaN(n) || m <= 0 || p <= 0 || n <= 0) {
+        alert("Please fill in the dimensions first.");
+        return;
+      }
+
+      let cells = document.querySelectorAll('.matrix-cell');
+      if (cells.length === 0) {
+        generateMatrix();
+        cells = document.querySelectorAll('.matrix-cell');
+      }
+
+      cells.forEach(cell => {
+        const rand = Math.floor(Math.random() * 21) - 10; // -10 to 10
+        cell.value = rand;
+      });
+    }
+
+    function generateRandomComplex() {
+      const m = parseInt(document.getElementById("m").value, 10);
+      const p = parseInt(document.getElementById("p").value, 10);
+      const n = parseInt(document.getElementById("n").value, 10);
+
+      if (isNaN(m) || isNaN(p) || isNaN(n) || m <= 0 || p <= 0 || n <= 0) {
+        alert("Please fill in the dimensions first.");
+        return;
+      }
+
+      let cells = document.querySelectorAll('.matrix-cell');
+      if (cells.length === 0) {
+        generateMatrix();
+        cells = document.querySelectorAll('.matrix-cell');
+      }
+
+      cells.forEach(cell => {
+        const re = Math.floor(Math.random() * 11) - 5;
+        const im = Math.floor(Math.random() * 11) - 5;
+
+        let reStr = re !== 0 ? re.toString() : '';
+        let imStr = '';
+
+        if (im !== 0) {
+          const coeff = Math.abs(im) === 1 ? '' : Math.abs(im).toString();
+          const sign = reStr !== '' ? (im > 0 ? '+' : '-') : (im > 0 ? '' : '-');
+          imStr = sign + coeff + 'i';
+        }
+
+        let value = reStr + imStr;
+        if (value === '') value = '0';
+        cell.value = value;
+      });
+    }
+
+    function generateMatrix() {
+      var m = parseInt(document.getElementById("m").value, 10);
+      var p = parseInt(document.getElementById("p").value, 10);
+      var n = parseInt(document.getElementById("n").value, 10);
+
+      if (isNaN(m) || isNaN(p) || isNaN(n) || m <= 0 || p <= 0 || n <= 0) {
+        alert("Please enter valid positive numbers for rows and columns.");
+        return;
+      }
+
+      var matrixDiv = document.getElementById("matrixInput");
+      matrixDiv.innerHTML = "";
+
+      var statementDiv = document.createElement("div");
+      statementDiv.className = "text-center mb-4";
+      var statement = document.createElement("div");
+      statement.className = "latex";
+      statement.textContent = `$$ \\text{Compute the matrix product } C = A B \\text{ where } A \\text{ is } ${m} \\times ${p} \\text{ and } B \\text{ is } ${p} \\times ${n} $$`;
+      statementDiv.appendChild(statement);
+      matrixDiv.appendChild(statementDiv);
+
+      var flexDiv = document.createElement("div");
+      flexDiv.className = "flex justify-center space-x-8";
+
+      var aDiv = document.createElement("div");
+      var aLabel = document.createElement("p");
+      aLabel.className = "text-center font-semibold latex";
+      aLabel.textContent = "Matrix $A$";
+      aDiv.appendChild(aLabel);
+      var aTable = document.createElement("table");
+      aTable.className = "border-collapse";
+      for (var i = 0; i < m; i++) {
+        var tr = document.createElement("tr");
+        for (var j = 0; j < p; j++) {
+          var td = document.createElement("td");
+          td.className = "p-1 border border-gray-300";
+          var input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell w-16 p-2 text-center rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500";
+          input.id = "A_" + i + "_" + j;
+          input.style.color = rowColors[i % rowColors.length];
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        aTable.appendChild(tr);
+      }
+      aDiv.appendChild(aTable);
+      flexDiv.appendChild(aDiv);
+
+      var bDiv = document.createElement("div");
+      var bLabel = document.createElement("p");
+      bLabel.className = "text-center font-semibold latex";
+      bLabel.textContent = "Matrix $B$";
+      bDiv.appendChild(bLabel);
+      var bTable = document.createElement("table");
+      bTable.className = "border-collapse";
+      for (var i = 0; i < p; i++) {
+        var tr = document.createElement("tr");
+        for (var j = 0; j < n; j++) {
+          var td = document.createElement("td");
+          td.className = "p-1 border border-gray-300";
+          var input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell w-16 p-2 text-center rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500";
+          input.id = "B_" + i + "_" + j;
+          input.style.backgroundColor = colBackgrounds[j % colBackgrounds.length];
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        bTable.appendChild(tr);
+      }
+      bDiv.appendChild(bTable);
+      flexDiv.appendChild(bDiv);
+
+      matrixDiv.appendChild(flexDiv);
+
+      renderMathInElement(matrixDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false
+      });
+    }
+
+    function clearAll() {
+      document.getElementById("m").value = "";
+      document.getElementById("p").value = "";
+      document.getElementById("n").value = "";
+      document.getElementById("matrixInput").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+      document.querySelector('input[value="decimal"]').checked = true;
+      currentDisplayMode = "decimal";
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+    function parseInput(str) {
+      str = str.trim();
+      if (str === "") return math.complex(0);
+      try {
+        str = str.replace(/\bi\b/g, 'i');
+        let result = math.evaluate(str);
+        if (typeof result === 'number') return math.complex(result, 0);
+        else if (math.isComplex(result)) return result;
+        else throw new Error("Invalid input");
+      } catch (e) {
+        return NaN;
+      }
+    }
+
+    function readMatrices() {
+      var m = parseInt(document.getElementById("m").value, 10);
+      var p = parseInt(document.getElementById("p").value, 10);
+      var n = parseInt(document.getElementById("n").value, 10);
+
+      var A = [];
+      for (var i = 0; i < m; i++) {
+        var row = [];
+        for (var j = 0; j < p; j++) {
+          var cell = document.getElementById("A_" + i + "_" + j);
+          var value = parseInput(cell.value);
+          if (value === NaN) {
+            alert("Please enter valid numbers, fractions, or expressions (e.g., pi/3, sqrt(3), i) in all matrix cells.");
+            return null;
+          }
+          row.push(value);
+        }
+        A.push(row);
+      }
+
+      var B = [];
+      for (var i = 0; i < p; i++) {
+        var row = [];
+        for (var j = 0; j < n; j++) {
+          var cell = document.getElementById("B_" + i + "_" + j);
+          var value = parseInput(cell.value);
+          if (value === NaN) {
+            alert("Please enter valid numbers, fractions, or expressions (e.g., pi/3, sqrt(3), i) in all matrix cells.");
+            return null;
+          }
+          row.push(value);
+        }
+        B.push(row);
+      }
+      return { A: A, B: B };
+    }
+
+    function toFraction(x, tolerance = 1e-6, maxIterations = 20) {
+      if (x === 0) return "0";
+      var sign = x < 0 ? "-" : "";
+      x = Math.abs(x);
+      var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+      for (var i = 0; i < maxIterations; i++) {
+        var a = Math.floor(b);
+        var h = a * h1 + h2;
+        var k = a * k1 + k2;
+        if (Math.abs(x - h / k) < tolerance) {
+          if (k === 1) return sign + h;
+          return sign + "\\frac{" + h + "}{" + k + "}";
+        }
+        h2 = h1; h1 = h; k2 = k1; k1 = k;
+        b = 1 / (b - a);
+      }
+      if (k1 === 1) return sign + h1;
+      return sign + "\\frac{" + h1 + "}{" + k1 + "}";
+    }
+
+    function formatNumber(num) {
+      var epsilon = 1e-10;
+      if (!math.isComplex(num)) num = math.complex(num, 0);
+      var re = num.re, im = num.im;
+
+      var reStr = "";
+      if (Math.abs(re) > epsilon) {
+        if (Math.abs(re - Math.round(re)) < epsilon) {
+          reStr = Math.round(re).toString();
+        } else if (currentDisplayMode === "fraction") {
+          reStr = toFraction(re);
+        } else {
+          reStr = parseFloat(re.toFixed(3)).toString();
+        }
+      }
+
+      var imStr = "";
+      if (Math.abs(im) > epsilon) {
+        var coeffStr = "";
+        if (Math.abs(im - Math.round(im)) < epsilon) {
+          var absIm = Math.round(Math.abs(im));
+          coeffStr = absIm === 1 ? "" : absIm.toString();
+        } else if (currentDisplayMode === "fraction") {
+          var frac = toFraction(Math.abs(im));
+          coeffStr = frac === "1" ? "" : frac;
+        } else {
+          var absIm = parseFloat(Math.abs(im).toFixed(3));
+          coeffStr = absIm === 1 ? "" : absIm.toString();
+        }
+        imStr = (im < 0 ? "-" : "") + coeffStr + "\\dot\\imath";
+      }
+
+      if (reStr === "" && imStr === "") return "0";
+      if (reStr === "") return imStr;
+      if (imStr === "") return reStr;
+      var connector = (im < 0) ? "" : "+";
+      return reStr + connector + imStr;
+    }
+
+    function matrixToHtml(matrix, textColors, bgColors) {
+      var html = '<table class="border-collapse mx-2">';
+      for (var i = 0; i < matrix.length; i++) {
+        html += '<tr>';
+        for (var j = 0; j < matrix[0].length; j++) {
+          var style = 'padding: 4px; text-align: center; border: 1px solid #ddd;';
+          if (textColors) style += 'color: ' + textColors[i % textColors.length] + ';';
+          if (bgColors) style += 'background-color: ' + bgColors[j % bgColors.length] + ';';
+          var entry = formatNumber(matrix[i][j]);
+          html += '<td style="' + style + '"><span class="latex">$' + entry + '$</span></td>';
+        }
+        html += '</tr>';
+      }
+      html += '</table>';
+      return html;
+    }
+
+    function dotProductHtml(i, j, A, B, p, rowColors, colBackgrounds) {
+      var terms = [];
+      for (var k = 0; k < p; k++) {
+        var aStyle = 'color: ' + rowColors[i % rowColors.length];
+        var aEntry = '<span style="' + aStyle + '" class="latex">$' + formatNumber(A[i][k]) + '$</span>';
+        var bStyle = 'background-color: ' + colBackgrounds[j % colBackgrounds.length];
+        var bEntry = '<span style="' + bStyle + '" class="latex">$' + formatNumber(B[k][j]) + '$</span>';
+        terms.push('(' + aEntry + ')(' + bEntry + ')');
+      }
+      return terms.join(' + ');
+    }
+
+    function coloredEntryHtml(value, i, j, rowColors, colBackgrounds) {
+      var style = 'color: ' + rowColors[i % rowColors.length] + '; background-color: ' + colBackgrounds[j % colBackgrounds.length];
+      var entry = formatNumber(value);
+      return '<span style="' + style + '" class="latex">$' + entry + '$</span>';
+    }
+
+    function computeProduct() {
+      var input = readMatrices();
+      if (input === null) return;
+      var A = input.A;
+      var B = input.B;
+      var m = A.length;
+      var p = A[0].length;
+      var n = B[0].length;
+
+      var C = [];
+      for (var i = 0; i < m; i++) {
+        var row = [];
+        for (var j = 0; j < n; j++) {
+          var sum = math.complex(0, 0);
+          for (var k = 0; k < p; k++) {
+            sum = math.add(sum, math.multiply(A[i][k], B[k][j]));
+          }
+          row.push(sum);
+        }
+        C.push(row);
+      }
+
+      var htmlA = matrixToHtml(A, rowColors, null);
+      var htmlB = matrixToHtml(B, null, colBackgrounds);
+      var htmlC = matrixToHtml(C, rowColors, colBackgrounds);
+
+      var resultDiv = document.getElementById("result");
+      var html = `
+        <p class="text-gray-700 text-center font-semibold"></p>
+        <div class="flex justify-center items-center space-x-4 mb-6 latex">
+          <span class="latex">$$AB =$$</span>
+          ${htmlA}
+          ${htmlB}
+          <span class="latex">$$=$$</span>
+          ${htmlC}
+        </div>
+      `;
+
+      html += `<h3 class="text-center font-bold mt-4 text-gray-800">Detailed Dot Products</h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-white border border-gray-300">
+            <thead>
+              <tr>
+                <th class="px-4 py-2 border-b">Entry</th>
+                <th class="px-4 py-2 border-b">Dot Product</th>
+                <th class="px-4 py-2 border-b">Result</th>
+              </tr>
+            </thead>
+            <tbody>`;
+
+      for (var i = 0; i < m; i++) {
+        for (var j = 0; j < n; j++) {
+          html += `
+            <tr>
+              <td class="px-4 py-2 border-b text-center latex">$$ C_{${i+1}${j+1}} $$</td>
+              <td class="px-4 py-2 border-b text-center latex">${dotProductHtml(i, j, A, B, p, rowColors, colBackgrounds)}</td>
+              <td class="px-4 py-2 border-b text-center latex">${coloredEntryHtml(C[i][j], i, j, rowColors, colBackgrounds)}</td>
+            </tr>`;
+        }
+      }
+
+      html += `</tbody></table></div>`;
+      resultDiv.innerHTML = html;
+
+      renderMathInElement(resultDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false
+      });
+    }
+
+    document.getElementById("computeBtn").addEventListener("click", computeProduct);
+  </script>
+</body>
+</html>
