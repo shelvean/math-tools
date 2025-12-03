@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="An interactive visualizer for Newton's Method, demonstrating root-finding convergence, initial guesses, and modified Newton's method for multiple roots.">
+  <meta name="keywords" content="Newton's Method, root-finding, numerical analysis, interactive visualizer, mathematics, function plotting, function-plot.js, calculus">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-5B8PRB2WZT");
+  </script>
+  <title>Newton's Method Visualizer</title>
+  <!-- KaTeX CDN links -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <!-- d3.js and function-plot.js -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://unpkg.com/function-plot@1.22.4/dist/function-plot.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f0f4f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 1rem;
+    }
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      background-color: white;
+      border-radius: 1rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+    }
+    .katex-display {
+      overflow-x: auto;
+      padding: 1rem 0;
+    }
+    .current-function {
+      font-size: 1.25rem;
+      padding: 0.5rem;
+      text-align: center;
+      background-color: #f1f5f9;
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+    }
+    .control-panel {
+      background-color: #f8fafc;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      width: 400px;
+    }
+    #graph {
+      border: 1px solid #e2e8f0;
+      border-radius: 0.5rem;
+      width: 525px;
+      height: 300px;
+    }
+    .function-button {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.875rem;
+    }
+    .instructions {
+      text-align: center;
+      color: #4b5563;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="fixed top-0 left-0 w-full bg-white shadow-md z-10">
+    <div class="max-w-4xl mx-auto px-4 py-2">
+      <ul class="flex justify-center space-x-4">
+        <li><a href="index.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="container mt-16">
+    <header class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-gray-800">Newton's Method Visualizer</h1>
+      <p class="text-gray-600 mt-2">Explore the convergence of Newton's method with interactive visualizations</p>
+    </header>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div class="p-4 bg-gray-50 rounded-lg">
+        <h3 class="font-semibold text-gray-700 mb-2">Newton's Method</h3>
+        <div class="text-base text-gray-600">\[ x_{n+1} = x_n - \frac{f(x_n)}{f'(x_n)} \]</div>
+        <p class="text-sm text-gray-500 mt-1">Quadratic convergence for simple roots</p>
+      </div>
+      <div class="p-4 bg-gray-50 rounded-lg">
+        <h3 class="font-semibold text-gray-700 mb-2">Modified Newton's Method</h3>
+        <div class="text-base text-gray-600">\[ x_{n+1} = x_n - m \cdot \frac{f(x_n)}{f'(x_n)} \]</div>
+        <p class="text-sm text-gray-500 mt-1">Restores quadratic convergence for roots with multiplicity \( m \)</p>
+      </div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6 mb-6 flex flex-row gap-4">
+      <div class="flex-1">
+        <div id="current-function" class="current-function">\[ f(x) = e^{x-1} - 1 \]</div>
+        <div id="graph-container" class="relative w-full h-[500px] flex flex-col items-center">
+          <div id="graph"></div>
+          <div class="flex justify-center gap-4 mt-2">
+            <button onclick="resetIterations()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors">Reset</button>
+            <button onclick="performIteration()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">Next Iteration</button>
+          </div>
+        </div>
+      </div>
+      <div class="control-panel">
+        <div class="mb-4">
+          <h3 class="text-sm font-medium text-gray-700 mb-2">Select Function</h3>
+          <div class="grid grid-cols-1 gap-2">
+            <button onclick="selectFunction(0)" class="function-button bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 text-left">\[ f(x) = e^{x-1} - 1 \text{ (multiplicity 1)} \]</button>
+            <button onclick="selectFunction(1)" class="function-button bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-blue-200 text-left">\[ f(x) = (x-1)^2 e^{x-2} \text{ (multiplicity 2)} \]</button>
+            <button onclick="selectFunction(2)" class="function-button bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-blue-200 text-left">\[ f(x) = x^3 - 2x + 2 \text{ (multiplicity 1)} \]</button>
+            <button onclick="selectFunction(3)" class="function-button bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-md border border-blue-200 text-left">\[ f(x) = \frac{1}{10} (x-2)^3 (x+1)^2 \\ \text{ Roots: } x=-1, (m=2),\quad x=2, (m=3) \]</button>
+          </div>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Initial Guess \( x_0 \)</label>
+          <input type="number" id="x0" value="2.5" step="0.1" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="mb-4">
+          <label class="flex items-center">
+            <input type="checkbox" id="modifiedMethod" class="rounded text-blue-600 focus:ring-blue-500">
+            <span class="ml-2 text-sm text-gray-700">Use Modified Newton's Method</span>
+          </label>
+        </div>
+        <div id="multiplicity-select" class="mb-4 hidden">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Multiplicity for Modified Method</label>
+          <select id="multiplicity" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="1"> m = 1 </option>
+            <option value="2"> m = 2 </option>
+            <option value="3"> m = 3 </option>
+          </select>
+        </div>
+        <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-md hidden text-sm"></div>
+      </div>
+    </div>
+    <div class="mt-6 bg-white rounded-lg shadow p-6">
+      <h2 class="text-xl font-semibold text-gray-800 mb-4">Iteration Details</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse">
+          <thead>
+            <tr class="bg-gray-100">
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">Iteration (n)</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">\( x_n \)</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">\( f(x_n) \)</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">\( f'(x_n) \)</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">Absolute Error</th>
+            </tr>
+          </thead>
+          <tbody id="iteration-data"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+      © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: September 8, 2025
+    </div>
+  </div>
+  <script>
+    const functions = [
+      {
+        f: x => Math.exp(x - 1) - 1,
+        df: x => Math.exp(x - 1),
+        fStr: "e^{x-1} - 1",
+        plotFn: "exp(x-1) - 1",
+        root: 1,
+        multiplicity: 1
+      },
+      {
+        f: x => Math.pow(x - 1, 2) * Math.exp(x - 2),
+        df: x => {
+          const term1 = 2 * (x - 1) * Math.exp(x - 2);
+          const term2 = Math.pow(x - 1, 2) * Math.exp(x - 2);
+          return term1 + term2;
+        },
+        fStr: "(x-1)^2 e^{x-2}",
+        plotFn: "(x-1)^2 * exp(x-2)",
+        root: 1,
+        multiplicity: 2
+      },
+      {
+        f: x => Math.pow(x, 3) - 2 * x + 2,
+        df: x => 3 * Math.pow(x, 2) - 2,
+        fStr: "x^3 - 2x + 2",
+        plotFn: "x^3 - 2*x + 2",
+        root: -1.769292354238631,
+        multiplicity: 1
+      },
+      {
+        f: x => (1/10) * Math.pow(x - 2, 3) * Math.pow(x + 1, 2),
+        df: x => (1/10) * (3 * Math.pow(x - 2, 2) * Math.pow(x + 1, 2) + Math.pow(x - 2, 3) * 2 * (x + 1)),
+        fStr: "\\frac{1}{10} (x-2)^3 (x+1)^2",
+        plotFn: "0.1 * (x-2)^3 * (x+1)^2",
+        roots: [-1, 2],
+        multiplicities: { '-1': 2, '2': 3 }
+      }
+    ];
+
+    let currentFunction = functions[0];
+    let iterations = [];
+    let currentIteration = 0;
+    const xMin = -2, xMax = 5;
+    const yMin = -5, yMax = 10;
+    const tangentColor = '#8B4513';
+
+    function renderKaTeX() {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "\\[", right: "\\]", display: true },
+          { left: "\\(", right: "\\)", display: false }
+        ],
+        throwOnError: false,
+        output: 'html'
+      });
+    }
+
+    function init() {
+      const modifiedCheckbox = document.getElementById('modifiedMethod');
+      const multiplicitySelect = document.getElementById('multiplicity-select');
+
+      function updateMultiplicityVisibility() {
+        if (modifiedCheckbox.checked && currentFunction.fStr === "\\frac{1}{10} (x-2)^3 (x+1)^2") {
+          multiplicitySelect.classList.remove('hidden');
+        } else {
+          multiplicitySelect.classList.add('hidden');
+        }
+      }
+
+      modifiedCheckbox.addEventListener('change', () => {
+        updateMultiplicityVisibility();
+        resetIterations();
+      });
+
+      document.getElementById('x0').addEventListener('change', resetIterations);
+      document.getElementById('multiplicity').addEventListener('change', resetIterations);
+
+      resetIterations();
+      updateMultiplicityVisibility();
+      renderKaTeX();
+      drawGraph();
+    }
+
+    function selectFunction(index) {
+      currentFunction = functions[index];
+      const currentFunctionDiv = document.getElementById('current-function');
+      currentFunctionDiv.innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
+      document.getElementById('multiplicity').value = currentFunction.multiplicity || 1;
+      resetIterations();
+      document.getElementById('modifiedMethod').checked = false;
+      document.getElementById('multiplicity-select').classList.add('hidden');
+      renderKaTeX();
+    }
+
+    function getAbsoluteError(x) {
+      if (currentFunction.roots) {
+        return Math.min(...currentFunction.roots.map(root => Math.abs(x - root)));
+      } else {
+        return Math.abs(x - currentFunction.root);
+      }
+    }
+
+    function resetIterations() {
+      const x0 = parseFloat(document.getElementById('x0').value);
+      if (isNaN(x0)) {
+        showError("Invalid initial guess");
+        return;
+      }
+      iterations = [{ n: 0, x: x0, fx: currentFunction.f(x0), dfx: currentFunction.df(x0), error: getAbsoluteError(x0) }];
+      currentIteration = 0;
+      updateTable();
+      drawGraph();
+      hideError();
+    }
+
+    function performIteration() {
+      if (currentIteration >= 20) {
+        showError("Maximum iterations (20) reached");
+        return;
+      }
+      const modified = document.getElementById('modifiedMethod').checked;
+      let multiplicity = modified ? currentFunction.multiplicity || parseInt(document.getElementById('multiplicity').value) : 1;
+      const lastIteration = iterations[iterations.length - 1];
+      if (Math.abs(lastIteration.dfx) < 1e-15) {
+        showError("Newton's method failed: derivative is zero");
+        return;
+      }
+      const xNext = lastIteration.x - multiplicity * lastIteration.fx / lastIteration.dfx;
+      const fxNext = currentFunction.f(xNext);
+      const dfxNext = currentFunction.df(xNext);
+      const error = getAbsoluteError(xNext);
+      iterations.push({ n: iterations.length, x: xNext, fx: fxNext, dfx: dfxNext, error: error });
+      currentIteration++;
+      updateTable();
+      drawGraph();
+      hideError();
+      if (currentIteration >= 20) {
+        showError("Maximum iterations (20) reached");
+      }
+    }
+
+    function updateTable() {
+      const tableBody = document.getElementById('iteration-data');
+      tableBody.innerHTML = '';
+      iterations.forEach(iter => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="border border-gray-200 px-4 py-2 text-center">${iter.n}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center">${iter.x.toFixed(15)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center">${iter.fx.toFixed(15)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center">${iter.dfx.toFixed(15)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center">${iter.error.toFixed(15)}</td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function drawGraph() {
+      const graphContainer = document.getElementById('graph');
+      graphContainer.innerHTML = ''; // Clear previous plot
+      let rootLines = [];
+      let annotations = [];
+      if (currentFunction.roots) {
+        currentFunction.roots.forEach(root => {
+          rootLines.push({
+            points: [[root, -2], [root, 2]], // Shortened from y=-2 to y=2
+            fnType: 'points',
+            graphType: 'polyline',
+            color: '#006400', // Dark green
+            attr: { 'stroke-dasharray': '5 5' }
+          });
+          annotations.push({
+            x: root,
+            y: 3,
+            text: `${root.toFixed(5)}` // Only the numerical root value
+          });
+        });
+      } else {
+        rootLines.push({
+          points: [[currentFunction.root, -2], [currentFunction.root, 2]], // Shortened from y=-2 to y=2
+          fnType: 'points',
+          graphType: 'polyline',
+          color: '#006400', // Dark green
+          attr: { 'stroke-dasharray': '5 5' }
+        });
+        annotations.push({
+          x: currentFunction.root,
+          y: 3,
+          text: `${currentFunction.root.toFixed(5)}` // Only the numerical root value
+        });
+      }
+      let tangentData = [];
+      if (iterations.length > 1) {
+        const iter = iterations[iterations.length - 2];
+        const slope = iter.dfx;
+        const intercept = iter.fx - slope * iter.x;
+        const tanFn = `${slope.toFixed(10)} * x + ${intercept.toFixed(10)}`;
+        tangentData.push({
+          fn: tanFn,
+          color: tangentColor,
+          sampler: 'builtIn',
+          graphType: 'polyline'
+        });
+      }
+      let verticals = [];
+      iterations.forEach((iter, index) => {
+        if (index > 0) {
+          const col = index === iterations.length - 1 ? '#ef4444' : '#64748b';
+          verticals.push({
+            points: [[iter.x, 0], [iter.x, iter.fx]],
+            fnType: 'points',
+            graphType: 'polyline',
+            color: col,
+            attr: { 'stroke-dasharray': '5 5' }
+          });
+        }
+      });
+      let prevPoints = iterations.slice(0, -1).map(iter => [iter.x, 0]);
+      let prevScatter = {
+        points: prevPoints,
+        fnType: 'points',
+        graphType: 'scatter',
+        color: '#64748b',
+        attr: { r: 4 }
+      };
+      let lastScatter = null;
+      if (iterations.length > 0) {
+        const lastIter = iterations[iterations.length - 1];
+        lastScatter = {
+          points: [[lastIter.x, 0]],
+          fnType: 'points',
+          graphType: 'scatter',
+          color: '#ef4444',
+          attr: { r: 4 }
+        };
+      }
+      let data = [
+        {
+          fn: currentFunction.plotFn,
+          color: '#3b82f6',
+          sampler: 'builtIn',
+          graphType: 'polyline',
+          nSamples: 200, // Limit samples for performance
+          attr: { 'stroke-width': 3 }
+        }
+      ];
+      data = data.concat(rootLines);
+      data = data.concat(verticals);
+      data = data.concat(tangentData);
+      if (prevPoints.length > 0) {
+        data.push(prevScatter);
+      }
+      if (lastScatter) {
+        data.push(lastScatter);
+      }
+      try {
+        functionPlot({
+          target: '#graph',
+          width: 525,
+          height: 300,
+          xAxis: { domain: [xMin, xMax] },
+          yAxis: { domain: [yMin, yMax] },
+          grid: true,
+          disableZoom: false, // Enable zooming and panning
+          data: data,
+          annotations: annotations
+        });
+        // Re-render KaTeX for annotations after function-plot
+        const graphElement = document.getElementById('graph');
+        renderMathInElement(graphElement, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "\\[", right: "\\]", display: true },
+            { left: "\\(", right: "\\)", display: false }
+          ],
+          throwOnError: false,
+          output: 'html'
+        });
+      } catch (e) {
+        console.error('Graph rendering error:', e);
+        showError(`Graph rendering failed: ${e.message}`);
+      }
+    }
+
+    function showError(message) {
+      const errorDiv = document.getElementById('error-message');
+      errorDiv.textContent = message;
+      errorDiv.classList.remove('hidden');
+    }
+
+    function hideError() {
+      const errorDiv = document.getElementById('error-message');
+      errorDiv.classList.add('hidden');
+    }
+
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
