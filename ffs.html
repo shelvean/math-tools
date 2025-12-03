@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="description" content="A web-based tool to find bases for the four fundamental subspaces of a matrix: column space, nullspace, row space, and left nullspace. Input the matrix dimensions and values to calculate the bases." />
+  <meta name="keywords" content="matrix basis, column space, nullspace, row space, left nullspace, linear algebra, basis calculator" />
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-5B8PRB2WZT');
+  </script>
+  <title>Find Bases for the Four Fundamental Subspaces of a Matrix</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <style>
+    .katex-display { margin: 1em 0; overflow-x: auto; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="fixed top-0 left-0 w-full bg-white shadow-md z-10">
+    <div class="max-w-4xl mx-auto px-4 py-2">
+      <ul class="flex justify-center space-x-4">
+        <li><a href="index.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-600 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800 latex">Find Bases for the Four Fundamental Subspaces of a Matrix</h2>
+    <p class="text-center text-gray-600 mb-6 latex">Enter matrix dimensions below, generate the input matrix, fill in the values or generate a random integer matrix, and then calculate the bases for the column space, nullspace, row space, and left nullspace of the matrix $A$.</p>
+    <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+      <label for="rows" class="text-gray-700">Rows:</label>
+      <input type="number" id="rows" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <label for="cols" class="text-gray-700">Columns:</label>
+      <input type="number" id="cols" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+      <button type="button" onclick="generateRandomMatrix()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition duration-300">Generate Random Matrix</button>
+    </div>
+    <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+    <div class="flex justify-center mb-6 space-x-6">
+      <span class="text-gray-700">Display Values as:</span>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="decimal" class="mr-2">
+        <span>Decimal</span>
+      </label>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="fraction" checked class="mr-2">
+        <span>Fraction</span>
+      </label>
+    </div>
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Calculate Bases</button>
+      <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+    </div>
+    <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+    <div id="ortho2" class="mt-6 p-4 bg-gray-200 rounded-lg text-center mb-6"></div>
+    <div class="flex justify-center mb-6">
+      <button id="downloadLatexBtn" type="button" class="bg-green-500 text-white px-6 py-2 rounded hover:bg-lime-600 transition duration-300 w-1/3">Download Results in LaTeX</button>
+    </div>
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+      © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: October 24, 2025
+    </div>
+  </div>
+  <script>
+    var currentDisplayMode = "fraction";
+    var randomMatrixCounter = 0; // Global counter for tracking random matrix generations
+
+    document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+      radio.addEventListener("change", function () {
+        currentDisplayMode = this.value;
+        console.log("Display mode changed to:", currentDisplayMode);
+      });
+    });
+
+    function generateMatrix() {
+      var rows = parseInt(document.getElementById("rows").value, 10);
+      var cols = parseInt(document.getElementById("cols").value, 10);
+      if (isNaN(rows) || isNaN(cols) || rows <= 0 || cols <= 0) {
+        alert("Please enter valid positive numbers for both rows and columns.");
+        return;
+      }
+      var matrixDiv = document.getElementById("matrixInput");
+      matrixDiv.innerHTML = "";
+      var statementDiv = document.createElement("div");
+      statementDiv.className = "text-center mb-4";
+      var statement = document.createElement("div");
+      statement.className = "latex";
+      statement.textContent = "$$ \\text{Find bases for the four fundamental subspaces of } A$$";
+      statementDiv.appendChild(statement);
+      matrixDiv.appendChild(statementDiv);
+      var aDiv = document.createElement("div");
+      aDiv.className = "flex flex-col items-center";
+      var aLabel = document.createElement("p");
+      aLabel.className = "text-center font-semibold latex";
+      aLabel.textContent = "Matrix $A$";
+      aDiv.appendChild(aLabel);
+      var aTable = document.createElement("table");
+      aTable.className = "border-collapse";
+      for (var i = 0; i < rows; i++) {
+        var tr = document.createElement("tr");
+        for (var j = 0; j < cols; j++) {
+          var td = document.createElement("td");
+          td.className = "p-1";
+          var input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell w-16 p-2 text-center border-2 border-gray-300 hover:border-blue-500 hover:border-4 rounded-md focus:outline-none";
+          input.id = "A_" + i + "_" + j;
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        aTable.appendChild(tr);
+      }
+      aDiv.appendChild(aTable);
+      matrixDiv.appendChild(aDiv);
+      try {
+        renderMathInElement(matrixDiv, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false
+        });
+        console.log("Matrix generated successfully");
+      } catch (e) {
+        console.error("KaTeX rendering error in generateMatrix:", e);
+        matrixDiv.innerHTML += "<p class='text-red-500'>Error rendering matrix. Check console for details.</p>";
+      }
+    }
+
+    function generateRandomMatrix() {
+      var rows = parseInt(document.getElementById("rows").value, 10);
+      var cols = parseInt(document.getElementById("cols").value, 10);
+      if (isNaN(rows) || isNaN(cols) || rows <= 0 || cols <= 0) {
+        alert("Please enter valid positive numbers for both rows and columns.");
+        return;
+      }
+      generateMatrix();
+      var k = Math.min(rows, cols);
+      // Generate rank sequence: [1, k, 2, k-1, 3, k-2, ...]
+      var sequenceLength = Math.ceil(k / 2) * 2; // Length of one full cycle
+      var index = randomMatrixCounter % sequenceLength;
+      var rank;
+      if (index % 2 === 0) {
+        rank = (index / 2) + 1; // 1, 2, 3, ...
+      } else {
+        rank = k - Math.floor(index / 2); // k, k-1, k-2, ...
+      }
+      randomMatrixCounter++; // Increment counter for next call
+      var matrix = Array(rows).fill().map(() => Array(cols).fill(0));
+      var basisRows = [];
+      for (var i = 0; i < rank; i++) {
+        var row = Array(cols).fill(0);
+        for (var j = 0; j < cols; j++) {
+          row[j] = Math.floor(Math.random() * 10) - 5;
+          if (row[j] === 0) row[j] = 1;
+        }
+        basisRows.push(row);
+      }
+      for (var j = 0; j < cols; j++) {
+        var hasNonZero = false;
+        for (var i = 0; i < rank; i++) {
+          if (basisRows[i][j] !== 0) {
+            hasNonZero = true;
+            break;
+          }
+        }
+        if (!hasNonZero) {
+          var rowIdx = Math.floor(Math.random() * rank);
+          basisRows[rowIdx][j] = Math.floor(Math.random() * 10) - 5 || 1;
+        }
+      }
+      for (var i = 0; i < rows; i++) {
+        if (i < rank) {
+          matrix[i] = basisRows[i].slice();
+        } else {
+          var coeffs = Array(rank).fill(0).map(() => {
+            var val = Math.floor(Math.random() * 10) - 5;
+            return val === 0 ? 1 : val;
+          });
+          for (var j = 0; j < cols; j++) {
+            matrix[i][j] = 0;
+            for (var k = 0; k < rank; k++) {
+              matrix[i][j] += coeffs[k] * basisRows[k][j];
+            }
+          }
+        }
+      }
+      for (var j = 0; j < cols; j++) {
+        var isZeroColumn = true;
+        for (var i = 0; i < rows; i++) {
+          if (matrix[i][j] !== 0) {
+            isZeroColumn = false;
+            break;
+          }
+        }
+        if (isZeroColumn) {
+          var rowIdx = Math.floor(Math.random() * rows);
+          matrix[rowIdx][j] = Math.floor(Math.random() * 10) - 5 || 1;
+        }
+      }
+      for (var i = 0; i < rows; i++) {
+        for (var j = 0; j < cols; j++) {
+          var cell = document.getElementById("A_" + i + "_" + j);
+          if (cell) {
+            cell.value = matrix[i][j].toString();
+          }
+        }
+      }
+      console.log("Random matrix generated with rank:", rank, matrix);
+    }
+
+    function clearAll() {
+      document.getElementById("rows").value = "";
+      document.getElementById("cols").value = "";
+      document.getElementById("matrixInput").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+      document.getElementById("ortho2").innerHTML = "";
+      document.querySelector('input[value="fraction"]').checked = true;
+      currentDisplayMode = "fraction";
+      randomMatrixCounter = 0; // Reset counter on clear
+      try {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false
+        });
+        console.log("Cleared all successfully");
+      } catch (e) {
+        console.error("KaTeX rendering error on clear:", e);
+      }
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+    function parseFraction(str) {
+      str = str.trim();
+      if (str === "") return 0;
+      if (str.includes('/')) {
+        let parts = str.split('/');
+        if (parts.length !== 2) {
+          throw new Error(`Invalid fraction format: ${str}`);
+        }
+        let numerator = parseFloat(parts[0].trim());
+        let denominator = parseFloat(parts[1].trim());
+        if (isNaN(numerator) || isNaN(denominator)) {
+          throw new Error(`Invalid numbers in fraction: ${str}`);
+        }
+        if (denominator === 0) {
+          throw new Error(`Division by zero in fraction: ${str}`);
+        }
+        return numerator / denominator;
+      }
+      let num = parseFloat(str);
+      if (isNaN(num)) {
+        throw new Error(`Invalid number: ${str}`);
+      }
+      return num;
+    }
+
+    function readMatrix() {
+      var rows = parseInt(document.getElementById("rows").value, 10);
+      var cols = parseInt(document.getElementById("cols").value, 10);
+      if (isNaN(rows) || isNaN(cols) || rows <= 0 || cols <= 0) {
+        throw new Error("Invalid matrix dimensions");
+      }
+      var matrix = [];
+      for (var i = 0; i < rows; i++) {
+        var row = [];
+        for (var j = 0; j < cols; j++) {
+          var cell = document.getElementById("A_" + i + "_" + j);
+          if (!cell) {
+            throw new Error(`Matrix cell A_${i}_${j} not found`);
+          }
+          try {
+            var value = cell.value.trim();
+            var num = parseFraction(value);
+            row.push(num);
+          } catch (e) {
+            throw new Error(`Error in cell A_${i}_${j}: ${e.message}`);
+          }
+        }
+        matrix.push(row);
+      }
+      console.log("Matrix read:", matrix);
+      return matrix;
+    }
+
+    function gcd(a, b) {
+      a = Math.abs(a);
+      b = Math.abs(b);
+      while (b) {
+        var temp = b;
+        b = a % b;
+        a = temp;
+      }
+      return a;
+    }
+
+    function lcm(a, b) {
+      return Math.abs(a * b) / gcd(a, b);
+    }
+
+    function lcmArray(arr) {
+      if (arr.length === 0) return 1;
+      return arr.reduce((a, b) => lcm(a, b), arr[0]);
+    }
+
+    function toFraction(x, tolerance, maxIterations) {
+      tolerance = tolerance || 1e-6;
+      maxIterations = maxIterations || 20;
+      if (x === 0) return { num: 0, den: 1 };
+      var sign = x < 0 ? -1 : 1;
+      x = Math.abs(x);
+      var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+      for (var i = 0; i < maxIterations; i++) {
+        var a = Math.floor(b);
+        var h = a * h1 + h2;
+        var k = a * k1 + k2;
+        if (Math.abs(x - h / k) < tolerance) {
+          return { num: sign * h, den: k };
+        }
+        h2 = h1; h1 = h;
+        k2 = k1; k1 = k;
+        b = 1 / (b - a);
+        if (isNaN(b) || !isFinite(b)) {
+          break;
+        }
+      }
+      return { num: sign * h1, den: k1 };
+    }
+
+    function scaleVectorToIntegers(vec) {
+      if (currentDisplayMode !== "fraction") return vec;
+      var fractions = vec.map(num => toFraction(num));
+      var denominators = fractions.map(frac => frac.den).filter(den => den !== 1 && den !== 0);
+      if (denominators.length === 0) return vec;
+      var lcmDen = lcmArray(denominators);
+      return vec.map(num => {
+        var frac = toFraction(num);
+        if (frac.den === 0) {
+          throw new Error("Zero denominator in fraction conversion");
+        }
+        return (frac.num * lcmDen) / frac.den;
+      });
+    }
+
+    function formatNumber(num) {
+      var epsilon = 1e-10;
+      if (Math.abs(num - Math.round(num)) < epsilon) {
+        return Math.round(num).toString();
+      }
+      if (currentDisplayMode === "fraction") {
+        var frac = toFraction(num);
+        if (frac.den === 0) {
+          throw new Error("Zero denominator in fraction formatting");
+        }
+        return frac.num + "/" + frac.den;
+      }
+      return parseFloat(num.toFixed(3)).toString();
+    }
+
+    function formatScalarForLatex(formatted) {
+      return formatted;
+    }
+
+    function cloneMatrix(matrix) {
+      return matrix.map(function (row) { return row.slice(); });
+    }
+
+    function transposeMatrix(matrix) {
+      var m = matrix.length;
+      if (m === 0) return [];
+      var n = matrix[0].length;
+      var transposed = Array(n).fill().map(() => Array(m).fill(0));
+      for (var i = 0; i < m; i++) {
+        for (var j = 0; j < n; j++) {
+          transposed[j][i] = matrix[i][j];
+        }
+      }
+      return transposed;
+    }
+
+    function computeRREF(origMatrix) {
+      var matrix = cloneMatrix(origMatrix);
+      var m = matrix.length;
+      if (m === 0) return { result: matrix, pivotRows: [], pivotCols: [] };
+      var n = matrix[0].length;
+      var lead = 0;
+      var pivotRows = [];
+      var pivotCols = [];
+      var rowPerm = Array.from({length: m}, (_, i) => i);
+      var r = 0;
+      while (lead < n && r < m) {
+        var i = r;
+        var maxVal = 0;
+        var maxIdx = i;
+        for (var k = r; k < m; k++) {
+          if (Math.abs(matrix[k][lead]) > maxVal) {
+            maxVal = Math.abs(matrix[k][lead]);
+            maxIdx = k;
+          }
+        }
+        if (Math.abs(maxVal) < 1e-8) {
+          lead++;
+          continue;
+        }
+        if (maxIdx !== r) {
+          var temp = matrix[r];
+          matrix[r] = matrix[maxIdx];
+          matrix[maxIdx] = temp;
+          var tempIdx = rowPerm[r];
+          rowPerm[r] = rowPerm[maxIdx];
+          rowPerm[maxIdx] = tempIdx;
+        }
+        var pivotValue = matrix[r][lead];
+        if (Math.abs(pivotValue) > 1e-8) {
+          var reciprocal = 1 / pivotValue;
+          for (var j = 0; j < n; j++) {
+            matrix[r][j] *= reciprocal;
+            if (isNaN(matrix[r][j]) || !isFinite(matrix[r][j])) {
+              throw new Error("Numerical error in RREF computation at row " + r);
+            }
+          }
+          pivotRows.push(rowPerm[r]);
+          pivotCols.push(lead);
+          for (var k = 0; k < m; k++) {
+            if (k !== r) {
+              var factor = matrix[k][lead];
+              if (Math.abs(factor) > 1e-8) {
+                for (var j = 0; j < n; j++) {
+                  matrix[k][j] -= factor * matrix[r][j];
+                  if (isNaN(matrix[k][j]) || !isFinite(matrix[k][j])) {
+                    throw new Error("Numerical error in RREF elimination at row " + k);
+                  }
+                }
+              }
+            }
+          }
+          r++;
+        }
+        lead++;
+      }
+      for (var i = 0; i < m; i++) {
+        for (var j = 0; j < n; j++) {
+          if (Math.abs(matrix[i][j]) < 1e-8) {
+            matrix[i][j] = 0;
+          }
+        }
+      }
+      return { result: matrix, pivotRows: pivotRows, pivotCols: pivotCols };
+    }
+
+    function getPivotColumns(rref) {
+      var m = rref.length;
+      if (m === 0) return [];
+      var n = rref[0].length;
+      var pivots = [];
+      for (var i = 0; i < m; i++) {
+        for (var j = 0; j < n; j++) {
+          if (Math.abs(rref[i][j] - 1) < 1e-8 && !pivots.includes(j)) {
+            var isPivot = true;
+            for (var k = 0; k < m; k++) {
+              if (k !== i && Math.abs(rref[k][j]) > 1e-8) {
+                isPivot = false;
+                break;
+              }
+            }
+            if (isPivot) {
+              pivots.push(j);
+              break;
+            }
+          }
+        }
+      }
+      return pivots;
+    }
+
+    function matrixToLatex(matrix) {
+      if (!matrix || matrix.length === 0) return "\\begin{bmatrix} \\end{bmatrix}";
+      var latex = "\\begin{bmatrix}\n";
+      for (var i = 0; i < matrix.length; i++) {
+        var row = matrix[i].map(num => formatNumber(num)).join(" & ");
+        latex += row + (i < matrix.length - 1 ? " \\\\ \n" : "\n");
+      }
+      latex += "\\end{bmatrix}";
+      return latex;
+    }
+
+    function vectorToLatex(vec) {
+      try {
+        var scaledVec = scaleVectorToIntegers(vec);
+        // Check if any entry in scaledVec exceeds 1000 in absolute value
+        var useDecimals = scaledVec.some(num => Math.abs(num) > 1000);
+        var formattedVec;
+        if (useDecimals) {
+          // Use decimal format with 3 decimal places
+          formattedVec = vec.map(num => parseFloat(num.toFixed(3)).toString());
+        } else {
+          // Use integer format after scaling
+          formattedVec = scaledVec.map(num => formatNumber(num));
+        }
+        var latex = "\\begin{bmatrix}\n";
+        latex += formattedVec.map(num => formatScalarForLatex(num)).join(" \\\\ \n");
+        latex += "\n\\end{bmatrix}";
+        return latex;
+      } catch (e) {
+        throw new Error("Error formatting vector to LaTeX: " + e.message);
+      }
+    }
+
+    document.getElementById("calcBtn").addEventListener("click", function () {
+      console.log("Calculate button clicked");
+      var resultDiv = document.getElementById("result");
+      var ortho2Div = document.getElementById("ortho2");
+      resultDiv.innerHTML = "<p>Calculating...</p>";
+      ortho2Div.innerHTML = "";
+      try {
+        var matrix = readMatrix();
+        if (matrix === null) {
+          throw new Error("Matrix read returned null");
+        }
+        console.log("Matrix:", matrix);
+        var m = matrix.length;
+        var n = matrix[0].length;
+        var computationA = computeRREF(matrix);
+        var rrefA = computationA.result;
+        var pivotColsA = computationA.pivotCols;
+        var pivotRowsA = computationA.pivotRows;
+        var rank = pivotColsA.length;
+        console.log("RREF:", rrefA, "Pivot Columns:", pivotColsA, "Pivot Rows:", pivotRowsA);
+        var colSpaceBasis = [];
+        if (rank > 0) {
+          for (var i = 0; i < rank; i++) {
+            var col = pivotColsA[i];
+            var vec = matrix.map(row => row[col]);
+            colSpaceBasis.push(vec);
+          }
+        }
+        var freeColumnsA = [];
+        for (var j = 0; j < n; j++) {
+          if (!pivotColsA.includes(j)) {
+            freeColumnsA.push(j);
+          }
+        }
+        var nullSpaceBasis = [];
+        for (var k = 0; k < freeColumnsA.length; k++) {
+          var j = freeColumnsA[k];
+          var vec = new Array(n).fill(0);
+          vec[j] = 1;
+          for (var i = 0; i < rank; i++) {
+            var p = pivotColsA[i];
+            vec[p] = -rrefA[i][j];
+          }
+          var posCount = 0;
+          var negCount = 0;
+          for (var idx = 0; idx < vec.length; idx++) {
+            if (Math.abs(vec[idx]) > 1e-8) {
+              if (vec[idx] > 0) {
+                posCount++;
+              } else {
+                negCount++;
+              }
+            }
+          }
+          if (negCount > posCount) {
+            for (var idx = 0; idx < vec.length; idx++) {
+              vec[idx] = -vec[idx];
+            }
+          }
+          nullSpaceBasis.push(vec);
+        }
+        var rowSpaceBasis = [];
+        if (pivotRowsA.length > 0) {
+          for (var i = 0; i < pivotRowsA.length; i++) {
+            var rowIdx = pivotRowsA[i];
+            var vec = matrix[rowIdx].slice();
+            rowSpaceBasis.push(vec);
+          }
+        }
+        var matrixAT = transposeMatrix(matrix);
+        var computationAT = computeRREF(matrixAT);
+        var rrefAT = computationAT.result;
+        var pivotColsAT = computationAT.pivotCols;
+        var rankAT = pivotColsAT.length;
+        var freeColumnsAT = [];
+        for (var j = 0; j < m; j++) {
+          if (!pivotColsAT.includes(j)) {
+            freeColumnsAT.push(j);
+          }
+        }
+        var leftNullSpaceBasis = [];
+        for (var k = 0; k < freeColumnsAT.length; k++) {
+          var j = freeColumnsAT[k];
+          var vec = new Array(m).fill(0);
+          vec[j] = 1;
+          for (var i = 0; i < rankAT; i++) {
+            var p = pivotColsAT[i];
+            vec[p] = -rrefAT[i][j];
+          }
+          var posCount = 0;
+          var negCount = 0;
+          for (var idx = 0; idx < vec.length; idx++) {
+            if (Math.abs(vec[idx]) > 1e-8) {
+              if (vec[idx] > 0) {
+                posCount++;
+              } else {
+                negCount++;
+              }
+            }
+          }
+          if (negCount > posCount) {
+            for (var idx = 0; idx < vec.length; idx++) {
+              vec[idx] = -vec[idx];
+            }
+          }
+          leftNullSpaceBasis.push(vec);
+        }
+        resultDiv.innerHTML = "";
+        // Column Space C(A)
+        var colDiv = document.createElement("div");
+        colDiv.className = "mt-6 flex items-center";
+        var colContent = document.createElement("div");
+        colContent.className = "flex-grow";
+        var colTitle = document.createElement("h3");
+        colTitle.className = "text-lg font-semibold text-gray-800 mb-4 latex";
+        colTitle.textContent = "Basis for the Column Space of $A$";
+        colContent.appendChild(colTitle);
+        var colMath = document.createElement("div");
+        colMath.className = "latex mb-4";
+        if (colSpaceBasis.length > 0) {
+          var cols = "c".repeat(colSpaceBasis.length);
+          var vectorsLatex = colSpaceBasis.map(vectorToLatex).join(", & ");
+          var colLatex = "C(A) = \\text{span} \\left\\{ \\begin{array}{" + cols + "} " + vectorsLatex + " \\end{array} \\right\\}";
+          colMath.textContent = "$$ " + colLatex + " $$";
+        } else {
+          colMath.textContent = "$$ C(A) = \\{0\\} $$";
+        }
+        colContent.appendChild(colMath);
+        colDiv.appendChild(colContent);
+        var colRank = document.createElement("div");
+        colRank.className = "ml-4 p-2 bg-gray-700 text-white rounded latex";
+        colRank.textContent = "$$ \\text{rank}(A) = \\text{column rank} = " + rank + " $$";
+        colDiv.appendChild(colRank);
+        resultDiv.appendChild(colDiv);
+        // Left Nullspace N(A^T)
+        var leftNullDiv = document.createElement("div");
+        leftNullDiv.className = "mt-6 flex items-center";
+        var leftNullContent = document.createElement("div");
+        leftNullContent.className = "flex-grow";
+        var leftNullTitle = document.createElement("h3");
+        leftNullTitle.className = "text-lg font-semibold text-gray-800 mb-4 latex";
+        leftNullTitle.textContent = "Basis for the Left Nullspace of $A$";
+        leftNullContent.appendChild(leftNullTitle);
+        var leftNullMath = document.createElement("div");
+        leftNullMath.className = "latex mb-4";
+        if (leftNullSpaceBasis.length > 0) {
+          var cols = "c".repeat(leftNullSpaceBasis.length);
+          var vectorsLatex = leftNullSpaceBasis.map(vectorToLatex).join(", & ");
+          var leftNullLatex = "N(A^T) = \\text{span} \\left\\{ \\begin{array}{" + cols + "} " + vectorsLatex + " \\end{array} \\right\\}";
+          leftNullMath.textContent = "$$ " + leftNullLatex + " $$";
+        } else {
+          var leftNullLatex = "N(A^T) = \\{ \\mathbf{0} \\}";
+          leftNullMath.textContent = "$$ " + leftNullLatex + " $$";
+        }
+        leftNullContent.appendChild(leftNullMath);
+        leftNullDiv.appendChild(leftNullContent);
+        var leftNullRank = document.createElement("div");
+        leftNullRank.className = "ml-4 p-2 bg-gray-700 text-white rounded latex";
+        leftNullRank.textContent = "$$ \\text{nullity}(A^T) = " + (m - rankAT) + " $$";
+        leftNullDiv.appendChild(leftNullRank);
+        resultDiv.appendChild(leftNullDiv);
+        // Direct sum and rank-nullity statement for C(A) and N(A^T)
+        var ortho1Div = document.createElement("div");
+        ortho1Div.className = "mt-6 p-4 bg-gray-200 rounded-lg text-center";
+        var ortho1Math = document.createElement("div");
+        ortho1Math.className = "latex";
+        ortho1Math.textContent = "$$ C(A) \\oplus N(A^T) = \\mathbb{R}^" + m + " \\quad \\underbrace{\\dim C(A)}_{\\text{rank}(A)} + \\underbrace{\\dim N(A^T)}_{\\text{nullity}(A^T)} = m = \\text{number of rows } = " + m + " $$";
+        ortho1Div.appendChild(ortho1Math);
+        resultDiv.appendChild(ortho1Div);
+        // Column Space C(A^T)
+        var rowDiv = document.createElement("div");
+        rowDiv.className = "mt-6 flex items-center";
+        var rowContent = document.createElement("div");
+        rowContent.className = "flex-grow";
+        var rowTitle = document.createElement("h3");
+        rowTitle.className = "text-lg font-semibold text-gray-800 mb-4 latex";
+        rowTitle.textContent = "Basis for the Column Space of $A^T$ (the Row Space of $A$)";
+        rowContent.appendChild(rowTitle);
+        var rowMath = document.createElement("div");
+        rowMath.className = "latex mb-4";
+        if (rowSpaceBasis.length > 0) {
+          var cols = "c".repeat(rowSpaceBasis.length);
+          var vectorsLatex = rowSpaceBasis.map(vectorToLatex).join(", & ");
+          var rowLatex = "C(A^T) = \\text{span} \\left\\{ \\begin{array}{" + cols + "} " + vectorsLatex + " \\end{array} \\right\\}";
+          rowMath.textContent = "$$ " + rowLatex + " $$";
+        } else {
+          var rowLatex = "C(A^T) = \\{ \\mathbf{0} \\}";
+          rowMath.textContent = "$$ " + rowLatex + " $$";
+        }
+        rowContent.appendChild(rowMath);
+        rowDiv.appendChild(rowContent);
+        var rowRank = document.createElement("div");
+        rowRank.className = "ml-4 p-2 bg-gray-700 text-white rounded latex";
+        rowRank.textContent = "$$ \\text{rank}(A^T) = \\text{row rank} = " + rank + " $$";
+        rowDiv.appendChild(rowRank);
+        resultDiv.appendChild(rowDiv);
+        // Nullspace N(A)
+        var nullDiv = document.createElement("div");
+        nullDiv.className = "mt-6 flex items-center";
+        var nullContent = document.createElement("div");
+        nullContent.className = "flex-grow";
+        var nullTitle = document.createElement("h3");
+        nullTitle.className = "text-lg font-semibold text-gray-800 mb-4 latex";
+        nullTitle.textContent = "Basis for the Nullspace of $A$";
+        nullContent.appendChild(nullTitle);
+        var nullMath = document.createElement("div");
+        nullMath.className = "latex mb-4";
+        if (nullSpaceBasis.length > 0) {
+          var cols = "c".repeat(nullSpaceBasis.length);
+          var vectorsLatex = nullSpaceBasis.map(vectorToLatex).join(", & ");
+          var nullLatex = "N(A) = \\text{span} \\left\\{ \\begin{array}{" + cols + "} " + vectorsLatex + " \\end{array} \\right\\}";
+          nullMath.textContent = "$$ " + nullLatex + " $$";
+        } else {
+          var nullLatex = "N(A) = \\{ \\mathbf{0} \\}";
+          nullMath.textContent = "$$ " + nullLatex + " $$";
+        }
+        nullContent.appendChild(nullMath);
+        nullDiv.appendChild(nullContent);
+        var nullRank = document.createElement("div");
+        nullRank.className = "ml-4 p-2 bg-gray-700 text-white rounded latex";
+        nullRank.textContent = "$$ \\text{nullity}(A) = " + (n - rank) + " $$";
+        nullDiv.appendChild(nullRank);
+        resultDiv.appendChild(nullDiv);
+        // Direct sum and rank-nullity statement for C(A^T) and N(A)
+        var ortho2Math = document.createElement("div");
+        ortho2Math.className = "latex";
+        ortho2Math.textContent = "$$ C(A^T) \\oplus N(A) = \\mathbb{R}^" + n + " \\quad \\underbrace{\\dim C(A^T)}_{\\text{rank}(A^T)} + \\underbrace{\\dim N(A)}_{\\text{nullity}(A)} = n =\\text{number of columns } = " + n + " $$";
+        ortho2Div.appendChild(ortho2Math);
+        window.latestResults = {
+          matrix: matrix,
+          colSpaceBasis: colSpaceBasis,
+          nullSpaceBasis: nullSpaceBasis,
+          rowSpaceBasis: rowSpaceBasis,
+          leftNullSpaceBasis: leftNullSpaceBasis,
+          m: m,
+          n: n,
+          rank: rank,
+          nullityAT: m - rankAT,
+          nullityA: n - rank
+        };
+        try {
+          renderMathInElement(document.body, {
+            delimiters: [
+              { left: "$$", right: "$$", display: true },
+              { left: "$", right: "$", display: false }
+            ],
+            throwOnError: false
+          });
+          console.log("KaTeX rendering complete");
+        } catch (e) {
+          console.error("KaTeX rendering error:", e);
+          resultDiv.innerHTML += "<p class='text-red-500'>Error rendering results. Check console for details.</p>";
+        }
+      } catch (e) {
+        console.error("Calculation error:", e);
+        resultDiv.innerHTML = "<p class='text-red-500'>Error during calculation: " + e.message + ". Please check inputs and try again.</p>";
+      }
+    });
+
+    document.getElementById("downloadLatexBtn").addEventListener("click", function () {
+      if (!window.latestResults) {
+        alert("Please calculate the bases first by clicking 'Calculate Bases'.");
+        return;
+      }
+      var { matrix, colSpaceBasis, nullSpaceBasis, rowSpaceBasis, leftNullSpaceBasis } = window.latestResults;
+      var latexContent = `\\documentclass{article}\\usepackage{amsmath}\\usepackage{amsfonts}\\usepackage{amssymb}\\usepackage{geometry}\\geometry{a4paper, margin=1in}\\begin{document}\\noindentmatrix $A$:\\\\[0.5cm]\\[A = ${matrixToLatex(matrix)}\\]\\vspace{0.5cm}\\noindentcolumn space:\\\\[0.5cm]\\[` + (colSpaceBasis.length > 0 ? `C(A) = \\text{span} \\left\\{ \\begin{array}{${"c".repeat(colSpaceBasis.length)}} ${colSpaceBasis.map(vectorToLatex).join(", & ")} \\end{array} \\right\\}` : `C(A) = \\{0\\}`) + `\\]\\vspace{0.5cm}\\noindentleft nullspace:\\\\[0.5cm]\\[` + (leftNullSpaceBasis.length > 0 ? `N(A^T) = \\text{span} \\left\\{ \\begin{array}{${"c".repeat(leftNullSpaceBasis.length)}} ${leftNullSpaceBasis.map(vectorToLatex).join(", & ")} \\end{array} \\right\\}` : `N(A^T) = \\{\\mathbf{0}\\}` ) + `\\]\\vspace{0.5cm}\\noindentnullspace:\\\\[0.5cm]\\[` + (nullSpaceBasis.length > 0 ? `N(A) = \\text{span} \\left\\{ \\begin{array}{${"c".repeat(nullSpaceBasis.length)}} ${nullSpaceBasis.map(vectorToLatex).join(", & ")} \\end{array} \\right\\}` : `N(A) = \\{\\mathbf{0}\\}` ) + `\\]\\vspace{0.5cm}\\noindentrow space:\\\\[0.5cm]\\[` + (rowSpaceBasis.length > 0 ? `C(A^T) = \\text{span} \\left\\{ \\begin{array}{${"c".repeat(rowSpaceBasis.length)}} ${rowSpaceBasis.map(vectorToLatex).join(", & ")} \\end{array} \\right\\}` : `C(A^T) = \\{\\mathbf{0}\\}` ) + `\\]\\end{document}`;
+      var blob = new Blob([latexContent], { type: "text/x-tex" });
+      var url = window.URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "matrix_subspaces.tex";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    });
+
+    document.addEventListener("DOMContentLoaded", function() {
+      console.log("DOM loaded, initializing KaTeX");
+      try {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false
+        });
+      } catch (e) {
+        console.error("Initial KaTeX rendering error:", e);
+      }
+    });
+  </script>
+</body>
+</html>
