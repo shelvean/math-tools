@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="description" content="Lotka Volterra System to Simulate Predator Prey Systems">
+    <meta name="keywords" content="Lotka-Volterra Equations, Predator Prey, Phase Diagram, Phase Portrait">
+    <title>Lotka-Volterra Model</title>
+    <!-- Updated to the latest Plotly version -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0 auto; 
+            max-width: 1200px; 
+            padding: 20px; 
+        }
+        h1 { 
+            text-align: center; 
+        }
+        .equations { 
+            text-align: center; 
+            margin: 20px 0; 
+        }
+        .controls { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 20px; 
+            justify-content: center; 
+            margin: 20px 0; 
+        }
+        .instruction { 
+            width: 100%; 
+            text-align: center; 
+            font-style: italic; 
+            margin-bottom: 10px; 
+        }
+        .slider-container { 
+            flex: 1 1 300px; 
+            max-width: 300px; 
+        }
+        .slider-label { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 5px; 
+        }
+        .slider-value { 
+            width: 40px; 
+            padding: 2px; 
+        }
+        input[type="range"] { 
+            width: 100%; 
+        }
+        .plots-container { 
+            display: flex; 
+            flex-wrap: wrap; 
+            gap: 20px; 
+            justify-content: center; 
+        }
+        .plot-container { 
+            flex: 1 1 500px; 
+            min-height: 400px; 
+        }
+        footer { 
+            text-align: center; 
+            margin-top: 40px; 
+            font-size: 0.9em; 
+            color: #666; 
+        }
+        /* Navigation Styles */
+        .nav-container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        .flex {
+            display: flex;
+        }
+        .justify-center {
+            justify-content: center;
+        }
+        .font-bold {
+            font-weight: bold;
+        }
+        .text-xl {
+            font-size: 1.25rem;
+        }
+        .mb-4 {
+            margin-bottom: 1rem;
+        }
+        .mx-4 {
+            margin-left: 1rem;
+            margin-right: 1rem;
+        }
+        nav a {
+            color: #6995EE;
+            text-decoration: none;
+        }
+        nav a:hover {
+            color: #6c5ce7;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-container">
+        <nav class="flex justify-center mb-4">
+            <a href="index.html" class="font-bold text-xl mx-4">Home</a>
+            <a href="teaching.html" class="font-bold text-xl mx-4">Teaching</a>
+			<a href="projects.html" class="font-bold text-indigo-500 text-xl mx-4">Diff Eq</a>
+            <a href="linear.html" class="font-bold text-indigo-500 text-xl mx-4">Linear Algebra</a>
+			<a href="numerical.html" class="font-bold text-indigo-500 text-xl mx-4">Numerical Methods</a>
+
+        </nav>
+    </div>
+    <h1>Lotka-Volterra Model</h1>
+    
+    <div class="equations">
+        \[
+        \begin{aligned}
+        \dot{x} &= \alpha x - \beta xy \\
+        \dot{y} &= -\gamma y + \delta xy
+        \end{aligned}
+        \]
+    </div>
+
+    <div class="controls"></div>
+
+    <div class="plots-container">
+        <div class="plot-container" id="phasePlot"></div>
+        <div class="plot-container" id="timePlot"></div>
+    </div>
+
+    <footer>
+        &copy; 2025 Shelvean Kapita:    kapita@tamu.edu.<br>
+        Last modified: March 27, 2025
+    </footer>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+        // Parameter definitions with LaTeX labels
+        const params = [
+            {id: 'alpha', label: '\\(\\alpha\\) (Prey Growth)', min: 0.001, max: 0.5, step: 0.001, value: 0.15},
+            {id: 'beta', label: '\\(\\beta\\) (Predation Rate)', min: 0.001, max: 0.5, step: 0.001, value: 0.01},
+            {id: 'gamma', label: '\\(\\gamma\\) (Predator Mortality)', min: 0.001, max: 0.5, step: 0.001, value: 0.3},
+            {id: 'delta', label: '\\(\\delta\\) (Predator Growth)', min: 0.001, max: 0.5, step: 0.001, value: 0.01},
+            {id: 'x0', label: 'Initial Prey Population (\\(x_0\\))', min: 0, max: 100, step: 1, value: 50},
+            {id: 'y0', label: 'Initial Predator Population (\\(y_0\\))', min: 0, max: 100, step: 1, value: 10}
+        ];
+
+        // Solve Lotka-Volterra equations using RK4 method
+        function solveLV(alpha, beta, gamma, delta, x0, y0) {
+            const dt = 0.01;
+            const steps = 8000;
+            let x = x0, y = y0;
+            const trajectory = [{x, y, t: 0}];
+
+            for(let i = 1; i < steps; i++) {
+                const k1x = dt * (alpha * x - beta * x * y);
+                const k1y = dt * (-gamma * y + delta * x * y);
+
+                const k2x = dt * (alpha * (x + k1x/2) - beta * (x + k1x/2) * (y + k1y/2));
+                const k2y = dt * (-gamma * (y + k1y/2) + delta * (x + k1x/2) * (y + k1y/2));
+
+                const k3x = dt * (alpha * (x + k2x/2) - beta * (x + k2x/2) * (y + k2y/2));
+                const k3y = dt * (-gamma * (y + k2y/2) + delta * (x + k2x/2) * (y + k2y/2));
+
+                const k4x = dt * (alpha * (x + k3x) - beta * (x + k3x) * (y + k3y));
+                const k4y = dt * (-gamma * (y + k3y) + delta * (x + k3x) * (y + k3y));
+
+                x += (k1x + 2*k2x + 2*k3x + k4x)/6;
+                y += (k1y + 2*k2y + 2*k3y + k4y)/6;
+
+                trajectory.push({x, y, t: i*dt});
+            }
+            return trajectory;
+        }
+
+        // Create sliders dynamically
+        function createSliders() {
+            const container = document.querySelector('.controls');
+            const instruction = document.createElement('div');
+            instruction.className = 'instruction';
+            instruction.textContent = 'Enter values manually or use sliders';
+            container.appendChild(instruction);
+
+            params.forEach(param => {
+                const div = document.createElement('div');
+                div.className = 'slider-container';
+                div.innerHTML = `
+                    <div class="slider-label">
+                        <span>${param.label}</span>
+                        <input type="number" 
+                               id="${param.id}Value" 
+                               class="slider-value"
+                               min="${param.min}" 
+                               max="${param.max}"
+                               step="${param.step}"
+                               value="${param.value}">
+                    </div>
+                    <input type="range" 
+                           id="${param.id}" 
+                           min="${param.min}" 
+                           max="${param.max}" 
+                           step="${param.step}" 
+                           value="${param.value}">
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Update Plotly plots based on current parameter values
+        function updatePlots() {
+            const values = params.reduce((acc, param) => {
+                acc[param.id] = parseFloat(document.getElementById(param.id).value);
+                return acc;
+            }, {});
+
+            const trajectory = solveLV(
+                values.alpha, 
+                values.beta, 
+                values.gamma, 
+                values.delta,
+                values.x0, 
+                values.y0
+            );
+
+            const xEq = values.gamma / values.delta;
+            const yEq = values.alpha / values.beta;
+
+            // Phase Plot with explicit axis titles
+            Plotly.react('phasePlot', [
+                {
+                    x: trajectory.map(p => p.x),
+                    y: trajectory.map(p => p.y),
+                    mode: 'lines',
+                    line: {color: '#3498db'},
+                    name: 'Trajectory'
+                },
+                {
+                    x: [xEq],
+                    y: [yEq],
+                    mode: 'markers',
+                    marker: {
+                        color: 'purple',
+                        size: 12,
+                        symbol: 'circle'
+                    },
+                    name: 'Equilibrium'
+                }
+            ], {
+                title: 'Phase Space Diagram',
+                xaxis: {
+                    title: {
+                        text: 'Prey Population (x)'
+                    },
+                    range: [0, Math.max(...trajectory.map(p => p.x)) + 10],
+                    gridcolor: '#eee'
+                },
+                yaxis: {
+                    title: {
+                        text: 'Predator Population (y)'
+                    },
+                    range: [0, Math.max(...trajectory.map(p => p.y)) + 10],
+                    gridcolor: '#eee'
+                },
+                plot_bgcolor: 'white',
+                showlegend: true
+            });
+
+            // Time Plot
+            Plotly.react('timePlot', [
+                {
+                    x: trajectory.map(p => p.t),
+                    y: trajectory.map(p => p.x),
+                    name: 'Prey Population',
+                    line: {color: '#2ecc71'}
+                },
+                {
+                    x: trajectory.map(p => p.t),
+                    y: trajectory.map(p => p.y),
+                    name: 'Predator Population',
+                    line: {color: '#e74c3c'}
+                }
+            ], {
+                title: 'Population Dynamics Over Time',
+                xaxis: {
+                    title: 'Time',
+                    gridcolor: '#eee'
+                },
+                yaxis: {
+                    title: 'Population',
+                    gridcolor: '#eee'
+                },
+                plot_bgcolor: 'white',
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    yanchor: 'bottom',
+                    y: 1.02,
+                    xanchor: 'right',
+                    x: 1
+                }
+            });
+        }
+
+        // KaTeX rendering options
+        const katexOptions = {
+            delimiters: [
+                {left: '\\[', right: '\\]', display: true},
+                {left: '\\(', right: '\\)', display: false}
+            ],
+            throwOnError: false
+        };
+
+        // DOMContentLoaded event handler
+        document.addEventListener('DOMContentLoaded', () => {
+            renderMathInElement(document.body, katexOptions);
+            createSliders();
+            renderMathInElement(document.querySelector('.controls'), katexOptions);
+
+            params.forEach(param => {
+                const slider = document.getElementById(param.id);
+                const input = document.getElementById(`${param.id}Value`);
+
+                slider.addEventListener('input', function() {
+                    input.value = this.value;
+                    updatePlots();
+                });
+
+                input.addEventListener('change', function() {
+                    let newValue = parseFloat(this.value);
+                    newValue = Math.max(param.min, Math.min(param.max, newValue));
+                    slider.value = newValue;
+                    input.value = newValue;
+                    updatePlots();
+                });
+            });
+
+            updatePlots();
+        });
+    </script>
+</body>
+</html>
