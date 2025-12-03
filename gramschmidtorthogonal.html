@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="description" content="Gram-Schmidt Orthogonalization Calculator with Steps">
+  <meta name="keywords" content="Gram-Schmidt, Orthogonal Basis, Orthonormal Basis, Projections, Linear Algebra">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-5B8PRB2WZT');
+  </script>
+  <meta charset="UTF-8" />
+  <title>Gram-Schmidt Orthogonalization</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <style>
+    .katex-display { margin: 1em 0; overflow-x: auto; }
+    .latex { text-align: center; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="nav-container w-full fixed top-0 z-10 bg-white shadow-md">
+    <nav class="max-w-4xl mx-auto py-4">
+      <ul class="flex justify-center gap-8">
+        <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800 latex">Gram-Schmidt Orthogonalization</h2>
+    <p class="text-center text-gray-600 mb-6 latex">Enter matrix dimensions $m \times n$, generate input matrix $A$, fill values, and calculate orthogonal and orthonormal bases using the Gram-Schmidt process.<br>(Columns of $A$ are the vectors. If linearly dependent, a subset will be used)</p>
+    <div id="inputSection" class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+      <label for="rows" class="text-gray-700">Rows:</label>
+      <input type="number" id="rows" min="1" required class="w-12 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <label for="cols" class="text-gray-700">Columns:</label>
+      <input type="number" id="cols" min="1" required class="w-12 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+    </div>
+    <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+    <div class="flex justify-center mb-6 space-x-6">
+      <span class="text-gray-700">Display Values as:</span>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="fraction" checked class="mr-2">
+        <span>Fraction</span>
+      </label>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="decimal" class="mr-2">
+        <span>Decimal</span>
+      </label>
+    </div>
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Calculate</button>
+      <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+    </div>
+    <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+      © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: July 29, 2025
+    </div>
+  </div>
+  <script>
+    // Initialize KaTeX rendering after scripts are loaded
+    window.onload = function() {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) {
+          console.error("KaTeX rendering error:", err);
+        }
+      });
+    };
+    var currentDisplayMode = "fraction";
+    document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+      radio.addEventListener("change", function() {
+        currentDisplayMode = this.value;
+      });
+    });
+
+    // FRACTION CLASS
+    class Fraction {
+      constructor(numerator, denominator = 1) {
+        if (denominator === 0) throw new Error('Denominator cannot be zero');
+        const absNum = Math.abs(numerator);
+        const absDen = Math.abs(denominator);
+        const gcd = this.gcd(absNum, absDen);
+        this.numerator = (numerator < 0 ? -absNum : absNum) / gcd * Math.sign(denominator);
+        this.denominator = absDen / gcd;
+        if (this.denominator < 0) {
+          this.numerator = -this.numerator;
+          this.denominator = -this.denominator;
+        }
+      }
+      gcd(a, b) {
+        while (b !== 0) {
+          const t = b;
+          b = a % b;
+          a = t;
+        }
+        return a;
+      }
+      add(other) {
+        other = Fraction.from(other);
+        const commonDen = this.denominator * other.denominator;
+        const num1 = this.numerator * other.denominator;
+        const num2 = other.numerator * this.denominator;
+        return new Fraction(num1 + num2, commonDen);
+      }
+      subtract(other) {
+        other = Fraction.from(other);
+        const commonDen = this.denominator * other.denominator;
+        const num1 = this.numerator * other.denominator;
+        const num2 = other.numerator * this.denominator;
+        return new Fraction(num1 - num2, commonDen);
+      }
+      multiply(other) {
+        other = Fraction.from(other);
+        return new Fraction(this.numerator * other.numerator, this.denominator * other.denominator);
+      }
+      divide(other) {
+        other = Fraction.from(other);
+        if (other.numerator === 0) throw new Error('Division by zero');
+        return new Fraction(this.numerator * other.denominator, this.denominator * other.numerator);
+      }
+      toString() {
+        if (this.denominator === 1) return this.numerator.toString();
+        return this.numerator + '/' + this.denominator;
+      }
+      valueOf() {
+        return this.numerator / this.denominator;
+      }
+      static from(value) {
+        if (value instanceof Fraction) return value;
+        if (typeof value === 'number') return Fraction.fromDecimal(value);
+        return new Fraction(value);
+      }
+      static fromDecimal(decimal, maxDenominator = 1000) {
+        if (Number.isInteger(decimal)) return new Fraction(decimal);
+        let sign = decimal < 0 ? -1 : 1;
+        decimal = Math.abs(decimal);
+        let bestNum = 1, bestDen = 1, bestError = Math.abs(decimal - 1);
+        for (let den = 1; den <= maxDenominator; den++) {
+          let num = Math.round(decimal * den);
+          let error = Math.abs(decimal - num / den);
+          if (error < bestError) {
+            bestNum = num;
+            bestDen = den;
+            bestError = error;
+          }
+        }
+        return new Fraction(sign * bestNum, bestDen);
+      }
+    }
+
+    function gcd(a, b) {
+      a = Math.abs(a);
+      b = Math.abs(b);
+      while (b !== 0) {
+        const t = b;
+        b = a % b;
+        a = t;
+      }
+      return a;
+    }
+
+    function gcdMultiple(nums) {
+      if (nums.length === 0) return 1;
+      return nums.reduce((acc, num) => gcd(acc, num), nums[0]);
+    }
+
+    function lcm(a, b) {
+      if (a === 0 || b === 0) return 0;
+      return Math.abs(a * b) / gcd(a, b);
+    }
+
+    function lcmMultiple(nums) {
+      if (nums.length === 0) return 1;
+      return nums.reduce((acc, num) => lcm(acc, num), nums[0]);
+    }
+
+    function isPerfectSquare(n) {
+      if (n < 0) return false;
+      const sqrt = Math.sqrt(n);
+      return Number.isInteger(sqrt) && sqrt * sqrt === n;
+    }
+
+    function generateMatrix() {
+      var m = parseInt(document.getElementById("rows").value, 10);
+      var n = parseInt(document.getElementById("cols").value, 10);
+      if (isNaN(m) || isNaN(n) || m <= 0 || n <= 0) {
+        alert("Please enter valid positive integers for matrix dimensions.");
+        return;
+      }
+      var matrixDiv = document.getElementById("matrixInput");
+      matrixDiv.innerHTML = "";
+      var statementDiv = document.createElement("div");
+      statementDiv.className = "text-center mb-4";
+      var statement = document.createElement("div");
+      statement.className = "latex";
+      statement.textContent = `$$ \\text{Gram-Schmidt orthogonalization for } ${m} \\times ${n} \\text{ matrix } A $$`;
+      statementDiv.appendChild(statement);
+      matrixDiv.appendChild(statementDiv);
+      var aDiv = document.createElement("div");
+      aDiv.className = "flex flex-col items-center";
+      var aLabel = document.createElement("p");
+      aLabel.className = "text-center font-semibold latex";
+      aLabel.textContent = "Matrix $A$";
+      aDiv.appendChild(aLabel);
+      var aTable = document.createElement("table");
+      aTable.className = "border-collapse";
+      for (var i = 0; i < m; i++) {
+        var tr = document.createElement("tr");
+        for (var j = 0; j < n; j++) {
+          var td = document.createElement("td");
+          td.className = "p-1";
+          var input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell w-16 p-2 text-center border-2 border-gray-300 hover:border-blue-500 hover:border-4 rounded-md focus:outline-none";
+          input.id = "cell_" + i + "_" + j;
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        aTable.appendChild(tr);
+      }
+      aDiv.appendChild(aTable);
+      matrixDiv.appendChild(aDiv);
+      renderMathInElement(matrixDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) {
+          console.error("KaTeX rendering error in matrixInput:", err);
+        }
+      });
+    }
+
+    function clearAll() {
+      document.getElementById("rows").value = "";
+      document.getElementById("cols").value = "";
+      document.getElementById("matrixInput").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+      document.querySelector('input[value="fraction"]').checked = true;
+      currentDisplayMode = "fraction";
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) {
+          console.error("KaTeX rendering error in clearAll:", err);
+        }
+      });
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+    function parseFraction(str) {
+      str = str.trim();
+      if (str === "") return new Fraction(0);
+      // Try parsing as a decimal
+      if (str.match(/^-?\d*\.?\d+$/)) {
+        let num = parseFloat(str);
+        if (!isNaN(num)) {
+          return Fraction.fromDecimal(num);
+        }
+      }
+      // Try parsing as a fraction
+      if (str.includes('/')) {
+        let parts = str.split('/');
+        if (parts.length === 2) {
+          let numerator = parseInt(parts[0], 10);
+          let denominator = parseInt(parts[1], 10);
+          if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+            return new Fraction(numerator, denominator);
+          }
+        }
+      } else {
+        // Try parsing as an integer
+        let num = parseInt(str, 10);
+        if (!isNaN(num)) {
+          return new Fraction(num);
+        }
+      }
+      alert("Please enter valid integers, fractions, or decimals in all matrix cells.");
+      return null;
+    }
+
+    function readMatrix() {
+      var m = parseInt(document.getElementById("rows").value, 10);
+      var n = parseInt(document.getElementById("cols").value, 10);
+      if (isNaN(m) || isNaN(n) || m <= 0 || n <= 0) return null;
+      var matrix = [];
+      for (var i = 0; i < m; i++) {
+        var row = [];
+        for (var j = 0; j < n; j++) {
+          var cell = document.getElementById("cell_" + i + "_" + j);
+          var value = cell.value.trim();
+          var num = parseFraction(value);
+          if (num === null) return null;
+          row.push(num);
+        }
+        matrix.push(row);
+      }
+      return matrix;
+    }
+
+    function formatNumber(num, useDfrac = false, returnSign = false) {
+      if (num instanceof Fraction) {
+        if (currentDisplayMode === "decimal") {
+          return parseFloat(num.valueOf().toFixed(3)).toString();
+        } else {
+          if (returnSign) {
+            return num.numerator < 0 ? '-' : '';
+          }
+          if (num.numerator === 0) return '0';
+          const sign = num.numerator < 0 ? '-' : '';
+          const absNum = Math.abs(num.numerator);
+          if (num.denominator === 1) return `${sign}${absNum}`;
+          if (useDfrac) {
+            return `${sign}\\dfrac{${absNum}}{${num.denominator}}`;
+          }
+          return `${sign}${absNum}/${num.denominator}`;
+        }
+      } else {
+        const epsilon = 1e-10;
+        if (Math.abs(num - Math.round(num)) < epsilon) {
+          return Math.round(num).toString();
+        }
+        return parseFloat(num.toFixed(3)).toString();
+      }
+    }
+
+    function formatScalarForLatex(formatted) {
+      return formatted;
+    }
+
+    function vectorToLatex(vec, isNormalized = false, norm2 = null) {
+      const absNums = vec.map(f => Math.abs(f.numerator));
+      const vecGcd = gcdMultiple(absNums);
+      let adjustedVec = vec;
+      if (!isNormalized && vecGcd > 1) {
+        adjustedVec = vec.map(f => f.divide(new Fraction(vecGcd)));
+      }
+      let latex = "\\begin{bmatrix}\n";
+      latex += adjustedVec.map(function(num) {
+        const formatted = formatNumber(num, true);
+        return formatScalarForLatex(formatted);
+      }).join(" \\\\ \n");
+      latex += "\n\\end{bmatrix}";
+      if (isNormalized && vecGcd > 1) {
+        latex = `${formatNumber(new Fraction(vecGcd), true)} ${latex}`;
+      }
+      return latex;
+    }
+
+    function basisToLatex(basis, isOrthonormal = false) {
+      if (!basis.length) {
+        return "\\{ \\mathbf{0} \\}";
+      }
+      if (isOrthonormal) {
+        const vectorsLatex = basis.map(function(item, index) {
+          const vec = item.vector;
+          const absNums = vec.map(f => Math.abs(f.numerator));
+          const vecGcd = gcdMultiple(absNums);
+          let adjustedVec = vec;
+          let norm2Adjusted = item.norm2;
+          if (vecGcd > 1) {
+            adjustedVec = vec.map(f => f.divide(new Fraction(vecGcd)));
+            norm2Adjusted = item.norm2.divide(new Fraction(vecGcd * vecGcd));
+          }
+          const normNum = norm2Adjusted.numerator;
+          const normDen = norm2Adjusted.denominator;
+          const isSquareFraction = isPerfectSquare(normNum) && isPerfectSquare(normDen);
+          let scalarLatex;
+          if (isSquareFraction) {
+            let sqrtNum = Math.sqrt(normNum);
+            let sqrtDen = Math.sqrt(normDen);
+            const gcdSD = gcd(sqrtDen, sqrtNum);
+            sqrtNum /= gcdSD;
+            sqrtDen /= gcdSD;
+            if (sqrtDen === 1) {
+              scalarLatex = `\\dfrac{1}{${sqrtNum}}`;
+            } else {
+              scalarLatex = `\\dfrac{${sqrtDen}}{${sqrtNum}}`;
+            }
+          } else {
+            const normLatex = normDen === 1 ? normNum.toString() : `\\dfrac{${normNum}}{${normDen}}`;
+            scalarLatex = `\\dfrac{1}{\\sqrt{${normLatex}}}`;
+          }
+          return `${scalarLatex} ${vectorToLatex(adjustedVec, true, norm2Adjusted)}`;
+        }).join(",\\quad ");
+        return "\\left\\{ " + vectorsLatex + " \\right\\}";
+      } else {
+        const vectorsLatex = basis.map(function(item) {
+          return vectorToLatex(item);
+        }).join(",\\quad ");
+        return "\\left\\{ " + vectorsLatex + " \\right\\}";
+      }
+    }
+
+    function cloneMatrix(matrix) {
+      return matrix.map(row => row.slice());
+    }
+
+    function matrixToLatex(matrix) {
+      if (matrix.length === 0 || matrix[0].length === 0) return "";
+      const totalCols = matrix[0].length;
+      const colSpec = "c".repeat(totalCols);
+      let latex = "\\left[ \\begin{array}{" + colSpec + "}\n";
+      latex += matrix.map(row => row.map(num => {
+        const formatted = formatNumber(num, true);
+        return formatScalarForLatex(formatted);
+      }).join(" & ")).join(" \\\\ \n");
+      latex += "\n\\end{array} \\right]";
+      return latex;
+    }
+
+    function dot(u, v) {
+      let sum = new Fraction(0);
+      for (let i = 0; i < u.length; i++) {
+        sum = sum.add(u[i].multiply(v[i]));
+      }
+      return sum;
+    }
+
+    function scalarMult(s, v) {
+      return v.map(val => s.multiply(val));
+    }
+
+    function subtract(u, v) {
+      return u.map((val, idx) => val.subtract(v[idx]));
+    }
+
+    function matrixFromBasis(basis) {
+      if (basis.length === 0) return [];
+      const m = basis[0].length;
+      const k = basis.length;
+      const mat = Array(m).fill(null).map(() => Array(k).fill(null));
+      for (let i = 0; i < m; i++) {
+        for (let j = 0; j < k; j++) {
+          mat[i][j] = basis[j][i];
+        }
+      }
+      return mat;
+    }
+
+    function computeGramSchmidt(origMatrix) {
+      const m = origMatrix.length;
+      const n = origMatrix[0].length;
+      const vectors = Array(n).fill(null).map((_, j) => origMatrix.map(row => row[j]));
+      const steps = [];
+      steps.push({desc: "Initial Basis", basis: vectors, type: "textbasis"});
+      const orthogonal = [];
+      let dependent = false;
+      for (let j = 0; j < n; j++) {
+        let u = vectors[j].slice();
+        const u_index = orthogonal.length + 1;
+        let formula = `\\mathbf{u}_{${u_index}} = \\mathbf{v}_{${j + 1}}`;
+        let abstractRhs = `\\mathbf{v}_{${j + 1}}`;
+        let simplifiedRhs = `\\mathbf{v}_{${j + 1}}`;
+        const projTerms = [];
+        for (let i = 0; i < orthogonal.length; i++) {
+          const innerVU = dot(vectors[j], orthogonal[i]);
+          const innerUU = dot(orthogonal[i], orthogonal[i]);
+          if (innerUU.numerator === 0) continue;
+          const coef = innerVU.divide(innerUU);
+          if (coef.numerator === 0) continue;
+          const formattedCoef = formatNumber(coef, true);
+          projTerms.push(`\\mathrm{proj}_{\\mathbf{u}_{${i + 1}}} \\mathbf{v}_{${j + 1}}`);
+          // For simplified
+          const effectiveCoef = coef.multiply(new Fraction(-1));
+          const termSign = effectiveCoef.numerator >= 0 ? ' + ' : ' - ';
+          const absNumer = Math.abs(effectiveCoef.numerator);
+          const absEffective = new Fraction(absNumer, effectiveCoef.denominator);
+          const formattedAbsCoef = formatNumber(absEffective, true);
+          const uTerm = `${formattedAbsCoef} \\mathbf{u}_{${i + 1}}`;
+          simplifiedRhs += termSign + uTerm;
+          u = subtract(u, scalarMult(coef, orthogonal[i]));
+        }
+        const norm2U = dot(u, u);
+        if (norm2U.numerator === 0) {
+          steps.push({ desc: "Vector ", formula: `\\mathbf{v}_{${j + 1}}`, suffix: " is linearly dependent. Skipping.", type: "text" });
+          dependent = true;
+          continue;
+        }
+        const dens = u.map(frac => frac.denominator);
+        const lcm_den = lcmMultiple(dens);
+        const scale = new Fraction(lcm_den);
+        u = u.map(frac => frac.multiply(scale));
+        const absNums = u.map(f => Math.abs(f.numerator));
+        const vecGcd = gcdMultiple(absNums);
+        if (vecGcd > 1) {
+          u = u.map(f => f.divide(new Fraction(vecGcd)));
+        }
+        const projAdd = projTerms.map(pt => ` - ${pt}`).join('');
+        abstractRhs += projAdd;
+        formula = `\\mathbf{u}_{${u_index}} = ` + abstractRhs;
+        if (projTerms.length > 0) {
+          formula += ` = ` + simplifiedRhs;
+        }
+        steps.push({desc: formula, type: "latex"});
+        steps.push({desc: `\\mathbf{u}_{${u_index}} = `, uvec: u, type: "vec"});
+        orthogonal.push(u);
+      }
+      steps.push({desc: "Orthogonal Basis", basis: orthogonal, type: "textbasis"});
+      const orthonormal = orthogonal.map(u => ({ vector: u, norm2: dot(u, u) }));
+      steps.push({desc: "Orthonormal Basis", basis: orthonormal, type: "textorthonormal"});
+      return { steps, dependent };
+    }
+
+    function renderSteps(steps, dependent) {
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = "";
+      const basisContainer = document.createElement("div");
+      basisContainer.className = "flex flex-row mt-6 gap-4";
+      const initialDiv = document.createElement("div");
+      initialDiv.className = "w-1/2 pr-4";
+      const initialTitle = document.createElement("h3");
+      initialTitle.className = "text-lg font-semibold text-gray-800 mb-2";
+      initialTitle.textContent = steps[0].desc;
+      initialDiv.appendChild(initialTitle);
+      const initialMath = document.createElement("div");
+      initialMath.className = "latex mb-4";
+      const numVectors = steps[0].basis.length;
+      const vectorLabels = numVectors > 0 ? `\\{ ${Array.from({length: numVectors}, (_, i) => `\\mathbf{v}_{${i+1}}`).join(", ")} \\} = ` : "";
+      initialMath.textContent = "$$" + vectorLabels + basisToLatex(steps[0].basis) + "$$";
+      initialDiv.appendChild(initialMath);
+      basisContainer.appendChild(initialDiv);
+      const orthonormalStep = steps.find(step => step.type === "textorthonormal");
+      if (orthonormalStep) {
+        const orthonormalDiv = document.createElement("div");
+        orthonormalDiv.className = "w-1/2 pl-4";
+        const orthonormalTitle = document.createElement("h3");
+        orthonormalTitle.className = "text-lg font-semibold text-gray-800 mb-2";
+        orthonormalTitle.textContent = orthonormalStep.desc;
+        orthonormalDiv.appendChild(orthonormalTitle);
+        const orthonormalMath = document.createElement("div");
+        orthonormalMath.className = "latex mb-4";
+        orthonormalMath.textContent = "$$" + basisToLatex(orthonormalStep.basis, true) + "$$";
+        orthonormalDiv.appendChild(orthonormalMath);
+        basisContainer.appendChild(orthonormalDiv);
+      }
+      resultDiv.appendChild(basisContainer);
+      if (dependent) {
+        const note = document.createElement("p");
+        note.className = "text-red-700 font-semibold mb-4 text-center";
+        note.textContent = "Note: Some vectors were linearly dependent; a subset was used for the basis.";
+        resultDiv.appendChild(note);
+      }
+      const stepsHeader = document.createElement("h3");
+      stepsHeader.className = "text-lg font-semibold text-gray-800 mb-2 mt-6";
+      stepsHeader.textContent = "Transformation Steps:";
+      resultDiv.appendChild(stepsHeader);
+      for (let i = 1; i < steps.length; i++) {
+        const step = steps[i];
+        if (step.type === "textorthonormal") continue;
+        const stepDiv = document.createElement("div");
+        stepDiv.className = "mt-6";
+        if (step.type === "latex") {
+          const description = document.createElement("div");
+          description.className = "latex mb-2";
+          description.textContent = "$$" + step.desc + "$$";
+          stepDiv.appendChild(description);
+        } else if (step.type === "vec") {
+          const vecDiv = document.createElement("div");
+          vecDiv.className = "latex mb-2";
+          vecDiv.textContent = "$$" + step.desc + vectorToLatex(step.uvec) + "$$";
+          stepDiv.appendChild(vecDiv);
+        } else if (step.type === "textbasis") {
+          const desc = document.createElement("h4");
+          desc.className = "text-gray-700 font-semibold mb-2";
+          desc.textContent = step.desc;
+          stepDiv.appendChild(desc);
+          const lm = document.createElement("div");
+          lm.className = "latex mb-2";
+          lm.textContent = "$$" + basisToLatex(step.basis) + "$$";
+          stepDiv.appendChild(lm);
+        } else if (step.type === "text") {
+          const description = document.createElement("div");
+          description.className = "latex mb-2 text-red-700 font-semibold";
+          description.innerHTML = `${step.desc}<span class="katex-inline">\\(${step.formula}\\)</span>${step.suffix}`;
+          stepDiv.appendChild(description);
+        }
+        resultDiv.appendChild(stepDiv);
+      }
+      renderMathInElement(resultDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) {
+          console.error("KaTeX rendering error in result:", err);
+        }
+      });
+    }
+
+    document.getElementById("calcBtn").addEventListener("click", function() {
+      const matrix = readMatrix();
+      if (matrix !== null) {
+        const computation = computeGramSchmidt(matrix);
+        renderSteps(computation.steps, computation.dependent);
+      }
+    });
+  </script>
+</body>
+</html>
