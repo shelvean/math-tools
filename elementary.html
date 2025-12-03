@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="description" content="REF Calculator with Steps">
+    <meta name="keywords" content="Gaussian Elimination Calculator, REF, Row Echelon, Elementary Matrices, Row Reduction by Elementary Matrices, Compute REF online step by step, Calculate REF with steps, Matrices">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-5B8PRB2WZT');
+    </script>
+    <meta charset="UTF-8" />
+    <title>Row Reduction by Elementary Matrices</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+        .katex-display { margin: 1em 0; overflow-x: auto; text-align: center; }
+        .latex { text-align: center; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="nav-container w-full fixed top-0 z-10 bg-white shadow-md">
+        <nav class="max-w-4xl mx-auto py-4">
+            <ul class="flex justify-center gap-8">
+                <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+                <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+                <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+                <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+            </ul>
+        </nav>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+        <h2 class="text-2xl font-bold mb-4 text-center text-gray-800 latex">Row Reduction by Elementary Matrices</h2>
+        <p class="text-center text-gray-600 mb-6 latex">Enter matrix dimensions below, generate the input matrix, fill in the values, and then calculate the REF.<br>(Note: Elementary matrix transformations are applied to reduce the matrix to row echelon form.)</p>
+        <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+            <span class="text-gray-700">Rows:</span>
+            <input type="number" id="rows" min="1" required class="w-12 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span class="text-gray-700">Columns:</span>
+            <input type="number" id="cols" min="1" required class="w-12 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span class="text-gray-700">Normalize Pivots:</span>
+            <select id="normalizePivots" class="w-20 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>
+            <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+        </div>
+        <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+        <div class="flex justify-center mb-6 space-x-6">
+            <span class="text-gray-700">Display Values as:</span>
+            <label class="flex items-center">
+                <input type="radio" name="displayMode" value="fraction" checked class="mr-2">
+                <span>Fraction</span>
+            </label>
+            <label class="flex items-center">
+                <input type="radio" name="displayMode" value="decimal" class="mr-2">
+                <span>Decimal</span>
+            </label>
+        </div>
+        <div class="flex justify-center space-x-4 mb-6">
+            <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Calculate REF</button>
+            <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+        </div>
+        <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+        <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+            © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: August 10, 2025
+        </div>
+    </div>
+    <script>
+        // Initialize KaTeX rendering after scripts are loaded
+        window.onload = function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false,
+                errorCallback: function(err) {
+                    console.error("KaTeX rendering error:", err);
+                }
+            });
+        };
+
+        var currentDisplayMode = "fraction";
+        document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+            radio.addEventListener("change", function () {
+                currentDisplayMode = this.value;
+            });
+        });
+
+        function generateMatrix() {
+            var rows = parseInt(document.getElementById("rows").value, 10);
+            var cols = parseInt(document.getElementById("cols").value, 10);
+            if (isNaN(rows) || isNaN(cols) || rows <= 0 || cols <= 0) {
+                alert("Please enter valid positive numbers for both rows and columns.");
+                return;
+            }
+            var matrixDiv = document.getElementById("matrixInput");
+            matrixDiv.innerHTML = "";
+            var statementDiv = document.createElement("div");
+            statementDiv.className = "text-center mb-4";
+            var statement = document.createElement("div");
+            statement.className = "latex";
+            statement.textContent = `$$ \\text{Compute the REF of } ${rows} \\times ${cols} \\text{ matrix } A $$`;
+            statementDiv.appendChild(statement);
+            matrixDiv.appendChild(statementDiv);
+            var aDiv = document.createElement("div");
+            aDiv.className = "flex flex-col items-center";
+            var aLabel = document.createElement("p");
+            aLabel.className = "text-center font-semibold latex";
+            aLabel.textContent = "Matrix $A$";
+            aDiv.appendChild(aLabel);
+            var aTable = document.createElement("table");
+            aTable.className = "border-collapse";
+            for (var i = 0; i < rows; i++) {
+                var tr = document.createElement("tr");
+                for (var j = 0; j < cols; j++) {
+                    var td = document.createElement("td");
+                    td.className = "p-1";
+                    var input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "matrix-cell w-16 p-2 text-center border-2 border-gray-300 hover:border-blue-500 hover:border-4 rounded-md focus:outline-none";
+                    input.id = "cell_" + i + "_" + j;
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                aTable.appendChild(tr);
+            }
+            aDiv.appendChild(aTable);
+            matrixDiv.appendChild(aDiv);
+            renderMathInElement(matrixDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false,
+                errorCallback: function(err) {
+                    console.error("KaTeX rendering error in matrixInput:", err);
+                }
+            });
+        }
+
+        function clearAll() {
+            document.getElementById("rows").value = "";
+            document.getElementById("cols").value = "";
+            document.getElementById("matrixInput").innerHTML = "";
+            document.getElementById("result").innerHTML = "";
+            document.getElementById("normalizePivots").value = "yes";
+            document.querySelector('input[value="fraction"]').checked = true;
+            currentDisplayMode = "fraction";
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false,
+                errorCallback: function(err) {
+                    console.error("KaTeX rendering error in clearAll:", err);
+                }
+            });
+        }
+        document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+        function parseFraction(str) {
+            str = str.trim();
+            if (str.includes('/')) {
+                let parts = str.split('/');
+                if (parts.length === 2) {
+                    let numerator = parseFloat(parts[0]);
+                    let denominator = parseFloat(parts[1]);
+                    if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+                        return numerator / denominator;
+                    }
+                }
+            }
+            return parseFloat(str);
+        }
+
+        function readMatrix() {
+            var rows = parseInt(document.getElementById("rows").value, 10);
+            var cols = parseInt(document.getElementById("cols").value, 10);
+            if (isNaN(rows) || isNaN(cols) || rows <= 0 || cols <= 0) {
+                return null;
+            }
+            var matrix = [];
+            for (var i = 0; i < rows; i++) {
+                var row = [];
+                for (var j = 0; j < cols; j++) {
+                    var cell = document.getElementById("cell_" + i + "_" + j);
+                    var value = cell.value.trim();
+                    var num;
+                    if (value === "") {
+                        num = 0; // Treat empty input as zero
+                    } else {
+                        num = parseFraction(value);
+                        if (isNaN(num)) {
+                            alert("Please enter valid numbers or fractions in all non-empty matrix cells.");
+                            return null;
+                        }
+                    }
+                    row.push(num);
+                }
+                matrix.push(row);
+            }
+            return matrix;
+        }
+
+        function toFraction(x, tolerance, maxIterations) {
+            tolerance = tolerance || 1e-6;
+            maxIterations = maxIterations || 20;
+            if (x === 0) return "0";
+            var sign = x < 0 ? "-" : "";
+            x = Math.abs(x);
+            var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+            for (var i = 0; i < maxIterations; i++) {
+                var a = Math.floor(b);
+                var h = a * h1 + h2;
+                var k = a * k1 + k2;
+                if (Math.abs(x - h / k) < tolerance) {
+                    return sign + h + "/" + k;
+                }
+                h2 = h1; h1 = h;
+                k2 = k1; k1 = k;
+                b = 1 / (b - a);
+            }
+            return sign + h1 + "/" + k1;
+        }
+
+        function formatNumber(num) {
+            var epsilon = 1e-10;
+            if (Math.abs(num - Math.round(num)) < epsilon) {
+                return Math.round(num).toString();
+            }
+            if (currentDisplayMode === "fraction") {
+                return toFraction(num);
+            }
+            return parseFloat(num.toFixed(3)).toString();
+        }
+
+        function formatScalarForLatex(formatted, isOperation) {
+            if (isOperation && formatted.includes('/')) {
+                let parts = formatted.split('/');
+                let numerator = parts[0].startsWith('-') ? parts[0].slice(1) : parts[0];
+                let denominator = parts[1];
+                let sign = parts[0].startsWith('-') ? "-" : "";
+                return `${sign}\\dfrac{${numerator}}{${denominator}}`;
+            }
+            return formatted;
+        }
+
+        function cloneMatrix(matrix) {
+            return matrix.map(function (row) { return row.slice(); });
+        }
+
+        function matrixToLatex(matrix) {
+            if (!matrix || matrix.length === 0 || !matrix[0] || matrix[0].length === 0) return "";
+            var cols = matrix[0].length;
+            var colSpec = "";
+            for (var i = 0; i < cols; i++) {
+                colSpec += "c";
+            }
+            var latex = "\\left[ \\begin{array}{" + colSpec + "} ";
+            latex += matrix
+                .map(function (row) {
+                    return row.map(function(num) {
+                        var formatted = formatNumber(num);
+                        return formatScalarForLatex(formatted, false);
+                    }).join(" & ");
+                })
+                .join(" \\\\ ");
+            latex += " \\end{array} \\right]";
+            return latex;
+        }
+
+        function identityMatrix(m) {
+            var I = [];
+            for (var i = 0; i < m; i++) {
+                I[i] = [];
+                for (var j = 0; j < m; j++) {
+                    I[i][j] = (i === j ? 1 : 0);
+                }
+            }
+            return I;
+        }
+
+        function elementarySwap(m, i, j) {
+            var E = identityMatrix(m);
+            var temp = E[i];
+            E[i] = E[j];
+            E[j] = temp;
+            return E;
+        }
+
+        function elementaryScale(m, i, s) {
+            var E = identityMatrix(m);
+            E[i][i] = s;
+            return E;
+        }
+
+        function elementaryAdd(m, i, j, s) {
+            var E = identityMatrix(m);
+            E[i][j] = s;
+            return E;
+        }
+
+        function matrixMultiply(A, B) {
+            var m = A.length;
+            var n = B[0].length;
+            var p = B.length;
+            var C = [];
+            for (var i = 0; i < m; i++) {
+                C[i] = [];
+                for (var j = 0; j < n; j++) {
+                    var sum = 0;
+                    for (var k = 0; k < p; k++) {
+                        sum += A[i][k] * B[k][j];
+                    }
+                    C[i][j] = sum;
+                }
+            }
+            return C;
+        }
+
+        function inverseElementaryMatrix(E) {
+            var m = E.length;
+            var E_inv = identityMatrix(m);
+            // Check if it's a swap matrix
+            for (var i = 0; i < m; i++) {
+                if (E[i][i] !== 1 && E[i].some((val, j) => j !== i && val !== 0)) {
+                    for (var j = 0; j < m; j++) {
+                        if (E[i][j] === 1 && i !== j) {
+                            E_inv[i][i] = 0;
+                            E_inv[j][j] = 0;
+                            E_inv[i][j] = 1;
+                            E_inv[j][i] = 1;
+                            return E_inv;
+                        }
+                    }
+                }
+            }
+            // Check if it's a scale matrix
+            for (var i = 0; i < m; i++) {
+                if (E[i][i] !== 1 && E[i][i] !== 0) {
+                    E_inv[i][i] = 1 / E[i][i];
+                    return E_inv;
+                }
+            }
+            // Check if it's an add matrix
+            for (var i = 0; i < m; i++) {
+                for (var j = 0; j < m; j++) {
+                    if (i !== j && E[i][j] !== 0) {
+                        E_inv[i][j] = -E[i][j];
+                        return E_inv;
+                    }
+                }
+            }
+            return E; // If identity matrix
+        }
+
+        function computeREF(origMatrix, normalize) {
+            if (!origMatrix || !origMatrix.length || !origMatrix[0]) {
+                return { steps: [], lFactors: [] };
+            }
+            var matrix = cloneMatrix(origMatrix);
+            var m = matrix.length;
+            var n = matrix[0].length;
+            var steps = [];
+            var lFactors = identityMatrix(m);
+            steps.push({ desc: "Initial Matrix", matrix: cloneMatrix(matrix) });
+            var lead = 0;
+            for (var r = 0; r < m; r++) {
+                if (lead >= n) break;
+                var i = r;
+                while (Math.abs(matrix[i][lead]) < 1e-10) {
+                    i++;
+                    if (i === m) {
+                        i = r;
+                        lead++;
+                        if (lead === n) break;
+                    }
+                }
+                if (lead === n) break;
+                if (i !== r) {
+                    var formattedSwap = `$R_${r + 1} \\leftrightarrow R_${i + 1}$`;
+                    var E_swap = elementarySwap(m, r, i);
+                    var temp = matrix[r];
+                    matrix[r] = matrix[i];
+                    matrix[i] = temp;
+                    var tempL = lFactors[r];
+                    lFactors[r] = lFactors[i];
+                    lFactors[i] = tempL;
+                    steps.push({ E: E_swap, desc: formattedSwap, matrix: cloneMatrix(matrix) });
+                }
+                var pivotValue = matrix[r][lead];
+                if (Math.abs(pivotValue) < 1e-10) {
+                    lead++;
+                    continue;
+                }
+                if (normalize && Math.abs(pivotValue - 1) > 1e-10) {
+                    var reciprocal = 1 / pivotValue;
+                    var formattedReciprocal = formatNumber(reciprocal);
+                    var latexScalar = formatScalarForLatex(formattedReciprocal, true);
+                    var formattedScale = `$${latexScalar} R_${r + 1} \\to R_${r + 1}$`;
+                    var E_scale = elementaryScale(m, r, reciprocal);
+                    for (var j = 0; j < n; j++) {
+                        matrix[r][j] *= reciprocal;
+                    }
+                    lFactors[r][r] = pivotValue;
+                    steps.push({ E: E_scale, desc: formattedScale, matrix: cloneMatrix(matrix) });
+                    pivotValue = 1;
+                }
+                for (var i = r + 1; i < m; i++) {
+                    if (Math.abs(matrix[i][lead]) > 1e-10) {
+                        var factor = matrix[i][lead] / pivotValue;
+                        var formattedFactor = formatNumber(factor);
+                        var latexFactor = formatScalarForLatex(formattedFactor, true);
+                        var absFactor = Math.abs(factor);
+                        var formattedAbsFactor = formatNumber(absFactor);
+                        var latexAbsFactor = formatScalarForLatex(formattedAbsFactor, true);
+                        var msg = factor >= 0 ? `$R_${i + 1} - ${latexFactor} R_${r + 1} \\to R_${i + 1}$` : `$R_${i + 1} + ${latexAbsFactor} R_${r + 1} \\to R_${i + 1}$`;
+                        var E_add = elementaryAdd(m, i, r, -factor);
+                        lFactors[i][r] = factor;
+                        for (var j = 0; j < n; j++) {
+                            matrix[i][j] -= factor * matrix[r][j];
+                        }
+                        steps.push({ E: E_add, desc: msg, matrix: cloneMatrix(matrix) });
+                    }
+                }
+                lead++;
+            }
+            steps.push({ desc: "Final REF Matrix", matrix: cloneMatrix(matrix) });
+            return { steps: steps, lFactors: lFactors };
+        }
+
+        function renderSteps(computation) {
+            var resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = "";
+            if (!computation || !computation.steps || computation.steps.length === 0) {
+                resultDiv.textContent = "No steps to display.";
+                return;
+            }
+            var steps = computation.steps;
+            var lFactors = computation.lFactors || identityMatrix(steps[0].matrix ? steps[0].matrix.length : 0);
+            // Initial and Final Matrices side by side
+            var matricesDiv = document.createElement("div");
+            matricesDiv.className = "mb-6 border-b pb-4 flex justify-between";
+            // Initial Matrix
+            var initialDiv = document.createElement("div");
+            initialDiv.className = "flex flex-col items-center w-1/2 pr-4";
+            var initialTitle = document.createElement("p");
+            initialTitle.className = "text-gray-700 font-semibold text-center";
+            initialTitle.textContent = "Initial Matrix A";
+            initialDiv.appendChild(initialTitle);
+            var initialMath = document.createElement("div");
+            initialMath.className = "latex text-center";
+            initialMath.textContent = "$$" + matrixToLatex(steps[0].matrix) + "$$";
+            initialDiv.appendChild(initialMath);
+            matricesDiv.appendChild(initialDiv);
+            // Final Matrix
+            var finalDiv = document.createElement("div");
+            finalDiv.className = "flex flex-col items-center w-1/2 pl-4";
+            var finalTitle = document.createElement("p");
+            finalTitle.className = "text-gray-700 font-semibold text-center";
+            finalTitle.textContent = "Final REF Matrix U";
+            finalDiv.appendChild(finalTitle);
+            var finalMath = document.createElement("div");
+            finalMath.className = "latex text-center";
+            finalMath.textContent = "$$" + matrixToLatex(steps[steps.length - 1].matrix) + "$$";
+            finalDiv.appendChild(finalMath);
+            matricesDiv.appendChild(finalDiv);
+            resultDiv.appendChild(matricesDiv);
+            // LU Factorization A = L U
+            var elementaryMatrices = [];
+            for (var idx = 0; idx < steps.length - 1; idx++) {
+                if (steps[idx + 1].E) {
+                    elementaryMatrices.push(steps[idx + 1].E);
+                }
+            }
+            var m = steps[0].matrix ? steps[0].matrix.length : 0;
+            var M = elementaryMatrices.length > 0 ? elementaryMatrices.reduceRight(function(acc, curr) { return matrixMultiply(curr, acc); }, identityMatrix(m)) : identityMatrix(m);
+            var L = lFactors;
+            var luDiv = document.createElement("div");
+            luDiv.className = "mb-6 border-b pb-4";
+            var luTitle = document.createElement("p");
+            luTitle.className = "text-gray-700 font-semibold text-center";
+            luTitle.textContent = "LU Factorization A = L U";
+            luDiv.appendChild(luTitle);
+            var luMath = document.createElement("div");
+            luMath.className = "latex text-center";
+            luMath.textContent = "$$" + matrixToLatex(steps[0].matrix) + " = " + matrixToLatex(L) + " \\cdot " + matrixToLatex(steps[steps.length - 1].matrix) + "$$";
+            luDiv.appendChild(luMath);
+            resultDiv.appendChild(luDiv);
+            // Transformation Steps
+            var stepsHeader = document.createElement("h3");
+            stepsHeader.className = "text-lg font-semibold text-gray-800 mb-4 text-center";
+            stepsHeader.textContent = "Transformation Steps";
+            resultDiv.appendChild(stepsHeader);
+            for (var idx = 0; idx < steps.length - 2; idx++) { // Exclude final step
+                var step = steps[idx + 1];
+                var stepDiv = document.createElement("div");
+                stepDiv.className = "mb-6 border-b pb-4";
+                var operation = document.createElement("span");
+                operation.className = "latex text-center";
+                operation.style.display = "block";
+                operation.textContent = step.desc;
+                stepDiv.appendChild(operation);
+                var eMath = document.createElement("div");
+                eMath.className = "latex text-center";
+                eMath.textContent = "$$ E_{" + (idx + 1) + "} = " + matrixToLatex(step.E) + "$$";
+                stepDiv.appendChild(eMath);
+                var productLatex = "";
+                for (var k = idx; k >= 0; k--) {
+                    productLatex += "E_{" + (k + 1) + "} ";
+                }
+                productLatex += "A = ";
+                var productMath = document.createElement("div");
+                productMath.className = "latex text-center";
+                productMath.textContent = "$$" + productLatex + matrixToLatex(step.matrix) + "$$";
+                stepDiv.appendChild(productMath);
+                resultDiv.appendChild(stepDiv);
+            }
+            // Matrices M and L
+            var mlDiv = document.createElement("div");
+            mlDiv.className = "mb-6 border-b pb-4";
+            var mlTitle = document.createElement("p");
+            mlTitle.className = "text-gray-700 font-semibold text-center";
+            mlTitle.textContent = "The Matrices M and L are";
+            mlDiv.appendChild(mlTitle);
+            var mlMath = document.createElement("div");
+            mlMath.className = "latex text-center";
+            var k = elementaryMatrices.length;
+            var mProductLatex = k > 0 ? "M = " : "M = I";
+            for (var i = k; i >= 1; i--) {
+                mProductLatex += "E_{" + i + "}";
+                if (i > 1) mProductLatex += " ";
+            }
+            if (k > 0) {
+                mProductLatex += " = " + matrixToLatex(M);
+            } else {
+                mProductLatex += " = " + matrixToLatex(identityMatrix(m));
+            }
+            mProductLatex += ", \\quad L = M^{-1} = ";
+            for (var i = 1; i <= k; i++) {
+                mProductLatex += "E_{" + i + "}^{-1}";
+                if (i < k) mProductLatex += " ";
+            }
+            mProductLatex += " = " + matrixToLatex(L);
+            mlMath.textContent = "$$" + mProductLatex + "$$";
+            mlDiv.appendChild(mlMath);
+            resultDiv.appendChild(mlDiv);
+            renderMathInElement(resultDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false,
+                errorCallback: function(err) {
+                    console.error("KaTeX rendering error in result:", err);
+                }
+            });
+        }
+
+        document.getElementById("calcBtn").addEventListener("click", function () {
+            var matrix = readMatrix();
+            if (matrix === null) {
+                document.getElementById("result").innerHTML = "<p class='text-red-500 text-center'>Invalid matrix input. Please check your entries.</p>";
+                return;
+            }
+            var normalize = document.getElementById("normalizePivots").value === "yes";
+            var computation = computeREF(matrix, normalize);
+            renderSteps(computation);
+        });
+    </script>
+</body>
+</html>
