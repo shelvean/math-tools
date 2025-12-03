@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Fourier Series Approximation Animation Simulation">
+  <meta name="keywords" content="Fourier Series, Approximation, Animation, Simulation">
+  <title>Fourier Series Animation</title>
+  <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.7.0/math.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; color: #333; }
+    .container { max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,.1); border-radius: 8px; }
+    h1 { text-align: center; color: #2c3e50; margin-bottom: 20px; font-size: 2rem; font-bold}
+    .row { display: flex; justify-content: space-between; margin-bottom: 20px; }
+    .input-group { flex: 1; margin-right: 10px; }
+    .input-group:last-child { margin-right: 0; }
+    .input-group label { display: block; font-weight: 700; margin-bottom: 5px; color: #555; }
+    .input-group input, .input-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
+    .note { font-size: 14px; color: #777; margin-left: 10px; }
+    .button-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+    button { padding: 8px 16px; background-color: #3498db; color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; transition: background-color .3s ease; }
+    button:hover { background-color: #2980b9; }
+    #stopButton { background-color: #ff0000; }
+    #stopButton:hover { background-color: #cc0000; }
+    #plot { width: 100%; height: 400px; margin-top: 20px; border-radius: 8px; overflow: hidden; }
+    .footer { text-align: center; margin-top: 20px; font-size: 14px; color: #777; }
+    .katex-display { margin: 0; padding: 20px 0; text-align: center; background-color: #f8f9fa; border-radius: 4px; }
+    .katex-error { color: #dc3545; padding: 10px; }
+    @media (max-width: 768px) {
+      .row { flex-direction: column; }
+      .input-group { margin-right: 0; margin-bottom: 20px; }
+      .input-group:last-child { margin-bottom: 0; }
+      h1 { font-size: 1.5rem; }
+      .container { padding: 15px; }
+      #plot { height: 450px; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <nav class="fixed top-0 left-0 w-full z-10 bg-white shadow-md">
+    <div class="max-w-4xl mx-auto px-4 py-2">
+      <ul class="flex justify-center space-x-4">
+        <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+		<li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+
+      </ul>
+    </div>
+  </nav>
+  <div class="container">
+    <h1>Fourier Series Approximation</h1>
+    <div class="row">
+      <div class="input-group">
+        <label for="exampleSelect">Example Functions:</label>
+        <select id="exampleSelect" onchange="selectExample(this.value)">
+          <option value="">Select an example...</option>
+          <option value="square(x)">square</option>
+          <option value="sawtooth(x)">sawtooth</option>
+          <option value="exp(-x^2)*cos(5*x)*abs(x)">exp(-x^2)*cos(5*x)*abs(x)</option>
+          <option value="abs(x) + sin(3*x)">abs(x) + sin(3*x)</option>
+          <option value="abs(x+3)+3*sin(5*x) if x<0; -abs(x+3)-3*sin(2*x)-5 if x>=0">abs(x+3)+3*sin(5*x) if x<0; -abs(x+3)-3*sin(2*x)-5 if x>=0</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label for="functionInput">Function:</label>
+        <input type="text" id="functionInput" value="abs(x+3)+3*sin(5*x) if x<0; -abs(x+3)-3*sin(2*x)-5 if x>=0">
+        <span class="note">e.g., (x+2)^2 if x<0; 8-x if x>=0 or abs(x+3)+sin(5*x)</span>
+      </div>
+    </div>
+    <div class="row">
+      <div class="input-group">
+        <label for="xMin">Domain of x (Min):</label>
+        <input type="number" id="xMin" value="-3">
+      </div>
+      <div class="input-group">
+        <label for="xMax">Domain of x (Max):</label>
+        <input type="number" id="xMax" value="3">
+      </div>
+    </div>
+    <div class="row">
+      <div class="input-group">
+        <label for="nInput">Number of Fourier Modes (n):</label>
+        <input type="number" id="nInput" value="35" min="0">
+      </div>
+      <div class="input-group">
+        <label for="speedInput">Animation Speed (ms per frame):</label>
+        <input type="number" id="speedInput" value="100" min="50" max="2000" step="50">
+      </div>
+    </div>
+    <div class="button-container">
+      <button onclick="startAnimation()">Start</button>
+      <button id="stopButton" onclick="stopAnimation()">Stop</button>
+    </div>
+    <div id="katex-render"></div>
+    <div id="plot"></div>
+    <div class="footer">
+      <p>© <span id="copyright-year"></span> Shelvean Kapita: kapita@tamu.edu | Last modified: March 5, 2025</p>
+    </div>
+  </div>
+  <script>
+    let animationInterval;
+    let parsedFunction = null;
+
+    // Custom functions
+    const sawtooth = x => 2 * (x / (2 * Math.PI) - Math.floor(0.5 + x / (2 * Math.PI)));
+    const square = x => Math.sin(x) >= 0 ? 1 : -1;
+
+    // Parse piecewise function
+    function parsePiecewise(func) {
+      if (!func.includes('if') || !func.includes(';')) return null;
+      const parts = func.split(';').map(part => part.trim());
+      if (parts.length !== 2) return null;
+      const [part1, part2] = parts;
+      const [expr1, cond1] = part1.split('if').map(s => s.trim());
+      const [expr2, cond2] = part2.split('if').map(s => s.trim());
+      const conditions = [
+        { regex: /^x<([\d.-]+)$/, operator: '<' },
+        { regex: /^x<=([\d.-]+)$/, operator: '<=' },
+        { regex: /^x>([\d.-]+)$/, operator: '>' },
+        { regex: /^x>=([\d.-]+)$/, operator: '>=' }
+      ];
+      let condition1, condition2, a1, a2;
+      for (const { regex, operator } of conditions) {
+        const match1 = cond1.match(regex);
+        const match2 = cond2.match(regex);
+        if (match1) { condition1 = operator; a1 = parseFloat(match1[1]); }
+        if (match2) { condition2 = operator; a2 = parseFloat(match2[1]); }
+      }
+      if (!condition1 || !condition2 || isNaN(a1) || isNaN(a2) || a1 !== a2) return null;
+      const validPairs = { '<': '>=', '<=': '>', '>': '<=', '>=': '<' };
+      if (validPairs[condition1] !== condition2) return null;
+      return { expr1, expr2, a: a1, condition1 };
+    }
+
+    // Evaluate function
+    function evaluateFunction(func, x) {
+      try {
+        const piecewise = parsePiecewise(func);
+        if (piecewise) {
+          const { expr1, expr2, a, condition1 } = piecewise;
+          const scope = { x };
+          switch (condition1) {
+            case '<': return x < a ? math.evaluate(expr1, scope) : math.evaluate(expr2, scope);
+            case '<=': return x <= a ? math.evaluate(expr1, scope) : math.evaluate(expr2, scope);
+            case '>': return x > a ? math.evaluate(expr1, scope) : math.evaluate(expr2, scope);
+            case '>=': return x >= a ? math.evaluate(expr1, scope) : math.evaluate(expr2, scope);
+          }
+        }
+        if (func === 'sawtooth(x)') return sawtooth(x);
+        if (func === 'square(x)') return square(x);
+        return math.evaluate(func, { x });
+      } catch (e) {
+        console.error('Function evaluation error:', e);
+        return NaN;
+      }
+    }
+
+    // Convert function to LaTeX
+    function toLaTeX(func) {
+      const piecewise = parsePiecewise(func);
+      if (piecewise) {
+        const { expr1, expr2, a, condition1 } = piecewise;
+        const conditionSymbols = { '<': '<', '<=': '\\leq', '>': '>', '>=': '\\geq' };
+        const condition2 = { '<': '\\geq', '<=': '>', '>': '\\leq', '>=': '<' }[condition1];
+        return `\\begin{cases} ${toLaTeXSingle(expr1)} & \\text{if } x ${conditionSymbols[condition1]} ${a} \\\\ ${toLaTeXSingle(expr2)} & \\text{if } x ${condition2} ${a} \\end{cases}`;
+      }
+      return toLaTeXSingle(func);
+    }
+
+    function toLaTeXSingle(func) {
+      return func
+        .replace(/exp/g, '\\exp')
+        .replace(/(\w+)\^\(([^)]+)\)/g, '$1^{($2)}')
+        .replace(/(\w+)\^(\d+)/g, '$1^{$2}')
+        .replace(/sin/g, '\\sin')
+        .replace(/cos/g, '\\cos')
+        .replace(/abs\(([^)]+)\)/g, '\\left| $1 \\right|')
+        .replace(/(\d)(?=[a-zA-Z(])/g, '$1\\cdot ')
+        .replace(/\*/g, '\\cdot ')
+        .replace(/sawtooth\(x\)/g, '\\text{sawtooth}(x)')
+        .replace(/square\(x\)/g, '\\text{square}(x)');
+    }
+
+    // Render KaTeX
+    function renderKaTeX() {
+      const exampleSelect = document.getElementById('exampleSelect');
+      const functionInput = document.getElementById('functionInput');
+      const func = exampleSelect.value !== '' ? exampleSelect.value : functionInput.value;
+      const n = document.getElementById('nInput').value;
+      const xMin = document.getElementById('xMin').value;
+      const xMax = document.getElementById('xMax').value;
+      const container = document.getElementById('katex-render');
+      container.innerHTML = `
+        <div class="katex-display">
+          <p>Function: <span id="katex-function"></span></p>
+          <p>Fourier Modes: <span id="katex-n"></span></p>
+          <p>Domain: <span id="katex-domain"></span></p>
+        </div>`;
+      try {
+        katex.render(`f(x) = ${toLaTeX(func)}`, document.getElementById('katex-function'));
+        katex.render(`n = ${n}`, document.getElementById('katex-n'));
+        katex.render(`x \\in [${xMin}, ${xMax}]`, document.getElementById('katex-domain'));
+      } catch (e) {
+        container.innerHTML = `<div class="katex-error">Error rendering: ${e.message}</div>`;
+      }
+    }
+
+    // Plot original function
+    function plotOriginalFunction(xValues, originalYValues) {
+      const trace1 = {
+        x: xValues,
+        y: originalYValues,
+        mode: 'lines',
+        name: 'Original Function',
+        line: { color: '#3498db' }
+      };
+      const layout = {
+        title: 'Original Function',
+        xaxis: { title: 'x' },
+        yaxis: { title: 'f(x)' },
+        plot_bgcolor: '#f4f4f9',
+        paper_bgcolor: '#fff',
+        font: { color: '#333' }
+      };
+      Plotly.newPlot('plot', [trace1], layout);
+    }
+
+    // Update and plot original function
+    function updateOriginalPlot(func, xMin, xMax) {
+      if (isNaN(xMin) || isNaN(xMax) || xMin >= xMax) {
+        alert('Invalid domain. Ensure xMin < xMax.');
+        return;
+      }
+      const dx_desired = 0.01;
+      const n_approx = (xMax - xMin) / dx_desired;
+      const n_subintervals = 2 * Math.round(n_approx / 2);
+      const dx = (xMax - xMin) / n_subintervals;
+      const xValues = Array.from({ length: n_subintervals + 1 }, (_, i) => xMin + i * dx);
+      const originalYValues = xValues.map(x => evaluateFunction(func, x));
+      if (originalYValues.some(y => isNaN(y))) {
+        alert('Error evaluating function. Check syntax.');
+        return;
+      }
+      plotOriginalFunction(xValues, originalYValues);
+    }
+
+    // Simpson's rule for integration
+    function simpson(yValues, dx) {
+      const N = yValues.length;
+      if (N < 3 || (N - 1) % 2 !== 0) {
+        throw new Error("Number of subintervals must be even for Simpson's rule.");
+      }
+      let sum = yValues[0] + yValues[N - 1];
+      for (let i = 1; i < N - 1; i += 2) {
+        sum += 4 * yValues[i];
+      }
+      for (let i = 2; i < N - 2; i += 2) {
+        sum += 2 * yValues[i];
+      }
+      return (dx / 3) * sum;
+    }
+
+    // Precompute trigonometric terms
+    function precomputeTrigTerms(xValues, L, n) {
+      const cosTerms = [];
+      const sinTerms = [];
+      for (let k = 0; k < n; k++) {
+        cosTerms.push(xValues.map(x => Math.cos((k * Math.PI * x) / L)));
+        sinTerms.push(xValues.map(x => Math.sin((k * Math.PI * x) / L)));
+      }
+      return { cosTerms, sinTerms };
+    }
+
+    // Compute Fourier series
+    function computeFourierSeries(func, n, xValues, L, dx) {
+      const fValues = xValues.map(x => evaluateFunction(func, x));
+      const integral_f = simpson(fValues, dx);
+      const a0 = (1 / L) * integral_f;
+      const coefficients = { a: [a0 / 2], b: [0] }; // b[0] = 0 for k=0
+      const trigTerms = precomputeTrigTerms(xValues, L, n);
+      for (let k = 1; k < n; k++) {
+        const cosTerm = trigTerms.cosTerms[k];
+        const sinTerm = trigTerms.sinTerms[k];
+        const akValues = fValues.map((f, i) => f * cosTerm[i]);
+        const bkValues = fValues.map((f, i) => f * sinTerm[i]);
+        coefficients.a.push((1 / L) * simpson(akValues, dx));
+        coefficients.b.push((1 / L) * simpson(bkValues, dx));
+      }
+      return { coefficients, trigTerms, fValues };
+    }
+
+    // Start animation
+    function startAnimation() {
+      const exampleSelect = document.getElementById('exampleSelect');
+      const functionInput = document.getElementById('functionInput');
+      const func = exampleSelect.value !== '' ? exampleSelect.value : functionInput.value;
+      const n = parseInt(document.getElementById('nInput').value);
+      const xMin = parseFloat(document.getElementById('xMin').value);
+      const xMax = parseFloat(document.getElementById('xMax').value);
+      const speed = parseInt(document.getElementById('speedInput').value);
+      if (isNaN(n) || n < 0 || isNaN(xMin) || isNaN(xMax) || xMin >= xMax) {
+        alert('Invalid inputs. Ensure n >= 0 and xMin < xMax.');
+        return;
+      }
+      const piecewise = parsePiecewise(func);
+      if (piecewise && (piecewise.a < xMin || piecewise.a > xMax)) {
+        alert(`Breakpoint ${piecewise.a} must be within [${xMin}, ${xMax}].`);
+        return;
+      }
+      renderKaTeX();
+      updateOriginalPlot(func, xMin, xMax);
+      const dx_desired = 0.01;
+      const n_approx = (xMax - xMin) / dx_desired;
+      const n_subintervals = 2 * Math.round(n_approx / 2);
+      const dx = (xMax - xMin) / n_subintervals;
+      const xValues = Array.from({ length: n_subintervals + 1 }, (_, i) => xMin + i * dx);
+      const originalYValues = xValues.map(x => evaluateFunction(func, x));
+      if (originalYValues.some(y => isNaN(y))) {
+        alert('Error evaluating function. Check syntax.');
+        return;
+      }
+      const L = (xMax - xMin) / 2;
+      const { coefficients, trigTerms } = computeFourierSeries(func, n, xValues, L, dx);
+      if (animationInterval) clearInterval(animationInterval);
+      let k = 0;
+      animationInterval = setInterval(() => {
+        if (k > n) {
+          clearInterval(animationInterval);
+          return;
+        }
+        const series = xValues.map((_, i) => {
+          let sum = coefficients.a[0]; // Constant term
+          for (let j = 1; j < k; j++) {
+            sum += coefficients.a[j] * trigTerms.cosTerms[j][i] + coefficients.b[j] * trigTerms.sinTerms[j][i];
+          }
+          return sum;
+        });
+        plotGraph(xValues, originalYValues, series, k);
+        k++;
+      }, speed);
+    }
+
+    function stopAnimation() {
+      clearInterval(animationInterval);
+    }
+
+    // Plot both original and Fourier series
+    function plotGraph(xValues, originalYValues, fourierYValues, k) {
+      const trace1 = {
+        x: xValues,
+        y: originalYValues,
+        mode: 'lines',
+        name: 'Original Function',
+        line: { color: '#3498db' }
+      };
+      const trace2 = {
+        x: xValues,
+        y: fourierYValues,
+        mode: 'lines',
+        name: `Fourier (terms = ${k})`,
+        line: { color: '#e74c3c' }
+      };
+      const layout = {
+        title: `Fourier Series (terms = ${k})`,
+        xaxis: { title: 'x' },
+        yaxis: { title: 'f(x)' },
+        plot_bgcolor: '#f4f4f9',
+        paper_bgcolor: '#fff',
+        font: { color: '#333' }
+      };
+      Plotly.newPlot('plot', [trace1, trace2], layout);
+    }
+
+    // Handle example selection
+    function selectExample(value) {
+      const xMin = document.getElementById('xMin');
+      const xMax = document.getElementById('xMax');
+      if (value) {
+        parsedFunction = null;
+        document.getElementById('functionInput').value = '';
+        if (value === 'sawtooth(x)' || value === 'square(x)') {
+          xMin.value = -10;
+          xMax.value = 10;
+        } else {
+          xMin.value = -3;
+          xMax.value = 3;
+        }
+        renderKaTeX();
+        updateOriginalPlot(value, parseFloat(xMin.value), parseFloat(xMax.value));
+      }
+    }
+
+    // Initialize event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      renderKaTeX();
+      document.getElementById('copyright-year').textContent = new Date().getFullYear();
+      document.getElementById('functionInput').addEventListener('input', () => {
+        parsedFunction = null;
+        document.getElementById('exampleSelect').value = '';
+        renderKaTeX();
+      });
+      document.getElementById('nInput').addEventListener('input', renderKaTeX);
+      document.getElementById('xMin').addEventListener('input', renderKaTeX);
+      document.getElementById('xMax').addEventListener('input', renderKaTeX);
+    });
+  </script>
+</body>
+</html>
