@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="description" content="Inverse Matrix Calculator: Fractions Default, Full LaTeX Steps, Complex, Preview">
+  <meta name="keywords" content="Gaussian Elimination, Inverse Matrix, Linear Algebra, Complex, Fraction">
+  <meta charset="UTF-8" />
+  <title>Find the Matrix Inverse</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <style>
+    .katex-display { margin: 1em 0; overflow-x: auto; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="nav-container w-full fixed top-0 z-10 bg-white shadow-md">
+    <nav class="max-w-4xl mx-auto py-4">
+      <ul class="flex justify-center gap-8">
+        <li><a href="https://people.tamu.edu/~kapita/index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+        <li><a href="https://people.tamu.edu/~kapita/teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+        <li><a href="https://people.tamu.edu/~kapita/projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+        <li><a href="https://people.tamu.edu/~kapita/linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+		<li><a href="https://people.tamu.edu/~kapita/numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+
+      </ul>
+    </nav>
+  </div>
+  <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800 latex">Find the Matrix Inverse</h2>
+    <p class="text-center text-gray-600 mb-6 latex">Enter square matrix dimensions, generate input matrix $A$, fill values, and calculate inverse using augmented matrix $[A | I]$.<br>Matrix entries can be real or complex, e.g. <span class="font-mono">3+2i</span>, <span class="font-mono">-1/2-i</span>, <span class="font-mono">0.2i</span>, etc.<br>(Matrix must be square)</p>
+    <div id="inputSection" class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+      <span class="text-gray-700">Matrix size:</span>
+      <input type="number" id="size" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+    </div>
+    <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+    <div class="flex justify-center mb-6 space-x-6">
+      <span class="text-gray-700">Display Values as:</span>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="fraction" checked class="mr-2">
+        <span>Fraction</span>
+      </label>
+      <label class="flex items-center">
+        <input type="radio" name="displayMode" value="decimal" class="mr-2">
+        <span>Decimal</span>
+      </label>
+    </div>
+    <div class="flex justify-center space-x-4 mb-6">
+      <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Calculate Inverse</button>
+      <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+    </div>
+    <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+    <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+      © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: June 19, 2025
+    </div>
+  </div>
+  <script>
+    // Initialize KaTeX rendering after scripts are loaded
+    window.onload = function() {
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) { console.error("KaTeX rendering error:", err); }
+      });
+    };
+
+    var currentDisplayMode = "fraction";
+    document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+      radio.addEventListener("change", function () {
+        currentDisplayMode = this.value;
+      });
+    });
+
+    // --- TRAILING ZERO STRIPPER ---
+    function trimTrailingZeros(s) {
+      return s.replace(/(\.\d*?[1-9])0+$/,'$1').replace(/\.0+$/,'').replace(/(\d)\.$/,'$1');
+    }
+
+    // --- COMPLEX NUMBERS ---
+    function isNumber(x) { return typeof x === "number" && !isNaN(x); }
+
+    class Complex {
+      constructor(re, im) { this.re = +re; this.im = +im; }
+
+      static parse(str) {
+        let s = str.replace(/\s+/g, '').replace(/−/g, "-");
+        if (!s) return new Complex(0,0);
+        if (/^[-+]?i$/.test(s)) { return new Complex(0, s[0]==="-"?-1:1); }
+        let re = 0, im = 0;
+        s = s.replace(/([\+\-]|^)(i)/g, (m, p1) => p1 + "1i");
+        if (!s.includes('i')) { re = parseFraction(s); im = 0; }
+        else if (s.endsWith('i')) {
+          let parts = s.split(/(?=[+\-][^+\-]*i?$)/g).filter(Boolean);
+          for (let part of parts) {
+            if (part.endsWith('i')) im += parseFraction(part.replace('i',''));
+            else re += parseFraction(part);
+          }
+        } else { throw Error("Invalid complex literal: " + str); }
+        return new Complex(re, im);
+      }
+
+      clone() { return new Complex(this.re, this.im); }
+      add(b) { return new Complex(this.re + b.re, this.im + b.im); }
+      sub(b) { return new Complex(this.re - b.re, this.im - b.im); }
+      neg() { return new Complex(-this.re, -this.im); }
+      mul(b) { return new Complex(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re); }
+      div(b) {
+        let den = b.re * b.re + b.im * b.im;
+        if (den === 0) throw Error("Division by zero in complex number");
+        let real = (this.re * b.re + this.im * b.im) / den;
+        let imag = (this.im * b.re - this.re * b.im) / den;
+        return new Complex(real, imag);
+      }
+      inv() {
+        let den = this.re*this.re + this.im*this.im;
+        if (den === 0) throw Error("Division by zero in complex inverse");
+        return new Complex(this.re/den, -this.im/den);
+      }
+      abs() { return Math.sqrt(this.re*this.re + this.im*this.im); }
+      isZero(eps) { eps = eps || 1e-10; return Math.abs(this.re) < eps && Math.abs(this.im) < eps; }
+      equals(b, eps) { eps = eps || 1e-10; return Math.abs(this.re - b.re) < eps && Math.abs(this.im - b.im) < eps; }
+      isReal(eps) { eps = eps || 1e-10; return Math.abs(this.im) < eps; }
+      toString(decimals) {
+        decimals = decimals ?? 3;
+        let re = +this.re.toFixed(decimals);
+        let im = +this.im.toFixed(decimals);
+        let str = '';
+        if (Math.abs(re) > 1e-10) str += re;
+        if (Math.abs(im) > 1e-10) {
+          if (im > 0 && str.length) str += '+';
+          if (Math.abs(im-1) < 1e-10) str += 'i';
+          else if (Math.abs(im+1) < 1e-10) str += '-i';
+          else str += im +'i';
+        }
+        return str.length?str:'0';
+      }
+      toLaTeX(decimals, mode='decimal') {
+        if (mode === 'fraction') {
+          let reZero = Math.abs(this.re) < 1e-10;
+          let imZero = Math.abs(this.im) < 1e-10;
+          let re = reZero ? null : toFraction(this.re);
+          let im = imZero ? null : toFraction(this.im);
+          if (re && im) {
+            let imStr = formatImaginaryFraction(im);
+            let sign = imStr[0] === '-' ? '' : '+';
+            return re + sign + imStr;
+          } else if (re) { return re; }
+          else if (im) { return formatImaginaryFraction(im); }
+          else return '0';
+        } else { // DECIMAL MODE
+          let reZero = Math.abs(this.re) < 1e-10;
+          let imZero = Math.abs(this.im) < 1e-10;
+          let re = reZero ? null : trimTrailingZeros(this.re.toFixed(decimals ?? 3));
+          let im = imZero ? null : trimTrailingZeros(this.im.toFixed(decimals ?? 3));
+          if (re && im) {
+            let sign = this.im>=0?'+':'';
+            let imVal = parseFloat(im);
+            if (Math.abs(imVal-1)<1e-10) im = 'i';
+            else if (Math.abs(imVal+1)<1e-10) im = '-i';
+            else im += 'i';
+            return `${re}${sign}${im}`;
+          } else if (re) { return re; }
+          else if (im) {
+            let imVal = parseFloat(im);
+            if (Math.abs(imVal-1)<1e-10) return 'i';
+            if (Math.abs(imVal+1)<1e-10) return '-i';
+            return im+'i';
+          } else return '0';
+        }
+      }
+    }
+
+    function toFraction(x, tolerance, maxIterations) {
+      tolerance = tolerance || 1e-6;
+      maxIterations = maxIterations || 20;
+      if (!isFinite(x) || isNaN(x)) return "nan";
+      if (Math.abs(x) < 1e-10) return "0";
+      var sign = x < 0 ? "-" : "";
+      x = Math.abs(x);
+      var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+      for (var i = 0; i < maxIterations; i++) {
+        var a = Math.floor(b);
+        var h = a * h1 + h2;
+        var k = a * k1 + k2;
+        if (Math.abs(x - h / k) < tolerance) {
+          return k === 1 ? sign + h : sign + h + "/" + k;
+        }
+        h2 = h1; h1 = h; k2 = k1; k1 = k;
+        b = 1 / (b - a);
+      }
+      return k1 === 1 ? sign + h1 : sign + h1 + "/" + k1;
+    }
+
+    function formatImaginaryFraction(im) {
+      if (im === "0") return "";
+      let isNeg = (im[0] === '-');
+      let frac = isNeg ? im.slice(1) : im;
+      let parts = frac.split('/');
+      if (parts.length === 1) {
+        if (Math.abs(+parts[0]-1) < 1e-10) return isNeg ? '-i' : 'i';
+        else return (isNeg ? '-' : '') + parts[0] + 'i';
+      }
+      let numerator = parts[0], denominator = parts[1];
+      if (Math.abs(+numerator) === 1) {
+        return (isNeg ? '-' : '') + 'i/' + denominator;
+      } else {
+        return (isNeg?'':'') + numerator + 'i/' + denominator;
+      }
+    }
+
+    function parseFraction(str) {
+      str = str.trim();
+      if (/^[+-]?(\d*\.)?\d+$/.test(str)) return parseFloat(str);
+      if (/^[+-]?\d+\/\d+$/.test(str)) {
+        let [num, den] = str.split('/');
+        den = +den;
+        if (den === 0) return NaN;
+        return +num / den;
+      }
+      let f = parseFloat(str);
+      if (!isNaN(f)) return f;
+      return NaN;
+    }
+
+    function isZero(x) {
+      if (x instanceof Complex) return x.isZero();
+      return Math.abs(x) < 1e-10;
+    }
+
+    function generateMatrix() {
+      var n = parseInt(document.getElementById("size").value, 10);
+      if (isNaN(n) || n <= 0) {
+        alert("Please enter a valid positive integer for matrix size.");
+        return;
+      }
+      var matrixDiv = document.getElementById("matrixInput");
+      matrixDiv.innerHTML = "";
+      var statementDiv = document.createElement("div");
+      statementDiv.className = "text-center mb-4";
+      var statement = document.createElement("div");
+      statement.className = "latex";
+      statement.textContent = `$$ \\text{Find the inverse of } ${n} \\times ${n} \\text{ matrix } A $$`;
+      statementDiv.appendChild(statement);
+      matrixDiv.appendChild(statementDiv);
+      var aDiv = document.createElement("div");
+      aDiv.className = "flex flex-col items-center";
+      var aLabel = document.createElement("p");
+      aLabel.className = "text-center font-semibold latex";
+      aLabel.textContent = "Matrix $A$";
+      aDiv.appendChild(aLabel);
+      var aTable = document.createElement("table");
+      aTable.className = "border-collapse";
+      for (var i = 0; i < n; i++) {
+        var tr = document.createElement("tr");
+        for (var j = 0; j < n; j++) {
+          var td = document.createElement("td");
+          td.className = "p-1";
+          var input = document.createElement("input");
+          input.type = "text";
+          input.className = "matrix-cell w-16 p-2 text-center border-2 border-gray-300 hover:border-blue-500 hover:border-4 rounded-md focus:outline-none";
+          input.id = "cell_" + i + "_" + j;
+          td.appendChild(input);
+          tr.appendChild(td);
+        }
+        aTable.appendChild(tr);
+      }
+      aDiv.appendChild(aTable);
+      matrixDiv.appendChild(aDiv);
+      renderMathInElement(matrixDiv, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) { console.error("KaTeX rendering error in matrixInput:", err); }
+      });
+    }
+
+    function clearAll() {
+      document.getElementById("size").value = "";
+      document.getElementById("matrixInput").innerHTML = "";
+      document.getElementById("result").innerHTML = "";
+      document.querySelector('input[value="fraction"]').checked = true;
+      currentDisplayMode = "fraction";
+      renderMathInElement(document.body, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$", right: "$", display: false }
+        ],
+        throwOnError: false,
+        errorCallback: function(err) { console.error("KaTeX rendering error in clearAll:", err); }
+      });
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+    function readMatrix() {
+      var n = parseInt(document.getElementById("size").value, 10);
+      if (isNaN(n) || n <= 0) return null;
+      var matrix = [];
+      for (var i = 0; i < n; i++) {
+        var row = [];
+        for (var j = 0; j < n; j++) {
+          var cell = document.getElementById("cell_" + i + "_" + j);
+          var value = cell.value.trim();
+          var num;
+          try {
+            num = value === "" ? new Complex(0, 0) : Complex.parse(value);
+          } catch(e) {
+            alert("Invalid input for cell ("+(i+1)+","+(j+1)+"): " + value);
+            return null;
+          }
+          row.push(num);
+        }
+        matrix.push(row);
+      }
+      return matrix;
+    }
+
+    function cloneMatrix(matrix) {
+      return matrix.map(function(row) { return row.map(v => v.clone()); });
+    }
+
+    function formatComplexLatex(z) {
+      return z.toLaTeX(3, currentDisplayMode);
+    }
+
+    function matrixToLatex(matrix) {
+      if (!matrix.length || !matrix[0].length) return "";
+      var n = matrix.length;
+      var totalCols = matrix[0].length;
+      var colSpec = "";
+      for (var i = 0; i < n; i++) colSpec += "c";
+      if (totalCols > n) colSpec += "|";
+      for (var i = n; i < totalCols; i++) colSpec += "c";
+      var latex = "\\left[ \\begin{array}{" + colSpec + "}\n";
+      latex += matrix.map(function(row){ return row.map(formatComplexLatex).join(" & "); }).join(" \\\\ \n");
+      latex += "\n\\end{array} \\right]";
+      return latex;
+    }
+
+    function isRowZero(matrix, row, n, eps = 1e-12) {
+      for (let j = 0; j < n; j++) {
+        if (!matrix[row][j].isZero(eps)) return false;
+      }
+      return true;
+    }
+
+    function isColumnZero(matrix, col, n, eps = 1e-12) {
+      for (let i = 0; i < n; i++) {
+        if (!matrix[i][col].isZero(eps)) return false;
+      }
+      return true;
+    }
+
+    function computeInverse(origMatrix) {
+      const n = origMatrix.length;
+      if (n === 0) return { result: [], steps: [], isSingular: false };
+      const augmented = origMatrix.map((row, i) => [
+        ...row.map(z => z.clone()),
+        ...Array(n).fill(0).map((_, j) => i === j ? new Complex(1, 0) : new Complex(0, 0))
+      ]);
+      const steps = [];
+      steps.push({ descLaTeX: `\\text{Initial Augmented Matrix } [A | I]:`, matrix: cloneMatrix(augmented) });
+
+      for (let r = 0; r < n; r++) {
+        // Check for row or column of zeros in the left half (A part)
+        for (let i = 0; i < n; i++) {
+          if (isRowZero(augmented, i, n)) {
+            steps.push({ descLaTeX: `\\text{Matrix is singular (row ${i + 1} is zero)}`, matrix: cloneMatrix(augmented) });
+            return { result: augmented, steps: steps, isSingular: true };
+          }
+        }
+        for (let j = 0; j < n; j++) {
+          if (isColumnZero(augmented, j, n)) {
+            steps.push({ descLaTeX: `\\text{Matrix is singular (column ${j + 1} is zero)}`, matrix: cloneMatrix(augmented) });
+            return { result: augmented, steps: steps, isSingular: true };
+          }
+        }
+
+        // Find pivot
+        let maxRow = r;
+        let maxVal = 0;
+        for (let i = r; i < n; ++i) {
+          var val = augmented[i][r].abs();
+          if (val > maxVal) { maxVal = val; maxRow = i; }
+        }
+        if (maxVal < 1e-12) {
+          steps.push({ descLaTeX: `\\text{Matrix is singular (zero pivot in column ${r + 1})}`, matrix: cloneMatrix(augmented) });
+          return { result: augmented, steps: steps, isSingular: true };
+        }
+        if (maxRow !== r) {
+          const tmp = augmented[r];
+          augmented[r] = augmented[maxRow];
+          augmented[maxRow] = tmp;
+          steps.push({ descLaTeX: `\\text{Swap row ${r + 1} with row ${maxRow + 1}:} \\qquad R_{${r + 1}} \\leftrightarrow R_{${maxRow + 1}}`, matrix: cloneMatrix(augmented) });
+        }
+        let pivot = augmented[r][r].clone();
+        if (pivot.isZero()) {
+          steps.push({ descLaTeX: `\\text{Matrix is singular (zero pivot found)}`, matrix: cloneMatrix(augmented) });
+          return { result: augmented, steps: steps, isSingular: true };
+        }
+        if (!pivot.equals(new Complex(1, 0))) {
+          let factor = pivot.inv();
+          let parenFactor = "(" + factor.toLaTeX(3, currentDisplayMode) + ")";
+          let descLatex = `\\text{Scale row ${r + 1} by }${parenFactor}:\\qquad ${parenFactor} R_{${r + 1}} \\to R_{${r + 1}}`;
+          for (let j = 0; j < 2 * n; ++j) augmented[r][j] = augmented[r][j].mul(factor);
+          steps.push({ descLaTeX: descLatex, matrix: cloneMatrix(augmented) });
+        }
+        for (let i = 0; i < n; ++i) if (i !== r) {
+          let factor = augmented[i][r].clone();
+          if (!factor.isZero()) {
+            for (let j = 0; j < 2 * n; ++j) {
+              augmented[i][j] = augmented[i][j].sub(factor.mul(augmented[r][j]));
+            }
+            let fStr = factor.toLaTeX(3, currentDisplayMode);
+            steps.push({ descLaTeX: `\\text{Replace row ${i + 1} by:}\\qquad R_{${i + 1}} - (${fStr})\\, R_{${r + 1}} \\to R_{${i + 1}}`, matrix: cloneMatrix(augmented) });
+          }
+        }
+      }
+      steps.push({ descLaTeX: `\\text{Final Augmented Matrix } [I | A^{-1}]:`, matrix: cloneMatrix(augmented) });
+      return { result: augmented, steps: steps, isSingular: false };
+    }
+
+    function sideBySideLatex(initMat, finalMat) {
+      return "\\begin{array}{ccc}" +
+        matrixToLatex(initMat) + " & \\xrightarrow{\\text{row ops}} & " + matrixToLatex(finalMat) +
+        "\\end{array}";
+    }
+
+    function extractInverse(matrix) {
+      const n = matrix.length;
+      const inverse = [];
+      for (let i = 0; i < n; i++) {
+        inverse.push(matrix[i].slice(n));
+      }
+      return inverse;
+    }
+
+    function renderSteps(steps, origMatrix) {
+      const resultDiv = document.getElementById("result");
+      resultDiv.innerHTML = "";
+      if (steps.length >= 1 && steps[0].matrix) {
+        const isSingular = steps[steps.length - 1].descLaTeX.includes("singular");
+        // Matrix Inverse Section
+        const inverseHeaderDiv = document.createElement("div");
+        inverseHeaderDiv.className = "latex mb-2";
+        inverseHeaderDiv.textContent = "$$\\textbf{Matrix Inverse:}$$";
+        resultDiv.appendChild(inverseHeaderDiv);
+
+        // Spacer between header and inverse matrix or message
+        const inverseSpacerDiv = document.createElement("div");
+        inverseSpacerDiv.className = "my-4";
+        resultDiv.appendChild(inverseSpacerDiv);
+
+        // Inverse Matrix or Singular Message
+        const inverseDiv = document.createElement("div");
+        inverseDiv.className = "latex mb-6";
+        if (isSingular) {
+          inverseDiv.textContent = `$$A^{-1} \\text{ does not exist}$$`;
+        } else {
+          const inverseMat = extractInverse(steps[steps.length - 1].matrix);
+          inverseDiv.textContent = `$$A^{-1} = ${matrixToLatex(inverseMat)}$$`;
+        }
+        resultDiv.appendChild(inverseDiv);
+
+        // Spacer between sections
+        const sectionSpacerDiv = document.createElement("div");
+        sectionSpacerDiv.className = "my-4";
+        resultDiv.appendChild(sectionSpacerDiv);
+
+        // Initial and Final Augmented Matrices Header
+        const sbsHeaderDiv = document.createElement("div");
+        sbsHeaderDiv.className = "latex mb-2";
+        sbsHeaderDiv.textContent = "$$\\textbf{Initial and Final Augmented Matrices:}$$";
+        resultDiv.appendChild(sbsHeaderDiv);
+
+        // Spacer between header and side-by-side matrices
+        const sbsSpacerDiv = document.createElement("div");
+        sbsSpacerDiv.className = "my-4";
+        resultDiv.appendChild(sbsSpacerDiv);
+
+        // Side-by-Side Matrices
+        const sbsDiv = document.createElement("div");
+        sbsDiv.className = "latex mb-6";
+        sbsDiv.textContent = `$$${sideBySideLatex(steps[0].matrix, steps[steps.length - 1].matrix)}$$`;
+        resultDiv.appendChild(sbsDiv);
+      }
+      const stepsHeader = document.createElement("div");
+      stepsHeader.className = "latex mb-4";
+      stepsHeader.textContent = "$$\\textbf{Transformation Steps:}$$";
+      resultDiv.appendChild(stepsHeader);
+      steps.forEach((step, i) => {
+        const stepDiv = document.createElement("div");
+        stepDiv.className = "mb-6 border-b pb-4";
+        if (step.descLaTeX) {
+          const descDiv = document.createElement("div");
+          descDiv.className = "latex mb-4";
+          descDiv.textContent = "$$" + step.descLaTeX + "$$";
+          stepDiv.appendChild(descDiv);
+        }
+        if (step.matrix) {
+          const matrixDiv = document.createElement("div");
+          matrixDiv.className = "latex";
+          matrixDiv.textContent = "$$" + matrixToLatex(step.matrix) + "$$";
+          stepDiv.appendChild(matrixDiv);
+        }
+        resultDiv.appendChild(stepDiv);
+      });
+      try {
+        renderMathInElement(resultDiv, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false,
+          errorCallback: function(err) { console.error("KaTeX rendering error in result:", err); }
+        });
+      } catch (e) {
+        console.error("Error rendering steps:", e);
+      }
+    }
+
+    document.getElementById("calcBtn").addEventListener("click", function () {
+      const matrix = readMatrix();
+      if (matrix !== null) {
+        const computation = computeInverse(matrix);
+        renderSteps(computation.steps, matrix);
+      }
+    });
+  </script>
+</body>
+</html>
