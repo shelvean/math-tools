@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="A web-based tool to compute the Least Squares Solution of a matrix system Ax ≈ b using Normal Equations. Input the matrix dimensions, values for matrix A and vector b (empty spaces treated as 0), and calculate the solution with options for decimal or fraction output (short decimals or repeating decimals with numerator/denominator < 500). Solve and Clear All buttons appear after input fields." />
+    <meta name="keywords" content="Least Squares, Normal Equations, Matrix Solver, System of Equations, Gauss-Jordan, Ax=b, Compute Least Squares Solution online" />
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-5B8PRB2WZT');
+    </script>
+    <title>Least Squares Solver</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
+    <style>
+        .katex-display { margin: 1em 0; overflow-x: auto; }
+        body { padding-left: 12.5vw; padding-right: 12.5vw; }
+        @media (max-width: 900px) { body { padding-left: 3vw; padding-right: 3vw; } }
+        .matrix-cell { width: 4rem; padding: 0.5rem; text-align: center; border: 2px solid #d1d5db; border-radius: 0.375rem; }
+        .matrix-cell:hover { border-color: #3b82f6; border-width: 3px; }
+        .matrix-cell:focus { outline: none; border-color: #3b82f6; }
+        #result, #result * { color: #080808; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="nav-container w-full fixed top-0 z-10 bg-white shadow-md">
+        <nav class="max-w-4xl mx-auto py-4">
+            <ul class="flex justify-center gap-8">
+                <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+                <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+                <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+                <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+				<li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+
+            </ul>
+        </nav>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+        <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">Least Squares Solver using Normal Equations</h2>
+        <p class="text-center text-gray-600 mb-6">
+            Enter the number of equations <span class="latex">$m$</span> and variables <span class="latex">$n$</span>, generate the input fields, fill in the matrix $A$ and vector $\mathbf{b}$, and then compute the least squares solution for $A \mathbf{x} \approx \mathbf{b}$.
+        </p>
+        <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+            <span class="text-gray-700">Number of equations <span class="latex">$m$</span>:</span>
+            <input type="number" id="m" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span class="text-gray-700">Number of variables <span class="latex">$n$</span>:</span>
+            <input type="number" id="n" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+        </div>
+        <div class="flex justify-center mb-6 space-x-6">
+            <span class="text-gray-700">Display Values as:</span>
+            <label class="flex items-center">
+                <input type="radio" name="displayMode" value="decimal" class="mr-2">
+                <span>Decimal</span>
+            </label>
+            <label class="flex items-center">
+                <input type="radio" name="displayMode" value="fraction" checked class="mr-2">
+                <span>Fraction</span>
+            </label>
+        </div>
+        <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+        <div class="flex justify-center space-x-4 mb-6">
+            <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Solve</button>
+            <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+        </div>
+        <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+        <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+            © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: August 5, 2025
+        </div>
+    </div>
+    <script>
+        // Render KaTeX for initial page elements
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ]
+            });
+        });
+
+        var currentDisplayMode = "fraction";
+        document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+            radio.addEventListener("change", function () {
+                currentDisplayMode = this.value;
+            });
+        });
+
+        // Generate input fields for matrix A (m x n) and vector b (m x 1)
+        function generateMatrix() {
+            var m = parseInt(document.getElementById("m").value, 10);
+            var n = parseInt(document.getElementById("n").value, 10);
+            if (isNaN(m) || m <= 0 || isNaN(n) || n <= 0) {
+                alert("Please enter valid positive integers for m and n.");
+                return;
+            }
+            var matrixDiv = document.getElementById("matrixInput");
+            if (!matrixDiv) {
+                console.error("Error: Element with ID 'matrixInput' not found.");
+                return;
+            }
+            matrixDiv.innerHTML = "";
+            var statementDiv = document.createElement("div");
+            statementDiv.className = "text-center mb-4";
+            var statement = document.createElement("div");
+            statement.className = "latex";
+            statement.textContent = `$$ \\text{Minimize } \\| A \\mathbf{x} - \\mathbf{b} \\|_2 \\text{ by solving } A^T A \\mathbf{x} = A^T \\mathbf{b} $$`;
+            statementDiv.appendChild(statement);
+            var emptyStatement = document.createElement("div");
+            emptyStatement.className = "latex";
+            emptyStatement.textContent = `$$ \\text{(empty spaces are treated as 0)} $$`;
+            statementDiv.appendChild(emptyStatement);
+            matrixDiv.appendChild(statementDiv);
+            var flexDiv = document.createElement("div");
+            flexDiv.className = "flex justify-center space-x-8";
+            var aDiv = document.createElement("div");
+            aDiv.className = "flex flex-col items-center";
+            var aLabel = document.createElement("p");
+            aLabel.className = "text-center font-semibold latex";
+            aLabel.textContent = "Matrix $A$";
+            aDiv.appendChild(aLabel);
+            var aTable = document.createElement("table");
+            aTable.className = "border-collapse";
+            for (var i = 0; i < m; i++) {
+                var tr = document.createElement("tr");
+                for (var j = 0; j < n; j++) {
+                    var td = document.createElement("td");
+                    td.className = "p-1";
+                    var input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "matrix-cell";
+                    input.id = "A_" + i + "_" + j;
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                aTable.appendChild(tr);
+            }
+            aDiv.appendChild(aTable);
+            flexDiv.appendChild(aDiv);
+            var bDiv = document.createElement("div");
+            bDiv.className = "flex flex-col items-center";
+            var bLabel = document.createElement("p");
+            bLabel.className = "text-center font-semibold latex";
+            bLabel.textContent = "Vector $\\mathbf{b}$";
+            bDiv.appendChild(bLabel);
+            var bTable = document.createElement("table");
+            bTable.className = "border-collapse";
+            for (var i = 0; i < m; i++) {
+                var tr = document.createElement("tr");
+                var td = document.createElement("td");
+                td.className = "p-1";
+                var input = document.createElement("input");
+                input.type = "text";
+                input.className = "matrix-cell";
+                input.id = "b_" + i;
+                td.appendChild(input);
+                tr.appendChild(td);
+                bTable.appendChild(tr);
+            }
+            bDiv.appendChild(bTable);
+            flexDiv.appendChild(bDiv);
+            matrixDiv.appendChild(flexDiv);
+            renderMathInElement(matrixDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ]
+            });
+        }
+
+        // Clear all inputs and outputs
+        function clearAll() {
+            document.getElementById("m").value = "";
+            document.getElementById("n").value = "";
+            var matrixDiv = document.getElementById("matrixInput");
+            if (matrixDiv) {
+                matrixDiv.innerHTML = "";
+            } else {
+                console.error("Error: Element with ID 'matrixInput' not found in clearAll.");
+            }
+            var resultDiv = document.getElementById("result");
+            if (resultDiv) {
+                resultDiv.innerHTML = "";
+            } else {
+                console.error("Error: Element with ID 'result' not found in clearAll.");
+            }
+            document.querySelector('input[value="fraction"]').checked = true;
+            currentDisplayMode = "fraction";
+        }
+        document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+        // Parse input as fraction or decimal
+        function parseFraction(str) {
+            str = str.trim();
+            if (str === '') return 0;
+            try {
+                let evaluated = math.evaluate(str);
+                if (typeof evaluated === 'number') {
+                    return evaluated;
+                } else {
+                    return 0;
+                }
+            } catch (e) {
+                alert("Please enter valid numbers, fractions, or mathematical expressions in all cells.");
+                return null;
+            }
+        }
+
+        // Read matrix A and vector b from input fields
+        function readMatrix() {
+            var m = parseInt(document.getElementById("m").value, 10);
+            var n = parseInt(document.getElementById("n").value, 10);
+            if (isNaN(m) || m <= 0 || isNaN(n) || n <= 0) {
+                alert("Please enter valid positive integers for m and n.");
+                return null;
+            }
+            var A = [];
+            for (var i = 0; i < m; i++) {
+                var row = [];
+                for (var j = 0; j < n; j++) {
+                    var cell = document.getElementById("A_" + i + "_" + j);
+                    if (!cell) {
+                        alert("Error: Matrix input field A_" + i + "_" + j + " not found.");
+                        return null;
+                    }
+                    var value = cell.value.trim();
+                    var num = parseFraction(value);
+                    if (num === null) {
+                        return null;
+                    }
+                    row.push(num);
+                }
+                A.push(row);
+            }
+            var b = [];
+            for (var i = 0; i < m; i++) {
+                var cell = document.getElementById("b_" + i);
+                if (!cell) {
+                    alert("Error: Vector input field b_" + i + " not found.");
+                    return null;
+                }
+                var value = cell.value.trim();
+                var num = parseFraction(value);
+                if (num === null) {
+                    return null;
+                }
+                b.push(num);
+            }
+            return { A: A, b: b, m: m, n: n };
+        }
+
+        // Compute GCD and LCM
+        function gcd(a, b) {
+            a = Math.abs(a);
+            b = Math.abs(b);
+            while (b) {
+                let temp = b;
+                b = a % b;
+                a = temp;
+            }
+            return a;
+        }
+
+        function lcm(a, b) {
+            return (a * b) / gcd(a, b);
+        }
+
+        function lcmArray(numbers) {
+            if (numbers.length === 0) return 1;
+            return numbers.reduce((a, b) => lcm(a, b), numbers[0]);
+        }
+
+        // Convert number to fraction for display
+        function toFraction(x, tolerance, maxIterations) {
+            tolerance = tolerance || 1e-6;
+            maxIterations = maxIterations || 20;
+            if (Math.abs(x) < 1e-12) return "0";
+            var sign = x < 0 ? "-" : "";
+            x = Math.abs(x);
+            var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+            for (var i = 0; i < maxIterations; i++) {
+                var a = Math.floor(b);
+                var h = a * h1 + h2;
+                var k = a * k1 + k2;
+                if (Math.abs(x - h / k) < tolerance) {
+                    if (k === 1) {
+                        return sign + h;
+                    } else {
+                        return sign + h + "/" + k;
+                    }
+                }
+                h2 = h1; h1 = h;
+                k2 = k1; k1 = k;
+                b = 1 / (b - a);
+            }
+            if (k1 === 1) {
+                return sign + h1;
+            } else {
+                return sign + h1 + "/" + k1;
+            }
+        }
+
+        // Parse fraction string to get numerator and denominator
+        function getFractionParts(str) {
+            str = str.trim();
+            let sign = 1;
+            if (str.startsWith('-')) {
+                sign = -1;
+                str = str.slice(1);
+            }
+            if (str === "0" || str === "") {
+                return { sign: 1, num: 0, den: 1 };
+            }
+            if (!str.includes('/')) {
+                return { sign, num: parseInt(str) || 0, den: 1 };
+            }
+            let [numStr, denStr] = str.split('/');
+            return { sign, num: parseInt(numStr) || 0, den: parseInt(denStr) || 1 };
+        }
+
+        // Format numbers based on display mode
+        function formatNumber(num) {
+            var epsilon = 1e-10;
+            if (Math.abs(num - Math.round(num)) < epsilon) {
+                return Math.round(num).toString();
+            }
+            if (currentDisplayMode === "fraction") {
+                return toFraction(num);
+            }
+            return parseFloat(num.toFixed(3)).toString();
+        }
+
+        // Clone matrix to avoid modifying original
+        function cloneMatrix(matrix) {
+            return matrix.map(row => row.slice());
+        }
+
+        // Matrix to LaTeX
+        function matrixToLatex(matrix, augmented = false, numColsBeforeLine = 0) {
+            if (matrix.length === 0 || matrix[0].length === 0) return "";
+            var cols = matrix[0].length;
+            var colSpec = augmented ? "c".repeat(numColsBeforeLine) + "|c" : "c".repeat(cols);
+            var latex = "\\left[ \\begin{array}{" + colSpec + "}";
+            latex += matrix
+                .map(row => row.map(num => formatNumber(num)).join(" & "))
+                .join(" \\\\ ");
+            latex += "\\end{array} \\right]";
+            return latex;
+        }
+
+        // Matrix multiplication
+        function matrixMultiply(A, B) {
+            var m = A.length;
+            var n = B[0].length;
+            var p = B.length;
+            var C = [];
+            for (var i = 0; i < m; i++) {
+                var row = [];
+                for (var j = 0; j < n; j++) {
+                    var sum = 0;
+                    for (var k = 0; k < p; k++) {
+                        sum += A[i][k] * B[k][j];
+                    }
+                    row.push(sum);
+                }
+                C.push(row);
+            }
+            return C;
+        }
+
+        // Compute RREF with steps
+        function computeRREF(matrix) {
+            var m = matrix.length;
+            if (m === 0) return { matrix: matrix, steps: [] };
+            var n = matrix[0].length;
+            var steps = [];
+            var matrix = cloneMatrix(matrix);
+            steps.push({ matrix: cloneMatrix(matrix), description: "\\text{Initial augmented matrix } [A^T A | A^T \\mathbf{b}]" });
+            var lead = 0;
+            for (var r = 0; r < m; r++) {
+                if (lead >= n) break;
+                var i = r;
+                while (Math.abs(matrix[i][lead]) < 1e-10) {
+                    i++;
+                    if (i === m) {
+                        i = r;
+                        lead++;
+                        if (lead === n) break;
+                    }
+                }
+                if (lead === n) break;
+                if (i !== r) {
+                    var temp = matrix[r];
+                    matrix[r] = matrix[i];
+                    matrix[i] = temp;
+                    steps.push({ matrix: cloneMatrix(matrix), description: "R_{" + (r+1) + "} \\leftrightarrow R_{" + (i+1) + "}" });
+                }
+                var pivotValue = matrix[r][lead];
+                if (Math.abs(pivotValue) > 1e-10) {
+                    var reciprocal = 1 / pivotValue;
+                    var scale_op = reciprocal >= 0 ? "" : "-";
+                    var abs_reciprocal = Math.abs(reciprocal);
+                    var scale_desc = scale_op + formatNumber(abs_reciprocal) + " R_{" + (r+1) + "} \\to R_{" + (r+1) + "}";
+                    for (var j = 0; j < n; j++) {
+                        matrix[r][j] *= reciprocal;
+                    }
+                    steps.push({ matrix: cloneMatrix(matrix), description: scale_desc });
+                }
+                for (var i = 0; i < m; i++) {
+                    if (i !== r) {
+                        var factor = matrix[i][lead];
+                        if (Math.abs(factor) > 1e-10) {
+                            var op = factor >= 0 ? "-" : "+";
+                            var abs_factor = Math.abs(factor);
+                            var elim_desc = "R_{" + (i+1) + "} " + op + " " + formatNumber(abs_factor) + " R_{" + (r+1) + "} \\to R_{" + (i+1) + "}";
+                            for (var j = 0; j < n; j++) {
+                                matrix[i][j] -= factor * matrix[r][j];
+                            }
+                            steps.push({ matrix: cloneMatrix(matrix), description: elim_desc });
+                        }
+                    }
+                }
+                lead++;
+            }
+            return { matrix: matrix, steps: steps };
+        }
+
+        // Solve linear system Ax = b using Gaussian elimination
+        function solveLinearSystem(A, b) {
+            var n = A.length;
+            var augmented = A.map((row, i) => row.concat(b[i]));
+            var rrefResult = computeRREF(augmented);
+            var rref = rrefResult.matrix;
+            var x = new Array(n).fill(0);
+            var pivotColumns = [];
+            var pivotRowMap = {};
+            var currentCol = 0;
+            for (var row = 0; row < n; row++) {
+                while (currentCol < n && Math.abs(rref[row][currentCol]) < 1e-10) {
+                    currentCol++;
+                }
+                if (currentCol < n && Math.abs(rref[row][currentCol] - 1) < 1e-10) {
+                    pivotColumns.push(currentCol);
+                    pivotRowMap[currentCol] = row;
+                    x[currentCol] = rref[row][n];
+                    currentCol++;
+                }
+            }
+            return x;
+        }
+
+        // Extract solution from RREF
+        function extractSolution(rref, n) {
+            var m = rref.length;
+            // Check for inconsistency
+            var hasNoSolution = false;
+            for (var i = 0; i < m; i++) {
+                var isZeroRow = true;
+                for (var j = 0; j < n; j++) {
+                    if (Math.abs(rref[i][j]) > 1e-10) {
+                        isZeroRow = false;
+                        break;
+                    }
+                }
+                if (isZeroRow && Math.abs(rref[i][n]) > 1e-10) {
+                    hasNoSolution = true;
+                    break;
+                }
+            }
+            if (hasNoSolution) {
+                return { type: "no_solution" };
+            }
+            // Find pivot columns
+            var pivotColumns = [];
+            var pivotRowMap = {};
+            var currentCol = 0;
+            for (var row = 0; row < m; row++) {
+                while (currentCol < n && Math.abs(rref[row][currentCol]) < 1e-10) {
+                    currentCol++;
+                }
+                if (currentCol < n && Math.abs(rref[row][currentCol] - 1) < 1e-10) {
+                    pivotColumns.push(currentCol);
+                    pivotRowMap[currentCol] = row;
+                    currentCol++;
+                }
+            }
+            var r = pivotColumns.length;
+            var x_p = new Array(n).fill(0);
+            var generalLatex = "";
+            var nullSpaceBasis = [];
+            var minNormSteps = [];
+            if (r < n) {
+                // Infinite solutions: compute particular and null space
+                var freeVars = [];
+                for (var j = 0; j < n; j++) {
+                    if (!pivotColumns.includes(j)) {
+                        freeVars.push(j);
+                    }
+                }
+                freeVars.sort((a, b) => a - b);
+                // Particular solution (set free variables to 0)
+                for (var j = 0; j < n; j++) {
+                    if (pivotColumns.includes(j)) {
+                        var row = pivotRowMap[j];
+                        x_p[j] = rref[row][n];
+                    }
+                }
+                minNormSteps.push({
+                    description: "\\text{Particular solution (free variables set to 0):}",
+                    latex: "\\mathbf{x}_p = \\begin{bmatrix} " + x_p.map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix}"
+                });
+                // Null space basis
+                for (var k = 0; k < freeVars.length; k++) {
+                    var v = new Array(n).fill(0);
+                    var freeVarIndex = freeVars[k];
+                    v[freeVarIndex] = 1;
+                    for (var j = 0; j < pivotColumns.length; j++) {
+                        var pivotCol = pivotColumns[j];
+                        var row = pivotRowMap[pivotCol];
+                        v[pivotCol] = -rref[row][freeVarIndex];
+                    }
+                    nullSpaceBasis.push(v);
+                }
+                var greekLetters = ["\\alpha", "\\beta", "\\gamma", "\\delta", "\\epsilon", "\\zeta", "\\eta", "\\theta"];
+                var nullSpaceLatex = "\\text{Basis vectors for the null space of } A^T A \\text{ (as columns of N):}";
+                nullSpaceBasis.forEach((v, k) => {
+                    var label = k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}";
+                    nullSpaceLatex += " \\\\ \\mathbf{v}_{" + (k+1) + "} = \\begin{bmatrix} " + v.map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix}";
+                });
+                minNormSteps.push({ description: nullSpaceLatex });
+                // Compute minimum-norm solution
+                var N = nullSpaceBasis;
+                var NTN = [];
+                for (var i = 0; i < N.length; i++) {
+                    var row = [];
+                    for (var j = 0; j < N.length; j++) {
+                        var sum = 0;
+                        for (var k = 0; k < n; k++) {
+                            sum += N[i][k] * N[j][k];
+                        }
+                        row.push(sum);
+                    }
+                    NTN.push(row);
+                }
+                var NTN_latex = NTN.length === 1 && NTN[0].length === 1 ? formatNumber(NTN[0][0]) : "\\begin{bmatrix} " + NTN.map(row => row.map(val => formatNumber(val)).join(" & ")).join(" \\\\ ") + " \\end{bmatrix}";
+                minNormSteps.push({ description: "\\text{Compute } N^T N:", latex: "N^T N = " + NTN_latex });
+                var NT_xp = [];
+                for (var i = 0; i < N.length; i++) {
+                    var sum = 0;
+                    for (var k = 0; k < n; k++) {
+                        sum += N[i][k] * x_p[k];
+                    }
+                    NT_xp.push(-sum);
+                }
+                var NT_xp_latex = NT_xp.length === 1 ? formatNumber(NT_xp[0]) : "\\begin{bmatrix} " + NT_xp.map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix}";
+                minNormSteps.push({ description: "\\text{Compute } -N^T \\mathbf{x}_p:", latex: "-N^T \\mathbf{x}_p = " + NT_xp_latex });
+                var alpha = solveLinearSystem(NTN, NT_xp);
+                var alpha_latex = alpha.length === 1 ? formatNumber(alpha[0]) : "\\begin{bmatrix} " + alpha.map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix}";
+                minNormSteps.push({ description: "\\text{Solve } N^T N \\boldsymbol{\\alpha} = -N^T \\mathbf{x}_p \\text{ to get } \\boldsymbol{\\alpha}:", latex: "\\boldsymbol{\\alpha} = " + alpha_latex });
+                // x* = x_p + N * alpha
+                var x = new Array(n).fill(0);
+                for (var i = 0; i < n; i++) {
+                    x[i] = x_p[i];
+                    for (var k = 0; k < N.length; k++) {
+                        x[i] += N[k][i] * alpha[k];
+                    }
+                }
+                var terms = alpha.map((a, k) => {
+                    let sign = a >= 0 ? "+" : "-";
+                    return sign + " " + formatNumber(Math.abs(a)) + " \\begin{bmatrix} " + N[k].map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix}";
+                }).join(" ");
+                minNormSteps.push({
+                    description: "\\text{Minimum-norm solution } \\mathbf{x}^* = \\mathbf{x}_p + N \\boldsymbol{\\alpha}:",
+                    latex: "\\mathbf{x}^* = \\begin{bmatrix} " + x_p.map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix} " + terms + " = \\begin{bmatrix} " + x.map(val => formatNumber(val)).join(" \\\\ ") + " \\end{bmatrix}"
+                });
+                // General solution LaTeX
+                generalLatex = "\\begin{align*} \\text{General solution:} & \\ \\mathbf{x} = ";
+                var isZeroVector = x.every(val => Math.abs(val) < 1e-10);
+                if (!isZeroVector) {
+                    generalLatex += "\\begin{bmatrix} ";
+                    x.forEach((val, idx) => {
+                        generalLatex += formatNumber(val);
+                        if (idx < n - 1) generalLatex += " \\\\ ";
+                    });
+                    generalLatex += " \\end{bmatrix}";
+                }
+                freeVars.forEach((freeVar, k) => {
+                    if (!isZeroVector || k > 0) {
+                        generalLatex += " + ";
+                    }
+                    generalLatex += (k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}") + " \\begin{bmatrix} ";
+                    nullSpaceBasis[k].forEach((val, idx) => {
+                        generalLatex += formatNumber(val);
+                        if (idx < n - 1) generalLatex += " \\\\ ";
+                    });
+                    generalLatex += " \\end{bmatrix}";
+                });
+                generalLatex += " \\end{align*} \\text{where } ";
+                var params = freeVars.map((_, k) => k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}");
+                if (params.length === 1) {
+                    generalLatex += params[0] + " \\in \\mathbb{R}.";
+                } else if (params.length >= 2) {
+                    generalLatex += params.slice(0, -1).join(", ") + ", " + params[params.length - 1] + " \\in \\mathbb{R}.";
+                }
+            } else {
+                // Unique solution
+                for (var j = 0; j < n; j++) {
+                    if (pivotRowMap[j] !== undefined) {
+                        var row = pivotRowMap[j];
+                        x_p[j] = rref[row][n];
+                    }
+                }
+                x = x_p;
+            }
+            return { type: r === n ? "unique" : "infinite_solutions", solution: x, generalLatex: generalLatex, minNormSteps: minNormSteps };
+        }
+
+        // Event listener to solve the least squares problem
+        document.getElementById("calcBtn").addEventListener("click", function () {
+            var input = readMatrix();
+            if (input === null) return;
+            var A = input.A;
+            var b = input.b;
+            var m = input.m;
+            var n = input.n;
+            // Compute A^T A
+            var ATA = [];
+            for (var i = 0; i < n; i++) {
+                var row = [];
+                for (var j = 0; j < n; j++) {
+                    var sum = 0;
+                    for (var k = 0; k < m; k++) {
+                        sum += A[k][i] * A[k][j];
+                    }
+                    row.push(sum);
+                }
+                ATA.push(row);
+            }
+            // Compute A^T b
+            var ATb = [];
+            for (var i = 0; i < n; i++) {
+                var sum = 0;
+                for (var k = 0; k < m; k++) {
+                    sum += A[k][i] * b[k];
+                }
+                ATb.push(sum);
+            }
+            // Form augmented matrix [A^T A | A^T b]
+            var augmented = ATA.map((row, i) => row.concat(ATb[i]));
+            // Compute RREF with steps
+            var rrefResult = computeRREF(augmented);
+            var rref = rrefResult.matrix;
+            var steps = rrefResult.steps;
+            // Extract solution
+            var solution = extractSolution(rref, n);
+            // Render results
+            var resultDiv = document.getElementById("result");
+            if (!resultDiv) {
+                console.error("Error: Element with ID 'result' not found.");
+                return;
+            }
+            resultDiv.innerHTML = "";
+            // Display least squares solution
+            if (solution.type === "no_solution") {
+                resultDiv.innerHTML += '<p class="font-semibold text-center">The system has no solutions.</p>';
+            } else {
+                var x = solution.solution;
+                let components = x.map(val => formatNumber(val));
+                let latex;
+                if (currentDisplayMode === "fraction") {
+                    let fracs = components.map(str => getFractionParts(str));
+                    let dens = fracs.map(f => f.den);
+                    let commonDen = lcmArray(dens);
+                    if (commonDen > 1) {
+                        let nums = fracs.map(f => {
+                            let scale = commonDen / f.den;
+                            return f.sign * f.num * scale;
+                        });
+                        let vectorLatex = "\\begin{bmatrix} " + nums.join(" \\\\ ") + " \\end{bmatrix}";
+                        latex = "\\begin{align*} \\text{Least squares solution:} & \\ \\mathbf{x} = \\dfrac{1}{" + commonDen + "} " + vectorLatex + " \\end{align*}";
+                    } else {
+                        latex = "\\begin{align*} \\text{Least squares solution:} & \\ \\mathbf{x} = \\begin{bmatrix} " + components.join(" \\\\ ") + " \\end{bmatrix} \\end{align*}";
+                    }
+                } else {
+                    latex = "\\begin{align*} \\text{Least squares solution:} & \\ \\mathbf{x} = \\begin{bmatrix} " + components.join(" \\\\ ") + " \\end{bmatrix} \\end{align*}";
+                }
+                resultDiv.innerHTML += '<p class="font-semibold">Solution:</p><div class="latex">$$' + latex + '$$</div>';
+                if (solution.type === "infinite_solutions") {
+                    resultDiv.innerHTML += '<p class="font-semibold">General Solution:</p><div class="latex">$$' + solution.generalLatex + '$$</div>';
+                }
+            }
+            // Display transformation steps
+            resultDiv.innerHTML += '<h3 class="text-lg font-semibold text-gray-800 mt-6 mb-4">Solution Steps:</h3>';
+            // Input A and b
+            resultDiv.innerHTML += '<p class="font-semibold">$$ \\text{Input Matrix } A: $$</p><div class="latex">$$' + matrixToLatex(A) + '$$</div>';
+            resultDiv.innerHTML += '<p class="font-semibold">$$ \\text{Input Vector } \\mathbf{b}: $$</p><div class="latex">$$ \\begin{bmatrix} ' + b.map(val => formatNumber(val)).join(' \\\\ ') + ' \\end{bmatrix} $$</div>';
+            // Normal equations
+            var xVector = "\\begin{bmatrix} " + Array.from({length: n}, (_, i) => "x_{" + (i+1) + "}").join(" \\\\ ") + " \\end{bmatrix}";
+            resultDiv.innerHTML += '<p class="font-semibold">$$ \\text{Normal Equations: } A^T A \\mathbf{x} = A^T \\mathbf{b} $$</p><div class="latex">$$' + matrixToLatex(ATA) + ' ' + xVector + ' = \\begin{bmatrix} ' + ATb.map(val => formatNumber(val)).join(' \\\\ ') + ' \\end{bmatrix} $$</div>';
+            // Transformation steps
+            for (var idx = 0; idx < steps.length; idx++) {
+                var step = steps[idx];
+                var stepDiv = document.createElement("div");
+                stepDiv.className = "mb-6 border-b pb-4";
+                var stepDescriptionDiv = document.createElement("div");
+                stepDescriptionDiv.className = "latex mb-2";
+                if (idx === 0) {
+                    stepDescriptionDiv.textContent = "$$" + step.description + "$$";
+                } else {
+                    stepDescriptionDiv.textContent = "$$ \\text{Step " + idx + ": } " + step.description + "$$";
+                }
+                stepDiv.appendChild(stepDescriptionDiv);
+                var matrixMath = document.createElement("div");
+                matrixMath.className = "latex";
+                matrixMath.textContent = "$$" + matrixToLatex(step.matrix, true, n) + "$$";
+                stepDiv.appendChild(matrixMath);
+                resultDiv.appendChild(stepDiv);
+            }
+            // Minimum-norm solution steps (if singular)
+            if (solution.type === "infinite_solutions") {
+                resultDiv.innerHTML += '<h3 class="text-lg font-semibold text-gray-800 mt-6 mb-4">Minimum-norm solution steps for singular normal equations:</h3>';
+                solution.minNormSteps.forEach((step, idx) => {
+                    var stepDiv = document.createElement("div");
+                    stepDiv.className = "mb-6 border-b pb-4";
+                    var stepDescriptionDiv = document.createElement("div");
+                    stepDescriptionDiv.className = "latex mb-2";
+                    stepDescriptionDiv.textContent = "$$ \\text{Step " + (idx + 1) + ": } " + step.description + "$$";
+                    stepDiv.appendChild(stepDescriptionDiv);
+                    if (step.latex) {
+                        var stepMath = document.createElement("div");
+                        stepMath.className = "latex";
+                        stepMath.textContent = "$$" + step.latex + "$$";
+                        stepDiv.appendChild(stepMath);
+                    }
+                    resultDiv.appendChild(stepDiv);
+                });
+            }
+            renderMathInElement(resultDiv, { delimiters: [{ left: "$$", right: "$$", display: true }] });
+        });
+    </script>
+</body>
+</html>
