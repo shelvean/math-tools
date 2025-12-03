@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="A web-based tool to compute the Cholesky decomposition of a symmetric and positive definite matrix A = LL^T. Enter matrix size and elements (empty spaces treated as 0) to get the lower triangular matrix L, displayed in decimal or surd/fraction form (short decimals or repeating decimals with numerator/denominator < 500)." />
+    <meta name="keywords" content="Cholesky decomposition, matrix calculator, linear algebra, symmetric matrix, positive definite matrix, matrix decomposition, math tool" />
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag("js", new Date());
+        gtag("config", "G-5B8PRB2WZT");
+    </script>
+    <title>Cholesky Decomposition Solver</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
+    <style>
+        .katex-display { margin: 1em 0; overflow-x: auto; }
+        body { padding-left: 12.5vw; padding-right: 12.5vw; }
+        @media (max-width: 900px) { body { padding-left: 3vw; padding-right: 3vw; }}
+        .matrix-cell { width: 4rem; padding: 0.5rem; text-align: center; border: 2px solid #d1d5db; border-radius: 0.375rem; }
+        .matrix-cell:hover { border-color: #3b82f6; border-width: 3px; }
+        .matrix-cell:focus { outline: none; border-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <nav class="fixed top-0 left-0 w-full z-10 bg-white shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-2">
+            <ul class="flex justify-center space-x-4">
+                <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Home</a></li>
+                <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
+                <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
+                <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
+				<li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
+
+            </ul>
+        </div>
+    </nav>
+    <div class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mt-16">
+        <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">Cholesky Decomposition</h2>
+        <p class="text-center text-gray-600 mb-6">
+            Enter the size $n$ of the symmetric and positive definite matrix $A$, generate the input fields, fill in the matrix $A$, and compute the Cholesky decomposition $A = LL^T$.
+        </p>
+        <div class="bg-gray-50 p-4 rounded-lg mb-6 flex justify-center items-center space-x-4">
+            <span class="text-gray-700">Matrix Size $n$:</span>
+            <input type="number" id="n" min="1" required class="w-16 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+        </div>
+        <div class="flex justify-center mb-6 space-x-6">
+            <span class="text-gray-700">Output Form:</span>
+            <label class="flex items-center">
+                <input type="radio" name="outputForm" value="decimal" checked class="mr-2">
+                <span>Decimal</span>
+            </label>
+            <label class="flex items-center">
+                <input type="radio" name="outputForm" value="surd" class="mr-2">
+                <span>Surd/Fraction</span>
+            </label>
+        </div>
+        <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
+        <div class="flex justify-center space-x-4 mb-6">
+            <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Compute Cholesky</button>
+            <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
+        </div>
+        <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
+        <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
+            © 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: July 29, 2025
+        </div>
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false
+            });
+        });
+
+        function generateMatrix() {
+            var n = parseInt(document.getElementById("n").value, 10);
+            if (isNaN(n) || n <= 0) {
+                alert("Please enter a valid positive integer for n.");
+                return;
+            }
+            var matrixDiv = document.getElementById("matrixInput");
+            if (!matrixDiv) {
+                console.error("Error: Element with ID 'matrixInput' not found.");
+                return;
+            }
+            matrixDiv.innerHTML = "";
+            var statementDiv = document.createElement("div");
+            statementDiv.className = "text-center mb-4";
+            var statement = document.createElement("div");
+            statement.className = "latex";
+            statement.textContent = `$$ \\text{Compute the Cholesky Decomposition } A = LL^T $$`;
+            statementDiv.appendChild(statement);
+            var emptyStatement = document.createElement("div");
+            emptyStatement.className = "latex";
+            emptyStatement.textContent = `$$ \\text{(empty spaces are treated as 0)} $$`;
+            statementDiv.appendChild(emptyStatement);
+            matrixDiv.appendChild(statementDiv);
+            var aDiv = document.createElement("div");
+            aDiv.className = "flex flex-col items-center";
+            var aLabel = document.createElement("p");
+            aLabel.className = "text-center font-semibold latex";
+            aLabel.textContent = "Matrix $A$";
+            aDiv.appendChild(aLabel);
+            var aTable = document.createElement("table");
+            aTable.className = "border-collapse";
+            for (var i = 0; i < n; i++) {
+                var tr = document.createElement("tr");
+                for (var j = 0; j < n; j++) {
+                    var td = document.createElement("td");
+                    td.className = "p-1";
+                    var input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "matrix-cell";
+                    input.id = "A_" + i + "_" + j;
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                aTable.appendChild(tr);
+            }
+            aDiv.appendChild(aTable);
+            matrixDiv.appendChild(aDiv);
+            renderMathInElement(matrixDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false
+            });
+        }
+
+        function clearAll() {
+            document.getElementById("n").value = "";
+            var matrixDiv = document.getElementById("matrixInput");
+            if (matrixDiv) {
+                matrixDiv.innerHTML = "";
+            } else {
+                console.error("Error: Element with ID 'matrixInput' not found in clearAll.");
+            }
+            var resultDiv = document.getElementById("result");
+            if (resultDiv) {
+                resultDiv.innerHTML = "";
+            } else {
+                console.error("Error: Element with ID 'result' not found in clearAll.");
+            }
+            document.querySelector('input[name="outputForm"][value="decimal"]').checked = true;
+        }
+
+        document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+        function parseFraction(str) {
+            str = str.trim();
+            if (str === '') return 0;
+            try {
+                let evaluated = math.evaluate(str);
+                if (typeof evaluated === 'number') {
+                    return evaluated;
+                } else {
+                    return 0;
+                }
+            } catch (e) {
+                alert("Please enter valid numbers, fractions, or mathematical expressions in all cells.");
+                return null;
+            }
+        }
+
+        function readMatrix() {
+            var n = parseInt(document.getElementById("n").value, 10);
+            if (isNaN(n) || n <= 0) {
+                alert("Please enter a valid positive integer for n.");
+                return null;
+            }
+            var A = [];
+            for (var i = 0; i < n; i++) {
+                var row = [];
+                for (var j = 0; j < n; j++) {
+                    var cell = document.getElementById("A_" + i + "_" + j);
+                    if (!cell) {
+                        alert("Error: Matrix input field A_" + i + "_" + j + " not found.");
+                        return null;
+                    }
+                    var value = cell.value.trim();
+                    var num = parseFraction(value);
+                    if (num === null) {
+                        return null;
+                    }
+                    row.push(num);
+                }
+                A.push(row);
+            }
+            return A;
+        }
+
+        function isSymmetric(A) {
+            const n = A.length;
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) {
+                    if (Math.abs(A[i][j] - A[j][i]) > 1e-14) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function determinant(A) {
+            const n = A.length;
+            if (n === 1) return A[0][0];
+            if (n === 2) return A[0][0] * A[1][1] - A[0][1] * A[1][0];
+            let det = 0;
+            for (let j = 0; j < n; j++) {
+                det += A[0][j] * cofactor(A, 0, j);
+            }
+            return det;
+        }
+
+        function cofactor(A, i, j) {
+            const n = A.length;
+            let subMatrix = [];
+            for (let r = 0; r < n; r++) {
+                if (r === i) continue;
+                let row = [];
+                for (let c = 0; c < n; c++) {
+                    if (c === j) continue;
+                    row.push(A[r][c]);
+                }
+                subMatrix.push(row);
+            }
+            let sign = ((i + j) % 2 === 0) ? 1 : -1;
+            return sign * determinant(subMatrix);
+        }
+
+        function isPositiveDefinite(A) {
+            const n = A.length;
+            for (let k = 1; k <= n; k++) {
+                let subMatrix = A.slice(0, k).map(row => row.slice(0, k));
+                let det = determinant(subMatrix);
+                if (det <= 1e-14) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function matrixTranspose(A) {
+            const m = A.length, n = A[0].length;
+            const At = Array(n).fill().map(() => Array(m).fill(0));
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < m; j++) {
+                    At[i][j] = A[j][i];
+                }
+            }
+            return At;
+        }
+
+        function choleskyDecomposition(A) {
+            const n = A.length;
+            const L = Array(n).fill().map(() => Array(n).fill(0));
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j <= i; j++) {
+                    let sum = 0;
+                    for (let k = 0; k < j; k++) {
+                        sum += L[i][k] * L[j][k];
+                    }
+                    if (i === j) {
+                        let diag = A[j][j] - sum;
+                        if (diag <= 1e-14) {
+                            throw new Error("Matrix is not positive definite.");
+                        }
+                        L[j][j] = Math.sqrt(diag);
+                    } else {
+                        L[i][j] = (A[i][j] - sum) / L[j][j];
+                    }
+                    if (Math.abs(L[i][j]) < 1e-14) L[i][j] = 0;
+                }
+            }
+            return L;
+        }
+
+        function gcd(a, b) {
+            if (!b) return Math.abs(a);
+            return gcd(b, a % b);
+        }
+
+        function isShortDecimal(num) {
+            if (Math.abs(num) < 1e-12) return false;
+            let str = num.toFixed(10).replace(/\.?0+$/, '');
+            let decimalPart = str.split('.')[1];
+            if (!decimalPart) return false;
+            let nonZeroCount = (decimalPart.match(/[1-9]/g) || []).length;
+            return nonZeroCount <= 4;
+        }
+
+        function floatToFraction(num, tolerance = 1e-6, maxIter = 30) {
+            if (Math.abs(num) < 1e-12) return { numer: 0, denom: 1 };
+            let sign = Math.sign(num);
+            num = Math.abs(num);
+            let a = Math.floor(num);
+            let h = a;
+            let k = 1;
+            let hPrev = 1;
+            let kPrev = 0;
+            let x = num - a;
+            let iter = 0;
+            while (x > tolerance && iter < maxIter) {
+                x = 1 / x;
+                a = Math.floor(x);
+                let hTemp = a * h + hPrev;
+                let kTemp = a * k + kPrev;
+                hPrev = h;
+                kPrev = k;
+                h = hTemp;
+                k = kTemp;
+                x -= a;
+                iter++;
+                if (Math.abs(num - h / k) < tolerance) break;
+            }
+            return { numer: sign * h, denom: k };
+        }
+
+        function isPerfectSquare(n) {
+            if (n < 0) return false;
+            let root = Math.round(Math.sqrt(n));
+            return Math.abs(root * root - n) < 1e-12;
+        }
+
+        function formatSurdOrFraction(val) {
+            const MAX_DEN = 500;
+            const MAX_NUM = 500;
+            for (let b = 2; b <= MAX_DEN; ++b) {
+                if (!isPerfectSquare(b)) {
+                    const sqrtb = Math.sqrt(b);
+                    for (let c = 1; c <= MAX_DEN; ++c) {
+                        const a_approx = (val * c) / sqrtb;
+                        if (Math.abs(a_approx - Math.round(a_approx)) < 1e-9 && Math.abs(Math.round(a_approx)) <= MAX_NUM) {
+                            const a = Math.round(a_approx);
+                            const sign = a < 0 ? "-" : "";
+                            const a_abs = Math.abs(a);
+                            const sqrtPart = `\\sqrt{${b}}`;
+                            if (a_abs === 1) {
+                                return c === 1 ? `${sign}${sqrtPart}` : `${sign}${sqrtPart}/${c}`;
+                            } else {
+                                return c === 1 ? `${sign}${a_abs}${sqrtPart}` : `${sign}${a_abs}${sqrtPart}/${c}`;
+                            }
+                        }
+                    }
+                }
+            }
+            // Fallback to fraction
+            const frac = floatToFraction(val);
+            if (Math.abs(frac.numer) < 500 && frac.denom < 500) {
+                if (frac.denom === 1) return `${frac.numer}`;
+                return frac.numer < 0 ? `-${-frac.numer}/${frac.denom}` : `${frac.numer}/${frac.denom}`;
+            }
+            return val.toFixed(4).replace(/\.?0+$/, '');
+        }
+
+        function formatForLatex(val, outputForm) {
+            if (Math.abs(val) < 1e-12) return "0";
+            if (Math.abs(val - Math.round(val)) < 1e-12) return Math.round(val).toString();
+            if (outputForm === "decimal") {
+                return val.toFixed(4).replace(/\.?0+$/, '');
+            }
+            let fraction = floatToFraction(val);
+            let isFraction = Math.abs(val - fraction.numer / fraction.denom) < 1e-6;
+            if ((isShortDecimal(val) || isFraction) && Math.abs(fraction.numer) < 500 && fraction.denom < 500) {
+                if (fraction.denom === 1) return fraction.numer.toString();
+                return fraction.numer < 0 ? `-${-fraction.numer}/${fraction.denom}` : `${fraction.numer}/${fraction.denom}`;
+            }
+            return formatSurdOrFraction(val);
+        }
+
+        function matrixToLatex(M, outputForm) {
+            const rows = M.length;
+            const cols = M[0].length;
+            if (rows === 1 && cols === 1) return formatForLatex(M[0][0], outputForm);
+            let latex = "\\begin{bmatrix}";
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    latex += formatForLatex(M[i][j], outputForm);
+                    if (j < cols - 1) latex += " & ";
+                }
+                if (i < rows - 1) latex += " \\\\ ";
+            }
+            latex += "\\end{bmatrix}";
+            return latex;
+        }
+
+        document.getElementById("calcBtn").addEventListener("click", function () {
+            var A = readMatrix();
+            if (A === null) return;
+            var resultDiv = document.getElementById("result");
+            if (!resultDiv) {
+                console.error("Error: Element with ID 'result' not found.");
+                return;
+            }
+            const outputForm = document.querySelector('input[name="outputForm"]:checked').value;
+            try {
+                if (!isSymmetric(A)) {
+                    resultDiv.innerHTML = `<div class="text-red-700 text-center font-bold">Error: Matrix must be symmetric.</div>`;
+                    return;
+                }
+                if (!isPositiveDefinite(A)) {
+                    resultDiv.innerHTML = `<div class="text-red-700 text-center font-bold">Error: Matrix must be positive definite.</div>`;
+                    return;
+                }
+                var L = choleskyDecomposition(A);
+                var A_latex = matrixToLatex(A, outputForm);
+                var L_latex = matrixToLatex(L, outputForm);
+                var Lt_latex = matrixToLatex(matrixTranspose(L), outputForm);
+                resultDiv.innerHTML = `
+                    <div class="latex">$$ A = LL^T $$</div>
+                    <div class="flex justify-center space-x-4">
+                        <div class="latex">$$ A = ${A_latex} $$</div>
+                        <div class="latex">$$ L = ${L_latex} $$</div>
+                        <div class="latex">$$ L^T = ${Lt_latex} $$</div>
+                    </div>
+                `;
+                renderMathInElement(resultDiv, {
+                    delimiters: [{ left: "$$", right: "$$", display: true }],
+                    throwOnError: false
+                });
+            } catch (e) {
+                resultDiv.innerHTML = `<div class="text-red-700 text-center font-bold">Error: ${e.message}</div>`;
+            }
+        });
+    </script>
+</body>
+</html>
