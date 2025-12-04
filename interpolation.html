@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Polynomial Interpolation App for Monomial, Lagrange, Newton, Hermite, Natural Cubic Spline, and Clamped Cubic Spline Methods">
+    <meta name="keywords" content="Polynomial Interpolation, Monomial, Lagrange, Newton, Hermite, Cubic Spline, Clamped Cubic Spline">
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag("js", new Date());
+        gtag("config", "G-5B8PRB2WZT");
+    </script>
+    <title>Polynomial Interpolation</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/contrib/auto-render.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        /* Light gray background with subtle grid for better graph visualization */
+        #plot svg {
+            background-color: #f7f7f7;
+        }
+        .grid line {
+            stroke: #e0e0e0;
+            stroke-opacity: 0.7;
+        }
+        .grid path {
+            stroke: none;
+        }
+        .katex-display {
+            margin: 0.5em 0;
+        }
+        .katex {
+            font-size: 1em !important;
+        }
+        .method-btn {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+<div id="preamble" class="status">
+    <header class="bg-white shadow-sm py-6 px-4 sticky top-0 z-10">
+        <h1 class="text-4xl text-black text-center mb-4 font-bold">
+            <a href="index.html">Shelvean Kapita</a>
+        </h1>
+        <nav>
+            <ul class="flex justify-center gap-8">
+                <li><a href="index.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+                <li><a href="teaching.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+                <li><a href="projects.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Diff Eq</a></li>
+                <li><a href="linear.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Linear Algebra</a></li>
+                <li><a href="numerical.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Numerical Methods</a></li>
+            </ul>
+        </nav>
+    </header>
+</div>
+<div id="app" class="bg-white p-6 rounded-lg shadow-md max-w-4xl w-full mx-auto">
+    <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">Polynomial Interpolation</h2>
+    <div class="method-selection grid grid-cols-3 gap-2 mb-6">
+        <button type="button" data-method="monomial" class="method-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2.5 text-center">Monomial</button>
+        <button type="button" data-method="lagrange" class="method-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2.5 text-center">Lagrange</button>
+        <button type="button" data-method="newton" class="method-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2.5 text-center">Newton</button>
+        <button type="button" data-method="hermite" class="method-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2.5 text-center">Hermite</button>
+        <button type="button" data-method="cubic_spline" class="method-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2.5 text-center">Natural Cubic Spline</button>
+        <button type="button" data-method="clamped_cubic_spline" class="method-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2.5 text-center">Clamped Cubic Spline</button>
+    </div>
+    <div class="flex justify-center space-x-6 mb-6">
+        <label class="flex items-center"><input type="radio" id="custom" name="input_type" value="custom" checked class="mr-2"> Custom points</label>
+        <label class="flex items-center"><input type="radio" id="function" name="input_type" value="function" class="mr-2"> From function</label>
+    </div>
+    <div id="custom-inputs" class="space-y-4">
+        <div>
+            <label class="block text-gray-700 latex">$x$ values (comma separated):</label>
+            <input type="text" id="x_values" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., -1, 0, pi/6, 1">
+        </div>
+        <div>
+            <label class="block text-gray-700 latex">$y=f(x)$ values (comma separated):</label>
+            <input type="text" id="f_values" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 1, 0, sin(pi/3), 1">
+        </div>
+        <div id="fp_input" class="hidden">
+            <label class="block text-gray-700 latex">$f'(x)$ values (comma separated, empty for missing):</label>
+            <input type="text" id="fp_values" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 0, 2, cos(pi/3), 1">
+        </div>
+        <div id="endpoint_fp_input" class="hidden">
+            <label class="block text-gray-700 latex">$f'(x)$ at endpoints (comma separated, first and last):</label>
+            <input type="text" id="endpoint_fp_values" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 0, exp(2)">
+        </div>
+    </div>
+    <div id="function-inputs" style="display:none;" class="space-y-4 mt-4">
+        <div class="flex space-x-4">
+            <div class="flex-1">
+                <label class="block text-gray-700 latex">Function: e.g., $\sin(x)$ or $1/(1+x^2)$:</label>
+                <input type="text" id="func_str" value="sin(x)" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="w-1/4">
+                <label class="block text-gray-700 latex">Range start $a$:</label>
+                <input type="text" id="a" value="-5" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., -5, pi/2, exp(2)">
+            </div>
+            <div class="w-1/4">
+                <label class="block text-gray-700 latex">Range end $b$:</label>
+                <input type="text" id="b" value="5" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 5, pi/2, exp(2)">
+            </div>
+        </div>
+        <div class="flex space-x-4">
+            <div class="w-1/2">
+                <label class="block text-gray-700">Number of points (2-16):</label>
+                <input type="number" id="n_points" value="5" min="2" max="16" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="w-1/2">
+                <label class="block text-gray-700">Node type:</label>
+                <div class="flex space-x-2 mt-1">
+                    <button type="button" data-node-type="equispaced" class="node-type-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center flex-1">Equispaced</button>
+                    <button type="button" data-node-type="chebyshev" class="node-type-btn bg-white text-black border border-gray-300 hover:bg-gray-50 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center flex-1">Chebyshev</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="flex justify-center mt-6 space-x-4">
+        <button onclick="computeInterpolation()" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300">Compute</button>
+        <button onclick="clearAll()" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300">Clear All</button>
+    </div>
+    <div id="output-toggles" class="flex justify-center space-x-6 mt-4 hidden">
+        <label class="flex items-center"><input type="checkbox" id="show_polynomial" class="mr-2"> Display Interpolating Polynomial</label>
+        <label class="flex items-center"><input type="checkbox" id="show_table" class="mr-2"> Display Divided Differences Table</label>
+        <label class="flex items-center"><input type="checkbox" id="show_matrix" class="mr-2"> Display Matrix System</label>
+        <label class="flex items-center"><input type="checkbox" id="show_points" class="mr-2"> Display Interpolation Points</label>
+    </div>
+    <div id="output" class="mt-6 p-4 bg-gray-50 rounded-lg overflow-x-auto"></div>
+    <div id="plot" class="mt-6 flex justify-center"></div>
+    <div id="download-container" class="mt-4 flex justify-center hidden">
+        <button id="download-btn" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300">Download Graph as PNG</button>
+    </div>
+    <div id="eval-container" class="mt-4 flex flex-col items-center hidden">
+        <label class="block text-gray-700 mb-2">Evaluate the interpolant at points (comma separated):</label>
+        <div class="flex space-x-4">
+            <input type="text" id="eval_x" class="w-96 p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., 0, 1, 2">
+            <button id="eval-btn" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300">Evaluate</button>
+        </div>
+    </div>
+    <div id="eval-output" class="mt-6 p-4 bg-gray-50 rounded-lg overflow-x-auto max-w-4xl w-full mx-auto"></div>
+</div>
+<footer class="text-center py-4 border-t mt-6 text-gray-600 text-sm">
+    &copy; 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: November 12, 2025
+</footer>
+<script>
+    // GCD function
+    function gcd(a, b) {
+        a = Math.abs(a);
+        b = Math.abs(b);
+        while (b !== 0) {
+            let temp = b;
+            b = a % b;
+            a = temp;
+        }
+        return a;
+    }
+    // Convert decimal to fraction, scientific notation for small numbers, or detect multiples of pi
+    function toFraction(num, tolerance = 1e-10, maxIterations = 100) {
+        if (isNaN(num)) return '\\text{NaN}';
+        if (!isFinite(num)) return num > 0 ? '\\infty' : '-\\infty';
+        if (Math.abs(num) < 1e-13) return '0';
+        // Detect multiples of pi
+        const piMultiples = [
+            { value: Math.PI, tex: '\\pi' },
+            { value: Math.PI / 2, tex: '\\frac{\\pi}{2}' },
+            { value: Math.PI / 3, tex: '\\frac{\\pi}{3}' },
+            { value: Math.PI / 4, tex: '\\frac{\\pi}{4}' },
+            { value: Math.PI / 6, tex: '\\frac{\\pi}{6}' },
+            { value: 2 * Math.PI / 3, tex: '\\frac{2\\pi}{3}' },
+            { value: 3 * Math.PI / 4, tex: '\\frac{3\\pi}{4}' },
+            { value: 5 * Math.PI / 6, tex: '\\frac{5\\pi}{6}' },
+            { value: 2 * Math.PI, tex: '2\\pi' },
+        ];
+        for (const { value, tex } of piMultiples) {
+            if (Math.abs(num - value) < tolerance) return tex;
+            if (Math.abs(num + value) < tolerance) return `-${tex}`;
+        }
+        // Handle other transcendental values
+        if (Math.abs(num - Math.sqrt(3)/2) < tolerance) return '\\frac{\\sqrt{3}}{2}';
+        if (Math.abs(num - Math.exp(2)) < tolerance) return 'e^{2}';
+        // Handle small numbers with scientific notation
+        if (Math.abs(num) < 1e-3 && Math.abs(num) >= 1e-13) {
+            const sign = num < 0 ? '-' : '';
+            const absNum = Math.abs(num);
+            const exponent = Math.floor(Math.log10(absNum));
+            const coefficient = absNum / Math.pow(10, exponent);
+            const coeffRounded = Math.round(coefficient * 100) / 100;
+            return `${sign}${coeffRounded} \\cdot 10^{${exponent}}`;
+        }
+        // Convert to fraction for larger numbers
+        const sign = num < 0 ? '-' : '';
+        num = Math.abs(num);
+        let h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = num;
+        for (let i = 0; i < maxIterations; i++) {
+            const a = Math.floor(b);
+            const h = a * h1 + h2;
+            const k = a * k1 + k2;
+            if (Math.abs(num - h / k) < tolerance) {
+                const g = gcd(h, k);
+                const numFinal = h / g;
+                const denFinal = k / g;
+                if (denFinal > 100) {
+                    return sign + parseFloat(num).toFixed(4).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+                }
+                if (denFinal === 1) return sign + numFinal;
+                return sign + '\\dfrac{' + numFinal + '}{' + denFinal + '}';
+            }
+            h2 = h1; h1 = h;
+            k2 = k1; k1 = k;
+            b = 1 / (b - a);
+        }
+        return sign + parseFloat(num).toFixed(4).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+    }
+    // Format number
+    function formatNumber(num) {
+        return toFraction(num);
+    }
+    // Format term like (x - 0) to x, (x - (-5)) to (x + 5)
+    function formatTerm(xVal) {
+        if (xVal === 0) return 'x';
+        const valStr = formatNumber(xVal);
+        if (xVal > 0) {
+            return `\\left( x - ${valStr} \\right)`;
+        } else {
+            return `\\left( x + ${formatNumber(-xVal)} \\right)`;
+        }
+    }
+    function groupFactors(factors) {
+        const termCounts = new Map();
+        factors.forEach(term => {
+            termCounts.set(term, (termCounts.get(term) || 0) + 1);
+        });
+        const getXVal = (term) => {
+            if (term === 'x') return 0;
+            if (term.startsWith('\\left( x - ')) {
+                const valStr = term.slice(11, -8);
+                try {
+                    return parseFloat(valStr) || math.evaluate(valStr);
+                } catch {
+                    return 0;
+                }
+            }
+            if (term.startsWith('\\left( x + ')) {
+                const valStr = term.slice(11, -8);
+                try {
+                    return -parseFloat(valStr) || -math.evaluate(valStr);
+                } catch {
+                    return 0;
+                }
+            }
+            return 0;
+        };
+        const uniqueTerms = Array.from(termCounts.keys()).sort((a, b) => getXVal(a) - getXVal(b));
+        return uniqueTerms.map(term => {
+            const count = termCounts.get(term);
+            return count > 1 ? term + '^{' + count + '}' : term;
+        }).join('');
+    }
+    function solveLinearSystem(A, b) {
+        try {
+            const n = A.length;
+            const aug = A.map((row, i) => [...row, b[i]]);
+            for (let p = 0; p < n; p++) {
+                let max = p;
+                for (let i = p + 1; i < n; i++) {
+                    if (Math.abs(aug[i][p]) > Math.abs(aug[max][p])) {
+                        max = i;
+                    }
+                }
+                [aug[p], aug[max]] = [aug[max], aug[p]];
+                if (Math.abs(aug[p][p]) < 1e-12) {
+                    throw new Error('Matrix is singular or near-singular');
+                }
+                for (let i = p + 1; i < n; i++) {
+                    const alpha = aug[i][p] / aug[p][p];
+                    for (let j = p; j <= n; j++) {
+                        aug[i][j] -= alpha * aug[p][j];
+                    }
+                }
+            }
+            const x = new Array(n).fill(0);
+            for (let i = n - 1; i >= 0; i--) {
+                let sum = 0;
+                for (let j = i + 1; j < n; j++) {
+                    sum += aug[i][j] * x[j];
+                }
+                x[i] = (aug[i][n] - sum) / aug[i][i];
+                if (!isFinite(x[i])) throw new Error('Non-finite solution detected');
+            }
+            return x;
+        } catch (e) {
+            console.error('Error in solveLinearSystem:', e);
+            throw e;
+        }
+    }
+    let pFunc = null;
+    let originalFunc = null;
+    function computeInterpolation() {
+        const output = document.getElementById('output');
+        output.innerHTML = '<div class="text-red-500">Computing...</div>';
+        const togglesDiv = document.getElementById('output-toggles');
+        togglesDiv.classList.add('hidden');
+        const downloadContainer = document.getElementById('download-container');
+        downloadContainer.classList.add('hidden');
+        const evalContainer = document.getElementById('eval-container');
+        evalContainer.classList.add('hidden');
+        document.getElementById('eval-output').innerHTML = '';
+        pFunc = null;
+        originalFunc = null;
+        try {
+            const method = selectedMethod;
+            const inputType = document.querySelector('input[name="input_type"]:checked').value;
+            let x = [];
+            let y = [];
+            let yp = null;
+            let yp0, ypn;
+            let func = null;
+            let rangeA, rangeB;
+            if (inputType === 'custom') {
+                const xStr = document.getElementById('x_values').value.trim();
+                const yStr = document.getElementById('f_values').value.trim();
+                if (xStr === '' || yStr === '') {
+                    output.innerHTML = '<div class="text-red-500">Error: Please enter x and f(x) values</div>';
+                    return;
+                }
+                x = xStr.split(',').map(s => {
+                    const expr = s.trim();
+                    try {
+                        const val = math.evaluate(expr);
+                        if (isNaN(val) || !isFinite(val)) throw new Error('Invalid x value: ' + expr);
+                        return val;
+                    } catch (e) {
+                        throw new Error('Invalid x expression: ' + expr + '. Use valid math expressions like pi/6, sin(pi/3), or exp(2).');
+                    }
+                });
+                y = yStr.split(',').map(s => {
+                    const expr = s.trim();
+                    try {
+                        const val = math.evaluate(expr);
+                        if (isNaN(val) || !isFinite(val)) throw new Error('Invalid f(x) value: ' + expr);
+                        return val;
+                    } catch (e) {
+                        throw new Error('Invalid f(x) expression: ' + expr + '. Use valid math expressions like pi/6, sin(pi/3), or exp(2).');
+                    }
+                });
+                if (x.length !== y.length || x.length < 2 || x.length > 16) {
+                    output.innerHTML = '<div class="text-red-500">Error: Invalid number of points. Must be 2-16 and same length</div>';
+                    return;
+                }
+                const uniqueX = new Set(x.map(val => val.toFixed(10)));
+                if (uniqueX.size !== x.length && (method === 'lagrange' || method === 'newton')) {
+                    output.innerHTML = '<div class="text-red-500">Error: Duplicate x values not allowed for Lagrange or Newton</div>';
+                    return;
+                }
+                if (method === 'hermite') {
+                    const fpInputDiv = document.getElementById('fp_input');
+                    if (!fpInputDiv.classList.contains('hidden')) {
+                        const ypStr = document.getElementById('fp_values').value.trim();
+                        yp = ypStr ? ypStr.split(',').map(s => {
+                            const expr = s.trim();
+                            if (expr === '') return NaN;
+                            try {
+                                const val = math.evaluate(expr);
+                                if (isNaN(val) || !isFinite(val)) throw new Error('Invalid f\'(x) value: ' + expr);
+                                return val;
+                            } catch (e) {
+                                throw new Error('Invalid f\'(x) expression: ' + expr + '. Use valid math expressions like cos(pi/3), 0, or 1.');
+                            }
+                        }) : new Array(x.length).fill(NaN);
+                        if (yp.length !== x.length) {
+                            output.innerHTML = '<div class="text-red-500">Error: f\'(x) must have same length as x and f(x)</div>';
+                            return;
+                        }
+                    }
+                }
+                if (method === 'clamped_cubic_spline') {
+                    const endpointFpInputDiv = document.getElementById('endpoint_fp_input');
+                    if (!endpointFpInputDiv.classList.contains('hidden')) {
+                        const ypStr = document.getElementById('endpoint_fp_values').value.trim();
+                        const endpointYp = ypStr.split(',').map(s => {
+                            const expr = s.trim();
+                            try {
+                                const val = math.evaluate(expr);
+                                if (isNaN(val) || !isFinite(val)) throw new Error('Invalid endpoint derivative: ' + expr);
+                                return val;
+                            } catch (e) {
+                                throw new Error('Invalid endpoint derivative expression: ' + expr + '. Use valid math expressions like 0, exp(2).');
+                            }
+                        });
+                        if (endpointYp.length !== 2) {
+                            output.innerHTML = '<div class="text-red-500">Error: Invalid endpoint derivatives: must be two expressions separated by comma</div>';
+                            return;
+                        }
+                        yp0 = endpointYp[0];
+                        ypn = endpointYp[1];
+                    }
+                }
+            } else {
+                const funcStr = document.getElementById('func_str').value.trim();
+                const aStr = document.getElementById('a').value.trim();
+                const bStr = document.getElementById('b').value.trim();
+                const nPoints = parseInt(document.getElementById('n_points').value);
+                const nodeType = selectedNodeType;
+                try {
+                    rangeA = math.evaluate(aStr);
+                    if (isNaN(rangeA) || !isFinite(rangeA)) throw new Error('Invalid range start: ' + aStr);
+                } catch (e) {
+                    output.innerHTML = '<div class="text-red-500">Error: Invalid range start expression: ' + aStr + '. Use valid math expressions like -5, pi/2, exp(2).</div>';
+                    return;
+                }
+                try {
+                    rangeB = math.evaluate(bStr);
+                    if (isNaN(rangeB) || !isFinite(rangeB)) throw new Error('Invalid range end: ' + bStr);
+                } catch (e) {
+                    output.innerHTML = '<div class="text-red-500">Error: Invalid range end expression: ' + bStr + '. Use valid math expressions like 5, pi/2, exp(2).</div>';
+                    return;
+                }
+                if (rangeA >= rangeB || nPoints < 2 || nPoints > 16) {
+                    output.innerHTML = '<div class="text-red-500">Error: Invalid range or number of points</div>';
+                    return;
+                }
+                try {
+                    func = (xx) => math.evaluate(funcStr, { x: xx });
+                    const testVal = func(rangeA);
+                    if (isNaN(testVal) || !isFinite(testVal)) throw new Error('Function evaluation failed');
+                } catch (e) {
+                    console.error('Function parsing error:', e);
+                    output.innerHTML = '<div class="text-red-500">Error: Invalid function. Use expressions like sin(x), x^2 + 1, etc.</div>';
+                    return;
+                }
+                if (nodeType === 'equispaced') {
+                    const step = (rangeB - rangeA) / (nPoints - 1);
+                    for (let i = 0; i < nPoints; i++) {
+                        x.push(rangeA + i * step);
+                    }
+                } else {
+                    for (let k = 0; k < nPoints; k++) {
+                        const cosVal = Math.cos(Math.PI * (2 * k + 1) / (2 * nPoints));
+                        x.push((rangeA + rangeB) / 2 + (rangeB - rangeA) / 2 * cosVal);
+                    }
+                    x.sort((a, b) => a - b);
+                }
+                y = x.map(xi => {
+                    const val = func(xi);
+                    if (isNaN(val) || !isFinite(val)) throw new Error('Function evaluation produced invalid result at x=' + xi);
+                    return val;
+                });
+                if (method === 'hermite') {
+                    try {
+                        const node = math.parse(funcStr);
+                        const deriv = math.derivative(node, 'x');
+                        yp = x.map(xi => {
+                            const val = deriv.evaluate({x: xi});
+                            if (isNaN(val) || !isFinite(val)) throw new Error('Derivative evaluation failed at x=' + xi);
+                            return val;
+                        });
+                    } catch (e) {
+                        console.warn('Symbolic derivative failed, falling back to numerical approximation:', e);
+                        const h = 1e-6;
+                        yp = x.map(xi => (func(xi + h) - func(xi - h)) / (2 * h));
+                    }
+                }
+                if (method === 'clamped_cubic_spline') {
+                    try {
+                        const node = math.parse(funcStr);
+                        const deriv = math.derivative(node, 'x');
+                        yp0 = deriv.evaluate({x: x[0]});
+                        ypn = deriv.evaluate({x: x[x.length - 1]});
+                    } catch (e) {
+                        console.warn('Symbolic derivative failed for endpoints, falling back to numerical approximation:', e);
+                        const h = 1e-6;
+                        yp0 = (func(x[0] + h) - func(x[0] - h)) / (2 * h);
+                        ypn = (func(x[x.length - 1] + h) - func(x[x.length - 1] - h)) / (2 * h);
+                    }
+                }
+                originalFunc = func;
+            }
+            const indices = x.map((val, idx) => idx).sort((a, b) => x[a] - x[b]);
+            x = indices.map(i => x[i]);
+            y = indices.map(i => y[i]);
+            if (yp) yp = indices.map(i => yp[i]);
+            const n = x.length;
+            const xmin = x[0];
+            const xmax = x[x.length - 1];
+            let plotRange = [xmin, xmax];
+            if (inputType === 'function' && func) {
+                plotRange[0] = Math.max(xmin, rangeA);
+                plotRange[1] = Math.min(xmax, rangeB);
+            }
+            output.innerHTML = '';
+            const pointsDiv = document.createElement('div');
+            pointsDiv.id = 'points-section';
+            pointsDiv.style.display = 'none';
+            let pointsTex = x.map((xi, i) => `\\left(${formatNumber(xi)}, ${toFraction(y[i])}\\right)`).join(' \\quad ');
+            katex.render(pointsTex, pointsDiv, {throwOnError: false, displayMode: true});
+            output.appendChild(pointsDiv);
+            let splineFuncs = null;
+            let polynomialDiv = null;
+            let tableDiv = null;
+            let matrixDiv = null;
+            let hasPolynomial = false;
+            let hasTable = false;
+            let hasMatrix = false;
+            let hasPoints = true;
+            if (method === 'monomial') {
+                try {
+                    const V = x.map(xi => {
+                        const row = [];
+                        for (let j = 0; j < n; j++) {
+                            row.push(Math.pow(xi, j));
+                        }
+                        return row;
+                    });
+                    const coeffs = solveLinearSystem(V, y);
+                    matrixDiv = document.createElement('div');
+                    matrixDiv.id = 'matrix-section';
+                    let vMatrix = '\\begin{pmatrix}';
+                    for (let i = 0; i < n; i++) {
+                        vMatrix += V[i].map(v => formatNumber(v)).join(' & ') + ' \\\\ ';
+                    }
+                    vMatrix += '\\end{pmatrix} \\begin{pmatrix} ' + Array.from({length: n}, (_, i) => `a_${i}`).join(' \\\\ ') + ' \\end{pmatrix} = \\begin{pmatrix} ' + y.map(yy => toFraction(yy)).join(' \\\\ ') + ' \\end{pmatrix}';
+                    const vanDiv = document.createElement('div');
+                    katex.render(vMatrix, vanDiv, {throwOnError: false, displayMode: true});
+                    matrixDiv.appendChild(vanDiv);
+                    hasMatrix = true;
+                    polynomialDiv = document.createElement('div');
+                    polynomialDiv.id = 'polynomial-section';
+                    let polyTerms = [];
+                    for (let j = n - 1; j >= 0; j--) {
+                        const a = coeffs[j];
+                        if (Math.abs(a) < 1e-12) continue;
+                        let coeffTex = toFraction(a);
+                        if (coeffTex === '0') continue;
+                        let termSign = polyTerms.length === 0 ? (coeffTex.startsWith('-') ? '-' : '') : (coeffTex.startsWith('-') ? '-' : '+');
+                        coeffTex = coeffTex.replace(/^-/, '');
+                        let coeffStr = (coeffTex === '1' && j !== 0) ? '' : coeffTex;
+                        let varTex = j === 0 ? '' : (j === 1 ? 'x' : 'x^{' + j + '}');
+                        let term = coeffStr + varTex;
+                        polyTerms.push(termSign + term);
+                    }
+                    let polyTex = 'p(x) = ' + (polyTerms.length ? polyTerms.join('') : '0');
+                    polyTex = polyTex.replace(/\+-/g, '-').replace(/[-]+/g, '-').replace(/--/g, '+');
+                    const polyInnerDiv = document.createElement('div');
+                    katex.render(polyTex, polyInnerDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(polyInnerDiv);
+                    let coeffsTex = coeffs.map((a, j) => 'a_{' + j + '} = ' + toFraction(a)).join(', ');
+                    const coeffsDiv = document.createElement('div');
+                    katex.render(coeffsTex, coeffsDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(coeffsDiv);
+                    hasPolynomial = true;
+                    pFunc = (xx) => {
+                        let res = 0;
+                        for (let j = 0; j < n; j++) {
+                            res += coeffs[j] * Math.pow(xx, j);
+                        }
+                        return isFinite(res) ? res : NaN;
+                    };
+                } catch (e) {
+                    console.error('Error in monomial interpolation:', e);
+                    output.innerHTML += '<div class="text-red-500">Error computing monomial interpolation: ' + e.message + '</div>';
+                }
+            } else if (method === 'lagrange') {
+                try {
+                    polynomialDiv = document.createElement('div');
+                    polynomialDiv.id = 'polynomial-section';
+                    let polyTerms = [];
+                    let lPolys = [];
+                    for (let j = 0; j < n; j++) {
+                        let denom = 1;
+                        for (let k = 0; k < n; k++) {
+                            if (k !== j) {
+                                const diff = x[j] - x[k];
+                                if (Math.abs(diff) < 1e-12) throw new Error('Duplicate x values detected');
+                                denom *= diff;
+                            }
+                        }
+                        let constTex = toFraction(1 / denom);
+                        let prodTex = '';
+                        for (let k = 0; k < n; k++) {
+                            if (k !== j) prodTex += formatTerm(x[k]);
+                        }
+                        let lTex = '\\ell_{' + j + '}(x) = ' + (Math.abs(1 / denom) === 1 ? (1 / denom < 0 ? '-' : '') : constTex);
+                        if (prodTex) lTex += (Math.abs(1 / denom) === 1 ? '' : '\\cdot ') + prodTex;
+                        lPolys.push(lTex);
+                        const yj = y[j];
+                        if (Math.abs(yj) < 1e-12) continue;
+                        let yTex = toFraction(yj);
+                        if (yTex === '0') continue;
+                        let termSign = polyTerms.length === 0 ? (yTex.startsWith('-') ? '-' : '') : (yTex.startsWith('-') ? '-' : '+');
+                        yTex = yTex.replace(/^-/, '');
+                        let yStr = (yTex === '1' ? '' : yTex);
+                        let termTex = yStr + '\\ell_' + j + '(x)';
+                        polyTerms.push(termSign + termTex);
+                    }
+                    let polyTex = 'p(x) = ' + (polyTerms.length ? polyTerms.join('') : '0');
+                    polyTex = polyTex.replace(/\+-/g, '-').replace(/[-]+/g, '-').replace(/--/g, '+');
+                    const polyInnerDiv = document.createElement('div');
+                    katex.render(polyTex, polyInnerDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(polyInnerDiv);
+                    const cardsDiv = document.createElement('div');
+                    cardsDiv.className = 'flex flex-col space-y-2';
+                    for (let j = 0; j < n; j++) {
+                        const cardDiv = document.createElement('div');
+                        cardDiv.className = 'w-full p-4 rounded bg-gray-50';
+                        const fontSize = n >= 7 ? '0.8em' : '1em';
+                        katex.render(lPolys[j], cardDiv, { throwOnError: false, displayMode: true, output: 'html', strict: false, macros: {}, fleqn: false, trust: false, fontSize: fontSize });
+                        cardsDiv.appendChild(cardDiv);
+                    }
+                    polynomialDiv.appendChild(cardsDiv);
+                    hasPolynomial = true;
+                    pFunc = (xx) => {
+                        let res = 0;
+                        for (let j = 0; j < n; j++) {
+                            let l = 1;
+                            for (let k = 0; k < n; k++) {
+                                if (k !== j) l *= (xx - x[k]) / (x[j] - x[k]);
+                            }
+                            res += y[j] * l;
+                        }
+                        return isFinite(res) ? res : NaN;
+                    };
+                } catch (e) {
+                    console.error('Error in Lagrange interpolation:', e);
+                    output.innerHTML += '<div class="text-red-500">Error computing Lagrange interpolation: ' + e.message + '</div>';
+                }
+            } else if (method === 'newton') {
+                try {
+                    const dd = Array.from({length: n}, () => new Array(n).fill(0));
+                    for (let i = 0; i < n; i++) {
+                        dd[i][0] = y[i];
+                    }
+                    for (let k = 1; k < n; k++) {
+                        for (let i = 0; i < n - k; i++) {
+                            const diff = x[i + k] - x[i];
+                            if (Math.abs(diff) < 1e-12) throw new Error('Invalid divided difference due to duplicate x values');
+                            dd[i][k] = (dd[i + 1][k - 1] - dd[i][k - 1]) / diff;
+                        }
+                    }
+                    tableDiv = document.createElement('div');
+                    tableDiv.id = 'divided-differences-table';
+                    const table = document.createElement('table');
+                    table.className = 'min-w-full bg-white border border-gray-300';
+                    let header = '<tr><th class="border px-4 py-2">' + katex.renderToString('x') + '</th>';
+                    header += '<th class="border px-4 py-2">' + katex.renderToString('f[\\cdot]') + '</th>';
+                    for (let k = 1; k < n; k++) {
+                        header += '<th class="border px-4 py-2">' + katex.renderToString('f[' + '\\cdot,'.repeat(k) + '\\cdot]') + '</th>';
+                    }
+                    header += '</tr>';
+                    table.innerHTML = header;
+                    for (let i = 0; i < n; i++) {
+                        let row = '<tr><td class="border px-4 py-2">' + katex.renderToString('x_{' + i + '} = ' + formatNumber(x[i])) + '</td>';
+                        for (let k = 0; k < n; k++) {
+                            if (k <= i) {
+                                let style = (i === k) ? 'class="border px-4 py-2 text-red-600 font-bold"' : 'class="border px-4 py-2"';
+                                row += '<td ' + style + '>' + (dd[i-k][k] !== undefined ? katex.renderToString(toFraction(dd[i-k][k])) : '') + '</td>';
+                            } else {
+                                row += '<td class="border px-4 py-2"></td>';
+                            }
+                        }
+                        row += '</tr>';
+                        table.innerHTML += row;
+                    }
+                    tableDiv.appendChild(table);
+                    hasTable = true;
+                    polynomialDiv = document.createElement('div');
+                    polynomialDiv.id = 'polynomial-section';
+                    let polyTex = 'p(x) = ';
+                    let terms = [];
+                    for (let k = 0; k < n; k++) {
+                        const coefNum = dd[0][k];
+                        if (Math.abs(coefNum) < 1e-12) continue;
+                        let coefTex = toFraction(coefNum);
+                        if (coefTex === '0') continue;
+                        let termSign = terms.length === 0 ? (coefTex.startsWith('-') ? '-' : '') : (coefTex.startsWith('-') ? '-' : '+');
+                        coefTex = coefTex.replace(/^-/, '');
+                        let coefStr = (coefTex === '1' && k > 0) ? '' : coefTex;
+                        let factors = [];
+                        for (let m = 0; m < k; m++) {
+                            factors.push(formatTerm(x[m]));
+                        }
+                        let prodTex = groupFactors(factors);
+                        let term = coefStr + prodTex;
+                        terms.push(termSign + term);
+                    }
+                    polyTex += terms.join('') || '0';
+                    polyTex = polyTex.replace(/\+-/g, '-').replace(/[-]+/g, '-').replace(/--/g, '+');
+                    const polyInnerDiv = document.createElement('div');
+                    katex.render(polyTex, polyInnerDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(polyInnerDiv);
+                    hasPolynomial = true;
+                    pFunc = (xx) => {
+                        let res = dd[0][0];
+                        let prod = 1;
+                        for (let k = 1; k < n; k++) {
+                            prod *= (xx - x[k - 1]);
+                            res += dd[0][k] * prod;
+                        }
+                        return isFinite(res) ? res : NaN;
+                    };
+                } catch (e) {
+                    console.error('Error in Newton interpolation:', e);
+                    output.innerHTML += '<div class="text-red-500">Error computing Newton interpolation: ' + e.message + '</div>';
+                }
+            } else if (method === 'hermite') {
+                try {
+                    let z = [];
+                    let Q = Array.from({length: 2 * n}, () => new Array(2 * n).fill(0));
+                    let pointMap = [];
+                    let totalRows = 0;
+                    for (let j = 0; j < n; j++) {
+                        z.push(x[j]);
+                        Q[totalRows][0] = y[j];
+                        pointMap.push(j);
+                        totalRows++;
+                        if (yp && !isNaN(yp[j])) {
+                            z.push(x[j]);
+                            Q[totalRows][0] = y[j];
+                            pointMap.push(j);
+                            totalRows++;
+                        }
+                    }
+                    for (let k = 1; k < totalRows; k++) {
+                        for (let i = 0; i < totalRows - k; i++) {
+                            if (Math.abs(z[i + k] - z[i]) < 1e-12) {
+                                if (k === 1) {
+                                    const pointJ = pointMap[i];
+                                    Q[i][k] = yp[pointJ];
+                                } else {
+                                    output.innerHTML = '<div class="text-red-500">Error: Higher multiplicity not supported</div>';
+                                    return;
+                                }
+                            } else {
+                                const diff = z[i + k] - z[i];
+                                if (Math.abs(diff) < 1e-12) throw new Error('Invalid divided difference due to duplicate z values');
+                                Q[i][k] = (Q[i + 1][k - 1] - Q[i][k - 1]) / diff;
+                            }
+                        }
+                    }
+                    tableDiv = document.createElement('div');
+                    tableDiv.id = 'divided-differences-table';
+                    const table = document.createElement('table');
+                    table.className = 'min-w-full bg-white border border-gray-300';
+                    let header = '<tr><th class="border px-4 py-2">' + katex.renderToString('z') + '</th>';
+                    header += '<th class="border px-4 py-2">' + katex.renderToString('f[\\cdot]') + '</th>';
+                    for (let k = 1; k < totalRows; k++) {
+                        header += '<th class="border px-4 py-2">' + katex.renderToString('f[' + '\\cdot,'.repeat(k) + '\\cdot]') + '</th>';
+                    }
+                    header += '</tr>';
+                    table.innerHTML = header;
+                    for (let i = 0; i < totalRows; i++) {
+                        let row = '<tr><td class="border px-4 py-2">' + katex.renderToString('z_{' + i + '} = ' + formatNumber(z[i])) + '</td>';
+                        for (let k = 0; k < totalRows; k++) {
+                            if (k <= i) {
+                                let style = (i === k) ? 'class="border px-4 py-2 text-red-600 font-bold"' : 'class="border px-4 py-2"';
+                                row += '<td ' + style + '>' + (Q[i-k][k] !== undefined ? katex.renderToString(toFraction(Q[i-k][k])) : '') + '</td>';
+                            } else {
+                                row += '<td class="border px-4 py-2"></td>';
+                            }
+                        }
+                        row += '</tr>';
+                        table.innerHTML += row;
+                    }
+                    tableDiv.appendChild(table);
+                    hasTable = true;
+                    polynomialDiv = document.createElement('div');
+                    polynomialDiv.id = 'polynomial-section';
+                    let polyTex = 'p(x) = ';
+                    let terms = [];
+                    for (let k = 0; k < totalRows; k++) {
+                        const coefNum = Q[0][k];
+                        if (Math.abs(coefNum) < 1e-12) continue;
+                        let coefTex = toFraction(coefNum);
+                        if (coefTex === '0') continue;
+                        let termSign = terms.length === 0 ? (coefTex.startsWith('-') ? '-' : '') : (coefTex.startsWith('-') ? '-' : '+');
+                        coefTex = coefTex.replace(/^-/, '');
+                        let coefStr = (coefTex === '1' && k > 0) ? '' : coefTex;
+                        let factors = [];
+                        for (let m = 0; m < k; m++) {
+                            factors.push(formatTerm(z[m]));
+                        }
+                        let prodTex = groupFactors(factors);
+                        let term = coefStr + prodTex;
+                        terms.push(termSign + term);
+                    }
+                    polyTex += terms.join('') || '0';
+                    polyTex = polyTex.replace(/\+-/g, '-').replace(/[-]+/g, '-').replace(/--/g, '+');
+                    const polyInnerDiv = document.createElement('div');
+                    katex.render(polyTex, polyInnerDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(polyInnerDiv);
+                    hasPolynomial = true;
+                    pFunc = (xx) => {
+                        let res = Q[0][0] || 0;
+                        let prod = 1;
+                        for (let k = 1; k < totalRows; k++) {
+                            prod *= (xx - z[k - 1]);
+                            res += (Q[0][k] || 0) * prod;
+                        }
+                        return isFinite(res) ? res : NaN;
+                    };
+                } catch (e) {
+                    console.error('Error in Hermite interpolation:', e);
+                    output.innerHTML += '<div class="text-red-500">Error computing Hermite interpolation: ' + e.message + '</div>';
+                }
+            } else if (method === 'cubic_spline') {
+                try {
+                    if (n < 3) {
+                        output.innerHTML = '<div class="text-red-500">Error: At least 3 points for cubic spline</div>';
+                        return;
+                    }
+                    const h = [];
+                    for (let i = 0; i < n - 1; i++) {
+                        h.push(x[i + 1] - x[i]);
+                        if (h[i] <= 0) throw new Error('Non-positive interval in cubic spline');
+                    }
+                    const nn = n - 2;
+                    const A = Array.from({length: nn}, () => new Array(nn).fill(0));
+                    const b = new Array(nn);
+                    for (let ii = 0; ii < nn; ii++) {
+                        const i = ii + 1;
+                        if (ii > 0) A[ii][ii - 1] = h[i - 1];
+                        A[ii][ii] = 2 * (h[i - 1] + h[i]);
+                        if (ii < nn - 1) A[ii][ii + 1] = h[i];
+                        const d_im1 = (y[i] - y[i - 1]) / h[i - 1];
+                        const d_i = (y[i + 1] - y[i]) / h[i];
+                        b[ii] = 6 * (d_i - d_im1);
+                    }
+                    const m_mid = solveLinearSystem(A, b);
+                    const m = [0, ...m_mid, 0];
+                    polynomialDiv = document.createElement('div');
+                    polynomialDiv.id = 'polynomial-section';
+                    let pieceTex = 'S(x) = \\begin{cases} ';
+                    splineFuncs = [];
+                    for (let i = 0; i < n - 1; i++) {
+                        const a = y[i];
+                        const b_coef = (y[i + 1] - y[i]) / h[i] - h[i] * (2 * m[i] + m[i + 1]) / 6;
+                        const c = m[i] / 2;
+                        const d = (m[i + 1] - m[i]) / (6 * h[i]);
+                        let polyTerms = [];
+                        if (Math.abs(d) > 1e-12) {
+                            let dTex = toFraction(d);
+                            let termSign = dTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            dTex = dTex.replace(/^-/, '');
+                            let dStr = dTex === '1' ? '' : dTex;
+                            polyTerms.push(termSign + dStr + formatTerm(x[i]) + '^{3}');
+                        }
+                        if (Math.abs(c) > 1e-12) {
+                            let cTex = toFraction(c);
+                            let termSign = cTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            cTex = cTex.replace(/^-/, '');
+                            let cStr = cTex === '1' ? '' : cTex;
+                            polyTerms.push(termSign + cStr + formatTerm(x[i]) + '^{2}');
+                        }
+                        if (Math.abs(b_coef) > 1e-12) {
+                            let bTex = toFraction(b_coef);
+                            let termSign = bTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            bTex = bTex.replace(/^-/, '');
+                            let bStr = bTex === '1' ? '' : bTex;
+                            polyTerms.push(termSign + bStr + formatTerm(x[i]));
+                        }
+                        if (Math.abs(a) > 1e-12 || polyTerms.length === 0) {
+                            let aTex = toFraction(a);
+                            let termSign = aTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            aTex = aTex.replace(/^-/, '');
+                            polyTerms.push(termSign + aTex);
+                        }
+                        let polyTex = polyTerms.join('');
+                        polyTex = polyTex.replace(/\+-/g, '-').replace(/[-]+/g, '-').replace(/--/g, '+');
+                        if (polyTex.startsWith('+')) polyTex = polyTex.slice(1);
+                        pieceTex += polyTex + ' & x \\in [' + formatNumber(x[i]) + ', ' + formatNumber(x[i + 1]) + '] \\\\ ';
+                        if (i < n - 2) pieceTex += '\\\\ ';
+                        splineFuncs.push({ a: a, b: b_coef, c: c, d: d, x_i: x[i], x_ip1: x[i + 1] });
+                    }
+                    pieceTex += '\\end{cases}';
+                    const pieceInnerDiv = document.createElement('div');
+                    katex.render(pieceTex, pieceInnerDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(pieceInnerDiv);
+                    hasPolynomial = true;
+                    pFunc = (xx) => {
+                        let i;
+                        if (xx < x[0]) {
+                            i = 0;
+                        } else if (xx > x[n-1]) {
+                            i = n - 2;
+                        } else {
+                            i = 0;
+                            for (; i < n - 1; i++) {
+                                if (xx <= x[i + 1]) break;
+                            }
+                        }
+                        const dx = xx - x[i];
+                        const {a, b, c, d} = splineFuncs[i];
+                        const res = a + b * dx + c * dx * dx + d * dx * dx * dx;
+                        return isFinite(res) ? res : NaN;
+                    };
+                } catch (e) {
+                    console.error('Error in cubic spline interpolation:', e);
+                    output.innerHTML += '<div class="text-red-500">Error computing cubic spline interpolation: ' + e.message + '</div>';
+                }
+            } else if (method === 'clamped_cubic_spline') {
+                try {
+                    if (n < 3) {
+                        output.innerHTML = '<div class="text-red-500">Error: At least 3 points for clamped cubic spline</div>';
+                        return;
+                    }
+                    const h = [];
+                    for (let i = 0; i < n - 1; i++) {
+                        h.push(x[i + 1] - x[i]);
+                        if (h[i] <= 0) throw new Error('Non-positive interval in cubic spline');
+                    }
+                    const A = Array.from({length: n}, () => new Array(n).fill(0));
+                    const b = new Array(n);
+                    A[0][0] = 2 * h[0];
+                    A[0][1] = h[0];
+                    b[0] = 6 * ((y[1] - y[0]) / h[0] - yp0);
+                    for (let i = 1; i < n - 1; i++) {
+                        A[i][i - 1] = h[i - 1];
+                        A[i][i] = 2 * (h[i - 1] + h[i]);
+                        A[i][i + 1] = h[i];
+                        b[i] = 6 * ((y[i + 1] - y[i]) / h[i] - (y[i] - y[i - 1]) / h[i - 1]);
+                    }
+                    A[n - 1][n - 2] = h[n - 2];
+                    A[n - 1][n - 1] = 2 * h[n - 2];
+                    b[n - 1] = 6 * (ypn - (y[n - 1] - y[n - 2]) / h[n - 2]);
+                    const m = solveLinearSystem(A, b);
+                    polynomialDiv = document.createElement('div');
+                    polynomialDiv.id = 'polynomial-section';
+                    let pieceTex = 'S(x) = \\begin{cases} ';
+                    splineFuncs = [];
+                    for (let i = 0; i < n - 1; i++) {
+                        const a = y[i];
+                        const b_coef = (y[i + 1] - y[i]) / h[i] - h[i] * (2 * m[i] + m[i + 1]) / 6;
+                        const c = m[i] / 2;
+                        const d = (m[i + 1] - m[i]) / (6 * h[i]);
+                        let polyTerms = [];
+                        if (Math.abs(d) > 1e-12) {
+                            let dTex = toFraction(d);
+                            let termSign = dTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            dTex = dTex.replace(/^-/, '');
+                            let dStr = dTex === '1' ? '' : dTex;
+                            polyTerms.push(termSign + dStr + formatTerm(x[i]) + '^{3}');
+                        }
+                        if (Math.abs(c) > 1e-12) {
+                            let cTex = toFraction(c);
+                            let termSign = cTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            cTex = cTex.replace(/^-/, '');
+                            let cStr = cTex === '1' ? '' : cTex;
+                            polyTerms.push(termSign + cStr + formatTerm(x[i]) + '^{2}');
+                        }
+                        if (Math.abs(b_coef) > 1e-12) {
+                            let bTex = toFraction(b_coef);
+                            let termSign = bTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            bTex = bTex.replace(/^-/, '');
+                            let bStr = bTex === '1' ? '' : bTex;
+                            polyTerms.push(termSign + bStr + formatTerm(x[i]));
+                        }
+                        if (Math.abs(a) > 1e-12 || polyTerms.length === 0) {
+                            let aTex = toFraction(a);
+                            let termSign = aTex.startsWith('-') ? '-' : (polyTerms.length ? '+' : '');
+                            aTex = aTex.replace(/^-/, '');
+                            polyTerms.push(termSign + aTex);
+                        }
+                        let polyTex = polyTerms.join('');
+                        polyTex = polyTex.replace(/\+-/g, '-').replace(/[-]+/g, '-').replace(/--/g, '+');
+                        if (polyTex.startsWith('+')) polyTex = polyTex.slice(1);
+                        pieceTex += polyTex + ' & x \\in [' + formatNumber(x[i]) + ', ' + formatNumber(x[i + 1]) + '] \\\\ ';
+                        if (i < n - 2) pieceTex += '\\\\ ';
+                        splineFuncs.push({ a: a, b: b_coef, c: c, d: d, x_i: x[i], x_ip1: x[i + 1] });
+                    }
+                    pieceTex += '\\end{cases}';
+                    const pieceInnerDiv = document.createElement('div');
+                    katex.render(pieceTex, pieceInnerDiv, {throwOnError: false, displayMode: true});
+                    polynomialDiv.appendChild(pieceInnerDiv);
+                    hasPolynomial = true;
+                    pFunc = (xx) => {
+                        let i;
+                        if (xx < x[0]) {
+                            i = 0;
+                        } else if (xx > x[n-1]) {
+                            i = n - 2;
+                        } else {
+                            i = 0;
+                            for (; i < n - 1; i++) {
+                                if (xx <= x[i + 1]) break;
+                            }
+                        }
+                        const dx = xx - x[i];
+                        const {a, b, c, d} = splineFuncs[i];
+                        const res = a + b * dx + c * dx * dx + d * dx * dx * dx;
+                        return isFinite(res) ? res : NaN;
+                    };
+                } catch (e) {
+                    console.error('Error in clamped cubic spline interpolation:', e);
+                    output.innerHTML += '<div class="text-red-500">Error computing clamped cubic spline interpolation: ' + e.message + '</div>';
+                }
+            }
+            if (hasPoints) {
+                output.appendChild(pointsDiv);
+            }
+            if (hasMatrix) {
+                output.appendChild(matrixDiv);
+            }
+            if (hasPolynomial) {
+                output.appendChild(polynomialDiv);
+            }
+            if (hasTable) {
+                output.appendChild(tableDiv);
+            }
+            if (hasPolynomial || hasTable || hasMatrix || hasPoints) {
+                togglesDiv.classList.remove('hidden');
+                const showPolynomialCheckbox = document.getElementById('show_polynomial');
+                showPolynomialCheckbox.parentElement.classList.toggle('hidden', !hasPolynomial);
+                const showTableCheckbox = document.getElementById('show_table');
+                showTableCheckbox.parentElement.classList.toggle('hidden', !hasTable);
+                const showMatrixCheckbox = document.getElementById('show_matrix');
+                showMatrixCheckbox.parentElement.classList.toggle('hidden', !hasMatrix);
+                const showPointsCheckbox = document.getElementById('show_points');
+                showPointsCheckbox.parentElement.classList.toggle('hidden', !hasPoints);
+                if (hasPolynomial) {
+                    polynomialDiv.style.display = showPolynomialCheckbox.checked ? 'block' : 'none';
+                    showPolynomialCheckbox.onchange = () => {
+                        polynomialDiv.style.display = showPolynomialCheckbox.checked ? 'block' : 'none';
+                    };
+                }
+                if (hasTable) {
+                    tableDiv.style.display = showTableCheckbox.checked ? 'block' : 'none';
+                    showTableCheckbox.onchange = () => {
+                        tableDiv.style.display = showTableCheckbox.checked ? 'block' : 'none';
+                    };
+                }
+                if (hasMatrix) {
+                    matrixDiv.style.display = showMatrixCheckbox.checked ? 'block' : 'none';
+                    showMatrixCheckbox.onchange = () => {
+                        matrixDiv.style.display = showMatrixCheckbox.checked ? 'block' : 'none';
+                    };
+                }
+                if (hasPoints) {
+                    pointsDiv.style.display = showPointsCheckbox.checked ? 'block' : 'none';
+                    showPointsCheckbox.onchange = () => {
+                        pointsDiv.style.display = showPointsCheckbox.checked ? 'block' : 'none';
+                    };
+                }
+            }
+            // Re-render all math in output
+            renderMathInElement(output, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ],
+                throwOnError: false
+            });
+            if (pFunc) {
+                try {
+                    const plotDiv = document.getElementById('plot');
+                    plotDiv.innerHTML = '';
+                    const numSamplesPerInterval = 50;
+                    let sampleX = [];
+                    let pY = [];
+                    if (method === 'cubic_spline' || method === 'clamped_cubic_spline') {
+                        for (let i = 0; i < n - 1; i++) {
+                            const subX = d3.range(x[i], x[i + 1], (x[i + 1] - x[i]) / numSamplesPerInterval);
+                            if (i === n - 2) subX.push(x[i + 1]);
+                            const subY = subX.map(xx => pFunc(xx));
+                            sampleX.push(...subX);
+                            pY.push(...subY);
+                        }
+                    } else {
+                        sampleX = d3.range(plotRange[0], plotRange[1], (plotRange[1] - plotRange[0]) / (numSamplesPerInterval * (n - 1)));
+                        if (!sampleX.includes(plotRange[1])) sampleX.push(plotRange[1]);
+                        pY = sampleX.map(pFunc);
+                    }
+                    let funcY = null;
+                    if (originalFunc && inputType === 'function') {
+                        funcY = sampleX.map(xi => {
+                            const val = originalFunc(xi);
+                            return isFinite(val) ? val : NaN;
+                        });
+                    }
+                    let allY = [...y, ...pY.filter(isFinite)];
+                    if (funcY) allY.push(...funcY.filter(isFinite));
+                    if (allY.length === 0) throw new Error('No valid y values for plotting');
+                    let ymin = Math.min(...allY);
+                    let ymax = Math.max(...allY);
+                    let ybuf = 0.05 * (ymax - ymin);
+                    const minYRange = 0.2;
+                    if (ymax - ymin < minYRange) {
+                        const mid = (ymax + ymin) / 2;
+                        ymin = mid - minYRange / 2;
+                        ymax = mid + minYRange / 2;
+                        ybuf = 0;
+                    } else {
+                        if (ybuf === 0) ybuf = 0.1;
+                        ymin -= ybuf;
+                        ymax += ybuf;
+                    }
+                    const width = 400;
+                    const height = 300;
+                    const margin = {top: 20, right: 120, bottom: 30, left: 50};
+                    const svg = d3.select('#plot').append('svg')
+                        .attr('width', width + margin.left + margin.right)
+                        .attr('height', height + margin.top + margin.bottom)
+                        .append('g')
+                        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+                    const xScale = d3.scaleLinear().domain(plotRange).range([0, width]);
+                    const yScale = d3.scaleLinear().domain([ymin, ymax]).range([height, 0]);
+                    // Background
+                    svg.append('rect')
+                        .attr('width', width)
+                        .attr('height', height)
+                        .attr('fill', '#f7f7f7');
+                    // Grid
+                    svg.append('g')
+                        .attr('class', 'grid')
+                        .attr('transform', `translate(0,${height})`)
+                        .call(d3.axisBottom(xScale)
+                            .tickSize(-height)
+                            .tickFormat('')
+                        );
+                    svg.append('g')
+                        .attr('class', 'grid')
+                        .call(d3.axisLeft(yScale)
+                            .tickSize(-width)
+                            .tickFormat('')
+                        );
+                    // Axes
+                    svg.append('g')
+                        .attr('transform', `translate(0, ${height})`)
+                        .call(d3.axisBottom(xScale));
+                    svg.append('g')
+                        .call(d3.axisLeft(yScale));
+                    // Interpolant curve
+                    if (method === 'cubic_spline' || method === 'clamped_cubic_spline') {
+                        for (let i = 0; i < n - 1; i++) {
+                            const subX = sampleX.filter(sx => sx >= x[i] && sx <= x[i + 1]);
+                            const subY = pY.slice(sampleX.indexOf(subX[0]), sampleX.indexOf(subX[0]) + subX.length);
+                            const line = d3.line()
+                                .x((d, j) => xScale(subX[j]))
+                                .y((d, j) => yScale(subY[j]))
+                                .defined((d, j) => isFinite(subY[j]));
+                            svg.append('path')
+                                .datum(subY)
+                                .attr('fill', 'none')
+                                .attr('stroke', 'blue')
+                                .attr('stroke-width', 1.5)
+                                .attr('d', line);
+                        }
+                    } else {
+                        const line = d3.line()
+                            .x((d, i) => xScale(sampleX[i]))
+                            .y((d, i) => yScale(pY[i]))
+                            .defined((d, i) => isFinite(pY[i]));
+                        svg.append('path')
+                            .datum(pY)
+                            .attr('fill', 'none')
+                            .attr('stroke', 'blue')
+                            .attr('stroke-width', 1.5)
+                            .attr('d', line);
+                    }
+                    // Data points (2x larger)
+                    svg.selectAll('circle')
+                        .data(x)
+                        .enter()
+                        .append('circle')
+                        .attr('cx', d => xScale(d))
+                        .attr('cy', (d, i) => yScale(y[i]))
+                        .attr('r', 6)
+                        .attr('fill', 'black');
+                    // Original function
+                    if (funcY) {
+                        const funcLine = d3.line()
+                            .x((d, i) => xScale(sampleX[i]))
+                            .y((d, i) => yScale(funcY[i]))
+                            .defined((d, i) => isFinite(funcY[i]));
+                        svg.append('path')
+                            .datum(funcY)
+                            .attr('fill', 'none')
+                            .attr('stroke', 'red')
+                            .attr('stroke-width', 1.5)
+                            .attr('stroke-dasharray', '5,5')
+                            .attr('d', funcLine);
+                    }
+                    // Hermite slopes
+                    let hasSlope = false;
+                    if (method === 'hermite' && yp) {
+                        const dx = (plotRange[1] - plotRange[0]) / 50;
+                        yp.forEach((slope, j) => {
+                            if (!isNaN(slope) && isFinite(slope)) {
+                                hasSlope = true;
+                                const lineX = [x[j] - dx, x[j] + dx];
+                                const lineY = [y[j] - dx * slope, y[j] + dx * slope];
+                                const slopeLine = d3.line()
+                                    .x((d, i) => xScale(lineX[i]))
+                                    .y((d, i) => yScale(lineY[i]));
+                                svg.append('path')
+                                    .datum([0,1])
+                                    .attr('fill', 'none')
+                                    .attr('stroke', 'black')
+                                    .attr('stroke-width', 1.5)
+                                    .attr('d', slopeLine);
+                            }
+                        });
+                    }
+                    // Legend
+                    const legend = svg.append('g').attr('transform', `translate(${width + 20}, 0)`);
+                    let legY = 0;
+                    legend.append('rect').attr('x', 0).attr('y', legY).attr('width', 10).attr('height', 10).attr('fill', 'blue');
+                    legend.append('text').attr('x', 15).attr('y', legY + 8).text('Interpolant');
+                    legY += 20;
+                    legend.append('circle').attr('cx', 5).attr('cy', legY + 5).attr('r', 5).attr('fill', 'black');
+                    legend.append('text').attr('x', 15).attr('y', legY + 8).text('Points');
+                    legY += 20;
+                    if (funcY) {
+                        legend.append('line').attr('x1', 0).attr('y1', legY + 5).attr('x2', 10).attr('y2', legY + 5).attr('stroke', 'red').attr('stroke-width', 1.5).attr('stroke-dasharray', '5,5');
+                        legend.append('text').attr('x', 15).attr('y', legY + 8).text('Function');
+                        legY += 20;
+                    }
+                    if (hasSlope) {
+                        legend.append('line').attr('x1', 0).attr('y1', legY + 5).attr('x2', 10).attr('y2', legY + 5).attr('stroke', 'black').attr('stroke-width', 1.5);
+                        legend.append('text').attr('x', 15).attr('y', legY + 8).text('Slopes');
+                    }
+                    // Show download button after graph is drawn
+                    downloadContainer.classList.remove('hidden');
+                    document.getElementById('download-btn').onclick = function() {
+                        const svgElement = plotDiv.querySelector('svg');
+                        const svgData = new XMLSerializer().serializeToString(svgElement);
+                        const canvas = document.createElement('canvas');
+                        const svgSize = svgElement.getBoundingClientRect();
+                        canvas.width = svgSize.width;
+                        canvas.height = svgSize.height;
+                        const ctx = canvas.getContext('2d');
+                        const img = new Image();
+                        img.onload = function() {
+                            ctx.drawImage(img, 0, 0);
+                            const pngFile = canvas.toDataURL('image/png');
+                            const downloadLink = document.createElement('a');
+                            downloadLink.download = 'interpolation_graph.png';
+                            downloadLink.href = pngFile;
+                            downloadLink.click();
+                        };
+                        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+                    };
+                    // Show evaluation container
+                    evalContainer.classList.remove('hidden');
+                } catch (e) {
+                    console.error('Error in plotting:', e);
+                    output.innerHTML += '<div class="text-red-500">Error rendering plot: ' + e.message + '</div>';
+                }
+            }
+        } catch (e) {
+            console.error('General error in computeInterpolation:', e);
+            output.innerHTML = '<div class="text-red-500">Error: Computation failed - ' + e.message + '. Check console for details.</div>';
+        }
+    }
+    function clearAll() {
+        document.getElementById('x_values').value = '';
+        document.getElementById('f_values').value = '';
+        document.getElementById('fp_values').value = '';
+        document.getElementById('endpoint_fp_values').value = '';
+        document.getElementById('func_str').value = 'sin(x)';
+        document.getElementById('a').value = '-5';
+        document.getElementById('b').value = '5';
+        document.getElementById('n_points').value = '5';
+        document.getElementById('output').innerHTML = '';
+        document.getElementById('plot').innerHTML = '';
+        document.getElementById('output-toggles').classList.add('hidden');
+        document.getElementById('download-container').classList.add('hidden');
+        document.getElementById('eval-container').classList.add('hidden');
+        document.getElementById('eval-output').innerHTML = '';
+        pFunc = null;
+        originalFunc = null;
+        updateInputDisplay();
+    }
+    const custom = document.getElementById('custom');
+    const functionRadio = document.getElementById('function');
+    const customInputs = document.getElementById('custom-inputs');
+    const functionInputs = document.getElementById('function-inputs');
+    const fpInput = document.getElementById('fp_input');
+    const endpointFpInput = document.getElementById('endpoint_fp_input');
+    let selectedMethod = 'monomial';
+    let selectedNodeType = 'equispaced';
+    function updateInputDisplay() {
+        if (custom.checked) {
+            functionInputs.style.display = 'none';
+            customInputs.style.display = 'block';
+        } else {
+            customInputs.style.display = 'none';
+            functionInputs.style.display = 'block';
+        }
+        const methodValue = selectedMethod;
+        const isHermite = methodValue === 'hermite';
+        const isClamped = methodValue === 'clamped_cubic_spline';
+        fpInput.classList.toggle('hidden', !isHermite || !custom.checked);
+        endpointFpInput.classList.toggle('hidden', !isClamped || !custom.checked);
+        document.getElementById('output').innerHTML = '';
+        document.getElementById('plot').innerHTML = '';
+        document.getElementById('download-container').classList.add('hidden');
+        document.getElementById('eval-container').classList.add('hidden');
+        document.getElementById('eval-output').innerHTML = '';
+        pFunc = null;
+        originalFunc = null;
+    }
+    custom.addEventListener('change', updateInputDisplay);
+    functionRadio.addEventListener('change', updateInputDisplay);
+    document.querySelectorAll('.method-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.method-btn').forEach(b => {
+                b.classList.remove('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
+                b.classList.add('bg-white', 'text-black', 'border', 'border-gray-300');
+            });
+            btn.classList.remove('bg-white', 'text-black', 'border', 'border-gray-300');
+            btn.classList.add('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
+            selectedMethod = btn.dataset.method;
+            updateInputDisplay();
+        });
+    });
+    // Node type button handling
+    document.querySelectorAll('.node-type-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.node-type-btn').forEach(b => {
+                b.classList.remove('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
+                b.classList.add('bg-white', 'text-black', 'border', 'border-gray-300');
+            });
+            btn.classList.remove('bg-white', 'text-black', 'border', 'border-gray-300');
+            btn.classList.add('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
+            selectedNodeType = btn.dataset.nodeType;
+        });
+    });
+    // Set initial active
+    document.querySelector('[data-method="monomial"]').classList.remove('bg-white', 'text-black', 'border', 'border-gray-300');
+    document.querySelector('[data-method="monomial"]').classList.add('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
+    // Set initial node type active
+    document.querySelector('[data-node-type="equispaced"]').classList.remove('bg-white', 'text-black', 'border', 'border-gray-300');
+    document.querySelector('[data-node-type="equispaced"]').classList.add('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
+    updateInputDisplay();
+    window.onload = function() {
+        renderMathInElement(document.body, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false }
+            ],
+            throwOnError: false
+        });
+    };
+    document.getElementById('eval-btn').addEventListener('click', function() {
+        if (!pFunc) {
+            document.getElementById('eval-output').innerHTML = '<div class="text-red-500">Compute interpolation first</div>';
+            return;
+        }
+        const evalStr = document.getElementById('eval_x').value.trim();
+        if (evalStr === '') {
+            document.getElementById('eval-output').innerHTML = '<div class="text-red-500">Enter x values</div>';
+            return;
+        }
+        let evalX;
+        try {
+            evalX = evalStr.split(',').map(s => {
+                const val = math.evaluate(s.trim());
+                if (isNaN(val) || !isFinite(val)) throw new Error('Invalid x value');
+                return val;
+            });
+        } catch (e) {
+            document.getElementById('eval-output').innerHTML = '<div class="text-red-500">Invalid x values</div>';
+            return;
+        }
+        const evalY = evalX.map(xx => pFunc(xx));
+        const outputDiv = document.getElementById('eval-output');
+        outputDiv.innerHTML = '';
+        let tableHTML;
+        if (originalFunc) {
+            const errors = evalX.map(xx => Math.abs(originalFunc(xx) - pFunc(xx)));
+            tableHTML = `
+                <div class="flex justify-center space-x-8">
+                    <table class="border-collapse border border-gray-300">
+                        <thead>
+                            <tr>
+                                <th colspan="2" class="border px-4 py-2">Point evaluations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${evalX.map((xx, i) => `
+                                <tr>
+                                    <td class="border px-4 py-2">$p(${formatNumber(xx)})$</td>
+                                    <td class="border px-4 py-2">$  ${toFraction(evalY[i])} $</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                    <table class="border-collapse border border-gray-300">
+                        <thead>
+                            <tr>
+                                <th colspan="2" class="border px-4 py-2">Absolute errors</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${evalX.map((xx, i) => `
+                                <tr>
+                                    <td class="border px-4 py-2">$|f(${formatNumber(xx)}) - p(${formatNumber(xx)})|$</td>
+                                    <td class="border px-4 py-2">$  ${toFraction(errors[i])} $</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } else {
+            tableHTML = `
+                <table class="border-collapse border border-gray-300 mx-auto">
+                    <thead>
+                        <tr>
+                            <th colspan="2" class="border px-4 py-2">Point evaluations</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${evalX.map((xx, i) => `
+                            <tr>
+                                <td class="border px-4 py-2">$p(${formatNumber(xx)})$</td>
+                                <td class="border px-4 py-2">$  ${toFraction(evalY[i])} $</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+        outputDiv.innerHTML = tableHTML;
+        renderMathInElement(outputDiv, {
+            delimiters: [
+                { left: "$$", right: "$$", display: true },
+                { left: "$", right: "$", display: false }
+            ],
+            throwOnError: false
+        });
+    });
+</script>
+</body>
+</html>
