@@ -145,7 +145,8 @@
             <button onclick="selectFunction(0)" class="function-button bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 text-left">\[ f(x) = e^{x-1} - 1 \text{ (multiplicity 1)} \]</button>
             <button onclick="selectFunction(1)" class="function-button bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-blue-200 text-left">\[ f(x) = (x-1)^2 e^{x-2} \text{ (multiplicity 2)} \]</button>
             <button onclick="selectFunction(2)" class="function-button bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-blue-200 text-left">\[ f(x) = x^3 - 2x + 2 \text{ (multiplicity 1)} \]</button>
-            <button onclick="selectFunction(3)" class="function-button bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-md border border-blue-200 text-left">\[ f(x) = \frac{1}{10} (x-2)^3 (x+1)^2 \\ \text{ Roots: } x=-1, (m=2),\quad x=2, (m=3) \]</button>
+            <button onclick="selectFunction(3)" class="function-button bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-md border border-blue-200 text-left">\[ f(x) = (\sin(x) - x + 1)^2 \\ \text{ Root: } x \approx 1.93456, \quad m = 2 \]</button>
+            <button onclick="selectFunction(4)" class="function-button bg-red-50 hover:bg-red-100 text-red-700 rounded-md border border-blue-200 text-left">\[ f(x) = (e^{x-2} - 1)^3 \\ \text{ Root: } x = 2, \quad m = 3 \]</button>
           </div>
         </div>
         <div class="mb-4">
@@ -222,12 +223,27 @@
         multiplicity: 1
       },
       {
-        f: x => (1/10) * Math.pow(x - 2, 3) * Math.pow(x + 1, 2),
-        df: x => (1/10) * (3 * Math.pow(x - 2, 2) * Math.pow(x + 1, 2) + Math.pow(x - 2, 3) * 2 * (x + 1)),
-        fStr: "\\frac{1}{10} (x-2)^3 (x+1)^2",
-        plotFn: "0.1 * (x-2)^3 * (x+1)^2",
-        roots: [-1, 2],
-        multiplicities: { '-1': 2, '2': 3 }
+        f: x => Math.pow(Math.sin(x) - x + 1, 2),
+        df: x => {
+          const inner = Math.sin(x) - x + 1;
+          const innerDeriv = Math.cos(x) - 1;
+          return 2 * inner * innerDeriv;
+        },
+        fStr: "(\\sin(x) - x + 1)^2",
+        plotFn: "(sin(x) - x + 1)^2",
+        root: 1.934563210752024, // Solution to sin(x) = x - 1
+        multiplicity: 2
+      },
+      {
+        f: x => Math.pow(Math.exp(x - 2) - 1, 3),
+        df: x => {
+          const inner = Math.exp(x - 2) - 1;
+          return 3 * Math.pow(inner, 2) * Math.exp(x - 2);
+        },
+        fStr: "(e^{x-2} - 1)^3",
+        plotFn: "(exp(x-2) - 1)^3",
+        root: 2,
+        multiplicity: 3
       }
     ];
 
@@ -255,7 +271,7 @@
       const multiplicitySelect = document.getElementById('multiplicity-select');
 
       function updateMultiplicityVisibility() {
-        if (modifiedCheckbox.checked && currentFunction.fStr === "\\frac{1}{10} (x-2)^3 (x+1)^2") {
+        if (modifiedCheckbox.checked && (currentFunction.multiplicity === 2 || currentFunction.multiplicity === 3)) {
           multiplicitySelect.classList.remove('hidden');
         } else {
           multiplicitySelect.classList.add('hidden');
@@ -288,11 +304,7 @@
     }
 
     function getAbsoluteError(x) {
-      if (currentFunction.roots) {
-        return Math.min(...currentFunction.roots.map(root => Math.abs(x - root)));
-      } else {
-        return Math.abs(x - currentFunction.root);
-      }
+      return Math.abs(x - currentFunction.root);
     }
 
     function resetIterations() {
@@ -357,6 +369,21 @@
       yMin = -5;
       yMax = 10;
       
+      // Adjust based on current function
+      if (currentFunction.fStr === "(\\sin(x) - x + 1)^2") {
+        // For sin function example
+        xMin = 0;
+        xMax = 4;
+        yMin = -0.5;
+        yMax = 4;
+      } else if (currentFunction.fStr === "(e^{x-2} - 1)^3") {
+        // For exponential function example
+        xMin = 0;
+        xMax = 4;
+        yMin = -2;
+        yMax = 2;
+      }
+      
       // If we have iterations, adjust bounds to show tangent line and x-intersection prominently
       if (iterations.length > 1) {
         const lastIter = iterations[iterations.length - 2];
@@ -392,7 +419,7 @@
         const funcY = funcPoints.map(p => p[1]);
         
         // Combine all relevant x and y values
-        const allX = [...tangentX, ...funcX, lastIter.x, xZero, 0];
+        const allX = [...tangentX, ...funcX, lastIter.x, xZero, currentFunction.root];
         const allY = [...tangentY, ...funcY, lastIter.fx, 0, 0];
         
         // Calculate bounds with padding
@@ -402,13 +429,13 @@
         const yMaxVal = Math.max(...allY);
         
         // Add 30% padding to ensure visibility
-        const xPadding = Math.max((xMaxVal - xMinVal) * 0.3, 1);
-        const yPadding = Math.max((yMaxVal - yMinVal) * 0.3, 1);
+        const xPadding = Math.max((xMaxVal - xMinVal) * 0.3, 0.5);
+        const yPadding = Math.max((yMaxVal - yMinVal) * 0.3, 0.5);
         
-        xMin = xMinVal - xPadding;
-        xMax = xMaxVal + xPadding;
-        yMin = yMinVal - yPadding;
-        yMax = yMaxVal + yPadding;
+        xMin = Math.min(xMin, xMinVal - xPadding);
+        xMax = Math.max(xMax, xMaxVal + xPadding);
+        yMin = Math.min(yMin, yMinVal - yPadding);
+        yMax = Math.max(yMax, yMaxVal + yPadding);
         
         // Ensure we don't make the bounds too extreme
         xMin = Math.max(xMin, -10);
@@ -425,35 +452,21 @@
       graphContainer.innerHTML = ''; // Clear previous plot
       let rootLines = [];
       let annotations = [];
-      if (currentFunction.roots) {
-        currentFunction.roots.forEach(root => {
-          rootLines.push({
-            points: [[root, yMin], [root, yMax]],
-            fnType: 'points',
-            graphType: 'polyline',
-            color: '#006400', // Dark green
-            attr: { 'stroke-dasharray': '5 5' }
-          });
-          annotations.push({
-            x: root,
-            y: yMin + (yMax - yMin) * 0.1,
-            text: `${root.toFixed(5)}`
-          });
-        });
-      } else {
-        rootLines.push({
-          points: [[currentFunction.root, yMin], [currentFunction.root, yMax]],
-          fnType: 'points',
-          graphType: 'polyline',
-          color: '#006400', // Dark green
-          attr: { 'stroke-dasharray': '5 5' }
-        });
-        annotations.push({
-          x: currentFunction.root,
-          y: yMin + (yMax - yMin) * 0.1,
-          text: `${currentFunction.root.toFixed(5)}`
-        });
-      }
+      
+      // Add root line and annotation
+      rootLines.push({
+        points: [[currentFunction.root, yMin], [currentFunction.root, yMax]],
+        fnType: 'points',
+        graphType: 'polyline',
+        color: '#006400', // Dark green
+        attr: { 'stroke-dasharray': '5 5' }
+      });
+      annotations.push({
+        x: currentFunction.root,
+        y: yMin + (yMax - yMin) * 0.1,
+        text: `${currentFunction.root.toFixed(5)}`
+      });
+      
       let tangentData = [];
       if (iterations.length > 1) {
         const iter = iterations[iterations.length - 2];
