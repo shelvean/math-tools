@@ -33,7 +33,7 @@
       padding: 1rem;
     }
     .container {
-      max-width: 1200px;
+      max-width: 1400px;
       width: 100%;
       background-color: white;
       border-radius: 1rem;
@@ -64,7 +64,7 @@
     #graph {
       border: 1px solid #e2e8f0;
       border-radius: 0.5rem;
-      width: 1050px;
+      width: 850px;
       height: 600px;
     }
     .function-button {
@@ -89,6 +89,42 @@
       align-items: center;
       width: 100%;
       margin-top: 1rem;
+    }
+    .animate-btn {
+      background-color: #10b981 !important;
+      color: white !important;
+    }
+    .animate-btn:hover {
+      background-color: #059669 !important;
+    }
+    .stop-btn {
+      background-color: #ef4444 !important;
+      color: white !important;
+    }
+    .stop-btn:hover {
+      background-color: #dc2626 !important;
+    }
+    .animate-btn.running {
+      background-color: #059669 !important;
+    }
+    .converged-message {
+      background-color: #d1fae5;
+      color: #065f46;
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      text-align: center;
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      display: none;
+    }
+    .converged-message.show {
+      display: block;
+    }
+    .tolerance-input {
+      font-family: monospace;
+    }
+    .ratio-col {
+      background-color: #f8fafc;
     }
   </style>
 </head>
@@ -133,9 +169,14 @@
         <div id="graph-container" class="graph-container">
           <div id="graph"></div>
         </div>
+        <div id="converged-message" class="converged-message">
+          ✓ Convergence achieved! Absolute error ≤ 1e-13
+        </div>
         <div class="flex justify-center gap-4 mt-4">
           <button onclick="resetIterations()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition-colors">Reset</button>
-          <button onclick="performIteration()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">Next Iteration</button>
+          <button onclick="performIterationManual()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">Manual</button>
+          <button id="animate-btn" onclick="toggleAnimation()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors animate-btn">Animate</button>
+          <button id="stop-btn" onclick="stopAnimation()" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors stop-btn hidden">Stop</button>
         </div>
       </div>
       <div class="control-panel">
@@ -158,7 +199,6 @@
             <input type="checkbox" id="modifiedMethod" class="rounded text-blue-600 focus:ring-blue-500">
             <span class="ml-2 text-sm text-gray-700">Use Modified Newton's Method</span>
           </label>
-          <p class="mt-1 text-xs text-gray-500">To see oscillations (failed convergence) select<br>\[ f(x) = x^3 - 2x + 2 \] and initial guess \( x_0 = 1.5 \)</p>
         </div>
         <div id="multiplicity-select" class="mb-4 hidden">
           <label class="block text-sm font-medium text-gray-700 mb-2">Multiplicity for Modified Method</label>
@@ -167,6 +207,22 @@
             <option value="2">m = 2</option>
             <option value="3">m = 3</option>
           </select>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Convergence Tolerance</label>
+          <div class="flex flex-col gap-2">
+            <input type="text" id="convergence-tolerance" value="1e-13" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 tolerance-input">
+            <div class="text-xs text-gray-500 text-center">Enter any positive number (e.g., 1e-6, 0.0001, 1e-15)</div>
+          </div>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Animation Speed</label>
+          <div class="flex items-center">
+            <span class="text-xs text-gray-500 mr-2">Fast</span>
+            <input type="range" id="animation-speed" min="500" max="3000" value="1500" step="100" class="flex-1">
+            <span class="text-xs text-gray-500 ml-2">Slow</span>
+          </div>
+          <div class="text-center text-xs text-gray-500 mt-1" id="speed-display">1500 ms</div>
         </div>
         <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-md hidden text-sm"></div>
       </div>
@@ -181,7 +237,9 @@
               <th class="border border-gray-200 px-4 py-2 text-center font-semibold">\( x_n \)</th>
               <th class="border border-gray-200 px-4 py-2 text-center font-semibold">\( f(x_n) \)</th>
               <th class="border border-gray-200 px-4 py-2 text-center font-semibold">\( f'(x_n) \)</th>
-              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">Absolute Error</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold">Absolute Error \( e_n \)</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold ratio-col">\( e_{n+1} / e_n \)</th>
+              <th class="border border-gray-200 px-4 py-2 text-center font-semibold ratio-col">\( e_{n+1} / e_n^2 \)</th>
             </tr>
           </thead>
           <tbody id="iteration-data"></tbody>
@@ -253,6 +311,9 @@
     let xMin = -2, xMax = 5;
     let yMin = -5, yMax = 10;
     const tangentColor = '#8B4513';
+    let animationInterval = null;
+    let isAnimating = false;
+    let CONVERGENCE_TOLERANCE = 1e-13; // Variable tolerance
 
     function renderKaTeX() {
       renderMathInElement(document.body, {
@@ -266,9 +327,49 @@
       });
     }
 
+    function parseTolerance(value) {
+      // Remove any whitespace
+      value = value.trim();
+      
+      // If empty, return default
+      if (value === '') {
+        return 1e-13;
+      }
+      
+      // Handle scientific notation (e.g., 1e-13, 1E-13, 1e-6)
+      if (/^[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+$/.test(value)) {
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+          return num;
+        }
+      }
+      
+      // Handle decimal notation (e.g., 0.0001, .0001)
+      if (/^[0-9]*\.?[0-9]+$/.test(value)) {
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+          return num;
+        }
+      }
+      
+      // Handle pure integer (e.g., 1, 10 - though these would be unusual tolerances)
+      if (/^[0-9]+$/.test(value)) {
+        const num = parseInt(value);
+        if (!isNaN(num) && num > 0) {
+          return num;
+        }
+      }
+      
+      // If we can't parse it, return the default
+      return 1e-13;
+    }
+
     function init() {
       const modifiedCheckbox = document.getElementById('modifiedMethod');
       const multiplicitySelect = document.getElementById('multiplicity-select');
+      const speedSlider = document.getElementById('animation-speed');
+      const speedDisplay = document.getElementById('speed-display');
+      const toleranceInput = document.getElementById('convergence-tolerance');
 
       function updateMultiplicityVisibility() {
         if (modifiedCheckbox.checked && (currentFunction.multiplicity === 2 || currentFunction.multiplicity === 3)) {
@@ -278,6 +379,27 @@
         }
       }
 
+      function updateSpeedDisplay() {
+        speedDisplay.textContent = `${speedSlider.value} ms`;
+      }
+
+      function updateTolerance() {
+        const value = toleranceInput.value;
+        const parsed = parseTolerance(value);
+        CONVERGENCE_TOLERANCE = parsed;
+        
+        // Only update the input field if the parsed value is different AND the field is not empty
+        // This allows the user to clear the field completely
+        if (value !== '' && value !== parsed.toString() && value !== parsed.toExponential()) {
+          // Use a small timeout to avoid interrupting the user's typing
+          setTimeout(() => {
+            toleranceInput.value = parsed.toExponential();
+          }, 100);
+        }
+        
+        updateConvergenceMessage();
+      }
+
       modifiedCheckbox.addEventListener('change', () => {
         updateMultiplicityVisibility();
         resetIterations();
@@ -285,9 +407,22 @@
 
       document.getElementById('x0').addEventListener('change', resetIterations);
       document.getElementById('multiplicity').addEventListener('change', resetIterations);
+      speedSlider.addEventListener('input', updateSpeedDisplay);
+      
+      // Use 'blur' event instead of 'change' for better UX
+      toleranceInput.addEventListener('blur', updateTolerance);
+      // Also update on Enter key
+      toleranceInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          updateTolerance();
+          toleranceInput.blur(); // Remove focus
+        }
+      });
 
       resetIterations();
       updateMultiplicityVisibility();
+      updateSpeedDisplay();
+      updateTolerance();
       renderKaTeX();
       drawGraph();
     }
@@ -300,6 +435,7 @@
       resetIterations();
       document.getElementById('modifiedMethod').checked = false;
       document.getElementById('multiplicity-select').classList.add('hidden');
+      stopAnimation();
       renderKaTeX();
     }
 
@@ -307,56 +443,201 @@
       return Math.abs(x - currentFunction.root);
     }
 
+    function hasConverged() {
+      if (iterations.length === 0) return false;
+      const lastError = iterations[iterations.length - 1].error;
+      return lastError <= CONVERGENCE_TOLERANCE;
+    }
+
+    function updateConvergenceMessage() {
+      const messageDiv = document.getElementById('converged-message');
+      if (hasConverged() && iterations.length > 0) {
+        const lastError = iterations[iterations.length - 1].error;
+        const scientificNotation = lastError.toExponential(2);
+        const toleranceScientific = CONVERGENCE_TOLERANCE.toExponential(2);
+        messageDiv.innerHTML = `✓ Convergence achieved! Absolute error = ${scientificNotation} ≤ ${toleranceScientific}`;
+        messageDiv.classList.add('show');
+      } else {
+        messageDiv.classList.remove('show');
+      }
+    }
+
     function resetIterations() {
+      stopAnimation();
       const x0 = parseFloat(document.getElementById('x0').value);
       if (isNaN(x0)) {
         showError("Invalid initial guess");
         return;
       }
-      iterations = [{ n: 0, x: x0, fx: currentFunction.f(x0), dfx: currentFunction.df(x0), error: getAbsoluteError(x0) }];
+      iterations = [{ n: 0, x: x0, fx: currentFunction.f(x0), dfx: currentFunction.df(x0), error: getAbsoluteError(x0), prevRatioLinear: "-", prevRatioQuadratic: "-", ratioLinear: "-", ratioQuadratic: "-" }];
       currentIteration = 0;
       updateTable();
+      updateConvergenceMessage();
       drawGraph();
       hideError();
     }
 
     function performIteration() {
-      if (currentIteration >= 20) {
-        showError("Maximum iterations (20) reached");
+      if (currentIteration >= 50) {
+        showError("Maximum iterations (50) reached");
+        stopAnimation();
         return;
       }
+      
+      // Check if already converged
+      if (hasConverged()) {
+        stopAnimation();
+        return;
+      }
+      
       const modified = document.getElementById('modifiedMethod').checked;
       let multiplicity = modified ? currentFunction.multiplicity || parseInt(document.getElementById('multiplicity').value) : 1;
       const lastIteration = iterations[iterations.length - 1];
+      
       if (Math.abs(lastIteration.dfx) < 1e-15) {
         showError("Newton's method failed: derivative is zero");
+        stopAnimation();
         return;
       }
+      
       const xNext = lastIteration.x - multiplicity * lastIteration.fx / lastIteration.dfx;
       const fxNext = currentFunction.f(xNext);
       const dfxNext = currentFunction.df(xNext);
       const error = getAbsoluteError(xNext);
-      iterations.push({ n: iterations.length, x: xNext, fx: fxNext, dfx: dfxNext, error: error });
+      
+      // Calculate ratios for the previous iteration (n-1) to current iteration (n)
+      let ratioLinear = "-";
+      let ratioQuadratic = "-";
+      
+      if (iterations.length > 0) {
+        const prevError = iterations[iterations.length - 1].error;
+        if (prevError > 0) {
+          ratioLinear = (error / prevError).toFixed(10);
+          ratioQuadratic = (error / (prevError * prevError)).toFixed(10);
+        } else if (error === 0) {
+          ratioLinear = "0";
+          ratioQuadratic = "0";
+        }
+      }
+      
+      // Add new iteration with ratios (these will be displayed in the next row)
+      iterations.push({ 
+        n: iterations.length, 
+        x: xNext, 
+        fx: fxNext, 
+        dfx: dfxNext, 
+        error: error,
+        prevRatioLinear: ratioLinear,  // Ratio from previous iteration to this one
+        prevRatioQuadratic: ratioQuadratic,  // Ratio from previous iteration to this one
+        ratioLinear: "-",  // Will be calculated when next iteration is computed
+        ratioQuadratic: "-"  // Will be calculated when next iteration is computed
+      });
+      
       currentIteration++;
       updateTable();
+      updateConvergenceMessage();
       drawGraph();
       hideError();
-      if (currentIteration >= 20) {
-        showError("Maximum iterations (20) reached");
+      
+      // Check for convergence after updating
+      if (hasConverged()) {
+        stopAnimation();
+        return;
+      }
+      
+      if (currentIteration >= 50) {
+        showError("Maximum iterations (50) reached");
+        stopAnimation();
+      }
+    }
+
+    function performIterationManual() {
+      stopAnimation();
+      performIteration();
+    }
+
+    function toggleAnimation() {
+      if (isAnimating) {
+        stopAnimation();
+      } else {
+        startAnimation();
+      }
+    }
+
+    function startAnimation() {
+      if (isAnimating) return;
+      
+      // Don't start if already converged
+      if (hasConverged()) {
+        showError("Already converged! Reset to start animation.");
+        return;
+      }
+      
+      isAnimating = true;
+      const animateBtn = document.getElementById('animate-btn');
+      const stopBtn = document.getElementById('stop-btn');
+      
+      animateBtn.classList.add('running');
+      animateBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+      
+      const speed = parseInt(document.getElementById('animation-speed').value);
+      
+      animationInterval = setInterval(() => {
+        // Stop if converged
+        if (hasConverged()) {
+          stopAnimation();
+          return;
+        }
+        
+        if (currentIteration >= 50) {
+          stopAnimation();
+          return;
+        }
+        performIteration();
+      }, speed);
+    }
+
+    function stopAnimation() {
+      if (!isAnimating) return;
+      
+      isAnimating = false;
+      const animateBtn = document.getElementById('animate-btn');
+      const stopBtn = document.getElementById('stop-btn');
+      
+      animateBtn.classList.remove('running');
+      animateBtn.classList.remove('hidden');
+      stopBtn.classList.add('hidden');
+      
+      if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
       }
     }
 
     function updateTable() {
       const tableBody = document.getElementById('iteration-data');
       tableBody.innerHTML = '';
-      iterations.forEach(iter => {
+      iterations.forEach((iter, index) => {
         const row = document.createElement('tr');
+        // Highlight converged rows
+        const isConverged = iter.error <= CONVERGENCE_TOLERANCE;
+        const bgColor = isConverged ? 'bg-green-50' : '';
+        
+        // For iteration n, show:
+        // - For n=0: ratios are "-" (we don't have e_{-1})
+        // - For n>0: show prevRatioLinear and prevRatioQuadratic (which are e_n/e_{n-1} and e_n/e_{n-1}^2)
+        const ratioLinearDisplay = iter.prevRatioLinear;
+        const ratioQuadraticDisplay = iter.prevRatioQuadratic;
+        
         row.innerHTML = `
-          <td class="border border-gray-200 px-4 py-2 text-center">${iter.n}</td>
-          <td class="border border-gray-200 px-4 py-2 text-center">${iter.x.toFixed(15)}</td>
-          <td class="border border-gray-200 px-4 py-2 text-center">${iter.fx.toFixed(15)}</td>
-          <td class="border border-gray-200 px-4 py-2 text-center">${iter.dfx.toFixed(15)}</td>
-          <td class="border border-gray-200 px-4 py-2 text-center">${iter.error.toFixed(15)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor}">${iter.n}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor}">${iter.x.toFixed(15)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor}">${iter.fx.toExponential(10)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor}">${iter.dfx.toExponential(10)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor}">${iter.error.toExponential(10)}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor} ratio-col">${ratioLinearDisplay}</td>
+          <td class="border border-gray-200 px-4 py-2 text-center ${bgColor} ratio-col">${ratioQuadraticDisplay}</td>
         `;
         tableBody.appendChild(row);
       });
@@ -569,4 +850,3 @@
   </script>
 </body>
 </html>
-
