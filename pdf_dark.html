@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Sort + Darken Text</title>
+  <style>
+    body {font-family:'Segoe UI',sans-serif;margin:0;padding:20px;background:#f0f2f5;color:#2c3e50;}
+    .header {text-align:center;font-size:2.6em;margin:15px 0 5px;color:#2c3e50;}
+    .instructions {background:white;border-radius:12px;padding:18px 25px;margin:0 auto 20px;max-width:900px;box-shadow:0 4px 20px rgba(0,0,0,.1);font-size:1.1em;line-height:1.6;}
+    .instructions ul {margin:10px 0;padding-left:28px;}
+    .instructions li {margin:8px 0;}
+    .toolbar {display:flex;gap:12px;margin-bottom:20px;justify-content:center;flex-wrap:wrap;}
+    button {padding:12px 24px;border:none;border-radius:8px;color:white;font-weight:600;cursor:pointer;transition:all .3s;}
+    button:hover {transform:translateY(-3px);box-shadow:0 6px 16px rgba(0,0,0,.2);}
+    button:disabled {opacity:0.6;cursor:not-allowed;transform:none;}
+    input[type=file] {padding:10px;font-size:1em;}
+    #darkenBtn {background:#8e44ad;} #darkenBtn:hover {background:#7d3c98;}
+    .save-btn {background:#27ae60;} .save-btn:hover {background:#219a52;}
+    .clear-btn {background:#e74c3c;} .clear-btn:hover {background:#c0392b;}
+    .preview-container {display:flex;flex-wrap:wrap;gap:20px;max-width:1400px;margin:0 auto;padding:20px;background:white;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.1);max-height:75vh;overflow:auto;justify-content:center;}
+    .page-thumbnail {position:relative;cursor:move;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.15);transition:all .3s;background:white;}
+    .page-thumbnail:hover {transform:translateY(-6px);box-shadow:0 12px 28px rgba(0,0,0,.3);border:2px solid #3498db;}
+    .delete-btn {position:absolute;top:10px;right:10px;background:#e74c3c;padding:6px 12px;border-radius:50px;font-weight:bold;z-index:10;color:white;}
+    .delete-btn:hover {background:#c0392b;}
+    .add-blank {background:#27ae60;width:90px;height:90px;border-radius:16px;position:relative;cursor:pointer;}
+    .add-blank:hover {background:#219a52;transform:scale(1.2);}
+    .add-blank::before,.add-blank::after{content:'';position:absolute;background:white;left:50%;top:50%;transform:translate(-50%,-50%);}
+    .add-blank::before{width:44px;height:6px;}.add-blank::after{width:6px;height:44px;}
+    .blank-page {background:#ecf0f1;display:flex;align-items:center;justify-content:center;font-style:italic;color:#7f8c8d;font-size:1.1em;}
+    .progress{position:fixed;top:15px;right:15px;background:rgba(0,0,0,.9);color:white;padding:14px 24px;border-radius:10px;z-index:9999;font-weight:bold;}
+    footer{text-align:center;margin-top:50px;color:#7f8c8d;font-size:0.9em;}
+  </style>
+</head>
+<body>
+
+  <h1 class="header">PDF Sort + Darken Text</h1>
+
+  <div class="instructions">
+    <strong>How to use:</strong>
+    <ul>
+      <li><strong>Upload</strong> one or more PDF files using the button below</li>
+      <li><strong>Rearrange pages</strong> with simple drag-and-drop</li>
+      <li>Click the <strong>+ button</strong> between pages to insert a blank page</li>
+      <li>Click the <strong>X button</strong> on any page to remove it</li>
+      <li>Click <strong>"Darken Text"</strong> to make all text completely black (great for scanned documents)</li>
+      <li>When ready, click <strong>"Save PDF"</strong> to download your final document</li>
+    </ul>
+  </div>
+
+  <div class="toolbar">
+    <input type="file" id="pdfInput" accept="application/pdf" multiple>
+    <button class="clear-btn" onclick="clearAll()">Clear All</button>
+    <button id="darkenBtn" onclick="darkenAllText()">Darken Text</button>
+    <button class="save-btn" onclick="savePDF()">Save PDF</button>
+  </div>
+
+  <div class="preview-container" id="previewContainer"></div>
+
+  <footer>© 2025 Shelvean Kapita – Simple, Fast, No Installation Required – November 17, 2025</footer>
+
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script>
+    let pdfDocs = [];
+    let pages = [];
+    let currentDraggedItem = null;
+    const THUMBNAIL_WIDTH = 420;
+    const RENDER_SCALE = 2.5;
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    document.getElementById('pdfInput').addEventListener('change', handleFileSelect);
+
+    async function handleFileSelect(e) {
+      const files = e.target.files;
+      if (!files.length) return;
+
+      for (const file of files) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfJS = await pdfjsLib.getDocument({data: arrayBuffer.slice(0)}).promise;
+        const pdfLibDoc = await PDFLib.PDFDocument.load(arrayBuffer.slice(0));
+
+        for (let i = 1; i <= pdfJS.numPages; i++) {
+          const page = await pdfJS.getPage(i);
+          const vp = page.getViewport({scale: 1});
+          const scale = THUMBNAIL_WIDTH / vp.width;
+          const viewport = page.getViewport({scale});
+
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const dpr = window.devicePixelRatio || 1;
+          canvas.width = viewport.width * dpr;
+          canvas.height = viewport.height * dpr;
+          canvas.style.width = viewport.width + 'px';
+          canvas.style.height = viewport.height + 'px';
+          ctx.scale(dpr, dpr);
+          await page.render({canvasContext: ctx, viewport}).promise;
+
+          const singlePagePdf = await PDFLib.PDFDocument.create();
+          const [copiedPage] = await singlePagePdf.copyPages(pdfLibDoc, [i - 1]);
+          singlePagePdf.addPage(copiedPage);
+          const singleBytes = await singlePagePdf.save();
+
+          pdfDocs.push({ arrayBuffer: singleBytes.slice(0) });
+          pages.push({
+            type: 'pdf',
+            canvas,
+            pdfIndex: pdfDocs.length - 1,
+            pageNumber: 1,
+            originalWidth: vp.width,
+            originalHeight: vp.height,
+            thumbnailWidth: viewport.width,
+            thumbnailHeight: viewport.height
+          });
+        }
+      }
+      renderPreview();
+    }
+
+    async function darkenAllText() {
+      const btn = document.getElementById('darkenBtn');
+      btn.disabled = true; btn.textContent = 'Darkening...';
+      const prog = document.createElement('div'); prog.className='progress'; prog.textContent='0%'; document.body.appendChild(prog);
+
+      for (let i = 0; i < pages.length; i++) {
+        const p = pages[i];
+        if (p.type !== 'pdf') continue;
+
+        const pdf = await pdfjsLib.getDocument(pdfDocs[p.pdfIndex].arrayBuffer).promise;
+        const page = await pdf.getPage(1);
+        const vp = page.getViewport({scale: RENDER_SCALE});
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = vp.width; canvas.height = vp.height;
+        await page.render({canvasContext: ctx, viewport: vp}).promise;
+
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data;
+        for (let j = 0; j < d.length; j += 4) {
+          const brightness = 0.299*d[j] + 0.587*d[j+1] + 0.114*d[j+2];
+          if (brightness < 240) d[j]=d[j+1]=d[j+2]=0;
+          else d[j]=d[j+1]=d[j+2]=255;
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        const pngUrl = canvas.toDataURL('image/png');
+        const pngBytes = await (await fetch(pngUrl)).arrayBuffer();
+
+        const newPdf = await PDFLib.PDFDocument.create();
+        const img = await newPdf.embedPng(pngBytes);
+        const newPage = newPdf.addPage([p.originalWidth, p.originalHeight]);
+        newPage.drawImage(img, {x:0, y:0, width:newPage.getWidth(), height:newPage.getHeight()});
+        const newBuf = await newPdf.save();
+
+        pdfDocs[p.pdfIndex].arrayBuffer = newBuf.slice(0);
+
+        const thumb = document.createElement('canvas');
+        const tctx = thumb.getContext('2d');
+        const ts = THUMBNAIL_WIDTH / p.originalWidth;
+        const dpr = window.devicePixelRatio || 1;
+        thumb.width = p.originalWidth * ts * dpr;
+        thumb.height = p.originalHeight * ts * dpr;
+        thumb.style.width = p.originalWidth * ts + 'px';
+        thumb.style.height = p.originalHeight * ts + 'px';
+        tctx.scale(dpr, dpr);
+        tctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, thumb.width/dpr, thumb.height/dpr);
+        p.canvas = thumb;
+
+        prog.textContent = `Darkening ${Math.round((i+1)/pages.length*100)}%`;
+      }
+
+      renderPreview();
+      alert('All text successfully darkened!');
+      document.body.removeChild(prog);
+      btn.disabled = false; btn.textContent = 'Darken Text';
+    }
+
+    async function savePDF() {
+      if (!pages.length) return alert('No pages to save!');
+      const prog = document.createElement('div'); prog.className='progress'; prog.textContent='Saving...'; document.body.appendChild(prog);
+      const final = await PDFLib.PDFDocument.create();
+
+      for (let i = 0; i < pages.length; i++) {
+        const p = pages[i];
+        if (p.type === 'pdf') {
+          const src = await PDFLib.PDFDocument.load(pdfDocs[p.pdfIndex].arrayBuffer);
+          const [page] = await final.copyPages(src, [0]);
+          final.addPage(page);
+        } else {
+          const blank = await PDFLib.PDFDocument.load(p.arrayBuffer);
+          const [page] = await final.copyPages(blank, [0]);
+          final.addPage(page);
+        }
+        prog.textContent = `Saving ${Math.round((i+1)/pages.length*100)}%`;
+      }
+
+      const bytes = await final.save();
+      const blob = new Blob([bytes], {type: 'application/pdf'});
+      const a = document.createElement('a');
+      let name = prompt('File name?', 'combined-document.pdf') || 'combined-document.pdf';
+      if (!name.endsWith('.pdf')) name += '.pdf';
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      document.body.removeChild(prog);
+    }
+
+    function clearAll() {
+      if (confirm('Clear all pages?')) {
+        pdfDocs = []; pages = [];
+        document.getElementById('previewContainer').innerHTML = '';
+        document.getElementById('pdfInput').value = '';
+      }
+    }
+
+    function renderPreview() {
+      const c = document.getElementById('previewContainer');
+      c.innerHTML = '';
+      c.appendChild(createAddButton(0));
+
+      pages.forEach((p, i) => {
+        const w = document.createElement('div');
+        w.className = 'page-thumbnail';
+        w.draggable = true;
+        w.innerHTML = `<div style="position:absolute;top:10px;left:10px;color:#666;font-size:13px;z-index:9;">${i+1}</div>
+                       <button class="delete-btn" onclick="deletePage(${i})">X</button>`;
+        if (p.type === 'pdf') w.appendChild(p.canvas);
+        else {
+          const b = document.createElement('div');
+          b.className = 'blank-page';
+          b.style.width = p.thumbnailWidth + 'px';
+          b.style.height = p.thumbnailHeight + 'px';
+          b.textContent = 'Blank Page';
+          w.appendChild(b);
+        }
+        w.addEventListener('dragstart', () => currentDraggedItem = i);
+        w.addEventListener('dragover', e => e.preventDefault());
+        w.addEventListener('drop', () => { if (currentDraggedItem !== null) movePage(currentDraggedItem, i); });
+        c.appendChild(w);
+        c.appendChild(createAddButton(i + 1));
+      });
+    }
+
+    function movePage(from, to) {
+      const [moved] = pages.splice(from, 1);
+      pages.splice(to, 0, moved);
+      renderPreview();
+    }
+
+    function deletePage(i) {
+      if (pages[i].type === 'pdf') {
+        pdfDocs.splice(pages[i].pdfIndex, 1);
+        pages.forEach(p => { if (p.type === 'pdf' && p.pdfIndex > pages[i].pdfIndex) p.pdfIndex--; });
+      }
+      pages.splice(i, 1);
+      renderPreview();
+    }
+
+    function createAddButton(pos) {
+      const b = document.createElement('button');
+      b.className = 'add-blank';
+      b.title = 'Add blank page here';
+      b.onclick = () => addBlankPage(pos);
+      return b;
+    }
+
+    async function addBlankPage(pos) {
+      let w = 595, h = 842;
+      if (pos > 0 && pages[pos-1]) { w = pages[pos-1].originalWidth; h = pages[pos-1].originalHeight; }
+      const pdf = await PDFLib.PDFDocument.create();
+      pdf.addPage([w, h]);
+      const bytes = await pdf.save();
+      const scale = THUMBNAIL_WIDTH / w;
+      pages.splice(pos, 0, {
+        type: 'blank',
+        originalWidth: w,
+        originalHeight: h,
+        thumbnailWidth: THUMBNAIL_WIDTH,
+        thumbnailHeight: h * scale,
+        arrayBuffer: bytes.buffer
+      });
+      renderPreview();
+    }
+  </script>
+</body>
+</html>
