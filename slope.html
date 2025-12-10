@@ -117,7 +117,7 @@
       <div class="katex-instruction" id="katex-instruction"></div>
       <div class="control-group">
         <label>Differential Equation: y' =</label>
-        <input type="text" id="equation" value="-y+3*sin(t^2)" style="flex:1; min-width:180px; max-width:400px;">
+        <input type="text" id="equation" value="2*t/y" style="flex:1; min-width:180px; max-width:400px;">
       </div>
       <div class="control-group">
         <label>Horizontal (t or x):</label>
@@ -129,19 +129,27 @@
       </div>
       <div class="control-group">
         <label>Arrow Length:</label>
-        <input type="number" id="arrowLength" value="15" min="5" max="50">
-        <label style="margin-left:20px;">Arrows per Axis:</label>
-        <input type="number" id="arrowsPerAxis" value="25" min="10" max="50">
+        <input type="number" id="arrowLength" value="12" min="5" max="50">
+        <label style="margin-left:20px;">Grid Density:</label>
+        <input type="number" id="arrowsPerAxis" value="20" min="10" max="50">
       </div>
       <!-- NEW Arrow Thickness Control -->
       <div class="control-group">
         <label>Arrow Thickness:</label>
-        <input type="range" id="arrowThickness" min="0.5" max="3" step="0.1" value="0.8" style="flex:1;">
-        <span id="thicknessValue" style="min-width:50px;text-align:right;font-weight:600;color:#4361ee;">0.8</span>
+        <input type="range" id="arrowThickness" min="0.5" max="3" step="0.1" value="1.2" style="flex:1;">
+        <span id="thicknessValue" style="min-width:50px;text-align:right;font-weight:600;color:#4361ee;">1.2</span>
       </div>
       <div class="control-group">
-        <input type="checkbox" id="variableArrows" style="margin-left:10px;">
+        <input type="checkbox" id="variableArrows" checked style="margin-left:10px;">
         <label for="variableArrows" style="min-width:auto;">Variable length arrows</label>
+      </div>
+      <div class="control-group">
+        <input type="checkbox" id="showGrid" checked style="margin-left:10px;">
+        <label for="showGrid" style="min-width:auto;">Show grid</label>
+      </div>
+      <div class="control-group">
+        <input type="checkbox" id="showInitialPoint" checked style="margin-left:10px;">
+        <label for="showInitialPoint" style="min-width:auto;">Show initial points</label>
       </div>
       <div class="control-group buttons">
         <button onclick="drawDirectionField(true)" class="btn-gradient btn-update">Update Field</button>
@@ -159,7 +167,7 @@
 
     <div class="footer">
       © 2025 Shelvean Kapita • kapita@tamu.edu<br>
-      Last updated: December 10, 2025
+      Last updated: November 30, 2025
     </div>
   </div>
 
@@ -169,7 +177,7 @@
     <div class="about-panel">
       <div class="about-header">About</div>
       <div class="about-content" id="about-content">
-        This tool visualizes direction fields and solution curves for first-order differential equations of the form \( y' = f(t,y) \) or \( y' = f(x,y) \).<br><br>
+        This tool visualizes direction fields and solution curves for first-order differential equations of the form \( y' = f(t,y) \).<br><br>
         Solution curves are computed using an <strong>adaptive Dormand-Prince 5(4)</strong> method, which automatically adjusts step size to maintain accuracy while remaining stable near singularities.<br><br>
         Click anywhere on the graph to trace a solution curve through that point. The arrows show the slope direction at each grid point.
       </div>
@@ -258,7 +266,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const PADDING = 60;
   let solutions = [];
   let colorIndex = 0;
-  const COLORS = [[0,0,0],[46,139,87],[255,140,0],[255,0,0],[139,0,139],[220,20,60],[65,105,225],[0,128,128],[165,42,42]];
+  
+  // Professional color palette for scientific plots
+  const COLORS = [
+    [0, 0, 0],        // Black - for main/default
+    [230, 50, 50],    // Red
+    [0, 100, 200],    // Blue
+    [0, 150, 50],     // Green
+    [180, 50, 180],   // Purple
+    [255, 140, 0],    // Orange
+    [50, 180, 180],   // Teal
+    [150, 100, 50],   // Brown
+    [200, 100, 100]   // Pink
+  ];
 
   // Enhanced function preprocessing with caret support
   function preprocess(eq) {
@@ -277,28 +297,42 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getNiceStep(range) {
-    const rough = range / 6;
+    const rough = range / 8; // More ticks for better readability
     const exp = Math.pow(10, Math.floor(Math.log10(rough)));
     const frac = rough / exp;
     return (frac <= 1.5 ? 1 : frac <= 3.5 ? 2 : frac <= 7 ? 5 : 10) * exp;
   }
 
   function drawAxisLabels(tMin, tMax, yMin, yMax, xScale, yScale) {
-    ctx.font = '14px Arial';
-    ctx.fillStyle = '#333';
+    ctx.font = 'bold 14px Arial'; // Bolder font for better readability
+    ctx.fillStyle = '#111';
     ctx.textAlign = 'center';
+    
     const tStep = getNiceStep(tMax - tMin);
     for (let t = Math.ceil(tMin/tStep)*tStep; t <= tMax + 1e-9; t += tStep) {
       const x = PADDING + (t - tMin)*xScale;
-      ctx.fillText(t.toFixed(1).replace(/\.0$/, ''), x, canvas.height - 10);
+      ctx.fillText(t.toFixed(1).replace(/\.0$/, ''), x, canvas.height - 15);
     }
+    
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     const yStep = getNiceStep(yMax - yMin);
     for (let y = Math.ceil(yMin/yStep)*yStep; y <= yMax + 1e-9; y += yStep) {
       const py = canvas.height - PADDING - (y - yMin)*yScale;
-      ctx.fillText(y.toFixed(1).replace(/\.0$/, ''), PADDING - 10, py);
+      ctx.fillText(y.toFixed(1).replace(/\.0$/, ''), PADDING - 12, py);
     }
+    
+    // Add axis labels
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('t', canvas.width - 20, canvas.height - PADDING + 10);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.translate(20, canvas.height/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.fillText('y', 0, 0);
+    ctx.restore();
   }
 
   window.drawDirectionField = function(clearFlag = false) {
@@ -306,17 +340,22 @@ document.addEventListener('DOMContentLoaded', () => {
       solutions = [];
       document.getElementById('instruction').style.display = 'block';
     }
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
+    
+    // Clear with a subtle off-white background for print quality
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
     const eq = document.getElementById('equation').value.trim() || "0";
     const tMin = +document.getElementById('tMin').value;
     const tMax = +document.getElementById('tMax').value;
     const yMin = +document.getElementById('yMin').value;
     const yMax = +document.getElementById('yMax').value;
-    const arrowLen = +document.getElementById('arrowLength').value || 15;
-    const arrowsN = +document.getElementById('arrowsPerAxis').value || 25;
+    const arrowLen = +document.getElementById('arrowLength').value || 12;
+    const arrowsN = +document.getElementById('arrowsPerAxis').value || 20;
     const arrowThickness = +document.getElementById('arrowThickness').value;
     const variableArrows = document.getElementById('variableArrows').checked;
+    const showGrid = document.getElementById('showGrid').checked;
+    const showInitialPoint = document.getElementById('showInitialPoint').checked;
 
     const step = Math.min((canvas.width-2*PADDING)/arrowsN, (canvas.height-2*PADDING)/arrowsN);
     const xScale = (canvas.width-2*PADDING)/(tMax-tMin);
@@ -325,27 +364,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const slopeFunc = new Function('t','y',`return ${preprocess(eq)}`);
 
-    // Grid lines
-    ctx.strokeStyle = '#e0e0e0';
-    ctx.lineWidth = 0.5;
-    for (let i=Math.ceil(tMin); i<tMax; i++) {
-      const x = PADDING + (i-tMin)*xScale;
-      ctx.beginPath();
-      ctx.moveTo(x,PADDING);
-      ctx.lineTo(x,canvas.height-PADDING);
-      ctx.stroke();
-    }
-    for (let i=Math.ceil(yMin); i<yMax; i++) {
-      const y = canvas.height-PADDING - (i-yMin)*yScale;
-      ctx.beginPath();
-      ctx.moveTo(PADDING,y);
-      ctx.lineTo(canvas.width-PADDING,y);
-      ctx.stroke();
+    // Subtle grid lines
+    if (showGrid) {
+      ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([]);
+      
+      const tStep = getNiceStep(tMax - tMin);
+      for (let i=Math.ceil(tMin/tStep)*tStep; i<tMax; i+=tStep) {
+        const x = PADDING + (i-tMin)*xScale;
+        ctx.beginPath();
+        ctx.moveTo(x, PADDING);
+        ctx.lineTo(x, canvas.height-PADDING);
+        ctx.stroke();
+      }
+      
+      const yStep = getNiceStep(yMax - yMin);
+      for (let i=Math.ceil(yMin/yStep)*yStep; i<yMax; i+=yStep) {
+        const y = canvas.height-PADDING - (i-yMin)*yScale;
+        ctx.beginPath();
+        ctx.moveTo(PADDING, y);
+        ctx.lineTo(canvas.width-PADDING, y);
+        ctx.stroke();
+      }
     }
 
     // Arrows with variable length option
     ctx.lineWidth = arrowThickness;
-    ctx.strokeStyle = '#111';
     
     for (let px=PADDING+step/2; px<canvas.width-PADDING; px+=step) {
       for (let py=PADDING+step/2; py<canvas.height-PADDING; py+=step) {
@@ -360,19 +405,23 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let drawLength = arrowLen;
         if (variableArrows) {
-          drawLength = arrowLen / (1 + slopeMagnitude/20);
-          drawLength = Math.max(drawLength, 5);
+          // More sophisticated scaling for better visualization
+          drawLength = arrowLen / Math.sqrt(1 + slopeMagnitude/5);
+          drawLength = Math.max(drawLength, 4);
         }
         
         const dx = drawLength*Math.cos(angle);
         const dy = drawLength*Math.sin(angle);
-
+        
+        // Use a subtle blue for arrows
+        ctx.strokeStyle = 'rgba(30, 100, 200, 0.7)';
         ctx.beginPath();
         ctx.moveTo(px-dx/2, py-dy/2);
         ctx.lineTo(px+dx/2, py+dy/2);
         ctx.stroke();
 
-        const head = Math.min(6, drawLength/2);
+        // Arrow heads - proportional to arrow length
+        const head = Math.min(8, drawLength/2.5);
         ctx.beginPath();
         ctx.moveTo(px+dx/2, py+dy/2);
         ctx.lineTo(px+dx/2 - head*Math.cos(angle-Math.PI/6), py+dy/2 - head*Math.sin(angle-Math.PI/6));
@@ -382,9 +431,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Axes
+    // Axes - thicker and darker for prominence
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    
+    // x-axis
     if (yMin <= 0 && yMax >= 0) {
       const y0 = canvas.height - PADDING;
       ctx.beginPath();
@@ -392,6 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.lineTo(canvas.width-PADDING, y0);
       ctx.stroke();
     }
+    // y-axis
     if (tMin <= 0 && tMax >= 0) {
       const x0 = PADDING;
       ctx.beginPath();
@@ -402,19 +455,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     drawAxisLabels(tMin, tMax, yMin, yMax, xScale, yScale);
 
-    // Draw solution curves
+    // Draw solution curves with improved styling
     solutions.forEach(s => {
       ctx.strokeStyle = s.color;
       ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.setLineDash([]);
       ctx.beginPath();
+      
       let started = false;
       for (let i = 0; i < s.points.length; i++) {
         const p = s.points[i];
         const x = PADDING + (p.t - tMin) * xScale;
         const y = canvas.height - PADDING - (p.y - yMin) * yScale;
+        
         if (p.t >= tMin && p.t <= tMax && p.y >= yMin && p.y <= yMax) {
-          if (!started) { ctx.moveTo(x, y); started = true; }
-          else { ctx.lineTo(x, y); }
+          if (!started) { 
+            ctx.moveTo(x, y); 
+            started = true; 
+          } else { 
+            ctx.lineTo(x, y); 
+          }
         } else if (started) {
           ctx.stroke();
           ctx.beginPath();
@@ -423,17 +485,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (started) ctx.stroke();
       
-      // Draw initial point
-      if (s.points.length > 0) {
+      // Draw initial point with better styling
+      if (showInitialPoint && s.points.length > 0) {
         const first = s.points[0];
         const x = PADDING + (first.t - tMin) * xScale;
         const y = canvas.height - PADDING - (first.y - yMin) * yScale;
+        
+        // Draw a circle with border
         ctx.fillStyle = s.color;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
       }
     });
+
+    // Draw equation in top-right corner
+    const eqText = `y' = ${eq}`;
+    ctx.font = 'bold 16px Arial';
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(eqText, canvas.width - 20, 20);
 
     document.getElementById('instruction').style.display = solutions.length === 0 ? 'block' : 'none';
   };
