@@ -653,6 +653,62 @@
       });
     }
     
+    function computeTrajectory(x0, y0, a, b, c, d, tMin, tMax, yMin, yMax, xOffset, xScale, yScale, canvas) {
+        const points = [];
+        const MAX_STEPS = 5000;
+        const dt = 0.02; // Smaller step for better accuracy
+        
+        function derivatives(x, y) {
+            return { dx: a * x + b * y, dy: c * x + d * y };
+        }
+        
+        // Heun's method (Improved Euler) - forward integration
+        let x = x0, y = y0;
+        for (let i = 0; i < MAX_STEPS; i++) {
+            if (x < tMin || x > tMax || y < yMin || y > yMax) break;
+            
+            const px = xOffset + (x - tMin) * xScale;
+            const py = canvas.height - xOffset - (y - yMin) * yScale;
+            points.push({ x: px, y: py });
+            
+            // Heun's method step
+            const k1 = derivatives(x, y);
+            const x_temp = x + dt * k1.dx;
+            const y_temp = y + dt * k1.dy;
+            
+            const k2 = derivatives(x_temp, y_temp);
+            
+            x += dt * 0.5 * (k1.dx + k2.dx);
+            y += dt * 0.5 * (k1.dy + k2.dy);
+            
+            // Stop if trajectory leaves reasonable bounds
+            if (Math.abs(x) > 20 || Math.abs(y) > 20) break;
+        }
+        
+        // Heun's method - backward integration
+        x = x0; y = y0;
+        const backwardPoints = [];
+        for (let i = 0; i < MAX_STEPS; i++) {
+            const k1 = derivatives(x, y);
+            const x_temp = x - dt * k1.dx;
+            const y_temp = y - dt * k1.dy;
+            
+            const k2 = derivatives(x_temp, y_temp);
+            
+            x -= dt * 0.5 * (k1.dx + k2.dx);
+            y -= dt * 0.5 * (k1.dy + k2.dy);
+            
+            if (x < tMin || x > tMax || y < yMin || y > yMax) break;
+            if (Math.abs(x) > 20 || Math.abs(y) > 20) break;
+            
+            const px = xOffset + (x - tMin) * xScale;
+            const py = canvas.height - xOffset - (y - yMin) * yScale;
+            backwardPoints.unshift({ x: px, y: py });
+        }
+        
+        return [...backwardPoints, ...points];
+    }
+    
     function drawPhasePortrait() {
       const canvas = document.getElementById('canvas');
       const ctx = canvas.getContext('2d');
@@ -825,58 +881,6 @@
           }
         }
       });
-    }
-    
-    function computeTrajectory(x0, y0, a, b, c, d, tMin, tMax, yMin, yMax, xOffset, xScale, yScale, canvas) {
-      const points = [];
-      const MAX_STEPS = 5000;
-      const dt = 0.05;
-      
-      function derivatives(x, y) {
-        return { dx: a * x + b * y, dy: c * x + d * y };
-      }
-      
-      // Forward integration
-      let x = x0, y = y0;
-      for (let i = 0; i < MAX_STEPS; i++) {
-        if (x < tMin || x > tMax || y < yMin || y > yMax) break;
-        
-        const px = xOffset + (x - tMin) * xScale;
-        const py = canvas.height - xOffset - (y - yMin) * yScale;
-        points.push({ x: px, y: py });
-        
-        const { dx: k1x, dy: k1y } = derivatives(x, y);
-        const { dx: k2x, dy: k2y } = derivatives(x + k1x * dt / 2, y + k1y * dt / 2);
-        const { dx: k3x, dy: k3y } = derivatives(x + k2x * dt / 2, y + k2y * dt / 2);
-        const { dx: k4x, dy: k4y } = derivatives(x + k3x * dt, y + k3y * dt);
-        
-        x += (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6;
-        y += (k1y + 2 * k2y + 2 * k3y + k4y) * dt / 6;
-        
-        if (Math.abs(x) > 20 || Math.abs(y) > 20) break;
-      }
-      
-      // Backward integration
-      x = x0; y = y0;
-      const backwardPoints = [];
-      for (let i = 0; i < MAX_STEPS; i++) {
-        const { dx: k1x, dy: k1y } = derivatives(x, y);
-        const { dx: k2x, dy: k2y } = derivatives(x - k1x * dt / 2, y - k1y * dt / 2);
-        const { dx: k3x, dy: k3y } = derivatives(x - k2x * dt / 2, y - k2y * dt / 2);
-        const { dx: k4x, dy: k4y } = derivatives(x - k3x * dt, y - k3y * dt);
-        
-        x -= (k1x + 2 * k2x + 2 * k3x + k4x) * dt / 6;
-        y -= (k1y + 2 * k2y + 2 * k3y + k4y) * dt / 6;
-        
-        if (x < tMin || x > tMax || y < yMin || y > yMax) break;
-        if (Math.abs(x) > 20 || Math.abs(y) > 20) break;
-        
-        const px = xOffset + (x - tMin) * xScale;
-        const py = canvas.height - xOffset - (y - yMin) * yScale;
-        backwardPoints.unshift({ x: px, y: py });
-      }
-      
-      return [...backwardPoints, ...points];
     }
     
     function downloadImage() {
@@ -1144,4 +1148,3 @@
   </script>
 </body>
 </html>
-
