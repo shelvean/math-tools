@@ -21,11 +21,12 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://unpkg.com/function-plot@1.22.4/dist/function-plot.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- decimal.js for 20+ decimal precision -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/decimal.js/10.4.3/decimal.min.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; margin: 0; padding: 0; }
     .container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
     .katex-display { overflow-x: auto; padding: 0.25rem; }
-    /* Make all KaTeX math bolder and larger */
     .katex { font-weight: 600 !important; }
     .katex-display { font-weight: 600 !important; }
     .current-function { font-size: 1.1rem; padding: 0.5rem; text-align: center; background-color: #f8f9fa; border-radius: 0.375rem; border: 1px solid #dee2e6; display: inline-block; }
@@ -58,9 +59,7 @@
     .table-scroll-btn { background-color: #6c757d; color: white; padding: 0.25rem 0.75rem; border-radius: 0.25rem; font-size: 0.75rem; border: none; cursor: pointer; transition: background-color 0.2s; width: 100%; margin-top: 0.5rem; }
     .table-scroll-btn:hover { background-color: #5a6268; }
     .control-panel h3 { font-weight: 600; font-size: 0.875rem; }
-    /* Make equation boxes larger */
     .equation-container .katex-display { font-size: 1.05em !important; }
-    /* Make input labels bolder */
     .control-panel label { font-weight: 500; }
   </style>
 </head>
@@ -76,13 +75,11 @@
       </ul>
     </div>
   </div>
-
   <div class="container mt-12">
     <header class="text-center mb-4">
       <h1 class="text-2xl font-bold text-gray-800">Newton's Method Visualizer</h1>
       <p class="text-gray-600 text-sm mt-1">Interactive visualization of root-finding convergence</p>
     </header>
-
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
       <div class="p-3 bg-white rounded border border-gray-200">
         <h3 class="font-semibold text-gray-700 text-sm mb-1">Newton's Method</h3>
@@ -106,7 +103,6 @@
         <button onclick="scrollToTable()" class="table-scroll-btn"> See Full Error Table </button>
       </div>
     </div>
-
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
       <div class="lg:col-span-3">
         <div class="bg-white rounded border border-gray-200 p-4">
@@ -133,7 +129,6 @@
           <div id="converged-message" class="converged-message mt-2"> ✓ Convergence achieved! Absolute error ≤ 1e-13 </div>
         </div>
       </div>
-
       <div class="lg:col-span-1">
         <div class="control-panel">
           <div class="mb-3">
@@ -183,7 +178,6 @@
         </div>
       </div>
     </div>
-
     <div id="iteration-table-container" class="bg-white rounded border border-gray-200 p-4">
       <h2 class="text-lg font-semibold text-gray-800 mb-2">Iteration Details</h2>
       <div class="overflow-x-auto">
@@ -203,21 +197,74 @@
         </table>
       </div>
     </div>
-
     <div class="mt-4 text-center text-gray-500 text-xs">
     &copy; 2025 Shelvean Kapita: kapita@tamu.edu<br>
     All code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.<br>
-    Last modified: September 8, 2025
+    Last modified: December 14, 2025
      </div>
   </div>
-
   <script>
+    // Set decimal.js to high precision (20+ digits)
+    Decimal.set({ precision: 30, rounding: Decimal.ROUND_HALF_UP });
+
     const functions = [
-      { f: x => Math.exp(x - 1) - 1, df: x => Math.exp(x - 1), fStr: "e^{x-1} - 1", plotFn: "exp(x-1) - 1", root: 1, multiplicity: 1 },
-      { f: x => Math.pow(x - 1, 2) * Math.exp(x - 2), df: x => { const term1 = 2 * (x - 1) * Math.exp(x - 2); const term2 = Math.pow(x - 1, 2) * Math.exp(x - 2); return term1 + term2; }, fStr: "(x-1)^2 e^{x-2}", plotFn: "(x-1)^2 * exp(x-2)", root: 1, multiplicity: 2 },
-      { f: x => Math.pow(x, 3) - 2 * x + 2, df: x => 3 * Math.pow(x, 2) - 2, fStr: "x^3 - 2x + 2", plotFn: "x^3 - 2*x + 2", root: -1.769292354238631, multiplicity: 1 },
-      { f: x => Math.pow(Math.sin(x) - x + 1, 2), df: x => { const inner = Math.sin(x) - x + 1; const innerDeriv = Math.cos(x) - 1; return 2 * inner * innerDeriv; }, fStr: "(\\sin(x) - x + 1)^2", plotFn: "(sin(x) - x + 1)^2", root: 1.934563210752024, multiplicity: 2 },
-      { f: x => Math.pow(Math.exp(x - 2) - 1, 3), df: x => { const inner = Math.exp(x - 2) - 1; return 3 * Math.pow(inner, 2) * Math.exp(x - 2); }, fStr: "(e^{x-2} - 1)^3", plotFn: "(exp(x-2) - 1)^3", root: 2, multiplicity: 3 }
+      { 
+        f: x => x.minus(1).exp().minus(1), 
+        df: x => x.minus(1).exp(), 
+        fStr: "e^{x-1} - 1", 
+        plotFn: "exp(x-1) - 1", 
+        root: new Decimal("1"), 
+        multiplicity: 1 
+      },
+      { 
+        f: x => x.minus(1).pow(2).times(x.minus(2).exp()), 
+        df: x => {
+          const t1 = new Decimal(2).times(x.minus(1)).times(x.minus(2).exp());
+          const t2 = x.minus(1).pow(2).times(x.minus(2).exp());
+          return t1.plus(t2);
+        }, 
+        fStr: "(x-1)^2 e^{x-2}", 
+        plotFn: "(x-1)^2 * exp(x-2)", 
+        root: new Decimal("1"), 
+        multiplicity: 2 
+      },
+      { 
+        f: x => x.pow(3).minus(x.times(2)).plus(2), 
+        df: x => x.pow(2).times(3).minus(2), 
+        fStr: "x^3 - 2x + 2", 
+        plotFn: "x^3 - 2*x + 2", 
+        root: new Decimal("-1.7692923542386314"), 
+        multiplicity: 1 
+      },
+      { 
+        f: x => {
+          const inner = x.sin().minus(x).plus(1);
+          return inner.pow(2);
+        }, 
+        df: x => {
+          const inner = x.sin().minus(x).plus(1);
+          const dInner = x.cos().minus(1);
+          return new Decimal(2).times(inner).times(dInner);
+        }, 
+        fStr: "(\\sin(x) - x + 1)^2", 
+        plotFn: "(sin(x) - x + 1)^2", 
+        root: new Decimal("1.934563210752024"), 
+        multiplicity: 2 
+      },
+      { 
+        f: x => {
+          const inner = x.minus(2).exp().minus(1);
+          return inner.pow(3);
+        }, 
+        df: x => {
+          const inner = x.minus(2).exp().minus(1);
+          return new Decimal(3).times(inner.pow(2)).times(x.minus(2).exp());
+        }, 
+        fStr: "(e^{x-2} - 1)^3", 
+        plotFn: "(exp(x-2) - 1)^3", 
+        root: new Decimal("2"), 
+        multiplicity: 3 
+      }
     ];
 
     let currentFunction = functions[0];
@@ -228,11 +275,10 @@
     const tangentColor = '#8B4513';
     let animationInterval = null;
     let isAnimating = false;
-    let CONVERGENCE_TOLERANCE = 1e-13;
+    let CONVERGENCE_TOLERANCE = new Decimal("1e-13");
 
     function scrollToTable() {
-      const tableContainer = document.getElementById('iteration-table-container');
-      tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('iteration-table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function updateStatusDisplay() {
@@ -247,12 +293,10 @@
       const buttons = document.querySelectorAll('#function-buttons .function-button');
       buttons.forEach((button, index) => {
         if (index === selectedIndex) {
-          button.classList.add('selected');
-          button.classList.remove('bg-gray-50');
-          button.classList.add('bg-gray-800', 'text-white');
+          button.classList.add('selected', 'bg-gray-800', 'text-white');
+          button.classList.remove('bg-gray-50', 'text-gray-700');
         } else {
-          button.classList.remove('selected');
-          button.classList.remove('bg-gray-800', 'text-white');
+          button.classList.remove('selected', 'bg-gray-800', 'text-white');
           button.classList.add('bg-gray-50', 'text-gray-700');
         }
       });
@@ -265,112 +309,83 @@
           {left: "\\[", right: "\\]", display: true},
           {left: "\\(", right: "\\)", display: false}
         ],
-        throwOnError: false,
-        output: 'html'
+        throwOnError: false
       });
     }
 
     function parseTolerance(value) {
       value = value.trim();
-      if (value === '') return 1e-13;
-      if (/^[0-9]+(\.[0-9]+)?[eE][+-]?[0-9]+$/.test(value)) {
-        const num = parseFloat(value);
-        if (!isNaN(num) && num > 0) return num;
+      try {
+        return new Decimal(value);
+      } catch (e) {
+        return new Decimal("1e-13");
       }
-      if (/^[0-9]*\.?[0-9]+$/.test(value)) {
-        const num = parseFloat(value);
-        if (!isNaN(num) && num > 0) return num;
-      }
-      if (/^[0-9]+$/.test(value)) {
-        const num = parseInt(value);
-        if (!isNaN(num) && num > 0) return num;
-      }
-      return 1e-13;
     }
 
     function init() {
-      const modifiedCheckbox = document.getElementById('modifiedMethod');
       const speedSlider = document.getElementById('animation-speed');
       const speedDisplay = document.getElementById('speed-display');
       const toleranceInput = document.getElementById('convergence-tolerance');
 
-      function updateSpeedDisplay() {
-        speedDisplay.textContent = `${speedSlider.value} ms`;
-      }
-
-      function updateTolerance() {
-        const value = toleranceInput.value;
-        const parsed = parseTolerance(value);
-        CONVERGENCE_TOLERANCE = parsed;
-        if (value !== '' && value !== parsed.toString() && value !== parsed.toExponential()) {
-          setTimeout(() => { toleranceInput.value = parsed.toExponential(); }, 100);
-        }
+      speedSlider.addEventListener('input', () => speedDisplay.textContent = `${speedSlider.value} ms`);
+      toleranceInput.addEventListener('blur', () => {
+        CONVERGENCE_TOLERANCE = parseTolerance(toleranceInput.value);
+        toleranceInput.value = CONVERGENCE_TOLERANCE.toExponential();
         updateConvergenceMessage();
-      }
-
-      modifiedCheckbox.addEventListener('change', resetIterations);
-      document.getElementById('x0').addEventListener('change', resetIterations);
-      document.getElementById('multiplicity').addEventListener('change', resetIterations);
-      speedSlider.addEventListener('input', updateSpeedDisplay);
-      toleranceInput.addEventListener('blur', updateTolerance);
-      toleranceInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          updateTolerance();
-          toleranceInput.blur();
-        }
       });
 
+      document.getElementById('modifiedMethod').addEventListener('change', resetIterations);
+      document.getElementById('x0').addEventListener('change', resetIterations);
+      document.getElementById('multiplicity').addEventListener('change', resetIterations);
+
       updateFunctionButtons(0);
+      speedDisplay.textContent = "600 ms";
       resetIterations();
-      updateSpeedDisplay();
-      updateTolerance();
       renderKaTeX();
       drawGraph();
     }
 
     function selectFunction(index) {
       currentFunction = functions[index];
-      const currentFunctionDiv = document.getElementById('current-function');
-      currentFunctionDiv.innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
-      document.getElementById('multiplicity').value = currentFunction.multiplicity || 1;
+      document.getElementById('current-function').innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
+      document.getElementById('multiplicity').value = currentFunction.multiplicity;
       updateFunctionButtons(index);
-      resetIterations();
       document.getElementById('modifiedMethod').checked = false;
+      resetIterations();
       stopAnimation();
       renderKaTeX();
     }
 
     function getAbsoluteError(x) {
-      return Math.abs(x - currentFunction.root);
+      return x.minus(currentFunction.root).abs();
     }
 
     function hasConverged() {
       if (iterations.length === 0) return false;
-      const lastError = iterations[iterations.length - 1].error;
-      return lastError <= CONVERGENCE_TOLERANCE;
+      return iterations[iterations.length - 1].error.lte(CONVERGENCE_TOLERANCE);
     }
 
     function updateConvergenceMessage() {
-      const messageDiv = document.getElementById('converged-message');
+      const msg = document.getElementById('converged-message');
       if (hasConverged() && iterations.length > 0) {
         const lastError = iterations[iterations.length - 1].error;
-        const scientificNotation = lastError.toExponential(2);
-        const toleranceScientific = CONVERGENCE_TOLERANCE.toExponential(2);
-        const iterationCount = iterations.length - 1;
-        messageDiv.innerHTML = `✓ Convergence achieved after ${iterationCount} iterations! Absolute error = ${scientificNotation} ≤ ${toleranceScientific}`;
-        messageDiv.classList.add('show');
+        const iterCount = iterations.length - 1;
+        msg.innerHTML = `✓ Convergence achieved after ${iterCount} iterations! Absolute error = ${lastError.toExponential(2)} ≤ ${CONVERGENCE_TOLERANCE.toExponential(2)}`;
+        msg.classList.add('show');
       } else {
-        messageDiv.classList.remove('show');
+        msg.classList.remove('show');
       }
     }
 
     function resetIterations() {
       stopAnimation();
-      const x0 = parseFloat(document.getElementById('x0').value);
-      if (isNaN(x0)) {
+      const x0Str = document.getElementById('x0').value;
+      let x0;
+      try { x0 = new Decimal(x0Str); } catch (e) {
         showError("Invalid initial guess");
         return;
       }
+
       iterations = [{
         n: 0,
         x: x0,
@@ -378,9 +393,7 @@
         dfx: currentFunction.df(x0),
         error: getAbsoluteError(x0),
         prevRatioLinear: "-",
-        prevRatioQuadratic: "-",
-        ratioLinear: "-",
-        ratioQuadratic: "-"
+        prevRatioQuadratic: "-"
       }];
       currentIteration = 0;
       updateTable();
@@ -391,308 +404,193 @@
     }
 
     function performIteration() {
-      if (currentIteration >= 50) {
-        showError("Maximum iterations (50) reached");
-        stopAnimation();
-        return;
-      }
-      if (hasConverged()) {
-        stopAnimation();
-        return;
-      }
+      if (currentIteration >= 50) { showError("Maximum iterations (50) reached"); stopAnimation(); return; }
+      if (hasConverged()) { stopAnimation(); return; }
+
       const modified = document.getElementById('modifiedMethod').checked;
-      let multiplicity = modified ? currentFunction.multiplicity || parseInt(document.getElementById('multiplicity').value) : 1;
-      const lastIteration = iterations[iterations.length - 1];
-      if (Math.abs(lastIteration.dfx) < 1e-15) {
-        showError("Newton's method failed: derivative is zero");
-        stopAnimation();
-        return;
-      }
-      const xNext = lastIteration.x - multiplicity * lastIteration.fx / lastIteration.dfx;
+      const m = modified ? parseInt(document.getElementById('multiplicity').value) : 1;
+      const multDec = new Decimal(m);
+
+      const last = iterations[iterations.length - 1];
+      if (last.dfx.abs().lt("1e-15")) { showError("Derivative near zero"); stopAnimation(); return; }
+
+      const xNext = last.x.minus(multDec.times(last.fx).div(last.dfx));
       const fxNext = currentFunction.f(xNext);
       const dfxNext = currentFunction.df(xNext);
-      const error = getAbsoluteError(xNext);
-      let ratioLinear = "-";
-      let ratioQuadratic = "-";
-      if (iterations.length > 0) {
-        const prevError = iterations[iterations.length - 1].error;
-        if (prevError > 0) {
-          ratioLinear = (error / prevError).toFixed(10);
-          ratioQuadratic = (error / (prevError * prevError)).toFixed(10);
-        } else if (error === 0) {
-          ratioLinear = "0";
-          ratioQuadratic = "0";
+      const errorNext = getAbsoluteError(xNext);
+
+      let ratioL = "-", ratioQ = "-";
+      if (iterations.length > 1) {
+        const prevError = iterations[iterations.length - 2].error;
+        if (prevError.gt(0)) {
+          ratioL = errorNext.div(prevError).toFixed(10);
+          ratioQ = errorNext.div(prevError.pow(2)).toFixed(10);
         }
       }
+
       iterations.push({
         n: iterations.length,
         x: xNext,
         fx: fxNext,
         dfx: dfxNext,
-        error: error,
-        prevRatioLinear: ratioLinear,
-        prevRatioQuadratic: ratioQuadratic,
-        ratioLinear: "-",
-        ratioQuadratic: "-"
+        error: errorNext,
+        prevRatioLinear: ratioL,
+        prevRatioQuadratic: ratioQ
       });
+
       currentIteration++;
       updateTable();
       updateConvergenceMessage();
       updateStatusDisplay();
       drawGraph();
       hideError();
-      if (hasConverged()) {
-        stopAnimation();
-        return;
-      }
-      if (currentIteration >= 50) {
-        showError("Maximum iterations (50) reached");
-        stopAnimation();
-      }
+
+      if (hasConverged() || currentIteration >= 50) stopAnimation();
     }
 
-    function performIterationManual() {
-      stopAnimation();
-      performIteration();
-    }
+    function performIterationManual() { stopAnimation(); performIteration(); }
 
-    function toggleAnimation() {
-      if (isAnimating) {
-        stopAnimation();
-      } else {
-        startAnimation();
-      }
-    }
+    function toggleAnimation() { isAnimating ? stopAnimation() : startAnimation(); }
 
     function startAnimation() {
-      if (isAnimating) return;
-      if (hasConverged()) {
-        showError("Already converged! Reset to start animation.");
-        return;
-      }
+      if (isAnimating || hasConverged()) return;
       isAnimating = true;
-      const animateBtn = document.getElementById('animate-btn');
-      const stopBtn = document.getElementById('stop-btn');
-      animateBtn.classList.add('running');
-      animateBtn.classList.add('hidden');
-      stopBtn.classList.remove('hidden');
+      document.getElementById('animate-btn').classList.add('hidden', 'running');
+      document.getElementById('stop-btn').classList.remove('hidden');
       const speed = parseInt(document.getElementById('animation-speed').value);
-      animationInterval = setInterval(() => {
-        if (hasConverged()) {
-          stopAnimation();
-          return;
-        }
-        if (currentIteration >= 50) {
-          stopAnimation();
-          return;
-        }
-        performIteration();
-      }, speed);
+      animationInterval = setInterval(performIteration, speed);
     }
 
     function stopAnimation() {
       if (!isAnimating) return;
       isAnimating = false;
-      const animateBtn = document.getElementById('animate-btn');
-      const stopBtn = document.getElementById('stop-btn');
-      animateBtn.classList.remove('running');
-      animateBtn.classList.remove('hidden');
-      stopBtn.classList.add('hidden');
-      if (animationInterval) {
-        clearInterval(animationInterval);
-        animationInterval = null;
-      }
+      document.getElementById('animate-btn').classList.remove('hidden', 'running');
+      document.getElementById('stop-btn').classList.add('hidden');
+      clearInterval(animationInterval);
+      animationInterval = null;
     }
 
     function updateTable() {
-      const tableBody = document.getElementById('iteration-data');
-      tableBody.innerHTML = '';
-      iterations.forEach((iter, index) => {
+      const tbody = document.getElementById('iteration-data');
+      tbody.innerHTML = '';
+      iterations.forEach(iter => {
+        const converged = iter.error.lte(CONVERGENCE_TOLERANCE);
+        const bg = converged ? 'bg-green-50' : '';
         const row = document.createElement('tr');
-        const isConverged = iter.error <= CONVERGENCE_TOLERANCE;
-        const bgColor = isConverged ? 'bg-green-50' : '';
-        const ratioLinearDisplay = iter.prevRatioLinear;
-        const ratioQuadraticDisplay = iter.prevRatioQuadratic;
         row.innerHTML = `
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} mono-font">${iter.n}</td>
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} mono-font text-xs">${iter.x.toFixed(12)}</td>
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} mono-font text-xs">${iter.fx.toExponential(8)}</td>
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} mono-font text-xs">${iter.dfx.toExponential(8)}</td>
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} mono-font text-xs">${iter.error.toExponential(8)}</td>
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} ratio-col mono-font text-xs">${ratioLinearDisplay}</td>
-          <td class="border border-gray-300 px-2 py-1 text-center ${bgColor} ratio-col mono-font text-xs">${ratioQuadraticDisplay}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} mono-font">${iter.n}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} mono-font text-xs">${iter.x.toFixed(12)}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} mono-font text-xs">${iter.fx.toExponential(8)}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} mono-font text-xs">${iter.dfx.toExponential(8)}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} mono-font text-xs">${iter.error.toExponential(8)}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} ratio-col mono-font text-xs">${iter.prevRatioLinear}</td>
+          <td class="border border-gray-300 px-2 py-1 text-center ${bg} ratio-col mono-font text-xs">${iter.prevRatioQuadratic}</td>
         `;
-        tableBody.appendChild(row);
+        tbody.appendChild(row);
       });
     }
 
     function calculateGraphBounds() {
-      xMin = -2; xMax = 5;
-      yMin = -5; yMax = 10;
-      if (currentFunction.fStr === "(\\sin(x) - x + 1)^2") {
-        xMin = 0; xMax = 4; yMin = -0.5; yMax = 4;
-      } else if (currentFunction.fStr === "(e^{x-2} - 1)^3") {
-        xMin = 0; xMax = 4; yMin = -2; yMax = 2;
-      }
+      xMin = -2; xMax = 5; yMin = -5; yMax = 10;
+      if (currentFunction.fStr.includes("\\sin")) { xMin = 0; xMax = 4; yMin = -0.5; yMax = 4; }
+      if (currentFunction.fStr.includes("e^{x-2} - 1)^3")) { xMin = 0; xMax = 4; yMin = -2; yMax = 2; }
+
       if (iterations.length > 1) {
-        const lastIter = iterations[iterations.length - 2];
-        const currentIter = iterations[iterations.length - 1];
-        const slope = lastIter.dfx;
-        const intercept = lastIter.fx - slope * lastIter.x;
-        const xZero = currentIter.x;
-        const tangentPoints = [];
-        for (let x = lastIter.x - 2; x <= lastIter.x + 2; x += 0.5) {
-          tangentPoints.push([x, slope * x + intercept]);
+        const prev = iterations[iterations.length - 2];
+        const curr = iterations[iterations.length - 1];
+        const slope = Number(prev.dfx);
+        const intercept = Number(prev.fx.minus(prev.dfx.times(prev.x)));
+        const allX = [];
+        const allY = [];
+        for (let dx = -2; dx <= 2; dx += 0.5) {
+          const tx = Number(prev.x) + dx;
+          allX.push(tx);
+          allY.push(slope * tx + intercept);
         }
-        const tangentX = tangentPoints.map(p => p[0]);
-        const tangentY = tangentPoints.map(p => p[1]);
-        const funcPoints = [];
-        const centerX = (lastIter.x + xZero) / 2;
-        const range = Math.max(Math.abs(lastIter.x - xZero) * 3, 3);
-        for (let x = centerX - range; x <= centerX + range; x += 0.5) {
-          funcPoints.push([x, currentFunction.f(x)]);
+        const center = (Number(prev.x) + Number(curr.x)) / 2;
+        const range = Math.max(Math.abs(Number(prev.x) - Number(curr.x)) * 3, 3);
+        for (let dx = -range; dx <= range; dx += 0.5) {
+          const fx = center + dx;
+          allX.push(fx);
+          allY.push(Number(currentFunction.f(new Decimal(fx))));
         }
-        const funcX = funcPoints.map(p => p[0]);
-        const funcY = funcPoints.map(p => p[1]);
-        const allX = [...tangentX, ...funcX, lastIter.x, xZero, currentFunction.root];
-        const allY = [...tangentY, ...funcY, lastIter.fx, 0, 0];
-        const xMinVal = Math.min(...allX);
-        const xMaxVal = Math.max(...allX);
-        const yMinVal = Math.min(...allY);
-        const yMaxVal = Math.max(...allY);
-        const xPadding = Math.max((xMaxVal - xMinVal) * 0.3, 0.5);
-        const yPadding = Math.max((yMaxVal - yMinVal) * 0.3, 0.5);
-        xMin = Math.min(xMin, xMinVal - xPadding);
-        xMax = Math.max(xMax, xMaxVal + xPadding);
-        yMin = Math.min(yMin, yMinVal - yPadding);
-        yMax = Math.max(yMax, yMaxVal + yPadding);
-        xMin = Math.max(xMin, -10);
-        xMax = Math.min(xMax, 10);
-        yMin = Math.max(yMin, -15);
-        yMax = Math.min(yMax, 15);
+        allX.push(Number(prev.x), Number(curr.x), Number(currentFunction.root));
+        allY.push(Number(prev.fx), 0, 0);
+
+        const paddingX = Math.max((Math.max(...allX) - Math.min(...allX)) * 0.3, 0.5);
+        const paddingY = Math.max((Math.max(...allY) - Math.min(...allY)) * 0.3, 0.5);
+        xMin = Math.max(Math.min(...allX) - paddingX, -10);
+        xMax = Math.min(Math.max(...allX) + paddingX, 10);
+        yMin = Math.max(Math.min(...allY) - paddingY, -15);
+        yMax = Math.min(Math.max(...allY) + paddingY, 15);
       }
     }
 
     function drawGraph() {
       calculateGraphBounds();
-      const graphContainer = document.getElementById('graph');
-      graphContainer.innerHTML = '';
-      let rootScatter = { points: [[currentFunction.root, 0]], fnType: 'points', graphType: 'scatter', color: '#dc3545', attr: { r: 8 } };
-      let tangentData = [];
+      document.getElementById('graph').innerHTML = '';
+
+      const rootPoint = { points: [[Number(currentFunction.root), 0]], fnType: 'points', graphType: 'scatter', color: '#dc3545', attr: { r: 8 } };
+      let tangent = [];
       if (iterations.length > 1) {
-        const iter = iterations[iterations.length - 2];
-        const slope = iter.dfx;
-        const intercept = iter.fx - slope * iter.x;
-        const tanFn = `${slope.toFixed(10)} * x + ${intercept.toFixed(10)}`;
-        tangentData.push({ fn: tanFn, color: tangentColor, sampler: 'builtIn', graphType: 'polyline', attr: { 'stroke-width': 2 } });
+        const prev = iterations[iterations.length - 2];
+        const slope = Number(prev.dfx);
+        const intercept = Number(prev.fx.minus(prev.dfx.times(prev.x)));
+        tangent = [{ fn: `${slope.toFixed(10)}*x + ${intercept.toFixed(10)}`, color: tangentColor, sampler: 'builtIn', graphType: 'polyline', attr: {'stroke-width': 2} }];
       }
+
       let verticals = [];
-      iterations.forEach((iter, index) => {
-        if (index > 0) {
-          const col = index === iterations.length - 1 ? '#dc3545' : '#6c757d';
-          verticals.push({ points: [[iter.x, 0], [iter.x, iter.fx]], fnType: 'points', graphType: 'polyline', color: col, attr: { 'stroke-dasharray': '5 5', 'stroke-width': 1.5 } });
-        }
+      iterations.slice(1).forEach((it, i) => {
+        const col = i === iterations.length - 2 ? '#dc3545' : '#6c757d';
+        verticals.push({ points: [[Number(it.x), 0], [Number(it.x), Number(it.fx)]], fnType: 'points', graphType: 'polyline', color: col, attr: {'stroke-dasharray': '5 5', 'stroke-width': 1.5} });
       });
-      let prevPoints = iterations.slice(0, -1).map(iter => [iter.x, 0]);
-      let prevScatter = { points: prevPoints, fnType: 'points', graphType: 'scatter', color: '#6c757d', attr: { r: 5 } };
-      let lastScatter = null;
-      if (iterations.length > 0) {
-        const lastIter = iterations[iterations.length - 1];
-        lastScatter = { points: [[lastIter.x, 0]], fnType: 'points', graphType: 'scatter', color: '#dc3545', attr: { r: 6 } };
-      }
+
+      const prevPoints = iterations.slice(0, -1).map(it => [Number(it.x), 0]);
+      const prevScatter = prevPoints.length ? { points: prevPoints, fnType: 'points', graphType: 'scatter', color: '#6c757d', attr: { r: 5 } } : null;
+
+      const lastScatter = iterations.length ? { points: [[Number(iterations[iterations.length-1].x), 0]], fnType: 'points', graphType: 'scatter', color: '#dc3545', attr: { r: 6 } } : null;
+
       let data = [
-        { fn: currentFunction.plotFn, color: '#495057', sampler: 'builtIn', graphType: 'polyline', nSamples: 400, attr: { 'stroke-width': 3 } },
-        rootScatter
+        { fn: currentFunction.plotFn, color: '#495057', sampler: 'builtIn', graphType: 'polyline', nSamples: 400, attr: {'stroke-width': 3} },
+        rootPoint
       ];
-      data = data.concat(verticals);
-      data = data.concat(tangentData);
-      if (prevPoints.length > 0) { data.push(prevScatter); }
-      if (lastScatter) { data.push(lastScatter); }
-      try {
-        functionPlot({
-          target: '#graph',
-          width: 1050,
-          height: 500,
-          xAxis: { domain: [xMin, xMax] },
-          yAxis: { domain: [yMin, yMax] },
-          grid: true,
-          disableZoom: false,
-          data: data,
-          annotations: []
-        });
-        const graphElement = document.getElementById('graph');
-        renderMathInElement(graphElement, {
-          delimiters: [
-            {left: "$$", right: "$$", display: true},
-            {left: "\\[", right: "\\]", display: true},
-            {left: "\\(", right: "\\)", display: false}
-          ],
-          throwOnError: false,
-          output: 'html'
-        });
-      } catch (e) {
-        console.error('Graph rendering error:', e);
-        showError(`Graph rendering failed: ${e.message}`);
-      }
+      data = data.concat(verticals).concat(tangent);
+      if (prevScatter) data.push(prevScatter);
+      if (lastScatter) data.push(lastScatter);
+
+      functionPlot({
+        target: '#graph',
+        width: 1050,
+        height: 500,
+        xAxis: { domain: [xMin, xMax] },
+        yAxis: { domain: [yMin, yMax] },
+        grid: true,
+        disableZoom: false,
+        data: data
+      });
+
+      renderMathInElement(document.getElementById('graph'), {
+        delimiters: [{left: "$$", right: "$$", display: true}, {left: "\\[", right: "\\]", display: true}, {left: "\\(", right: "\\)", display: false}],
+        throwOnError: false
+      });
     }
 
-    function showError(message) {
-      const errorDiv = document.getElementById('error-message');
-      errorDiv.textContent = message;
-      errorDiv.classList.remove('hidden');
+    function showError(msg) {
+      const el = document.getElementById('error-message');
+      el.textContent = msg;
+      el.classList.remove('hidden');
     }
 
     function hideError() {
-      const errorDiv = document.getElementById('error-message');
-      errorDiv.classList.add('hidden');
+      document.getElementById('error-message').classList.add('hidden');
     }
 
-    function runSimpleRoot() {
-      selectFunction(2);
-      document.getElementById('x0').value = 3;
-      document.getElementById('modifiedMethod').checked = false;
-      document.getElementById('multiplicity').value = 1;
-      document.getElementById('convergence-tolerance').value = '1e-13';
-      resetIterations();
-      startAnimation();
-    }
-
-    function runRepeatedNewton() {
-      selectFunction(3);
-      document.getElementById('x0').value = 3;
-      document.getElementById('modifiedMethod').checked = false;
-      document.getElementById('multiplicity').value = 2;
-      document.getElementById('convergence-tolerance').value = '1e-13';
-      resetIterations();
-      startAnimation();
-    }
-
-    function runModifiedNewton() {
-      selectFunction(3);
-      document.getElementById('x0').value = 3;
-      document.getElementById('modifiedMethod').checked = true;
-      document.getElementById('multiplicity').value = 2;
-      document.getElementById('convergence-tolerance').value = '1e-13';
-      resetIterations();
-      startAnimation();
-    }
-
-    function runNonConvergent() {
-      selectFunction(2);
-      document.getElementById('x0').value = 10;
-      document.getElementById('modifiedMethod').checked = false;
-      document.getElementById('multiplicity').value = 1;
-      document.getElementById('convergence-tolerance').value = '1e-13';
-      resetIterations();
-      startAnimation();
-    }
+    function runSimpleRoot() { selectFunction(2); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = false; resetIterations(); startAnimation(); }
+    function runRepeatedNewton() { selectFunction(3); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = false; resetIterations(); startAnimation(); }
+    function runModifiedNewton() { selectFunction(3); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = true; resetIterations(); startAnimation(); }
+    function runNonConvergent() { selectFunction(2); document.getElementById('x0').value = 10; document.getElementById('modifiedMethod').checked = false; resetIterations(); startAnimation(); }
 
     window.addEventListener('load', init);
   </script>
 </body>
 </html>
-
-
-
-
-
