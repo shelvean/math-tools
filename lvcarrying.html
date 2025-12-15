@@ -16,18 +16,32 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 0 auto; max-width: 1200px; padding: 20px; }
-    h1 { text-align: center; }
+    body { font-family: Arial, sans-serif; margin: 0 auto; max-width: 1400px; padding: 20px; }
+    h1 { text-align: center; font-size: 2.5rem; font-weight: bold; }
     .equations { text-align: center; margin: 20px 0; }
     .controls { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin: 20px 0; }
     .instruction { width: 100%; text-align: center; font-style: italic; margin-bottom: 10px; }
     .slider-container { flex: 1 1 300px; max-width: 300px; }
     .slider-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
     input[type="range"] { width: 100%; }
-    .plots-container { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
-    .plot-container { flex: 1 1 500px; min-height: 400px; }
+    /* Horizontal layout on wide screens */
+    .plots-container { 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 30px; 
+      justify-content: center; 
+    }
+    .plot-container { 
+      flex: 1 1 550px;   /* Balanced medium-large size */
+      min-height: 500px; 
+      max-width: 700px; 
+    }
+    @media (min-width: 1200px) {
+      .plots-container { 
+        flex-wrap: nowrap; /* Force side-by-side on wide screens */
+      }
+    }
     footer { text-align: center; margin-top: 40px; font-size: 0.9em; color: #666; }
-    /* Navigation Styles */
     .flex { display: flex; }
     .justify-center { justify-content: center; }
     .font-bold { font-weight: bold; }
@@ -85,7 +99,6 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
   <script>
-    // Parameter definitions with LaTeX labels
     const params = [
       {id: 'alpha', label: '\\(\\alpha\\) (Prey Growth)', min: 0.001, max: 0.5, step: 0.001, value: 0.306},
       {id: 'beta', label: '\\(\\beta\\) (Predation Rate)', min: 0, max: 0.5, step: 0.001, value: 0.024},
@@ -96,7 +109,6 @@
       {id: 'y0', label: 'Initial Predator (\\(y_0\\))', min: 0, max: 100, step: 1, value: 14}
     ];
 
-    // Solve Lotka-Volterra equations with carrying capacity using RK4
     function solveLV(alpha, beta, gamma, delta, K, x0, y0) {
       const dt = 0.02;
       const steps = 25000;
@@ -105,16 +117,13 @@
       for(let i = 1; i < steps; i++) {
         const k1x = dt * (alpha * x * (1 - x/K) - beta * x * y);
         const k1y = dt * (-gamma * y + delta * x * y);
-        const x2 = x + k1x/2;
-        const y2 = y + k1y/2;
+        const x2 = x + k1x/2; const y2 = y + k1y/2;
         const k2x = dt * (alpha * x2 * (1 - x2/K) - beta * x2 * y2);
         const k2y = dt * (-gamma * y2 + delta * x2 * y2);
-        const x3 = x + k2x/2;
-        const y3 = y + k2y/2;
+        const x3 = x + k2x/2; const y3 = y + k2y/2;
         const k3x = dt * (alpha * x3 * (1 - x3/K) - beta * x3 * y3);
         const k3y = dt * (-gamma * y3 + delta * x3 * y3);
-        const x4 = x + k3x;
-        const y4 = y + k3y;
+        const x4 = x + k3x; const y4 = y + k3y;
         const k4x = dt * (alpha * x4 * (1 - x4/K) - beta * x4 * y4);
         const k4y = dt * (-gamma * y4 + delta * x4 * y4);
         x += (k1x + 2*k2x + 2*k3x + k4x)/6;
@@ -126,7 +135,6 @@
       return trajectory;
     }
 
-    // Create sliders dynamically with Matrix A-style number inputs
     function createSliders() {
       const container = document.querySelector('.controls');
       const instruction = document.createElement('div');
@@ -137,10 +145,7 @@
       params.forEach((param, index) => {
         const div = document.createElement('div');
         div.className = 'slider-container';
-
-        // Assign row-based color class (cycles every 10)
         const colorClass = `row-${index % 10}`;
-
         div.innerHTML = `
           <div class="slider-label">
             <span>${param.label}</span>
@@ -153,45 +158,37 @@
       });
     }
 
-    // Update Plotly plots based on current parameter values
     function updatePlots() {
       const values = params.reduce((acc, param) => {
         acc[param.id] = parseFloat(document.getElementById(param.id).value);
         return acc;
       }, {});
 
-      const trajectory = solveLV(
-        values.alpha, values.beta, values.gamma, values.delta, values.K,
-        values.x0, values.y0
-      );
-
+      const trajectory = solveLV(values.alpha, values.beta, values.gamma, values.delta, values.K, values.x0, values.y0);
       const xEq = values.gamma / values.delta;
       const yEq = (values.alpha / values.beta) * (1 - xEq / values.K);
 
-      const phaseTraces = [
-        {
-          x: trajectory.map(p => p.x),
-          y: trajectory.map(p => p.y),
-          mode: 'lines',
-          line: {color: '#3498db'},
-          name: 'Trajectory'
-        }
-      ];
+      const phaseTraces = [{
+        x: trajectory.map(p => p.x),
+        y: trajectory.map(p => p.y),
+        mode: 'lines',
+        line: {color: '#3498db'},
+        name: 'Trajectory'
+      }];
 
       if (yEq > 0 && xEq < values.K) {
         phaseTraces.push({
-          x: [xEq],
-          y: [yEq],
+          x: [xEq], y: [yEq],
           mode: 'markers',
-          marker: { color: 'red', size: 6, symbol: 'circle' },
-          name: 'Stable Equilibrium'
+          marker: { color: 'red', size: 8, symbol: 'circle' },
+          name: 'Equilibrium'
         });
       }
 
       Plotly.react('phasePlot', phaseTraces, {
-        title: 'Phase Space Diagram',
-        xaxis: { title: 'Prey Population (x)', range: [0, Math.max(...trajectory.map(p => p.x)) + 10], gridcolor: '#eee' },
-        yaxis: { title: 'Predator Population (y)', range: [0, Math.max(...trajectory.map(p => p.y)) + 10], gridcolor: '#eee' },
+        title: { text: 'Phase Space Diagram', font: { size: 24 } },
+        xaxis: { title: { text: 'Prey Population (x)', font: { size: 18 } }, range: [0, Math.max(...trajectory.map(p => p.x)) + 10], gridcolor: '#eee' },
+        yaxis: { title: { text: 'Predator Population (y)', font: { size: 18 } }, range: [0, Math.max(...trajectory.map(p => p.y)) + 10], gridcolor: '#eee' },
         plot_bgcolor: 'white',
         showlegend: true
       });
@@ -200,16 +197,15 @@
         { x: trajectory.map(p => p.t), y: trajectory.map(p => p.x), name: 'Prey Population (x)', line: {color: '#2ecc71'} },
         { x: trajectory.map(p => p.t), y: trajectory.map(p => p.y), name: 'Predator Population (y)', line: {color: '#e74c3c'} }
       ], {
-        title: 'Population Dynamics Over Time',
-        xaxis: { title: 'Time', range: [0, 300], gridcolor: '#eee' },
-        yaxis: { title: 'Population', gridcolor: '#eee' },
+        title: { text: 'Population Dynamics Over Time', font: { size: 24 } },
+        xaxis: { title: { text: 'Time', font: { size: 18 } }, range: [0, 300], gridcolor: '#eee' },
+        yaxis: { title: { text: 'Population', font: { size: 18 } }, gridcolor: '#eee' },
         plot_bgcolor: 'white',
         showlegend: true,
         legend: { orientation: 'h', yanchor: 'bottom', y: 1.02, xanchor: 'right', x: 1 }
       });
     }
 
-    // KaTeX rendering options
     const katexOptions = {
       delimiters: [
         {left: '\\[', right: '\\]', display: true},
@@ -218,7 +214,6 @@
       throwOnError: false
     };
 
-    // DOMContentLoaded event handler
     document.addEventListener('DOMContentLoaded', () => {
       renderMathInElement(document.body, katexOptions);
       createSliders();
@@ -227,18 +222,10 @@
       params.forEach(param => {
         const slider = document.getElementById(param.id);
         const valueInput = document.getElementById(`${param.id}Value`);
-
-        slider.addEventListener('input', function() {
-          valueInput.value = this.value;
-          updatePlots();
-        });
-
-        valueInput.addEventListener('change', function() {
-          let newValue = parseFloat(this.value);
-          newValue = Math.max(param.min, Math.min(param.max, newValue));
-          slider.value = newValue;
-          valueInput.value = newValue;
-          updatePlots();
+        slider.addEventListener('input', () => { valueInput.value = slider.value; updatePlots(); });
+        valueInput.addEventListener('change', () => {
+          let v = Math.max(param.min, Math.min(param.max, parseFloat(valueInput.value)));
+          slider.value = v; valueInput.value = v; updatePlots();
         });
       });
 
