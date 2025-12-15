@@ -301,6 +301,7 @@
  let isAnimating = false;
  let CONVERGENCE_TOLERANCE = new Decimal(1e-13);
  let plotInstance = null;
+ let autoRestart = true;  // Flag to control auto-restart loop
 
  function updateStatusDisplay() {
  if (iterations.length > 0) {
@@ -364,19 +365,17 @@
  updateConvergenceMessage();
  }
 
- document.getElementById('modifiedMethod').addEventListener('change', resetIterations);
- document.getElementById('x0').addEventListener('change', resetIterations);
- document.getElementById('multiplicity').addEventListener('change', resetIterations);
+ document.getElementById('modifiedMethod').addEventListener('change', () => { autoRestart = false; resetIterations(); });
+ document.getElementById('x0').addEventListener('change', () => { autoRestart = false; resetIterations(); });
+ document.getElementById('multiplicity').addEventListener('change', () => { autoRestart = false; resetIterations(); });
+ document.getElementById('convergence-tolerance').addEventListener('change', () => { autoRestart = false; updateTolerance(); });
+
  durationSlider.addEventListener('input', updateDurationDisplay);
  toleranceInput.addEventListener('blur', updateTolerance);
  toleranceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { updateTolerance(); toleranceInput.blur(); } });
 
- updateFunctionButtons(2);
- document.getElementById('current-function').innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
- document.getElementById('multiplicity').value = 1;
- document.getElementById('modifiedMethod').checked = false;
- resetIterations();
- startAnimation();
+ // Start with simple root demo
+ runSimpleRoot();  // This sets function, x0=2, standard method, resets, and starts animation
  updateDurationDisplay();
  updateTolerance();
  renderKaTeX();
@@ -388,6 +387,7 @@
  document.getElementById('current-function').innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
  document.getElementById('multiplicity').value = currentFunction.multiplicity || 1;
  updateFunctionButtons(index);
+ autoRestart = false;
  resetIterations();
  document.getElementById('modifiedMethod').checked = false;
  stopAnimation();
@@ -466,6 +466,13 @@
  function animateStep(callback) {
  if (currentIteration >= 50 || hasConverged()) {
  stopAnimation();
+ // Auto-restart only for the simple root demo and if no user changes were made
+ if (autoRestart && currentFunction === functions[2] && document.getElementById('x0').value === "2" && !document.getElementById('modifiedMethod').checked) {
+ setTimeout(() => {
+ resetIterations();
+ startAnimation();
+ }, 1500);  // Pause 1.5s before restarting
+ }
  callback();
  return;
  }
@@ -570,8 +577,7 @@
  }
 
  function animateNext() {
- if (!isAnimating || hasConverged() || currentIteration >= 50) {
- stopAnimation();
+ if (!isAnimating || currentIteration >= 50) {
  return;
  }
  animateStep(animateNext);
@@ -583,10 +589,7 @@
  }
 
  function startAnimation() {
- if (isAnimating || hasConverged()) {
- if (hasConverged()) showError("Already converged!");
- return;
- }
+ if (isAnimating || (iterations.length === 0)) return;
  isAnimating = true;
  document.getElementById('animate-btn').classList.add('running', 'hidden');
  document.getElementById('stop-btn').classList.remove('hidden');
@@ -705,10 +708,19 @@
 
  function showError(msg) { alert(msg); }
 
- function runSimpleRoot() { selectFunction(2); document.getElementById('x0').value = 2; document.getElementById('modifiedMethod').checked = false; document.getElementById('multiplicity').value = 1; resetIterations(); startAnimation(); }
- function runRepeatedNewton() { selectFunction(3); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = false; document.getElementById('multiplicity').value = 2; resetIterations(); startAnimation(); }
- function runModifiedNewton() { selectFunction(3); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = true; document.getElementById('multiplicity').value = 2; resetIterations(); startAnimation(); }
- function runNonConvergent() { selectFunction(2); document.getElementById('x0').value = 1.5; document.getElementById('modifiedMethod').checked = false; document.getElementById('multiplicity').value = 1; resetIterations(); startAnimation(); }
+ function runSimpleRoot() {
+ selectFunction(2);
+ document.getElementById('x0').value = 2;
+ document.getElementById('modifiedMethod').checked = false;
+ document.getElementById('multiplicity').value = 1;
+ autoRestart = true;
+ resetIterations();
+ startAnimation();
+ }
+
+ function runRepeatedNewton() { selectFunction(3); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = false; document.getElementById('multiplicity').value = 2; autoRestart = false; resetIterations(); startAnimation(); }
+ function runModifiedNewton() { selectFunction(3); document.getElementById('x0').value = 3; document.getElementById('modifiedMethod').checked = true; document.getElementById('multiplicity').value = 2; autoRestart = false; resetIterations(); startAnimation(); }
+ function runNonConvergent() { selectFunction(2); document.getElementById('x0').value = 1.5; document.getElementById('modifiedMethod').checked = false; document.getElementById('multiplicity').value = 1; autoRestart = false; resetIterations(); startAnimation(); }
 
  window.addEventListener('load', init);
  window.addEventListener('resize', drawGraph);
