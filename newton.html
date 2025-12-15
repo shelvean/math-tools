@@ -264,7 +264,7 @@
     <div class="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
       <p class="mb-2">&copy; 2025 Shelvean Kapita: kapita@tamu.edu</p>
       <p class="mb-2">All code released under the <a href="https://opensource.org/licenses/MIT" class="text-blue-600 hover:underline">MIT License</a>.</p>
-      <p>Last modified: December 14, 2025 | High-precision calculations using Decimal.js</p>
+      <p>Last modified: December 15, 2025 | High-precision calculations using Decimal.js</p>
     </div>
   </div>
 
@@ -303,6 +303,23 @@
     let CONVERGENCE_TOLERANCE = new Decimal(1e-13);
     let plotInstance = null;
     let autoRestart = true;
+    let currentAnimationElements = null;
+
+    function clearAllData() {
+      stopAnimation();
+      if (currentAnimationElements) {
+        currentAnimationElements.remove();
+        currentAnimationElements = null;
+      }
+      iterations = [];
+      currentIteration = 0;
+      document.getElementById('iteration-data').innerHTML = '';
+      document.getElementById('current-iteration').textContent = '0';
+      document.getElementById('current-error').textContent = '1.00e+0';
+      document.getElementById('current-fx').textContent = '-';
+      document.getElementById('converged-message').classList.remove('show');
+      drawGraph();
+    }
 
     function updateStatusDisplay() {
       if (iterations.length > 0) {
@@ -372,10 +389,11 @@
         updateConvergenceMessage();
       }
 
-      document.getElementById('modifiedMethod').addEventListener('change', () => { autoRestart = false; resetIterations(); });
-      document.getElementById('x0').addEventListener('change', () => { autoRestart = false; resetIterations(); });
-      document.getElementById('multiplicity').addEventListener('change', () => { autoRestart = false; resetIterations(); });
-      document.getElementById('convergence-tolerance').addEventListener('change', () => { autoRestart = false; updateTolerance(); });
+      document.getElementById('modifiedMethod').addEventListener('change', clearAllData);
+      document.getElementById('x0').addEventListener('change', clearAllData);
+      document.getElementById('multiplicity').addEventListener('change', clearAllData);
+      document.getElementById('convergence-tolerance').addEventListener('change', () => { updateTolerance(); });
+
       durationSlider.addEventListener('input', updateDurationDisplay);
       toleranceInput.addEventListener('blur', updateTolerance);
       toleranceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { updateTolerance(); toleranceInput.blur(); } });
@@ -388,14 +406,12 @@
     }
 
     function selectFunction(index) {
+      clearAllData();
       currentFunction = functions[index];
       document.getElementById('current-function').innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
       document.getElementById('multiplicity').value = currentFunction.multiplicity || 1;
-      updateFunctionButtons(index);
-      autoRestart = false;
-      resetIterations();
       document.getElementById('modifiedMethod').checked = false;
-      stopAnimation();
+      updateFunctionButtons(index);
       renderKaTeX();
     }
 
@@ -480,9 +496,10 @@
     }
 
     function animateStep(callback) {
-      // Modified condition: stop oscillation after 5 iterations
-      if (currentIteration >= 5 || currentIteration >= 50 || hasConverged()) {
+      // Removed the forced stop at 5 iterations
+      if (currentIteration >= 50 || hasConverged()) {
         stopAnimation();
+        // Only auto-restart for the simple root demo
         if (autoRestart && currentFunction === functions[2] && document.getElementById('x0').value === "2" && !document.getElementById('modifiedMethod').checked) {
           setTimeout(() => { resetIterations(); startAnimation(); }, 1500);
         }
@@ -507,6 +524,10 @@
       setTimeout(() => {
         const svg = d3.select('#graph svg g');
         if (svg.empty()) { callback(); return; }
+
+        if (currentAnimationElements) {
+          currentAnimationElements.remove();
+        }
 
         const xScale = plotInstance.meta.xScale;
         const yScale = plotInstance.meta.yScale;
@@ -535,9 +556,17 @@
           .attr('stroke', '#6c757d').attr('stroke-width', 1.5)
           .attr('stroke-dasharray', '5 5');
 
+        const tangentLine = svg.append('line')
+          .attr('x1', curveX).attr('y1', curveY)
+          .attr('x2', curveX).attr('y2', curveY)
+          .attr('stroke', tangentColor).attr('stroke-width', 2);
+
         const ball = svg.append('circle')
           .attr('r', 5).attr('fill', '#000000')
           .attr('cx', startX).attr('cy', startY);
+
+        currentAnimationElements = svg.selectAll('line[stroke="#6c757d"], line[stroke="' + tangentColor + '"], circle[fill="#000000"]')
+          .filter(function() { return this === dashedVertical.node() || this === tangentLine.node() || this === ball.node(); });
 
         ball.transition()
           .duration(durationVertical)
@@ -550,11 +579,6 @@
               .attr('x2', curveX).attr('y2', curveY);
           })
           .on('end', () => {
-            const tangentLine = svg.append('line')
-              .attr('x1', curveX).attr('y1', curveY)
-              .attr('x2', curveX).attr('y2', curveY)
-              .attr('stroke', tangentColor).attr('stroke-width', 2);
-
             tangentLine.transition()
               .duration(durationTangent)
               .ease(d3.easeLinear)
@@ -565,9 +589,8 @@
               .ease(d3.easeLinear)
               .attr('cx', endX).attr('cy', endY)
               .on('end', () => {
-                dashedVertical.remove();
-                tangentLine.remove();
-                ball.remove();
+                currentAnimationElements.remove();
+                currentAnimationElements = null;
                 addNextIteration(xNext, fxNext, dfxNext, error);
                 drawGraph();
                 callback();
@@ -587,7 +610,7 @@
     }
 
     function startAnimation() {
-      if (isAnimating || (iterations.length === 0)) return;
+      if (isAnimating || iterations.length === 0) return;
       isAnimating = true;
       document.getElementById('animate-btn').classList.add('running', 'hidden');
       document.getElementById('stop-btn').classList.remove('hidden');
@@ -596,6 +619,10 @@
 
     function stopAnimation() {
       isAnimating = false;
+      if (currentAnimationElements) {
+        currentAnimationElements.remove();
+        currentAnimationElements = null;
+      }
       document.getElementById('animate-btn').classList.remove('running', 'hidden');
       document.getElementById('stop-btn').classList.add('hidden');
       drawGraph();
@@ -694,6 +721,7 @@
     function showError(msg) { alert(msg); }
 
     function runSimpleRoot() {
+      clearAllData();
       selectFunction(2);
       document.getElementById('x0').value = 2;
       document.getElementById('modifiedMethod').checked = false;
@@ -704,6 +732,7 @@
     }
 
     function runRepeatedNewton() {
+      clearAllData();
       selectFunction(3);
       document.getElementById('x0').value = 3;
       document.getElementById('modifiedMethod').checked = false;
@@ -714,6 +743,7 @@
     }
 
     function runModifiedNewton() {
+      clearAllData();
       selectFunction(3);
       document.getElementById('x0').value = 3;
       document.getElementById('modifiedMethod').checked = true;
@@ -724,6 +754,7 @@
     }
 
     function runNonConvergent() {
+      clearAllData();
       selectFunction(2);
       document.getElementById('x0').value = 1.5;
       document.getElementById('modifiedMethod').checked = false;
@@ -731,6 +762,10 @@
       autoRestart = false;
       resetIterations();
       startAnimation();
+    }
+
+    function scrollToTable() {
+      document.getElementById('iteration-table-container').scrollIntoView({ behavior: 'smooth' });
     }
 
     window.addEventListener('load', init);
