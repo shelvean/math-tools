@@ -292,6 +292,7 @@
     let plotInstance = null;
     let autoRestart = true;
     let currentAnimationElements = null;
+    let sessionId = 0; // New: to prevent stale animations
 
     function clearAllData() {
       stopAnimation();
@@ -303,6 +304,7 @@
       document.getElementById('current-error').textContent = '1.00e+0';
       document.getElementById('current-fx').textContent = '-';
       document.getElementById('converged-message').classList.remove('show');
+      sessionId++; // Invalidate current session
       drawGraph();
     }
 
@@ -372,17 +374,15 @@
         updateConvergenceMessage();
       }
 
-      // Reset everything when any parameter that changes the method is modified
       document.getElementById('x0').addEventListener('change', clearAllData);
       document.getElementById('modifiedMethod').addEventListener('change', clearAllData);
       document.getElementById('multiplicity').addEventListener('change', clearAllData);
-
       document.getElementById('convergence-tolerance').addEventListener('change', updateTolerance);
       toleranceInput.addEventListener('blur', updateTolerance);
       toleranceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { updateTolerance(); toleranceInput.blur(); } });
       durationSlider.addEventListener('input', updateDurationDisplay);
 
-      runSimpleRoot(); // start with the default demo
+      runSimpleRoot();
       updateDurationDisplay();
       updateTolerance();
       renderKaTeX();
@@ -482,10 +482,12 @@
     }
 
     function animateStep(callback) {
+      const currentSession = sessionId; // Capture current session
+
       if (currentIteration >= 50 || hasConverged()) {
         stopAnimation();
         if (autoRestart && currentFunction === functions[2] && document.getElementById('x0').value === "2" && !document.getElementById('modifiedMethod').checked) {
-          setTimeout(() => { resetIterations(); startAnimation(); }, 1500);
+          setTimeout(() => { if (sessionId === currentSession) { resetIterations(); startAnimation(); } }, 1500);
         }
         callback();
         return;
@@ -506,6 +508,8 @@
       drawGraph();
 
       setTimeout(() => {
+        if (sessionId !== currentSession) { callback(); return; } // Skip if session changed
+
         const svg = d3.select('#graph svg g');
         if (svg.empty()) { callback(); return; }
 
@@ -562,6 +566,8 @@
               .attr('x2', curveX).attr('y2', curveY);
           })
           .on('end', () => {
+            if (sessionId !== currentSession) return; // Skip if session changed
+
             tangentLine.transition()
               .duration(durationTangent)
               .ease(d3.easeLinear)
@@ -572,6 +578,8 @@
               .ease(d3.easeLinear)
               .attr('cx', endX).attr('cy', endY)
               .on('end', () => {
+                if (sessionId !== currentSession) return; // Skip if session changed
+
                 currentAnimationElements.remove();
                 currentAnimationElements = null;
                 addNextIteration(xNext, fxNext, dfxNext, error);
@@ -603,6 +611,7 @@
     function stopAnimation() {
       isAnimating = false;
       if (currentAnimationElements) { currentAnimationElements.remove(); currentAnimationElements = null; }
+      d3.select('#graph').selectAll('*').interrupt(); // Stop all d3 transitions
       document.getElementById('animate-btn').classList.remove('running', 'hidden');
       document.getElementById('stop-btn').classList.add('hidden');
       drawGraph();
@@ -703,7 +712,7 @@
 
     function showError(msg) { alert(msg); }
 
-    // Quick Demos – each now fully clears everything before setting new parameters
+    // Quick Demos
     function runSimpleRoot() {
       clearAllData();
       selectFunction(2);
@@ -712,7 +721,7 @@
       document.getElementById('multiplicity').value = 1;
       autoRestart = true;
       resetIterations();
-      startAnimation();
+      setTimeout(startAnimation, 800);
     }
 
     function runRepeatedNewton() {
@@ -723,7 +732,7 @@
       document.getElementById('multiplicity').value = 2;
       autoRestart = false;
       resetIterations();
-      startAnimation();
+      setTimeout(startAnimation, 800);
     }
 
     function runModifiedNewton() {
@@ -734,7 +743,7 @@
       document.getElementById('multiplicity').value = 2;
       autoRestart = false;
       resetIterations();
-      startAnimation();
+      setTimeout(startAnimation, 800);
     }
 
     function runNonConvergent() {
@@ -745,7 +754,7 @@
       document.getElementById('multiplicity').value = 1;
       autoRestart = false;
       resetIterations();
-      startAnimation();
+      setTimeout(startAnimation, 800);
     }
 
     function scrollToTable() {
