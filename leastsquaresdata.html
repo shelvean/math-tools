@@ -235,8 +235,7 @@ function toFraction(num, tol=1e-10) {
       if (k>50) break;
       return sign+(k==1?h:`\\dfrac{${h}}{${k}}`);
     }
-    h2=h1;h1=h;k2=k1;k1=k;
-    b=1/(b-a);
+    h2=h1;h1=h;k2=k1;k1=k; b=1/(b-a);
   }
   return sign+parseFloat(num).toFixed(6).replace(/\.?0+$/,'');
 }
@@ -267,15 +266,39 @@ function lsfit_discrete(x, y, deg) {
   }
   return xsol;
 }
-const GL3 = { nodes: [-0.7745966692414834,0,0.7745966692414834], weights: [0.5555555555555556,0.8888888888888888,0.5555555555555556]};
-function composite_gauss3(f, a, b) {
-  const nPanels = Math.ceil(3 * Math.abs(b-a));
-  const nodes = GL3.nodes, weights = GL3.weights;
+// Gauss-Legendre 7-point rule on [-1,1] with high-precision values (25 decimal places)
+const GL7 = {
+  nodes: [
+    -0.949107912342758524526189952957024,
+    -0.741531185599394439863864773280789,
+    -0.405845151377397166906606412076798,
+    0.000000000000000000000000000000000,
+    0.405845151377397166906606412076798,
+    0.741531185599394439863864773280789,
+    0.949107912342758524526189952957024
+  ],
+  weights: [
+    0.129484966168869693270611432679082,
+    0.279705391489276667901467771423780,
+    0.381830050505118867784222580475395,
+    0.417959183673469387755102040816327,
+    0.381830050505118867784222580475395,
+    0.279705391489276667901467771423780,
+    0.129484966168869693270611432679082
+  ]
+};
+function composite_gauss7(f, a, b) {
+  const nPanels = Math.ceil(7 * Math.abs(b-a));
+  const nodes = GL7.nodes, weights = GL7.weights;
   let res = 0;
   for (let p = 0; p < nPanels; ++p) {
-    let x0 = a + (b - a) * p / nPanels, x1 = a + (b - a) * (p+1) / nPanels;
-    let mid = (x0 + x1) / 2, halflen = (x1 - x0) / 2;
-    for (let i=0; i<3; ++i) res += weights[i] * f(mid + halflen * nodes[i]) * halflen;
+    let x0 = a + (b - a) * p / nPanels,
+        x1 = a + (b - a) * (p+1) / nPanels;
+    let mid = (x0 + x1) / 2,
+        halflen = (x1 - x0) / 2;
+    for (let i=0; i<7; ++i) {
+      res += weights[i] * f(mid + halflen * nodes[i]) * halflen;
+    }
   }
   return res;
 }
@@ -284,8 +307,8 @@ function lsfit_continuous(func, a, b, deg) {
   let M = Array.from({length:m},()=>Array(m));
   let rhs = Array(m);
   for (let i=0;i<m;++i) {
-    for (let j=0;j<m;++j) M[i][j]=composite_gauss3(x=>Math.pow(x,i+j),a,b);
-    rhs[i]=composite_gauss3(x=>func(x)*Math.pow(x,i),a,b);
+    for (let j=0;j<m;++j) M[i][j]=composite_gauss7(x=>Math.pow(x,i+j),a,b);
+    rhs[i]=composite_gauss7(x=>func(x)*Math.pow(x,i),a,b);
   }
   let N = m, mat = M.map(r=>r.slice()), bvec = rhs.slice();
   for (let k=0;k<N;++k){
@@ -308,16 +331,10 @@ function lsfit_continuous(func, a, b, deg) {
   return xsol;
 }
 function l2_norm_error(f, p, a, b) {
-  return Math.sqrt(composite_gauss3(x => {
-    let fx = f(x), px = p(x);
-    return (fx - px) * (fx - px);
-  }, a, b));
+  return Math.sqrt(composite_gauss7(x => { let fx = f(x), px = p(x); return (fx - px) * (fx - px); }, a, b));
 }
 function l2_norm_f(f, a, b) {
-  return Math.sqrt(composite_gauss3(x => {
-    let fx = f(x);
-    return fx * fx;
-  }, a, b));
+  return Math.sqrt(composite_gauss7(x => { let fx = f(x); return fx * fx; }, a, b));
 }
 function polyToLatex(coef) {
   let s="p(x) = ";
@@ -412,7 +429,8 @@ document.getElementById('compute').onclick = function(){
   if (origFuncEval) legbar += `<span class="legitem"><span class="legicon-fun"></span>Function</span>`;
   if (mode !== "function") legbar += `<span class="legitem"><span class="legicon-pts"></span>Data pts</span>`;
   document.getElementById('legend-bar').innerHTML = legbar;
-  let allx = fitShowX.concat((mode!=="function" && origPtsX)?origPtsX:[]), ally = fitShowY.concat((mode!=="function"&&origPtsY)?origPtsY:[]);
+  let allx = fitShowX.concat((mode!=="function" && origPtsX)?origPtsX:[]),
+      ally = fitShowY.concat((mode!=="function"&&origPtsY)?origPtsY:[]);
   let minx = Math.min(...allx), maxx = Math.max(...allx);
   let miny = Math.min(...ally), maxy = Math.max(...ally);
   if (origFuncEval) {
