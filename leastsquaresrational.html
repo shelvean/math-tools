@@ -17,8 +17,6 @@
     .grid path { stroke: none; }
     #legend-bar { display: flex; justify-content:center; align-items:center; gap:1.5em; font-size:1em; margin: 12px 0 8px 0; }
     .legitem { display: flex; align-items: center; gap:0.4em;}
-    .legicon-rational { display: inline-block; width:20px;height:3.5px;background:#9c27b0;}
-    .legicon-fun { display: inline-block; width:20px;height:3.5px;background:#db2114;}
     .warning-box { margin-top: 1rem; padding: 1rem; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; }
     .warning-box h4 { font-weight: bold; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
     .warning-box h4:before { content: "⚠"; font-size: 1.2em; }
@@ -54,11 +52,11 @@
       </h1>
       <nav>
         <ul class="flex justify-center gap-8">
-          <li><a href="index.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
-          <li><a href="teaching.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
-          <li><a href="projects.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Diff Eq</a></li>
-          <li><a href="linear.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Linear Algebra</a></li>
-          <li><a href="numerical.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Numerical Methods</a></li>
+          <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+          <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+          <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Diff Eq</a></li>
+          <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Linear Algebra</a></li>
+          <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl">Numerical Methods</a></li>
         </ul>
       </nav>
       <h2 class="text-4xl text-black text-center mt-8 mb-4 font-bold">Rational Least Squares Approximation</h2>
@@ -175,7 +173,7 @@
   </div>
 
   <footer class="text-center py-4 border-t mt-8 text-gray-600 text-sm">
-    &copy; 2025 Shelvean Kapita: kapita@tamu.edu<br>
+    © 2025 Shelvean Kapita: kapita@tamu.edu<br>
     All code released under the <a href="https://opensource.org/licenses/MIT" class="text-blue-600 hover:underline">MIT License</a>.<br>
     Last modified: December 26, 2025
   </footer>
@@ -184,9 +182,6 @@
     function svdLeastSquares(A, b, tol = 1e-12) {
       const m = A.length;
       const n = A.length > 0 && A[0] ? A[0].length : 0;
-      let singularValues = [];
-      let conditionNumber = 0;
-      let effectiveRank = 0;
       if (m === 0 || n === 0) {
         return { solution: new Array(n).fill(0), singularValues: [], conditionNumber: Infinity, effectiveRank: 0 };
       }
@@ -199,9 +194,9 @@
       const V = svdResult.V || svdResult.v;
       const sigma_max = S[0] > 0 ? S[0] : 1e-300;
       const sigma_min = S[S.length - 1] > 0 ? S[S.length - 1] : 1e-300;
-      conditionNumber = sigma_max / sigma_min;
+      const conditionNumber = sigma_max / sigma_min;
       const threshold = tol * sigma_max;
-      effectiveRank = S.filter(s => s > threshold).length;
+      const effectiveRank = S.filter(s => s > threshold).length;
       const S_plus = S.map(s => s > threshold ? 1 / s : 0);
       const Ut_b = numeric.dot(numeric.transpose(U), b);
       const temp = new Array(n).fill(0);
@@ -243,18 +238,26 @@
       for (let i = coeffs.length - 1; i >= 0; i--) {
         let c = coeffs[i];
         if (Math.abs(c) < 1e-12) continue;
+
         let absC = Math.abs(c);
         let sign = (terms.length === 0) ? (c >= 0 ? '' : '-') : (c >= 0 ? ' + ' : ' - ');
+
+        // Coefficient string: omit "1" or "-1" except for constant term
         let coeffStr = '';
-        if (absC !== 1 || i === 0) {
+        if (i === 0 || absC !== 1) {
           coeffStr = absC.toFixed(10).replace(/\.?0+$/, '');
+          if (coeffStr === '1' && i > 0) coeffStr = '';
         }
-        let power = i === 0 ? '' : (i === 1 ? variable : `${variable}^{${i}}`);
-        if (coeffStr === '' && absC === 1 && i > 0) coeffStr = '1';
+        // For powers > 0 and |c| = 1, show nothing before the variable
+
+        let power = '';
+        if (i === 1) power = variable;
+        else if (i > 1) power = `${variable}^{${i}}`;
+
         terms.push(sign + coeffStr + power);
       }
       let poly = terms.join('').trim();
-      if (poly.startsWith('+ ')) poly = poly.slice(2);
+      if (poly.startsWith('+ ')) poly = poly.slice(2).trim();
       return poly || '0';
     }
 
@@ -271,8 +274,8 @@
       lines.push("");
       lines.push("def r(x):");
       lines.push("    \"\"\"Rational approximation [m/n]\"\"\"");
-      lines.push(`    num = np.polyval([${numCoeffs.map(c => c.toFixed(12).replace(/0+$/,'')).join(', ')}], x)`);
-      lines.push(`    den = np.polyval([${denCoeffs.map(c => c.toFixed(12).replace(/0+$/,'')).join(', ')}], x)`);
+      lines.push(`    num = np.polyval([${numCoeffs.map(c => c.toFixed(12)).join(', ')}], x)`);
+      lines.push(`    den = np.polyval([${denCoeffs.map(c => c.toFixed(12)).join(', ')}], x)`);
       lines.push("    return np.where(np.abs(den) > 1e-14, num / den, np.sign(num) * np.inf)");
       return lines.join('\n');
     }
@@ -281,8 +284,8 @@
       let lines = [];
       lines.push("% Rational approximation [m/n]");
       lines.push("function y = r(x)");
-      lines.push(`    num = polyval([${numCoeffs.map(c => c.toFixed(12).replace(/0+$/,'')).join(' ')}], x);`);
-      lines.push(`    den = polyval([${denCoeffs.map(c => c.toFixed(12).replace(/0+$/,'')).join(' ')}], x);`);
+      lines.push(`    num = polyval([${numCoeffs.map(c => c.toFixed(12)).join(' ')}], x);`);
+      lines.push(`    den = polyval([${denCoeffs.map(c => c.toFixed(12)).join(' ')}], x);`);
       lines.push("    y = num ./ den;");
       lines.push("    y(abs(den) <= 1e-14) = sign(num(abs(den) <= 1e-14)) * Inf;");
       lines.push("end");
@@ -524,6 +527,7 @@
       }
     });
 
+    // Remaining event listeners unchanged (eval-btn, download-btn, etc.)
     document.getElementById('eval-btn').addEventListener('click', function() {
       if (!window.current) return;
       const xs = document.getElementById('eval_x').value.split(',').map(v => Number(v.trim()));
