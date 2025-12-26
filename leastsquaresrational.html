@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rational Least Squares Approximation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@11.9.1/lib/browser/math.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+    <style>
+        #plot svg { background-color: #f7f7f7; }
+        .grid line { stroke: #f3f3f3; stroke-opacity: 0.8; }
+        .grid path { stroke: none; }
+        #legend-bar { display: flex; justify-content:center; align-items:center; gap:1.5em; font-size:1em; margin: 12px 0 8px 0; }
+        .legitem { display: flex; align-items: center; gap:0.4em;}
+        .legicon-rational { display: inline-block; width:20px;height:3.5px;background:#9c27b0;}
+        .legicon-fun { display: inline-block; width:20px;height:3.5px;background:#db2114;}
+        .warning-box { margin-top: 1rem; padding: 1rem; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; color: #92400e; }
+        .warning-box h4 { font-weight: bold; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .warning-box h4:before { content: "⚠"; font-size: 1.2em; }
+        .error-box { margin-top: 1rem; padding: 1rem; background-color: #fee2e2; border: 1px solid #f87171; border-radius: 8px; color: #991b1b; }
+        .error-box h4 { font-weight: bold; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .error-box h4:before { content: "✖"; font-size: 1.2em; }
+        #latex-result { font-size: 1.1rem !important; overflow-x: auto; white-space: nowrap; padding: 0.75rem; background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 0.5rem; }
+        .condition-info { background-color: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+        #copy-section { margin-top: 1.5rem; padding: 1rem; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+        #copy-controls { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.75rem; }
+        #format-select { padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; background-color: white; font-size: 0.875rem; }
+        #copy-btn { padding: 0.5rem 1rem; background-color: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; transition: background-color 0.2s; }
+        #copy-btn:hover { background-color: #2563eb; }
+        #copy-btn:active { background-color: #1d4ed8; }
+        #copy-btn.copied { background-color: #10b981; }
+        #poly-output { font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; white-space: pre; background-color: white; padding: 1rem; border-radius: 6px; border: 1px solid #d1d5db; overflow-x: auto; max-height: 300px; overflow-y: auto; line-height: 1.5; tab-size: 4; user-select: text; }
+        #about-section { background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); padding: 1.5rem; margin-top: 2rem; max-width: 900px; margin-left: auto; margin-right: auto; }
+        #about-section h3 { font-size: 1.8rem; text-align: center; color: #1e40af; margin-bottom: 1.5rem; font-weight: bold; }
+        #about-section ul { margin-left: 1.5em; list-style: disc; }
+        #about-section .text-sm { font-size: 0.95rem; line-height: 1.7; }
+        #examples-sidebar { position: fixed; right: 20px; top: 50%; transform: translateY(-50%); width: 280px; background: white; padding: 1.5em; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 20; }
+        #examples-sidebar h3 { font-size: 1.4em; text-align: center; color: #1e40af; margin-bottom: 1em; }
+        .example-btn { display: block; width: 100%; margin-bottom: 0.8em; padding: 0.8em; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1em; text-align: center; transition: background 0.2s; }
+        .example-btn:hover { background: #4338ca; }
+        @media (max-width: 1024px) { #examples-sidebar { display: none; } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+    <div id="preamble" class="status">
+        <header class="bg-white shadow-sm py-6 px-4 sticky top-0 z-10">
+            <h1 class="text-4xl text-black text-center mb-4 font-bold">
+                <a href="index.html">Shelvean Kapita</a>
+            </h1>
+            <nav>
+                <ul class="flex justify-center gap-8">
+                    <li><a href="index.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Home</a></li>
+                    <li><a href="teaching.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Teaching</a></li>
+                    <li><a href="projects.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Diff Eq</a></li>
+                    <li><a href="linear.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Linear Algebra</a></li>
+                    <li><a href="numerical.html" class="text-indigo-500 text-opacity-100 hover:text-blue-600 transition-colors font-bold text-xl">Numerical Methods</a></li>
+                </ul>
+            </nav>
+            <h2 class="text-4xl text-black text-center mt-8 mb-4 font-bold">Rational Least Squares Approximation</h2>
+            <div class="text-center text-base mb-3 text-gray-600 max-w-4xl mx-auto">
+                Compute least squares rational approximations for continuous functions on a finite interval using a stable SVD-based solver.<br>
+                Visualize the approximation, assess errors, detect poles, and export results.
+            </div>
+        </header>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow-md max-w-3xl w-full mx-auto mt-8 mb-8">
+        <div>
+            <label class="block text-gray-700">Function $f(x)$:</label>
+            <input type="text" id="func" class="w-full p-2 border rounded mb-2" value="exp(x)">
+        </div>
+        <div class="flex space-x-2">
+            <div class="w-1/2">
+                <label class="block text-gray-700">Interval start $a$:</label>
+                <input type="text" id="a" class="w-full p-2 border rounded" value="-2">
+            </div>
+            <div class="w-1/2">
+                <label class="block text-gray-700">Interval end $b$:</label>
+                <input type="text" id="b" class="w-full p-2 border rounded" value="2">
+            </div>
+        </div>
+        <div class="degree-controls mt-6 flex gap-8 justify-center">
+            <div class="degree-input">
+                <label class="text-gray-700">Numerator degree $m$:</label>
+                <input type="number" id="m_lsq" min="0" max="10" value="3" class="p-1 border rounded w-20 text-center">
+            </div>
+            <div class="degree-input">
+                <label class="text-gray-700">Denominator degree $n$:</label>
+                <input type="number" id="n_lsq" min="0" max="10" value="3" class="p-1 border rounded w-20 text-center">
+            </div>
+        </div>
+        <div class="mt-4">
+            <label class="flex items-center">
+                <input type="checkbox" id="use_chebyshev" class="mr-2"> Use Chebyshev sampling (better for high degrees)
+            </label>
+            <label class="flex items-center mt-2">
+                <input type="checkbox" id="use_regularization" class="mr-2"> Use Tikhonov regularization
+            </label>
+            <div id="lambda-control" class="mt-2" style="display:none;">
+                <label for="lambda" class="block text-gray-700">Regularization parameter $\lambda$:</label>
+                <input type="number" id="lambda" min="0" step="any" value="0.001" class="p-1 border rounded w-full">
+            </div>
+        </div>
+        <div class="flex justify-center mt-6 gap-4">
+            <button id="compute" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">Compute Approximation</button>
+            <button id="clear" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600">Clear</button>
+        </div>
+        <div id="messages" class="mt-4"></div>
+        <div id="result" class="mt-8"></div>
+        <div id="copy-section" style="display: none;">
+            <div id="copy-controls">
+                <select id="format-select">
+                    <option value="latex">LaTeX format</option>
+                    <option value="python">Python function</option>
+                    <option value="matlab">MATLAB function</option>
+                </select>
+                <button id="copy-btn">Copy to clipboard</button>
+            </div>
+            <div id="poly-output"></div>
+        </div>
+        <div id="plot" class="mt-8 flex justify-center"></div>
+        <div id="legend-bar" class="mb-4"></div>
+        <div class="flex justify-center mt-3 mb-0 gap-3">
+            <button id="download-btn" class="bg-blue-400 text-white px-4 py-2 rounded hover:bg-blue-500" style="display:none;">Download Plot (SVG)</button>
+            <button id="download-xr-btn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" style="display:none;">Download Data (CSV)</button>
+        </div>
+        <div id="evaldiv" class="flex flex-col items-center mt-6" style="display:none;">
+            <label class="block text-gray-700 mb-1">Evaluate at x (comma separated):</label>
+            <div class="flex space-x-4">
+                <input type="text" id="eval_x" class="w-80 p-2 border rounded" placeholder="e.g., 0, 0.5, 1">
+                <button id="eval-btn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Evaluate</button>
+            </div>
+            <div id="eval-output" class="mt-4 p-3 bg-gray-50 rounded w-full"></div>
+            <div id="error-container" class="mt-8 w-full flex justify-center"></div>
+        </div>
+    </div>
+    <div id="examples-sidebar">
+        <h3>Examples</h3>
+        <button class="example-btn" id="example-exp">exp(x) on [-2,2], m=3,n=3</button>
+        <button class="example-btn" id="example-run">Runge function 1/(1+25x²) on [-1,1], m=4,n=4</button>
+        <button class="example-btn" id="example-sinc">sinc(x) = sin(x)/x on [-π,π], m=5,n=5</button>
+    </div>
+    <div id="about-section">
+        <h3>About This Tool</h3>
+        <div class="text-sm text-gray-700 space-y-4">
+            <p>
+                This tool computes the best rational approximation of type $[m/n]$ (numerator degree $m$, denominator degree $n$) to a user-specified continuous function $f(x)$ on a closed interval $[a,b]$ in the discrete least-squares sense.
+            </p>
+            <p>
+                Given $f \in C[a,b]$, we seek coefficients $p_0,\dots,p_m$ and $q_0,\dots,q_n$ (with $q_0 = 1$ for uniqueness) such that the rational function
+                $$ R(x) = \frac{P(x)}{Q(x)} = \frac{\sum_{k=0}^m p_k x^k}{\sum_{k=0}^n q_k x^k} $$
+                minimizes the discrete $L^2$ error over a large set of points $x_i \in [a,b]$:
+                $$ \sum_{i} \left( f(x_i) - R(x_i) \right)^2 . $$
+            </p>
+            <p>
+                This leads to a nonlinear least-squares problem, which is linearized by fixing the denominator scaling and solving
+                $$ \sum_{k=0}^m p_k x_i^k - f(x_i) \sum_{k=1}^n q_k x_i^k = f(x_i) $$
+                for all sample points $i$. The resulting overdetermined linear system is solved using the singular value decomposition (SVD) for maximum numerical stability—no normal equations are formed.
+            </p>
+            <p>
+                Optional Tikhonov regularization ($\lambda > 0$) penalizes the denominator coefficients to improve conditioning in near-degenerate cases.
+            </p>
+            <p>
+                <strong>Key features and numerical considerations:</strong>
+            </p>
+            <ul>
+                <li>Sampling: Uniform or Chebyshev nodes (recommended for higher degrees to reduce Runge phenomenon effects in the discrete problem).</li>
+                <li>Stability: Full SVD with pseudoinverse; condition number and effective rank are reported.</li>
+                <li>Pole detection: Zeros of the denominator polynomial are located via sign changes and bisection; internal poles disable plotting to avoid singularities.</li>
+                <li>Error metrics: Relative and absolute $L^2$ norms and $L^\infty$ norm computed via high-density quadrature.</li>
+                <li>Visualization: D3-based interactive plot comparing $f(x)$ and $R(x)$.</li>
+                <li>Export: LaTeX, Python, and MATLAB representations of $R(x)$; SVG plot and CSV data download.</li>
+            </ul>
+            <p>
+                Rational approximations often converge faster than polynomial approximations for functions with poles or steep gradients outside the interval and are particularly effective for many special functions (e.g., exponential, trigonometric, and hyperbolic functions).
+            </p>
+        </div>
+    </div>
+    <footer class="text-center py-4 border-t mt-8 text-gray-600 text-sm">
+        &copy; 2025 Shelvean Kapita: kapita@tamu.edu<br>
+        All code released under the <a href="https://opensource.org/licenses/MIT" class="text-blue-600 hover:underline">MIT License</a>.<br>
+        Last modified: December 26, 2025
+    </footer>
+    <script>
+        function svdLeastSquares(A, b, tol = 1e-12) {
+            const m = A.length;
+            const n = A.length > 0 && A[0] ? A[0].length : 0;
+            let singularValues = [];
+            let conditionNumber = 0;
+            let effectiveRank = 0;
+            if (m === 0 || n === 0) {
+                return { solution: new Array(n).fill(0), singularValues: [], conditionNumber: Infinity, effectiveRank: 0 };
+            }
+            const svdResult = numeric.svd(A);
+            if (!svdResult.S || !Array.isArray(svdResult.S) || svdResult.S.length === 0) {
+                return { solution: new Array(n).fill(0), singularValues: [], conditionNumber: Infinity, effectiveRank: 0 };
+            }
+            const S = svdResult.S;
+            const U = svdResult.U || svdResult.u;
+            const V = svdResult.V || svdResult.v;
+            const sigma_max = S[0] > 0 ? S[0] : 1e-300;
+            const sigma_min = S[S.length - 1] > 0 ? S[S.length - 1] : 1e-300;
+            conditionNumber = sigma_max / sigma_min;
+            const threshold = tol * sigma_max;
+            effectiveRank = S.filter(s => s > threshold).length;
+            const S_plus = S.map(s => s > threshold ? 1 / s : 0);
+            const Ut_b = numeric.dot(numeric.transpose(U), b);
+            const temp = new Array(n).fill(0);
+            for (let i = 0; i < Math.min(m, n); i++) {
+                temp[i] = S_plus[i] * Ut_b[i];
+            }
+            const x = numeric.dot(V, temp);
+            return { solution: x, singularValues: S, conditionNumber: conditionNumber, effectiveRank: effectiveRank };
+        }
+
+        function generateChebyshevNodes(a, b, N) {
+            const nodes = [];
+            for (let i = 0; i < N; i++) {
+                const theta = Math.PI * (2 * i + 1) / (2 * N);
+                nodes.push((a + b) / 2 + (b - a) / 2 * Math.cos(theta));
+            }
+            return nodes.sort((x, y) => x - y);
+        }
+
+        function evaluatePolynomial(coeffs, x) {
+            let sum = 0;
+            let pow = 1;
+            for (let i = 0; i < coeffs.length; i++) {
+                sum += coeffs[i] * pow;
+                pow *= x;
+            }
+            return sum;
+        }
+
+        function evaluateRational(numCoeffs, denCoeffs, x) {
+            const num = evaluatePolynomial(numCoeffs, x);
+            const den = evaluatePolynomial(denCoeffs, x);
+            if (Math.abs(den) < 1e-14) return num >= 0 ? Infinity : -Infinity;
+            return num / den;
+        }
+
+        function formatPolynomial(coeffs, variable = 'x') {
+            let terms = [];
+            for (let i = coeffs.length - 1; i >= 0; i--) {
+                let c = coeffs[i];
+                if (Math.abs(c) < 1e-12) continue;
+                if (Math.abs(c - Math.round(c)) < 1e-10) c = Math.round(c);
+                let coeffStr = '';
+                const absC = Math.abs(c);
+                if (absC !== 1 || i === 0) {
+                    coeffStr = Number.isInteger(c) ? c.toString() : c.toFixed(10).replace(/0+$/,'').replace(/\.$/,'');
+                    if (c < 0) coeffStr = coeffStr.slice(1);
+                }
+                let power = i === 0 ? '' : (i === 1 ? variable : `${variable}^{${i}}`);
+                let term = coeffStr + power;
+                if (term === '' && absC === 1) term = power || '1';
+                if (c < 0) {
+                    term = terms.length === 0 ? '-' + term : '- ' + term;
+                } else if (terms.length > 0) {
+                    term = '+ ' + term;
+                }
+                terms.push(term);
+            }
+            return terms.length > 0 ? terms.join(' ') : '0';
+        }
+
+        function formatRational(numCoeffs, denCoeffs, variable = 'x') {
+            let num = formatPolynomial(numCoeffs, variable);
+            let den = formatPolynomial(denCoeffs, variable);
+            if (den === '1') return num;
+            if (den.startsWith('+ ')) den = den.slice(2);
+            return `\\dfrac{${num}}{${den}}`;
+        }
+
+        function rationalToPython(numCoeffs, denCoeffs) {
+            let lines = [];
+            lines.push("def r(x):");
+            lines.push("    \"\"\"Rational approximation [m/n]\"\"\"");
+            let numStr = formatPolynomial(numCoeffs, 'x');
+            let denStr = formatPolynomial(denCoeffs, 'x');
+            lines.push("    num = " + numStr.replace(/\+ /g, '+').replace(/- /g, '-').replace(/x/g, 'x'));
+            lines.push("    den = " + denStr.replace(/\+ /g, '+').replace(/- /g, '-').replace(/x/g, 'x'));
+            lines.push("    return num / den if abs(den) > 1e-14 else float('inf') if num >= 0 else float('-inf')");
+            return lines.join('\n');
+        }
+
+        function rationalToMATLAB(numCoeffs, denCoeffs) {
+            let lines = [];
+            lines.push("% Rational approximation [m/n]");
+            lines.push("function y = r(x)");
+            let numStr = formatPolynomial(numCoeffs, 'x');
+            let denStr = formatPolynomial(denCoeffs, 'x');
+            lines.push("    num = " + numStr.replace(/\+ /g, '+ ').replace(/- /g, '- '));
+            lines.push("    den = " + denStr.replace(/\+ /g, '+ ').replace(/- /g, '- '));
+            lines.push("    y = num ./ den;");
+            lines.push("end");
+            return lines.join('\n');
+        }
+
+        function rationalLeastSquaresSVD(x, y, m, n, lambda = 0) {
+            const N = x.length;
+            const cols = m + n + 1;
+            const A = numeric.rep([N, cols], 0);
+            for (let i = 0; i < N; i++) {
+                let pow = 1;
+                for (let j = 0; j <= m; j++) {
+                    A[i][j] = pow;
+                    pow *= x[i];
+                }
+                pow = x[i];
+                for (let j = 1; j <= n; j++) {
+                    A[i][m + j] = -y[i] * pow;
+                    pow *= x[i];
+                }
+            }
+            let b = y.slice();
+            if (lambda > 0 && n > 0) {
+                const reg_rows = n;
+                const A_ext = numeric.rep([N + reg_rows, cols], 0);
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < cols; j++) A_ext[i][j] = A[i][j];
+                }
+                const sqrtLambda = Math.sqrt(lambda);
+                for (let j = 1; j <= n; j++) {
+                    A_ext[N + j - 1][m + j] = sqrtLambda;
+                    b.push(0);
+                }
+                const result = svdLeastSquares(A_ext, b);
+                return { numCoeffs: result.solution.slice(0, m + 1), denCoeffs: [1, ...result.solution.slice(m + 1)], conditionNumber: result.conditionNumber, singularValues: result.singularValues, effectiveRank: result.effectiveRank };
+            } else {
+                const result = svdLeastSquares(A, b);
+                return { numCoeffs: result.solution.slice(0, m + 1), denCoeffs: [1, ...result.solution.slice(m + 1)], conditionNumber: result.conditionNumber, singularValues: result.singularValues, effectiveRank: result.effectiveRank };
+            }
+        }
+
+        function detectPoles(denCoeffs, a, b, samples = 5000) {
+            const poles = [];
+            let prev = evaluatePolynomial(denCoeffs, a);
+            const dx = (b - a) / samples;
+            for (let i = 1; i <= samples; i++) {
+                const x = a + i * dx;
+                const val = evaluatePolynomial(denCoeffs, x);
+                if (prev * val <= 0) {
+                    let left = a + (i-1)*dx;
+                    let right = x;
+                    for (let k = 0; k < 25; k++) {
+                        const mid = (left + right) / 2;
+                        const midval = evaluatePolynomial(denCoeffs, mid);
+                        if (midval * prev <= 0) right = mid;
+                        else left = mid;
+                    }
+                    poles.push((left + right)/2);
+                }
+                prev = val;
+            }
+            return poles;
+        }
+
+        function computeErrors(f, approx, a, b, samples = 5000) {
+            let l2 = 0, lInf = 0, l2norm = 0;
+            const dx = (b - a) / samples;
+            let validPoints = 0;
+            for (let i = 0; i <= samples; i++) {
+                const x = a + i * dx;
+                const fx = f(x);
+                const rx = approx(x);
+                if (isFinite(rx) && isFinite(fx)) {
+                    const err = fx - rx;
+                    l2 += err * err * dx;
+                    lInf = Math.max(lInf, Math.abs(err));
+                    l2norm += fx * fx * dx;
+                    validPoints++;
+                }
+            }
+            l2 = Math.sqrt(l2);
+            l2norm = Math.sqrt(l2norm);
+            return { relL2: l2norm > 0 ? l2 / l2norm : 0, L2: l2, LInf: lInf, validPoints };
+        }
+
+        function createPlot(plotX, plotY, origY) {
+            const allY = [...plotY, ...origY].filter(y => isFinite(y));
+            if (allY.length === 0) return;
+            const minY = Math.min(...allY);
+            const maxY = Math.max(...allY);
+            const yPad = (maxY - minY) * 0.05 || 1;
+            const width = 600, height = 400;
+            const margin = {top: 20, right: 20, bottom: 50, left: 60};
+            const xScale = d3.scaleLinear().domain(d3.extent(plotX)).range([0, width]);
+            const yScale = d3.scaleLinear().domain([minY - yPad, maxY + yPad]).range([height, 0]);
+            const svg = d3.select('#plot').html('').append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            svg.append('g').attr('class', 'grid').attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(xScale).tickSize(-height).tickFormat(''));
+            svg.append('g').attr('class', 'grid')
+                .call(d3.axisLeft(yScale).tickSize(-width).tickFormat(''));
+            svg.append('g').attr('transform', `translate(0,${height})`).call(d3.axisBottom(xScale));
+            svg.append('g').call(d3.axisLeft(yScale));
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle').text('x');
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', -margin.left + 15).attr('x', -height/2)
+                .style('text-anchor', 'middle').text('y');
+            const line = d3.line().x(d => xScale(d[0])).y(d => yScale(d[1]));
+            const validApprox = plotX.map((x,i) => [x, plotY[i]])
+                .filter(p => isFinite(p[1]) && Math.abs(p[1]) < 1e10);
+            if (validApprox.length > 1) {
+                svg.append('path').datum(validApprox).attr('fill', 'none')
+                    .attr('stroke', '#9c27b0').attr('stroke-width', 2).attr('d', line);
+            }
+            const validOrig = plotX.map((x,i) => [x, origY[i]]).filter(p => isFinite(p[1]));
+            if (validOrig.length > 1) {
+                svg.append('path').datum(validOrig).attr('fill', 'none')
+                    .attr('stroke', '#db2114').attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '5,5').attr('d', line);
+            }
+            const legend = d3.select('#legend-bar').html('');
+            legend.append('div').attr('class','legitem')
+                .html('<div style="width:20px;height:3.5px;background:#9c27b0"></div><span>Rational Approximation</span>');
+            legend.append('div').attr('class','legitem')
+                .html('<div style="width:20px;height:3.5px;background:#db2114"></div><span>Original function</span>');
+        }
+
+        function updateRationalOutput(numCoeffs, denCoeffs, format) {
+            const outputElem = document.getElementById('poly-output');
+            let output = '';
+            switch(format) {
+                case 'latex':
+                    output = formatRational(numCoeffs, denCoeffs);
+                    break;
+                case 'python':
+                    output = rationalToPython(numCoeffs, denCoeffs);
+                    break;
+                case 'matlab':
+                    output = rationalToMATLAB(numCoeffs, denCoeffs);
+                    break;
+                default:
+                    output = formatRational(numCoeffs, denCoeffs);
+            }
+            outputElem.textContent = output;
+            if (format === 'latex') {
+                outputElem.innerHTML = '';
+                katex.render(output, outputElem, {throwOnError: false, displayMode: true});
+            }
+        }
+
+        document.getElementById('compute').addEventListener('click', function() {
+            document.getElementById('result').innerHTML = '';
+            document.getElementById('plot').innerHTML = '';
+            document.getElementById('legend-bar').innerHTML = '';
+            document.getElementById('evaldiv').style.display = 'none';
+            document.getElementById('error-container').innerHTML = '';
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('download-btn').style.display = 'none';
+            document.getElementById('download-xr-btn').style.display = 'none';
+            document.getElementById('copy-section').style.display = 'none';
+            try {
+                const funcStr = document.getElementById('func').value.trim();
+                const func = x => math.evaluate(funcStr, {x});
+                const a = Number(math.evaluate(document.getElementById('a').value));
+                const b = Number(math.evaluate(document.getElementById('b').value));
+                if (a >= b) throw "Interval start must be less than end";
+                const m = parseInt(document.getElementById('m_lsq').value);
+                const n = parseInt(document.getElementById('n_lsq').value);
+                const useChebyshev = document.getElementById('use_chebyshev').checked;
+                const lambda = document.getElementById('use_regularization').checked ? parseFloat(document.getElementById('lambda').value) : 0;
+                const N_fit = Math.max(500, Math.floor((b - a) * 150));
+                const fitX = useChebyshev ? generateChebyshevNodes(a, b, N_fit) : Array.from({length: N_fit}, (_, i) => a + (b - a) * i / (N_fit - 1));
+                const fitY = fitX.map(func);
+                const res = rationalLeastSquaresSVD(fitX, fitY, m, n, lambda);
+                const numCoeffs = res.numCoeffs;
+                const denCoeffs = res.denCoeffs;
+                const approxFunc = x => evaluateRational(numCoeffs, denCoeffs, x);
+                const poles = detectPoles(denCoeffs, a, b);
+                const internalPoles = poles.filter(p => p > a + 1e-8 && p < b - 1e-8);
+                let messageHTML = '';
+                if (internalPoles.length > 0) {
+                    const poleList = internalPoles.map(p => p.toFixed(8)).join(', ');
+                    messageHTML = `<div class="error-box"><h4>Poles Inside Interval</h4><p>Poles at x ≈ ${poleList}. Plotting disabled.</p></div>`;
+                    document.getElementById('messages').innerHTML = messageHTML;
+                    const latex = `R(x) = ${formatRational(numCoeffs, denCoeffs)}`;
+                    document.getElementById('result').innerHTML = `<div class="font-bold text-lg mb-2">Rational approximant [${m}/${n}] (internal poles)</div><div id="latex-result">${latex}</div>`;
+                    katex.render(document.getElementById('latex-result').textContent, document.getElementById('latex-result'), {displayMode: false});
+                    return;
+                }
+                const cond = res.conditionNumber;
+                if (cond > 1e12) {
+                    messageHTML += `<div class="error-box"><h4>Very High Condition Number</h4><p>cond ≈ ${cond.toExponential(3)}. Try regularization or lower degrees.</p></div>`;
+                } else if (cond > 1e8) {
+                    messageHTML += `<div class="warning-box"><h4>High Condition Number</h4><p>cond ≈ ${cond.toExponential(3)}. Consider regularization.</p></div>`;
+                } else {
+                    messageHTML += `<div class="condition-info"><strong>SVD:</strong> cond ≈ ${cond.toExponential(3)}, rank ${res.effectiveRank}/${m+n+1}</div>`;
+                }
+                if (poles.length > 0) {
+                    const poleList = poles.map(p => p.toFixed(8)).join(', ');
+                    messageHTML += `<div class="warning-box"><h4>Nearby Poles</h4><p>At x ≈ ${poleList}</p></div>`;
+                }
+                document.getElementById('messages').innerHTML = messageHTML;
+                const latex = `R(x) = ${formatRational(numCoeffs, denCoeffs)}`;
+                document.getElementById('result').innerHTML = `<div class="font-bold text-lg mb-2">Rational approximant [${m}/${n}] (SVD)</div><div id="latex-result">${latex}</div>`;
+                katex.render(document.getElementById('latex-result').textContent, document.getElementById('latex-result'), {displayMode: false});
+                document.getElementById('copy-section').style.display = 'block';
+                updateRationalOutput(numCoeffs, denCoeffs, document.getElementById('format-select').value);
+                const plotPoints = 1000;
+                const plotX = useChebyshev ? generateChebyshevNodes(a, b, plotPoints) : Array.from({length: plotPoints}, (_, i) => a + (b - a) * i / (plotPoints - 1));
+                const plotApproxY = plotX.map(approxFunc);
+                const origPlotY = plotX.map(func);
+                createPlot(plotX, plotApproxY, origPlotY);
+                document.getElementById('evaldiv').style.display = 'block';
+                document.getElementById('download-btn').style.display = 'inline-block';
+                document.getElementById('download-xr-btn').style.display = 'inline-block';
+                window.current = {
+                    approxFunc, func, a, b, plotX, plotApproxY,
+                    numCoeffs: numCoeffs,
+                    denCoeffs: denCoeffs
+                };
+                const errors = computeErrors(func, approxFunc, a, b);
+                document.getElementById('error-container').innerHTML = `
+                    <table class="border-collapse w-full mt-4 max-w-lg mx-auto">
+                        <tr class="bg-gray-100">
+                            <th class="border p-3">Rel. L²</th><th class="border p-3">L²</th><th class="border p-3">L∞</th><th class="border p-3">Valid pts</th>
+                        </tr>
+                        <tr>
+                            <td class="border p-3 text-center font-mono">${errors.relL2.toExponential(6)}</td>
+                            <td class="border p-3 text-center font-mono">${errors.L2.toExponential(6)}</td>
+                            <td class="border p-3 text-center font-mono">${errors.LInf.toExponential(6)}</td>
+                            <td class="border p-3 text-center">${errors.validPoints.toLocaleString()}</td>
+                        </tr>
+                    </table>`;
+            } catch (err) {
+                document.getElementById('messages').innerHTML = `<div class="error-box"><h4>Error</h4><p>${err.message || err}</p></div>`;
+                console.error(err);
+            }
+        });
+
+        document.getElementById('eval-btn').addEventListener('click', function() {
+            if (!window.current) return;
+            const xs = document.getElementById('eval_x').value.split(',').map(v => Number(v.trim()));
+            let table = `<table class="w-full border-collapse"><thead><tr class="bg-gray-100">
+                <th class="border p-2">x</th><th class="border p-2">R(x)</th><th class="border p-2">f(x)</th><th class="border p-2">Error</th>
+            </tr></thead><tbody>`;
+            xs.forEach(x => {
+                const rx = window.current.approxFunc(x);
+                const fx = window.current.func(x);
+                const err = Math.abs(fx - rx);
+                table += `<tr><td class="border p-2">${x.toFixed(8)}</td>
+                    <td class="border p-2">${isFinite(rx) ? rx.toExponential(8) : '∞'}</td>
+                    <td class="border p-2">${fx.toExponential(8)}</td>
+                    <td class="border p-2">${isFinite(rx) ? err.toExponential(8) : '∞'}</td></tr>`;
+            });
+            table += `</tbody></table>`;
+            document.getElementById('eval-output').innerHTML = table;
+        });
+
+        document.getElementById('download-btn').addEventListener('click', function() {
+            const svg = document.querySelector('#plot svg');
+            const serializer = new XMLSerializer();
+            let source = serializer.serializeToString(svg);
+            source = '<?xml version="1.0" standalone="no"?>\n' + source;
+            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'rational_approximation_plot.svg';
+            link.click();
+        });
+
+        document.getElementById('download-xr-btn').addEventListener('click', function() {
+            if (!window.current) return;
+            let csv = 'x,f(x),R(x),|error|\n';
+            for (let i = 0; i < window.current.plotX.length; i++) {
+                const x = window.current.plotX[i];
+                const fx = window.current.func(x);
+                const rx = window.current.approxFunc(x);
+                const err = isFinite(rx) ? Math.abs(fx - rx) : Infinity;
+                csv += `${x.toFixed(12)},${fx.toFixed(12)},${isFinite(rx) ? rx.toFixed(12) : 'Infinity'},${err.toFixed(12)}\n`;
+            }
+            const blob = new Blob([csv], {type: 'text/csv'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'rational_approximation_data.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('use_regularization').addEventListener('change', function() {
+            document.getElementById('lambda-control').style.display = this.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('clear').addEventListener('click', function() {
+            document.getElementById('func').value = 'exp(x)';
+            document.getElementById('a').value = '-2';
+            document.getElementById('b').value = '2';
+            document.getElementById('m_lsq').value = '3';
+            document.getElementById('n_lsq').value = '3';
+            document.getElementById('use_chebyshev').checked = false;
+            document.getElementById('use_regularization').checked = false;
+            document.getElementById('lambda-control').style.display = 'none';
+            document.getElementById('result').innerHTML = '';
+            document.getElementById('plot').innerHTML = '';
+            document.getElementById('legend-bar').innerHTML = '';
+            document.getElementById('evaldiv').style.display = 'none';
+            document.getElementById('error-container').innerHTML = '';
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('download-btn').style.display = 'none';
+            document.getElementById('download-xr-btn').style.display = 'none';
+            document.getElementById('eval_x').value = '';
+            document.getElementById('eval-output').innerHTML = '';
+            document.getElementById('copy-section').style.display = 'none';
+        });
+
+        document.getElementById('format-select').addEventListener('change', function() {
+            if (window.current && window.current.numCoeffs) {
+                updateRationalOutput(window.current.numCoeffs, window.current.denCoeffs, this.value);
+            }
+        });
+
+        document.getElementById('copy-btn').addEventListener('click', function() {
+            if (!window.current || !window.current.numCoeffs) return;
+            const format = document.getElementById('format-select').value;
+            let textToCopy = '';
+            if (format === 'latex') {
+                textToCopy = formatRational(window.current.numCoeffs, window.current.denCoeffs);
+            } else if (format === 'python') {
+                textToCopy = rationalToPython(window.current.numCoeffs, window.current.denCoeffs);
+            } else if (format === 'matlab') {
+                textToCopy = rationalToMATLAB(window.current.numCoeffs, window.current.denCoeffs);
+            }
+            if (textToCopy === '') return;
+
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                const btn = document.getElementById('copy-btn');
+                const originalText = btn.textContent;
+                btn.textContent = successful ? 'Copied!' : 'Copy failed';
+                if (successful) btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('Copy failed', err);
+                alert('Copy failed. Please select the text manually.');
+            }
+            document.body.removeChild(textArea);
+        });
+
+        document.getElementById('example-exp').onclick = function() {
+            document.getElementById('func').value = 'exp(x)';
+            document.getElementById('a').value = '-2';
+            document.getElementById('b').value = '2';
+            document.getElementById('m_lsq').value = '3';
+            document.getElementById('n_lsq').value = '3';
+        };
+        document.getElementById('example-run').onclick = function() {
+            document.getElementById('func').value = '1/(1+25*x^2)';
+            document.getElementById('a').value = '-1';
+            document.getElementById('b').value = '1';
+            document.getElementById('m_lsq').value = '4';
+            document.getElementById('n_lsq').value = '4';
+        };
+        document.getElementById('example-sinc').onclick = function() {
+            document.getElementById('func').value = 'sin(x)/x';
+            document.getElementById('a').value = '-pi';
+            document.getElementById('b').value = 'pi';
+            document.getElementById('m_lsq').value = '5';
+            document.getElementById('n_lsq').value = '5';
+        };
+
+        window.onload = function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false}
+                ]
+            });
+        };
+    </script>
+</body>
+</html>
