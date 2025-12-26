@@ -31,6 +31,61 @@
     #error-table td, #error-table th { padding: 0.6em 0.8em; text-align: center; border: 1px solid #90a4ae; }
     #error-table th { background-color: #f3f4f6; }
 
+    /* Copy polynomial section */
+    #copy-section {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      background-color: #f9fafb;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    #copy-controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    #format-select {
+      padding: 0.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background-color: white;
+      font-size: 0.875rem;
+    }
+    #copy-btn {
+      padding: 0.5rem 1rem;
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: background-color 0.2s;
+    }
+    #copy-btn:hover {
+      background-color: #2563eb;
+    }
+    #copy-btn:active {
+      background-color: #1d4ed8;
+    }
+    #copy-btn.copied {
+      background-color: #10b981;
+    }
+    #poly-output {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.875rem;
+      white-space: pre;
+      background-color: white;
+      padding: 1rem;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+      line-height: 1.5;
+      tab-size: 4;
+    }
+
     /* About section - after main content */
     #about-section {
       background: white;
@@ -190,6 +245,21 @@
     <button id="clear" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600">Clear All</button>
   </div>
   <div id="result" class="mt-6 bg-gray-50 rounded p-4 overflow-x-auto"></div>
+  
+  <!-- Copy Polynomial Section -->
+  <div id="copy-section" style="display: none;">
+    <div id="copy-controls">
+      <select id="format-select">
+        <option value="latex">LaTeX format</option>
+        <option value="python">Python function</option>
+        <option value="numpy">NumPy polynomial</option>
+        <option value="matlab">MATLAB polynomial</option>
+      </select>
+      <button id="copy-btn">Copy to clipboard</button>
+    </div>
+    <div id="poly-output"></div>
+  </div>
+  
   <div id="plot" class="mt-8 flex justify-center"></div>
   <div id="legend-bar" class="mb-4"></div>
   <div class="flex justify-center mt-3 mb-0">
@@ -243,6 +313,7 @@
       <li>Relative and absolute $\|f-p\|_{L^2}$, $\|f-p\|_{L^1}$, $\|f-p\|_{L^\infty}$ error norms (for continuous case).</li>
       <li>Polynomial evaluation at arbitrary points.</li>
       <li>PNG plot download.</li>
+      <li>Export fitted polynomial in LaTeX, Python, NumPy, or MATLAB format.</li>
       <li>All methods avoid ill-conditioned normal equations for maximum numerical stability.</li>
     </ul>
   </div>
@@ -585,6 +656,170 @@ function polyToLatex(coef) {
   s=s.replace(/\+\-/g,'-');
   return s;
 }
+// New function: Format polynomial as Python function
+function polyToPython(coef) {
+  let d = coef.length - 1;
+  let lines = [];
+  lines.push("def p(x):");
+  lines.push("    \"\"\"Fitted polynomial of degree " + d + "\"\"\"");
+  
+  // Build the polynomial expression
+  let terms = [];
+  for (let i = d; i >= 0; i--) {
+    if (Math.abs(coef[i]) < 1e-12) continue;
+    
+    let coeffStr;
+    if (Math.abs(coef[i] - Math.round(coef[i])) < 1e-10) {
+      coeffStr = Math.round(coef[i]).toString();
+    } else {
+      coeffStr = coef[i].toFixed(12).replace(/\.?0+$/, '');
+      // Ensure it's a float
+      if (!coeffStr.includes('.')) coeffStr += '.0';
+    }
+    
+    if (i === 0) {
+      terms.push(coeffStr);
+    } else if (i === 1) {
+      terms.push(coeffStr + " * x");
+    } else {
+      terms.push(coeffStr + " * x**" + i);
+    }
+  }
+  
+  if (terms.length === 0) {
+    lines.push("    return 0.0");
+  } else if (terms.length === 1) {
+    lines.push("    return " + terms[0]);
+  } else {
+    // Join terms with line continuation for readability
+    let expr = "    return (";
+    for (let i = 0; i < terms.length; i++) {
+      if (i > 0) expr += " +\n        ";
+      expr += terms[i];
+    }
+    expr += ")";
+    lines.push(expr);
+  }
+  
+  lines.push("");
+  lines.push("# Usage example:");
+  lines.push("# x_values = [0, 1, 2, 3]");
+  lines.push("# y_values = [p(x) for x in x_values]");
+  
+  return lines.join('\n');
+}
+// New function: Format polynomial as NumPy polynomial
+function polyToNumPy(coef) {
+  let d = coef.length - 1;
+  let lines = [];
+  lines.push("import numpy as np");
+  lines.push("");
+  lines.push("# Coefficients in descending order (highest degree first)");
+  
+  // Format coefficients for NumPy
+  let coeffList = [];
+  for (let i = d; i >= 0; i--) {
+    if (Math.abs(coef[i]) < 1e-12) {
+      coeffList.push("0.0");
+    } else {
+      let val = coef[i];
+      if (Math.abs(val - Math.round(val)) < 1e-10) {
+        coeffList.push(Math.round(val).toString() + ".0");
+      } else {
+        coeffList.push(val.toFixed(12).replace(/\.?0+$/, ''));
+      }
+    }
+  }
+  
+  lines.push("coefficients = np.array([" + coeffList.join(", ") + "])");
+  lines.push("");
+  lines.push("# Create polynomial function");
+  lines.push("p = np.poly1d(coefficients)");
+  lines.push("");
+  lines.push("# Usage examples:");
+  lines.push("# Evaluate at single point: p(2.5)");
+  lines.push("# Evaluate at multiple points: p([0, 1, 2, 3])");
+  lines.push("# Get derivative: p.deriv()");
+  lines.push("# Get integral: p.integ()");
+  
+  return lines.join('\n');
+}
+// New function: Format polynomial as MATLAB polynomial
+function polyToMATLAB(coef) {
+  let d = coef.length - 1;
+  let lines = [];
+  lines.push("% Fitted polynomial of degree " + d);
+  lines.push("% Coefficients in descending order (MATLAB convention)");
+  
+  // Format coefficients for MATLAB
+  let coeffList = [];
+  for (let i = d; i >= 0; i--) {
+    if (Math.abs(coef[i]) < 1e-12) {
+      coeffList.push("0");
+    } else {
+      let val = coef[i];
+      if (Math.abs(val - Math.round(val)) < 1e-10) {
+        coeffList.push(num2str(val));
+      } else {
+        coeffList.push(num2str(val));
+      }
+    }
+  }
+  
+  lines.push("coeffs = [" + coeffList.join(", ") + "];");
+  lines.push("");
+  lines.push("% Create polynomial function");
+  lines.push("p = @(x) polyval(coeffs, x);");
+  lines.push("");
+  lines.push("% Usage examples:");
+  lines.push("% Evaluate at single point: p(2.5)");
+  lines.push("% Evaluate at multiple points: p([0, 1, 2, 3])");
+  lines.push("% Get derivative: polyder(coeffs)");
+  lines.push("% Get roots: roots(coeffs)");
+  
+  return lines.join('\n');
+}
+// Helper function for MATLAB formatting
+function num2str(num) {
+  if (Math.abs(num) < 1e-12) return "0";
+  if (Math.abs(num) > 1e6 || Math.abs(num) < 1e-6) {
+    return num.toExponential(6).replace('e', 'e');
+  }
+  // Remove trailing zeros
+  let str = num.toFixed(12).replace(/\.?0+$/, '');
+  if (!str.includes('.') && !str.includes('e')) str += '.0';
+  return str;
+}
+// Function to update polynomial output based on selected format
+function updatePolyOutput(coef, format) {
+  const outputElem = document.getElementById('poly-output');
+  let output = '';
+  
+  switch(format) {
+    case 'latex':
+      output = polyToLatex(coef);
+      break;
+    case 'python':
+      output = polyToPython(coef);
+      break;
+    case 'numpy':
+      output = polyToNumPy(coef);
+      break;
+    case 'matlab':
+      output = polyToMATLAB(coef);
+      break;
+    default:
+      output = polyToLatex(coef);
+  }
+  
+  outputElem.textContent = output;
+  
+  // If it's LaTeX, render it with KaTeX
+  if (format === 'latex') {
+    outputElem.innerHTML = '';
+    katex.render(output, outputElem, {throwOnError: false, displayMode: true});
+  }
+}
 let coeffs = null, monoCoeffs = null, origPtsX=null, origPtsY=null, fitShowX=null, fitShowY=null, origFuncEval=null, lastInputMode=null;
 let fun = null, intervalA = null, intervalB = null;
 let l2error = null, l1error = null, linferror = null, l2normf = null;
@@ -594,6 +829,7 @@ document.getElementById('compute').onclick = function(){
   document.getElementById('legend-bar').innerHTML='';
   document.getElementById('evaldiv').style.display = "none";
   document.getElementById('error-container').innerHTML = '';
+  document.getElementById('copy-section').style.display = 'none';
   coeffs = null; monoCoeffs = null; origPtsX = null; origPtsY = null; fitShowX=null; fitShowY=null; origFuncEval=null; l2error = null; l1error = null; linferror = null; l2normf = null; fun = null; intervalA = null; intervalB = null;
   let deg = parseInt(document.getElementById('degree').value);
   if (isNaN(deg) || deg < 0 || deg > 50) {
@@ -660,6 +896,11 @@ document.getElementById('compute').onclick = function(){
   let out = `<div class="mb-2 font-bold text-gray-700">Fitted Least Squares Polynomial (degree ${deg}):</div> <div id="poly-latex"></div>`;
   document.getElementById('result').innerHTML = out;
   setTimeout(()=>katex.render(polyToLatex(monoCoeffs), document.getElementById('poly-latex'), {throwOnError:false, displayMode:true}),50);
+  
+  // Show copy section and update output
+  document.getElementById('copy-section').style.display = 'block';
+  updatePolyOutput(monoCoeffs, 'latex');
+  
   let legbar = `<span class="legitem"><span class="legicon-poly"></span>Fitted poly</span>`;
   if (origFuncEval) legbar += `<span class="legitem"><span class="legicon-fun"></span>Function</span>`;
   if (mode !== "function") legbar += `<span class="legitem"><span class="legicon-pts"></span>Data pts</span>`;
@@ -755,6 +996,43 @@ document.getElementById('compute').onclick = function(){
     }, 100);
   }
 };
+// Event listener for format selection change
+document.getElementById('format-select').addEventListener('change', function() {
+  if (monoCoeffs) {
+    updatePolyOutput(monoCoeffs, this.value);
+  }
+});
+// Copy to clipboard functionality
+document.getElementById('copy-btn').addEventListener('click', function() {
+  const outputElem = document.getElementById('poly-output');
+  const format = document.getElementById('format-select').value;
+  
+  let textToCopy;
+  if (format === 'latex') {
+    // For LaTeX, get the actual LaTeX string, not the rendered HTML
+    textToCopy = polyToLatex(monoCoeffs);
+  } else {
+    // For other formats, get the text content
+    textToCopy = outputElem.textContent;
+  }
+  
+  // Use the Clipboard API
+  navigator.clipboard.writeText(textToCopy).then(() => {
+    // Visual feedback
+    const btn = document.getElementById('copy-btn');
+    const originalText = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(err => {
+    console.error('Failed to copy: ', err);
+    alert('Failed to copy to clipboard. Please select the text and copy manually.');
+  });
+});
 document.getElementById('clear').onclick=() => {
   document.getElementById('x_values').value='';
   document.getElementById('y_values').value='';
@@ -768,6 +1046,7 @@ document.getElementById('clear').onclick=() => {
   document.getElementById('legend-bar').innerHTML='';
   document.getElementById('eval-output').innerHTML='';
   document.getElementById('error-container').innerHTML='';
+  document.getElementById('copy-section').style.display = 'none';
   document.getElementById('fileUpload').value = '';
   let colpick = document.getElementById('colpick');
   if (colpick) colpick.style.display = 'none';
