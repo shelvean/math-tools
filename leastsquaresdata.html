@@ -206,14 +206,15 @@
   </div>
 </div>
 
-<!-- Examples Sidebar (fixed right, hidden on mobile/tablet) -->
+<!-- Examples Sidebar -->
 <div id="examples-sidebar">
   <h3>Examples</h3>
   <button class="example-btn" id="example-cubic">Cubic fit (noisy data)</button>
   <button class="example-btn" id="example-xlogx">f(x) = log(x) sin(2x) on [0.5, 5] (degree 5)</button>
+  <button class="example-btn" id="example-sin">f(x) = sin(x) on [0, 2π] (degree 7)</button>
 </div>
 
-<!-- About Section (below main content) -->
+<!-- About Section -->
 <div id="about-section">
   <h3>About This Tool</h3>
   <p class="text-sm text-gray-700 leading-relaxed mb-4">
@@ -277,6 +278,14 @@ document.getElementById('example-xlogx').onclick = function() {
   document.getElementById('a').value = '0.5';
   document.getElementById('b').value = '5';
   document.getElementById('degree').value = '5';
+};
+document.getElementById('example-sin').onclick = function() {
+  document.querySelector('input[value="function"]').checked = true;
+  updateInputMode();
+  document.getElementById('func').value = 'sin(x)';
+  document.getElementById('a').value = '0';
+  document.getElementById('b').value = '2*pi';
+  document.getElementById('degree').value = '7';
 };
 let fileTable = null;
 document.getElementById('fileUpload').addEventListener('change', evt=>{
@@ -351,18 +360,21 @@ function toFraction(num, tol=1e-10) {
   }
   return sign+parseFloat(num).toFixed(6).replace(/\.?0+$/,'');
 }
+// Gauss-Legendre quadrature nodes and weights (n=7)
 const GL7 = {
   nodes: [-0.9491079123427585,-0.7415311855993944,-0.4058451513773972,0,0.4058451513773972,0.7415311855993944,0.9491079123427585],
   weights: [0.1294849661688697,0.2797053914892767,0.3818300505051188,0.4179591836734694,0.3818300505051188,0.2797053914892767,0.1294849661688697]
 };
-function composite_gauss7(f, a, b) {
-  const nPanels = Math.ceil(7 * Math.abs(b-a));
+function composite_gauss7(f, a, b, deg = 0) {
+  const basePanels = 30;
+  const extraPanels = deg * 10;
+  const nPanels = Math.max(basePanels, Math.ceil((basePanels + extraPanels) * Math.abs(b - a)));
   const nodes = GL7.nodes, weights = GL7.weights;
   let res = 0;
   for (let p = 0; p < nPanels; ++p) {
-    let x0 = a + (b - a) * p / nPanels, x1 = a + (b - a) * (p+1) / nPanels;
+    let x0 = a + (b - a) * p / nPanels, x1 = a + (b - a) * (p + 1) / nPanels;
     let mid = (x0 + x1) / 2, halflen = (x1 - x0) / 2;
-    for (let i=0; i<7; ++i) {
+    for (let i = 0; i < 7; ++i) {
       res += weights[i] * f(mid + halflen * nodes[i]) * halflen;
     }
   }
@@ -380,32 +392,76 @@ function legendreP(n, x) {
   }
   return p1;
 }
+// Fixed: Compute Legendre coefficients for function on [a,b]
 function lsfit_continuous_legendre(func, a, b, deg) {
   const n = deg + 1;
-  const mid = (a + b) / 2;
   const len = (b - a) / 2;
+  const shift = (a + b) / 2;
+  
+  // Legendre polynomials are orthogonal on [-1,1] with weight 1
+  // The inner product on [a,b] is ∫_a^b f(x)g(x)dx = (len) ∫_{-1}^1 f(shift + len*t) g(shift + len*t) dt
+  
   let coeffs = Array(n).fill(0);
   for (let k = 0; k < n; k++) {
-    const integral = composite_gauss7(t => func(mid + len * t) * legendreP(k, t), -1, 1);
-    const norm2 = 2 / (2 * k + 1);
-    coeffs[k] = integral / norm2;
+    // Compute c_k = (2k+1)/(2*len) * ∫_a^b f(x)*P_k((2x-(a+b))/(b-a)) dx
+    // But actually simpler: c_k = (2k+1)/(2) * ∫_{-1}^1 f(shift + len*t) P_k(t) dt
+    const integral = composite_gauss7(t => {
+      const x = shift + len * t;
+      return func(x) * legendreP(k, t);
+    }, -1, 1, deg);
+    
+    coeffs[k] = (2 * k + 1) / 2 * integral;
   }
   return coeffs;
 }
-function legendreToMonomial(legendreCoeffs) {
+// Fixed: Convert Legendre coefficients to monomial coefficients on [a,b]
+function legendreToMonomial(legendreCoeffs, a, b) {
   const n = legendreCoeffs.length;
-  let mono = Array(n).fill(0);
-  const m = n;
-  let t = Array(m).fill(0).map((_, i) => Math.cos(Math.PI * (i + 0.5) / m));
-  let V = Array.from({length: m}, (_, i) => Array.from({length: n}, (_, j) => Math.pow(t[i], j)));
-  let f = t.map(ti => legendreCoeffs.reduce((s, c, k) => s + c * legendreP(k, ti), 0));
+  const len = (b - a) / 2;
+  const shift = (a + b) / 2;
+  
+  // Build matrix for transformation from monomial basis to Legendre basis
+  // We need to solve for monomial coefficients c such that:
+  // Σ_{j=0}^{n-1} c_j * x^j = Σ_{k=0}^{n-1} d_k * P_k((2x-(a+b))/(b-a))
+  
+  // Create sample points (Chebyshev nodes for stability)
+  const m = Math.max(2 * n, 50);
+  const xs = Array.from({length: m}, (_, i) => {
+    const theta = Math.PI * (i + 0.5) / m;
+    return shift + len * Math.cos(theta); // Chebyshev nodes on [a,b]
+  });
+  
+  // Evaluate Legendre polynomial at these points
+  const fVals = xs.map(x => {
+    const t = (2 * x - (a + b)) / (b - a);
+    return legendreCoeffs.reduce((sum, dk, k) => sum + dk * legendreP(k, t), 0);
+  });
+  
+  // Build Vandermonde matrix for monomials
+  const V = xs.map(x => {
+    const row = [];
+    let power = 1;
+    for (let j = 0; j < n; j++) {
+      row.push(power);
+      power *= x;
+    }
+    return row;
+  });
+  
+  // Solve V * c = fVals using QR decomposition
   const { thinQ, thinR, rank } = householderQR(V);
   const QT = transpose(thinQ);
-  const c_full = QT.map(row => dot(row, f));
+  const c_full = QT.map(row => dot(row, fVals));
   const c = c_full.slice(0, rank);
-  const monoReduced = backSubstitution(thinR, c);
-  for (let i = 0; i < n; i++) mono[i] = (i < rank) ? monoReduced[i] : 0;
-  return mono;
+  const monoCoeffs = backSubstitution(thinR, c);
+  
+  // Pad with zeros if necessary
+  const result = Array(n).fill(0);
+  for (let i = 0; i < Math.min(rank, n); i++) {
+    result[i] = monoCoeffs[i];
+  }
+  
+  return result;
 }
 function transpose(M) {
   return M[0].map((_, i) => M.map(row => row[i]));
@@ -484,11 +540,14 @@ function evalLegendre(coeffs, a, b, x) {
   const t = (2 * x - (a + b)) / (b - a);
   return coeffs.reduce((s, c, k) => s + c * legendreP(k, t), 0);
 }
-function l2_norm_error(f, p, a, b) {
-  return Math.sqrt(composite_gauss7(x => { let fx = f(x), px = p(x); return (fx - px) * (fx - px); }, a, b));
+function l2_norm_error(f, p, a, b, deg) {
+  return Math.sqrt(composite_gauss7(x => { 
+    const fx = f(x), px = p(x); 
+    return (fx - px) * (fx - px); 
+  }, a, b, deg));
 }
-function l1_norm_error(f, p, a, b) {
-  return composite_gauss7(x => Math.abs(f(x) - p(x)), a, b);
+function l1_norm_error(f, p, a, b, deg) {
+  return composite_gauss7(x => Math.abs(f(x) - p(x)), a, b, deg);
 }
 function l_inf_error(f, p, a, b, samples = 2000) {
   let maxErr = 0;
@@ -499,8 +558,11 @@ function l_inf_error(f, p, a, b, samples = 2000) {
   }
   return maxErr;
 }
-function l2_norm_f(f, a, b) {
-  return Math.sqrt(composite_gauss7(x => { let fx = f(x); return fx * fx; }, a, b));
+function l2_norm_f(f, a, b, deg) {
+  return Math.sqrt(composite_gauss7(x => { 
+    const fx = f(x); 
+    return fx * fx; 
+  }, a, b, deg));
 }
 function polyToLatex(coef) {
   let s="p(x) = ";
@@ -545,15 +607,15 @@ document.getElementById('compute').onclick = function(){
       let x = document.getElementById('x_values').value.split(',').map(e=>math.evaluate(e.trim()));
       let y = document.getElementById('y_values').value.split(',').map(e=>math.evaluate(e.trim()));
       if (!(x.length==y.length && x.length>=deg+1)) throw "Number of points must be >= degree+1 and match.";
-      coeffs = lsfit_discrete_QR(x, y, deg);
-      monoCoeffs = coeffs;
+      monoCoeffs = lsfit_discrete_QR(x, y, deg);
+      coeffs = monoCoeffs; // For discrete case, coeffs are already monomial
       origPtsX = x.slice(); origPtsY = y.slice();
       let minx = Math.min(...x), maxx = Math.max(...x);
       fitShowX = [], fitShowY = [];
       for(let i=0;i<=200;++i) {
         let xx = minx + (maxx-minx)*i/200;
         fitShowX.push(xx);
-        fitShowY.push(coeffs.reduce((s,c,j)=>s+c*Math.pow(xx,j),0));
+        fitShowY.push(monoCoeffs.reduce((s,c,j)=>s+c*Math.pow(xx,j),0));
       }
     } else if (mode=="function") {
       let funstr = document.getElementById('func').value.trim();
@@ -561,25 +623,38 @@ document.getElementById('compute').onclick = function(){
       intervalA = math.evaluate(document.getElementById('a').value.trim());
       intervalB = math.evaluate(document.getElementById('b').value.trim());
       if (intervalA >= intervalB) throw "a must be < b";
+      
+      // Step 1: Compute Legendre coefficients
       coeffs = lsfit_continuous_legendre(fun, intervalA, intervalB, deg);
-      monoCoeffs = legendreToMonomial(coeffs);
-      let xs = []; for(let i=0;i<50;++i) xs.push(intervalA + (intervalB-intervalA)*i/(49));
-      origPtsX = xs.slice(); origPtsY = xs.map(xx=>fun(xx));
-      fitShowX=[],fitShowY=[],origFuncEval=[];
+      
+      // Step 2: Convert to monomial basis
+      monoCoeffs = legendreToMonomial(coeffs, intervalA, intervalB);
+      
+      // Step 3: Prepare for plotting
+      let xs = []; 
+      for(let i=0;i<50;++i) xs.push(intervalA + (intervalB-intervalA)*i/(49));
+      origPtsX = xs.slice(); 
+      origPtsY = xs.map(xx=>fun(xx));
+      
+      fitShowX=[]; fitShowY=[]; origFuncEval=[];
       for(let i=0;i<=250;++i) {
         let xx = intervalA + (intervalB-intervalA)*i/250;
         fitShowX.push(xx);
-        fitShowY.push(evalLegendre(coeffs, intervalA, intervalB, xx));
+        // Evaluate using monomial coefficients
+        fitShowY.push(monoCoeffs.reduce((s,c,j)=>s+c*Math.pow(xx,j),0));
         origFuncEval.push(fun(xx));
       }
-      let pfun = x => evalLegendre(coeffs, intervalA, intervalB, x);
-      l2error = l2_norm_error(fun, pfun, intervalA, intervalB);
-      l1error = l1_norm_error(fun, pfun, intervalA, intervalB);
+      
+      // Step 4: Compute errors
+      let pfun = x => monoCoeffs.reduce((s,c,j)=>s+c*Math.pow(x,j),0);
+      l2error = l2_norm_error(fun, pfun, intervalA, intervalB, deg);
+      l1error = l1_norm_error(fun, pfun, intervalA, intervalB, deg);
       linferror = l_inf_error(fun, pfun, intervalA, intervalB, 2000);
-      l2normf = l2_norm_f(fun, intervalA, intervalB);
+      l2normf = l2_norm_f(fun, intervalA, intervalB, deg);
     }
   } catch(e) {
     document.getElementById('result').innerHTML = '<div class="text-red-500">Input error: ' + e + '</div>';
+    console.error(e); // For debugging
     return;
   }
   let out = `<div class="mb-2 font-bold text-gray-700">Fitted Least Squares Polynomial (degree ${deg}):</div> <div id="poly-latex"></div>`;
@@ -698,14 +773,12 @@ document.getElementById('clear').onclick=() => {
   if (colpick) colpick.style.display = 'none';
 };
 document.getElementById('eval-btn').onclick=function(){
-  if (!coeffs) {
+  if (!monoCoeffs) {
     document.getElementById('eval-output').innerHTML='<div class="text-red-500">Fit a polynomial first.</div>';
     return;
   }
   let xs = document.getElementById('eval_x').value.split(',').map(s=>{try{return math.evaluate(s.trim());}catch(e){return NaN;}});
-  let ys = (lastInputMode === "function")
-    ? xs.map(xi => evalLegendre(coeffs, intervalA, intervalB, xi))
-    : xs.map(xi => coeffs.reduce((s,c,i)=>s+c*Math.pow(xi,i),0));
+  let ys = xs.map(xi => monoCoeffs.reduce((s,c,i)=>s+c*Math.pow(xi,i),0));
   let relerr=null;
   if (lastInputMode === "function") {
     try {
