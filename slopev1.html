@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-5B8PRB2WZT');
+</script>
+<title>Direction Field Visualizer • Shelvean Kapita</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js"></script>
+<style>
+  body { background: linear-gradient(135deg, #f8f9fa, #e9ecef); min-height: 100vh; overflow-x: hidden; }
+  .main-container { max-width: 1800px; margin: 100px auto 20px; padding: 20px; display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .left-panel { flex: 1; min-width: 320px; max-width: 400px; display: flex; flex-direction: column; gap: 15px; }
+  .controls { background: rgba(255, 255, 255, 0.97); border-radius: 12px; padding: 1.5rem; box-shadow: 0 6px 25px rgba(0, 0, 0, 0.08); border: 1px solid rgba(255, 255, 255, 0.3); }
+  .canvas-container { flex: 2; background: white; border-radius: 12px; box-shadow: 0 6px 25px rgba(0, 0, 0, 0.08); padding: 15px; min-width: 600px; position: relative; display: flex; flex-direction: column; }
+  label { color: #2b2d42; font-weight: 500; min-width: 140px; font-size: 0.95rem; }
+  input[type="text"], input[type="number"], select { padding: 0.6rem 0.8rem; border: 2px solid #dee2e6; border-radius: 8px; background: white; font-size: 0.95rem; flex: 1; min-width: 60px; }
+  input[type="range"] { flex: 1; min-width: 120px; }
+  .btn-gradient { padding: 0.7rem 1.5rem; border: none; border-radius: 10px; font-weight: 600; font-size: 0.95rem; color: white; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
+  .btn-gradient:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15); }
+  .btn-update { background: linear-gradient(to right, #4ade80, #22c55e); }
+  .btn-clear { background: linear-gradient(to right, #f87171, #ef4444); }
+  .btn-download { background: linear-gradient(to right, #60a5fa, #3b82f6); }
+  canvas { width: 100% !important; height: 600px !important; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); cursor: crosshair; }
+  .instruction { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.92); color: #1e293b; font-weight: 600; font-size: 0.95rem; padding: 0.6rem 1.5rem; border-radius: 50px; border: 2px solid rgba(99, 102, 241, 0.4); backdrop-filter: blur(10px); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1); z-index: 20; white-space: nowrap; }
+  .right-panel { width: 320px; display: flex; flex-direction: column; gap: 15px; }
+  .about-panel, .functions-panel { background: rgba(255, 255, 255, 0.97); border-radius: 12px; box-shadow: 0 6px 25px rgba(0, 0, 0, 0.08); border: 1px solid rgba(255, 255, 255, 0.3); overflow: hidden; }
+  .about-header, .functions-header { background: linear-gradient(to right, #4f46e5, #6366f1); color: white; padding: 0.8rem 1.5rem; font-size: 1.2rem; font-weight: 700; text-align: center; }
+  .about-content, .functions-content { padding: 1.2rem; font-size: 0.95rem; line-height: 1.6; color: #475569; max-height: 250px; overflow-y: auto; }
+  .functions-content { max-height: 350px; }
+  .func-table { width: 100%; font-size: 0.9rem; }
+  .func-table td { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+  .func-name { font-family: 'Consolas', monospace; color: #d6336c; background: #f8f9fa; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.85rem; }
+  .func-latex { text-align: center; color: #4361ee; }
+  .canvas-footer { margin-top: 15px; padding-top: 10px; text-align: center; color: #6c757d; font-size: 0.85rem; border-top: 1px solid #dee2e6; }
+  nav { height: 60px; }
+  nav .max-w-5xl { max-width: 1400px; }
+  /* Focus styles */
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #4f46e5; outline-offset: 2px; }
+  canvas:focus-visible { outline: 4px solid #4f46e5; outline-offset: 4px; }
+  /* Responsive adjustments */
+  @media (max-width: 1400px) { .main-container { margin-top: 80px; gap: 15px; padding: 15px; } .canvas-container { min-width: 550px; } .left-panel { max-width: 350px; } .right-panel { width: 300px; } }
+  @media (max-width: 1200px) { .main-container { flex-direction: column; } .canvas-container { min-width: 100%; order: 1; } .left-panel { max-width: 100%; order: 2; } .right-panel { width: 100%; flex-direction: row; gap: 20px; order: 3; } .about-panel, .functions-panel { flex: 1; } }
+  @media (max-width: 768px) { .main-container { margin-top: 70px; padding: 10px; } canvas { height: 400px !important; } .instruction { font-size: 0.85rem; padding: 0.5rem 1rem; white-space: normal; text-align: center; width: 90%; } }
+  @media (max-width: 480px) { canvas { height: 350px !important; } }
+  .control-group { margin: 0.8rem 0; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  .equation-group { display: flex; align-items: center; gap: 10px; margin: 1rem 0; flex-wrap: wrap; }
+  .arrow-length-group, .arrow-density-group { display: flex; align-items: center; gap: 10px; margin: 0.5rem 0; flex-wrap: wrap; }
+  .small-input { width: 80px; padding: 0.6rem; border: 2px solid #dee2e6; border-radius: 8px; background: white; font-size: 0.95rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .sr-only.focus:not-sr-only { position: static; width: auto; height: auto; padding: 0; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+</style>
+</head>
+<body>
+<a href="#main-content" class="sr-only focus:not-sr-only fixed top-4 left-4 z-50 bg-indigo-600 text-white px-4 py-2 rounded">Skip to main content</a>
+
+<nav class="fixed top-0 left-0 w-full z-50 bg-white shadow-md" aria-label="Main navigation">
+  <div class="max-w-5xl mx-auto px-4 py-3">
+    <ul class="flex justify-center space-x-4 sm:space-x-6">
+      <li><a href="index.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Home</a></li>
+      <li><a href="teaching.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Teaching</a></li>
+      <li><a href="projects.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Diff Eq</a></li>
+      <li><a href="linear.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Linear Algebra</a></li>
+      <li><a href="numerical.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Numerical Methods</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main id="main-content" class="main-container">
+  <h1 class="sr-only">Direction Field Visualizer</h1>
+
+  <!-- Left Panel: Controls -->
+  <section class="left-panel" aria-labelledby="controls-heading">
+    <h2 id="controls-heading" class="sr-only">Controls</h2>
+    <div class="controls">
+      <div class="katex-instruction" id="katex-instruction" aria-hidden="true"></div>
+
+      <div class="equation-group">
+        <label for="equation">Differential Equation: y' =</label>
+        <input type="text" id="equation" value="cos(3*t)+y/t" aria-label="Enter the right-hand side of the differential equation y' = f(t,y)">
+      </div>
+
+      <div class="control-group">
+        <label for="tMin">Horizontal axis min (t):</label>
+        <input type="number" id="tMin" value="-5" step="0.5" class="small-input">
+        <span aria-hidden="true">to</span>
+        <label for="tMax" class="sr-only">Horizontal axis max (t):</label>
+        <input type="number" id="tMax" value="5" step="0.5" class="small-input">
+      </div>
+
+      <div class="control-group">
+        <label for="yMin">Vertical axis min (y):</label>
+        <input type="number" id="yMin" value="-6" step="0.5" class="small-input">
+        <span aria-hidden="true">to</span>
+        <label for="yMax" class="sr-only">Vertical axis max (y):</label>
+        <input type="number" id="yMax" value="6" step="0.5" class="small-input">
+      </div>
+
+      <div class="arrow-length-group">
+        <label for="arrowLength">Arrow Length:</label>
+        <input type="number" id="arrowLength" value="15" min="5" max="50" step="1" class="small-input">
+      </div>
+
+      <div class="arrow-density-group">
+        <label for="arrowsPerAxis">Arrow Density (per axis):</label>
+        <input type="number" id="arrowsPerAxis" value="35" min="10" max="50" step="1" class="small-input">
+      </div>
+
+      <div class="control-group">
+        <label for="arrowThickness">Arrow Thickness:</label>
+        <input type="range" id="arrowThickness" min="0.5" max="3" step="0.1" value="1.2" aria-valuetext="1.2">
+        <span id="thicknessValue" aria-hidden="true">1.2</span>
+      </div>
+
+      <div class="control-group">
+        <label for="fieldColor">Field Color:</label>
+        <select id="fieldColor">
+          <option value="rgba(30, 100, 200, 0.7)">Blue (Default)</option>
+          <option value="rgba(220, 38, 38, 0.7)">Red</option>
+          <option value="rgba(16, 185, 129, 0.7)">Green</option>
+          <option value="rgba(124, 58, 237, 0.7)">Purple</option>
+          <option value="rgba(234, 88, 12, 0.7)">Orange</option>
+          <option value="rgba(0, 0, 0, 0.7)">Black</option>
+        </select>
+      </div>
+
+      <div class="control-group" style="justify-content: space-between;">
+        <div>
+          <input type="checkbox" id="variableArrows" checked>
+          <label for="variableArrows">Variable length arrows</label>
+        </div>
+        <div>
+          <input type="checkbox" id="showGrid" checked>
+          <label for="showGrid">Show grid</label>
+        </div>
+        <div>
+          <input type="checkbox" id="showInitialPoint" checked>
+          <label for="showInitialPoint">Show initial points</label>
+        </div>
+      </div>
+
+      <div class="control-group buttons">
+        <button onclick="drawDirectionField(true)" class="btn-gradient btn-update">Update Field</button>
+        <button onclick="clearSolutions()" class="btn-gradient btn-clear">Clear Solutions</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Center Panel: Canvas -->
+  <section class="canvas-container" aria-labelledby="plot-heading">
+    <h2 id="plot-heading" class="sr-only">Direction Field Plot</h2>
+    <div id="instruction" class="instruction" role="status" aria-live="polite">Click anywhere to draw a solution curve</div>
+    <canvas id="canvas" tabindex="0" role="img" aria-label="Interactive direction field plot. Arrows indicate the slope of solutions at each point. Click or press Enter/Space on a point to add a solution curve through it." aria-describedby="canvas-desc"></canvas>
+    <div id="canvas-desc" class="sr-only">
+      <p>This is an interactive visualization of the direction field for the differential equation y' = <span id="fallback-eq">cos(3*t)+y/t</span>. Small arrows show the direction and relative magnitude of the slope at grid points. Solution curves (integral curves) can be added by clicking points on the plot. The current view is t from <span id="fallback-tmin">-5</span> to <span id="fallback-tmax">5</span> and y from <span id="fallback-ymin">-6</span> to <span id="fallback-ymax">6</span>.</p>
+      <p id="fallback-solutions" aria-live="polite">No solution curves added yet.</p>
+    </div>
+    <div class="canvas-footer">
+      <button onclick="downloadPNG()" class="btn-gradient btn-download">Download as PNG</button>
+      <p style="margin-top: 8px;">&copy; 2025 Shelvean Kapita &bull; kapita@tamu.edu<br>All code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+    </div>
+  </section>
+
+  <!-- Right Panel: About & Functions -->
+  <aside class="right-panel" aria-labelledby="info-heading">
+    <h2 id="info-heading" class="sr-only">Information Panels</h2>
+    <div class="about-panel">
+      <div class="about-header">About</div>
+      <div class="about-content" id="about-content">
+        This tool visualizes direction fields and solution curves for first-order differential equations of the form \( y' = f(t,y) \).<br><br>
+        Solution curves are computed using an <strong>adaptive Dormand-Prince 5(4)</strong> method, which automatically adjusts step size to maintain accuracy while remaining stable near singularities.<br><br>
+        Click anywhere on the graph to trace a solution curve through that point. The arrows show the slope direction at each grid point.
+      </div>
+    </div>
+    <div class="functions-panel">
+      <div class="functions-header">Supported Functions</div>
+      <div class="functions-content">
+        <table class="func-table" aria-label="List of supported mathematical functions">
+          <tr><td class="func-name">sqrt(x)</td><td class="func-latex">$\sqrt{x}$</td></tr>
+          <tr><td class="func-name">cbrt(x)</td><td class="func-latex">$\sqrt[3]{x}$</td></tr>
+          <tr><td class="func-name">abs(x)</td><td class="func-latex">$|x|$</td></tr>
+          <tr><td class="func-name">sin(x)</td><td class="func-latex">$\sin x$</td></tr>
+          <tr><td class="func-name">cos(x)</td><td class="func-latex">$\cos x$</td></tr>
+          <tr><td class="func-name">tan(x)</td><td class="func-latex">$\tan x$</td></tr>
+          <tr><td class="func-name">asin(x)</td><td class="func-latex">$\arcsin x$</td></tr>
+          <tr><td class="func-name">acos(x)</td><td class="func-latex">$\arccos x$</td></tr>
+          <tr><td class="func-name">atan(x)</td><td class="func-latex">$\arctan x$</td></tr>
+          <tr><td class="func-name">sinh(x)</td><td class="func-latex">$\sinh x$</td></tr>
+          <tr><td class="func-name">cosh(x)</td><td class="func-latex">$\cosh x$</td></tr>
+          <tr><td class="func-name">tanh(x)</td><td class="func-latex">$\tanh x$</td></tr>
+          <tr><td class="func-name">exp(x)</td><td class="func-latex">$e^{x}$</td></tr>
+          <tr><td class="func-name">log(x)</td><td class="func-latex">$\ln x$</td></tr>
+          <tr><td class="func-name">log10(x)</td><td class="func-latex">$\log_{10} x$</td></tr>
+          <tr><td class="func-name">pi</td><td class="func-latex">$\pi$</td></tr>
+          <tr><td class="func-name">e</td><td class="func-latex">$e$</td></tr>
+          <tr><td class="func-name">ceil(x)</td><td class="func-latex">$\lceil x \rceil$</td></tr>
+          <tr><td class="func-name">floor(x)</td><td class="func-latex">$\lfloor x \rfloor$</td></tr>
+          <tr><td class="func-name">round(x)</td><td class="func-latex">$\operatorname{round}(x)$</td></tr>
+          <tr><td class="func-name">max(a,b)</td><td class="func-latex">$\max(a,b)$</td></tr>
+          <tr><td class="func-name">min(a,b)</td><td class="func-latex">$\min(a,b)$</td></tr>
+        </table>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$', right: '$', display: false},
+      {left: '$$', right: '$$', display: true},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });
+
+  const katexInstruction = document.getElementById('katex-instruction');
+  katex.render("\\text{Enter } \\dfrac{dy}{dt} = f(t,y)", katexInstruction, {throwOnError:false});
+
+  const thicknessSlider = document.getElementById('arrowThickness');
+  const thicknessValueSpan = document.getElementById('thicknessValue');
+  thicknessSlider.addEventListener('input', () => {
+    thicknessValueSpan.textContent = thicknessSlider.value;
+    thicknessSlider.setAttribute('aria-valuetext', thicknessSlider.value);
+  });
+
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    const container = canvas.parentElement;
+    canvas.width = container.clientWidth - 30;
+    if (window.innerWidth < 768) { canvas.height = 400; }
+    else if (window.innerWidth < 1200) { canvas.height = 500; }
+    else { canvas.height = 600; }
+  }
+  resizeCanvas();
+  window.addEventListener('resize', () => { resizeCanvas(); drawDirectionField(); });
+
+  const PADDING = 50;
+  let solutions = [];
+  let colorIndex = 0;
+  const COLORS = [[31, 119, 180], [255, 127, 14], [44, 160, 44], [214, 39, 40], [148, 103, 189], [140, 86, 75], [227, 119, 194], [127, 127, 127], [188, 189, 34]];
+
+  function preprocess(eq) {
+    eq = eq.replace(/\bx\b/g, 't');
+    eq = eq.replace(/\^/g, '**');
+    eq = eq.replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi, 'Math.$1')
+             .replace(/\bpi\b/gi, 'Math.PI')
+             .replace(/(?<!Math\.)e(?!\w)/g, 'Math.E');
+    return eq;
+  }
+
+  function getNiceStep(range) {
+    const rough = range / 8;
+    const exp = Math.pow(10, Math.floor(Math.log10(rough)));
+    const frac = rough / exp;
+    return (frac <= 1.5 ? 1 : frac <= 3.5 ? 2 : frac <= 7 ? 5 : 10) * exp;
+  }
+
+  function updateFallbackDescription() {
+    const eq = document.getElementById('equation').value.trim() || "0";
+    document.getElementById('fallback-eq').textContent = eq;
+    document.getElementById('fallback-tmin').textContent = document.getElementById('tMin').value;
+    document.getElementById('fallback-tmax').textContent = document.getElementById('tMax').value;
+    document.getElementById('fallback-ymin').textContent = document.getElementById('yMin').value;
+    document.getElementById('fallback-ymax').textContent = document.getElementById('yMax').value;
+
+    const solutionsList = document.getElementById('fallback-solutions');
+    if (solutions.length === 0) {
+      solutionsList.textContent = "No solution curves added yet.";
+    } else {
+      solutionsList.textContent = `${solutions.length} solution curve${solutions.length > 1 ? 's' : ''} added.`;
+    }
+  }
+
+  function drawAxisLabels(tMin, tMax, yMin, yMax, xScale, yScale) {
+    ctx.font = window.innerWidth < 768 ? 'bold 12px Arial' : 'bold 14px Arial';
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'center';
+    const tStep = getNiceStep(tMax - tMin);
+    for (let t = Math.ceil(tMin/tStep)*tStep; t <= tMax + 1e-9; t += tStep) {
+      const x = PADDING + (t - tMin)*xScale;
+      ctx.fillText(t.toFixed(1).replace(/\.0$/, ''), x, canvas.height - 15);
+    }
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const yStep = getNiceStep(yMax - yMin);
+    for (let y = Math.ceil(yMin/yStep)*yStep; y <= yMax + 1e-9; y += yStep) {
+      const py = canvas.height - PADDING - (y - yMin)*yScale;
+      ctx.fillText(y.toFixed(1).replace(/\.0$/, ''), PADDING - 12, py);
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('t', canvas.width - 20, canvas.height - PADDING + 10);
+    ctx.save();
+    ctx.translate(20, canvas.height/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('y', 0, 0);
+    ctx.restore();
+  }
+
+  window.drawDirectionField = function(clearFlag = false) {
+    if (clearFlag) {
+      solutions = [];
+      document.getElementById('instruction').style.display = 'block';
+    }
+    updateFallbackDescription();
+
+    ctx.fillStyle = '#fafafa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const eq = document.getElementById('equation').value.trim() || "0";
+    const tMin = +document.getElementById('tMin').value;
+    const tMax = +document.getElementById('tMax').value;
+    const yMin = +document.getElementById('yMin').value;
+    const yMax = +document.getElementById('yMax').value;
+    const arrowLen = +document.getElementById('arrowLength').value || 12;
+    const arrowsN = +document.getElementById('arrowsPerAxis').value || 20;
+    const arrowThickness = +document.getElementById('arrowThickness').value;
+    const variableArrows = document.getElementById('variableArrows').checked;
+    const showGrid = document.getElementById('showGrid').checked;
+    const showInitialPoint = document.getElementById('showInitialPoint').checked;
+    const fieldColor = document.getElementById('fieldColor').value;
+
+    const drawWidth = canvas.width - 2 * PADDING;
+    const drawHeight = canvas.height - 2 * PADDING;
+    const adjustedArrowsN = window.innerWidth < 768 ? Math.min(arrowsN, 25) : arrowsN;
+    const step = Math.min(drawWidth/adjustedArrowsN, drawHeight/adjustedArrowsN);
+    const xScale = drawWidth/(tMax - tMin);
+    const yScale = drawHeight/(yMax - yMin);
+    const aspect = yScale/xScale;
+    const slopeFunc = new Function('t','y',`return ${preprocess(eq)}`);
+
+    if (showGrid) {
+      ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
+      ctx.lineWidth = 0.5;
+      const tStep = getNiceStep(tMax - tMin);
+      for (let i = Math.ceil(tMin/tStep)*tStep; i < tMax; i += tStep) {
+        const x = PADDING + (i - tMin) * xScale;
+        ctx.beginPath(); ctx.moveTo(x, PADDING); ctx.lineTo(x, canvas.height - PADDING); ctx.stroke();
+      }
+      const yStep = getNiceStep(yMax - yMin);
+      for (let i = Math.ceil(yMin/yStep)*yStep; i < yMax; i += yStep) {
+        const y = canvas.height - PADDING - (i - yMin) * yScale;
+        ctx.beginPath(); ctx.moveTo(PADDING, y); ctx.lineTo(canvas.width - PADDING, y); ctx.stroke();
+      }
+    }
+
+    ctx.lineWidth = arrowThickness;
+    for (let px = PADDING + step/2; px < canvas.width - PADDING; px += step) {
+      for (let py = PADDING + step/2; py < canvas.height - PADDING; py += step) {
+        const t = tMin + (px - PADDING)/xScale;
+        const y = yMin + (canvas.height - PADDING - py)/yScale;
+        let m;
+        try { m = slopeFunc(t, y); } catch(e) { continue; }
+        if (!isFinite(m)) continue;
+        const angle = Math.atan(-m * aspect);
+        const slopeMagnitude = Math.sqrt(1 + m * m);
+        const adjustedArrowLen = window.innerWidth < 768 ? arrowLen * 0.8 : arrowLen;
+        let drawLength = adjustedArrowLen;
+        if (variableArrows) {
+          drawLength = adjustedArrowLen / Math.sqrt(1 + slopeMagnitude/5);
+          drawLength = Math.max(drawLength, 3);
+        }
+        const dx = drawLength * Math.cos(angle);
+        const dy = drawLength * Math.sin(angle);
+        ctx.strokeStyle = fieldColor;
+        ctx.beginPath();
+        ctx.moveTo(px - dx/2, py - dy/2);
+        ctx.lineTo(px + dx/2, py + dy/2);
+        ctx.stroke();
+        const head = Math.min(6, drawLength/2.5);
+        ctx.beginPath();
+        ctx.moveTo(px + dx/2, py + dy/2);
+        ctx.lineTo(px + dx/2 - head * Math.cos(angle - Math.PI/6), py + dy/2 - head * Math.sin(angle - Math.PI/6));
+        ctx.moveTo(px + dx/2, py + dy/2);
+        ctx.lineTo(px + dx/2 - head * Math.cos(angle + Math.PI/6), py + dy/2 - head * Math.sin(angle + Math.PI/6));
+        ctx.stroke();
+      }
+    }
+
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = window.innerWidth < 768 ? 1.5 : 2;
+    if (yMin <= 0 && yMax >= 0) {
+      const y0 = canvas.height - PADDING;
+      ctx.beginPath(); ctx.moveTo(PADDING, y0); ctx.lineTo(canvas.width - PADDING, y0); ctx.stroke();
+    }
+    if (tMin <= 0 && tMax >= 0) {
+      const x0 = PADDING;
+      ctx.beginPath(); ctx.moveTo(x0, PADDING); ctx.lineTo(x0, canvas.height - PADDING); ctx.stroke();
+    }
+
+    drawAxisLabels(tMin, tMax, yMin, yMax, xScale, yScale);
+
+    solutions.forEach(s => {
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = window.innerWidth < 768 ? 1 : 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < s.points.length; i++) {
+        const p = s.points[i];
+        const x = PADDING + (p.t - tMin) * xScale;
+        const y = canvas.height - PADDING - (p.y - yMin) * yScale;
+        if (p.t >= tMin && p.t <= tMax && p.y >= yMin && p.y <= yMax) {
+          if (!started) { ctx.moveTo(x, y); started = true; }
+          else { ctx.lineTo(x, y); }
+        } else if (started) { ctx.stroke(); ctx.beginPath(); started = false; }
+      }
+      if (started) ctx.stroke();
+
+      if (showInitialPoint && s.points.length > 0) {
+        const first = s.points[0];
+        const x = PADDING + (first.t - tMin) * xScale;
+        const y = canvas.height - PADDING - (first.y - yMin) * yScale;
+        ctx.fillStyle = s.color;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = window.innerWidth < 768 ? 1 : 1.5;
+        ctx.beginPath();
+        const pointSize = window.innerWidth < 768 ? 4 : 5;
+        ctx.arc(x, y, pointSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    });
+
+    const eqText = `y' = ${eq}`;
+    ctx.font = window.innerWidth < 768 ? 'bold 14px Arial' : 'bold 16px Arial';
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(eqText, canvas.width - 20, 20);
+
+    document.getElementById('instruction').style.display = solutions.length === 0 ? 'block' : 'none';
+  };
+
+  // Dormand-Prince 5(4) adaptive step method
+  function dormandPrinceStep(t, y, h, f) {
+    const c2 = 1/5, c3 = 3/10, c4 = 4/5, c5 = 8/9, c6 = 1, c7 = 1;
+    const a21 = 1/5;
+    const a31 = 3/40, a32 = 9/40;
+    const a41 = 44/45, a42 = -56/15, a43 = 32/9;
+    const a51 = 19372/6561, a52 = -25360/2187, a53 = 64448/6561, a54 = -212/729;
+    const a61 = 9017/3168, a62 = -355/33, a63 = 46732/5247, a64 = 49/176, a65 = -5103/18656;
+    const a71 = 35/384, a72 = 0, a73 = 500/1113, a74 = 125/192, a75 = -2187/6784, a76 = 11/84;
+    const b41 = 5179/57600, b42 = 0, b43 = 7571/16695, b44 = 393/640, b45 = -92097/339200, b46 = 187/2100, b47 = 1/40;
+    const b51 = 35/384, b52 = 0, b53 = 500/1113, b54 = 125/192, b55 = -2187/6784, b56 = 11/84, b57 = 0;
+
+    try {
+      const k1 = f(t, y);
+      const k2 = f(t + c2*h, y + h*(a21*k1));
+      const k3 = f(t + c3*h, y + h*(a31*k1 + a32*k2));
+      const k4 = f(t + c4*h, y + h*(a41*k1 + a42*k2 + a43*k3));
+      const k5 = f(t + c5*h, y + h*(a51*k1 + a52*k2 + a53*k3 + a54*k4));
+      const k6 = f(t + c6*h, y + h*(a61*k1 + a62*k2 + a63*k3 + a64*k4 + a65*k5));
+      const k7 = f(t + c7*h, y + h*(a71*k1 + a72*k2 + a73*k3 + a74*k4 + a75*k5 + a76*k6));
+
+      const y5 = y + h*(b51*k1 + b52*k2 + b53*k3 + b54*k4 + b55*k5 + b56*k6 + b57*k7);
+      const y4 = y + h*(b41*k1 + b42*k2 + b43*k3 + b44*k4 + b45*k5 + b46*k6 + b47*k7);
+
+      const error = Math.abs(y5 - y4);
+      return { yNext: y5, error: error };
+    } catch(e) {
+      return { yNext: NaN, error: Infinity };
+    }
+  }
+
+  function solve(t0, y0) {
+    const tMin = +document.getElementById('tMin').value;
+    const tMax = +document.getElementById('tMax').value;
+    const yMin = +document.getElementById('yMin').value;
+    const yMax = +document.getElementById('yMax').value;
+    const eqString = document.getElementById('equation').value.trim();
+    const f = new Function('t','y',`return ${preprocess(eqString)}`);
+
+    try {
+      const test = f(t0, y0);
+      if (!isFinite(test)) return [];
+    } catch(e) {
+      return [];
+    }
+
+    const points = [];
+    const MAX_STEPS = 5000;
+    const TOL = 1e-6;
+    const SAFETY = 0.9;
+    const MIN_H = 1e-10;
+    const MAX_H = 0.1;
+
+    function integrate(direction) {
+      const localPoints = [];
+      let t = t0;
+      let y = y0;
+      let h = direction * 0.005;
+      let steps = 0;
+
+      if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) {
+        localPoints.push({t, y});
+      }
+
+      while (steps < MAX_STEPS/2) {
+        let stepAccepted = false;
+        let attempt = 0;
+        let currentH = h;
+
+        while (!stepAccepted && attempt < 10) {
+          const result = dormandPrinceStep(t, y, currentH, f);
+          if (!isFinite(result.yNext) || result.error === Infinity) break;
+
+          const errRatio = result.error / TOL;
+          let hOpt = errRatio > 0 ? currentH * Math.pow(SAFETY / errRatio, 0.2) : currentH * 2;
+          hOpt = Math.max(MIN_H, Math.min(MAX_H, Math.abs(hOpt))) * Math.sign(currentH);
+
+          if (errRatio <= 1) {
+            t += currentH;
+            y = result.yNext;
+            h = hOpt;
+            stepAccepted = true;
+            if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) {
+              localPoints.push({t, y});
+            }
+          } else {
+            currentH = hOpt;
+            attempt++;
+          }
+        }
+
+        if (!stepAccepted) break;
+
+        const margin = 0.5;
+        if (t < tMin - margin || t > tMax + margin || y < yMin - margin || y > yMax + margin) break;
+        if (Math.abs(y) > 1e8 || Math.abs(t) > 1e8) break;
+
+        steps++;
+        if (Math.abs(h) < MIN_H * 10) break;
+      }
+      return localPoints;
+    }
+
+    const forwardPoints = integrate(1);
+    const backwardPoints = integrate(-1);
+    const allPoints = [...backwardPoints.reverse().slice(1), ...forwardPoints];
+
+    // Fallback Euler method if adaptive method gives too few points
+    if (allPoints.length < 5 && allPoints.length > 0) {
+      const simplePoints = [];
+      const simpleStep = 0.001;
+      let t = t0, y = y0;
+      for (let i = 0; i < 1000; i++) {
+        try {
+          const slope = f(t, y);
+          if (!isFinite(slope)) break;
+          t += simpleStep;
+          y += simpleStep * slope;
+          if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) simplePoints.push({t, y});
+          if (Math.abs(t - t0) > 10 || Math.abs(y) > 1e6) break;
+        } catch(e) { break; }
+      }
+
+      const backwardSimple = [];
+      t = t0; y = y0;
+      for (let i = 0; i < 1000; i++) {
+        try {
+          const slope = f(t, y);
+          if (!isFinite(slope)) break;
+          t -= simpleStep;
+          y -= simpleStep * slope;
+          if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) backwardSimple.push({t, y});
+          if (Math.abs(t - t0) > 10 || Math.abs(y) > 1e6) break;
+        } catch(e) { break; }
+      }
+      return [...backwardSimple.reverse(), {t: t0, y: y0}, ...simplePoints];
+    }
+
+    return allPoints;
+  }
+
+  function addSolutionAt(t, yVal) {
+    const pts = solve(t, yVal);
+    if (pts.length > 0) {
+      const [r,g,b] = COLORS[colorIndex % COLORS.length];
+      solutions.push({points: pts, color: `rgb(${r},${g},${b})`});
+      colorIndex++;
+      drawDirectionField();
+    }
+  }
+
+  canvas.onclick = e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const tMin = +document.getElementById('tMin').value;
+    const tMax = +document.getElementById('tMax').value;
+    const yMin = +document.getElementById('yMin').value;
+    const yMax = +document.getElementById('yMax').value;
+    const drawWidth = canvas.width - 2 * PADDING;
+    const drawHeight = canvas.height - 2 * PADDING;
+    const xScale = drawWidth/(tMax - tMin);
+    const yScale = drawHeight/(yMax - yMin);
+    const t = tMin + (x - PADDING)/xScale;
+    const yVal = yMin + (canvas.height - PADDING - y)/yScale;
+    addSolutionAt(t, yVal);
+  };
+
+  // Basic keyboard interaction: when canvas is focused, Enter/Space adds a curve through the centre
+  canvas.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      const tMin = +document.getElementById('tMin').value;
+      const tMax = +document.getElementById('tMax').value;
+      const yMin = +document.getElementById('yMin').value;
+      const yMax = +document.getElementById('yMax').value;
+      const t = (tMin + tMax) / 2;
+      const yVal = (yMin + yMax) / 2;
+      addSolutionAt(t, yVal);
+    }
+  });
+
+  window.clearSolutions = () => { solutions = []; drawDirectionField(true); };
+
+  window.downloadPNG = () => {
+    drawDirectionField();
+    const link = document.createElement('a');
+    link.download = 'direction-field.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  };
+
+  // Initial draw
+  drawDirectionField();
+});
+</script>
+</body>
+</html>
