@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Linear Equation Solver</title>
+    <meta name="description" content="Linear Equation Solver">
+    <meta name="keywords" content="Linear Equations, Matrix Solver, System of Equations, Gauss-Jordan, Ax=b, Compute Matrix Solution online, Solve Linear System online, Solve Matrix equation">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+        .katex-display { margin: 1em 0; overflow-x: auto; }
+        #result, #result * { color: #080808; }
+        /* Strong visible focus indicators */
+        input:focus, button:focus, a:focus {
+            outline: 4px solid #93c5fd !important;
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+    <header class="nav-container w-full fixed top-0 z-10 bg-white shadow-md">
+        <nav class="max-w-4xl mx-auto py-4" aria-label="Main navigation">
+            <ul class="flex justify-center gap-8">
+                <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl rounded" tabindex="0">Home</a></li>
+                <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl rounded" tabindex="0">Teaching</a></li>
+                <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl rounded" tabindex="0">Diff Eq</a></li>
+                <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl rounded" tabindex="0">Linear Algebra</a></li>
+                <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 transition-colors font-bold text-xl rounded" tabindex="0">Numerical Methods</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="flex-1 flex items-center justify-center mt-16 px-4">
+        <section class="bg-white p-8 rounded-lg shadow-md max-w-4xl w-full" aria-labelledby="page-title">
+            <h1 id="page-title" class="text-3xl font-bold mb-6 text-center text-gray-800">Solve a System of Linear Equations</h1>
+            <p class="text-center text-gray-600 mb-8">Enter the number of equations (m) and variables (n), generate the input fields, fill in the matrix A and vector b (integers, decimals, or fractions), and then solve for x.</p>
+
+            <div class="bg-gray-50 p-6 rounded-lg mb-8 flex flex-col sm:flex-row justify-center items-center gap-6">
+                <label for="m" class="text-gray-700 font-medium">Number of equations (m):</label>
+                <input type="number" id="m" min="1" required aria-required="true" class="w-24 p-3 border-2 border-gray-400 rounded-md">
+
+                <label for="n" class="text-gray-700 font-medium">Number of variables (n):</label>
+                <input type="number" id="n" min="1" required aria-required="true" class="w-24 p-3 border-2 border-gray-400 rounded-md">
+
+                <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-6 py-3 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
+            </div>
+
+            <div id="matrixInput" class="mb-8" role="region" aria-live="polite"></div>
+
+            <fieldset class="mb-8 border border-gray-300 rounded-lg p-6">
+                <legend class="text-lg font-medium text-gray-700 px-4">Display Values as:</legend>
+                <div class="flex justify-center gap-12 mt-4">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="displayMode" value="decimal" class="mr-3 w-6 h-6">
+                        <span class="text-lg">Decimal</span>
+                    </label>
+                    <label class="flex items-center cursor-pointer">
+                        <input type="radio" name="displayMode" value="fraction" checked class="mr-3 w-6 h-6">
+                        <span class="text-lg">Fraction</span>
+                    </label>
+                </div>
+            </fieldset>
+
+            <div class="flex justify-center gap-8 mb-8">
+                <button id="calcBtn" type="button" class="bg-blue-500 text-white px-8 py-4 rounded text-xl hover:bg-blue-600 transition duration-300 w-full sm:w-auto">Solve</button>
+                <button id="clearBtn" type="button" class="bg-gray-500 text-white px-8 py-4 rounded text-xl hover:bg-gray-600 transition duration-300 w-full sm:w-auto">Clear All</button>
+            </div>
+
+            <section id="result" class="mt-8 p-8 bg-gray-50 rounded-lg min-h-48" aria-live="assertive"></section>
+        </section>
+    </main>
+
+    <footer class="py-6 text-center text-gray-500 text-sm border-t bg-white">
+        © 2025 Shelvean Kapita: <a href="mailto:kapita@tamu.edu" class="underline hover:text-blue-600">kapita@tamu.edu</a><br>
+        Last modified: August 4, 2025<br>
+        Licensed under the <a href="https://opensource.org/licenses/MIT" target="_blank" class="underline hover:text-blue-600">MIT License</a>.
+    </footer>
+
+    <script>
+        // Render KaTeX on load
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ]
+            });
+        });
+
+        var currentDisplayMode = "fraction";
+        document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+            radio.addEventListener("change", function () {
+                currentDisplayMode = this.value;
+            });
+        });
+
+        // Fraction class for precise arithmetic
+        class Fraction {
+            constructor(numerator, denominator = 1) {
+                if (denominator === 0) throw new Error('Denominator cannot be zero');
+                const absNum = Math.abs(numerator);
+                const absDen = Math.abs(denominator);
+                const gcd = this.gcd(absNum, absDen);
+                this.numerator = (numerator < 0 ? -absNum : absNum) / gcd * Math.sign(denominator);
+                this.denominator = absDen / gcd;
+                if (this.denominator < 0) {
+                    this.numerator = -this.numerator;
+                    this.denominator = -this.denominator;
+                }
+            }
+            gcd(a, b) {
+                while (b !== 0) {
+                    const t = b;
+                    b = a % b;
+                    a = t;
+                }
+                return a;
+            }
+            add(other) {
+                other = Fraction.from(other);
+                const commonDen = this.denominator * other.denominator;
+                const num1 = this.numerator * other.denominator;
+                const num2 = other.numerator * this.denominator;
+                return new Fraction(num1 + num2, commonDen);
+            }
+            subtract(other) {
+                other = Fraction.from(other);
+                const commonDen = this.denominator * other.denominator;
+                const num1 = this.numerator * other.denominator;
+                const num2 = other.numerator * this.denominator;
+                return new Fraction(num1 - num2, commonDen);
+            }
+            multiply(other) {
+                other = Fraction.from(other);
+                return new Fraction(this.numerator * other.numerator, this.denominator * other.denominator);
+            }
+            divide(other) {
+                other = Fraction.from(other);
+                if (other.numerator === 0) throw new Error('Division by zero');
+                return new Fraction(this.numerator * other.denominator, this.denominator * other.numerator);
+            }
+            toString() {
+                if (this.denominator === 1) return this.numerator.toString();
+                return this.numerator + '/' + this.denominator;
+            }
+            valueOf() {
+                return this.numerator / this.denominator;
+            }
+            static from(value) {
+                if (value instanceof Fraction) return value;
+                if (typeof value === 'number') return Fraction.fromDecimal(value);
+                return new Fraction(value);
+            }
+            static fromDecimal(decimal, maxDenominator = 1000) {
+                if (Number.isInteger(decimal)) return new Fraction(decimal);
+                let sign = decimal < 0 ? -1 : 1;
+                decimal = Math.abs(decimal);
+                let bestNum = 1, bestDen = 1, bestError = Math.abs(decimal - 1);
+                for (let den = 1; den <= maxDenominator; den++) {
+                    let num = Math.round(decimal * den);
+                    let error = Math.abs(decimal - num / den);
+                    if (error < bestError) {
+                        bestNum = num;
+                        bestDen = den;
+                        bestError = error;
+                    }
+                }
+                return new Fraction(sign * bestNum, bestDen);
+            }
+        }
+
+        // Generate input fields for matrix A (m x n) and vector b (m x 1)
+        function generateMatrix() {
+            var m = parseInt(document.getElementById("m").value, 10);
+            var n = parseInt(document.getElementById("n").value, 10);
+            if (isNaN(m) || m <= 0 || isNaN(n) || n <= 0) {
+                alert("Please enter valid positive integers for m and n.");
+                return;
+            }
+            var matrixDiv = document.getElementById("matrixInput");
+            matrixDiv.innerHTML = "";
+
+            var statementDiv = document.createElement("div");
+            statementDiv.className = "text-center mb-8 text-2xl";
+            statementDiv.setAttribute("aria-label", "Solve the system A x equals b for x");
+            var statement = document.createElement("div");
+            statement.className = "latex";
+            statement.textContent = "$$ \\text{Solve } A \\mathbf{x} = \\mathbf{b} \\text{ for } \\mathbf{x} $$";
+            statementDiv.appendChild(statement);
+            matrixDiv.appendChild(statementDiv);
+
+            var flexDiv = document.createElement("div");
+            flexDiv.className = "flex flex-col lg:flex-row justify-center gap-16";
+
+            // Matrix A
+            var aSection = document.createElement("section");
+            aSection.setAttribute("aria-labelledby", "matrix-a-label");
+            var aLabel = document.createElement("h2");
+            aLabel.id = "matrix-a-label";
+            aLabel.className = "text-center font-bold text-3xl latex mb-4";
+            aLabel.textContent = "$A$";
+            aSection.appendChild(aLabel);
+
+            var aTable = document.createElement("table");
+            aTable.className = "mx-auto border-collapse";
+            for (var i = 0; i < m; i++) {
+                var tr = document.createElement("tr");
+                for (var j = 0; j < n; j++) {
+                    var td = document.createElement("td");
+                    td.className = "p-2";
+                    var input = document.createElement("input");
+                    input.type = "text";
+                    input.className = "w-24 p-4 text-center border-2 border-gray-400 rounded-md text-lg";
+                    input.id = "cell_" + i + "_" + j;
+                    input.setAttribute("aria-label", "Matrix A, row " + (i+1) + ", column " + (j+1));
+                    input.required = true;
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                aTable.appendChild(tr);
+            }
+            aSection.appendChild(aTable);
+            flexDiv.appendChild(aSection);
+
+            // Vector b
+            var bSection = document.createElement("section");
+            bSection.setAttribute("aria-labelledby", "vector-b-label");
+            var bLabel = document.createElement("h2");
+            bLabel.id = "vector-b-label";
+            bLabel.className = "text-center font-bold text-3xl latex mb-4";
+            bLabel.textContent = "$\\mathbf{b}$";
+            bSection.appendChild(bLabel);
+
+            var bTable = document.createElement("table");
+            bTable.className = "mx-auto border-collapse";
+            for (var i = 0; i < m; i++) {
+                var tr = document.createElement("tr");
+                var td = document.createElement("td");
+                td.className = "p-2";
+                var input = document.createElement("input");
+                input.type = "text";
+                input.className = "w-24 p-4 text-center border-2 border-gray-400 rounded-md text-lg";
+                input.id = "b_" + i;
+                input.setAttribute("aria-label", "Vector b, entry " + (i+1));
+                input.required = true;
+                td.appendChild(input);
+                tr.appendChild(td);
+                bTable.appendChild(tr);
+            }
+            bSection.appendChild(bTable);
+            flexDiv.appendChild(bSection);
+
+            matrixDiv.appendChild(flexDiv);
+
+            renderMathInElement(matrixDiv, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "$", right: "$", display: false }
+                ]
+            });
+        }
+
+        // Clear all inputs and outputs
+        function clearAll() {
+            document.getElementById("m").value = "";
+            document.getElementById("n").value = "";
+            document.getElementById("matrixInput").innerHTML = "";
+            document.getElementById("result").innerHTML = "";
+            document.querySelector('input[value="fraction"]').checked = true;
+            currentDisplayMode = "fraction";
+        }
+        document.getElementById("clearBtn").addEventListener("click", clearAll);
+
+        // Parse input as fraction
+        function parseFraction(str) {
+            str = str.trim();
+            if (str === "") return new Fraction(0);
+            if (str.includes('/')) {
+                let parts = str.split('/');
+                if (parts.length === 2) {
+                    let numerator = parseFloat(parts[0]);
+                    let denominator = parseFloat(parts[1]);
+                    if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+                        return new Fraction(numerator, denominator);
+                    }
+                }
+            }
+            let num = parseFloat(str);
+            if (!isNaN(num)) {
+                return Fraction.fromDecimal(num);
+            }
+            alert("Please enter valid integers, decimals, or fractions in all cells.");
+            return null;
+        }
+
+        // Read matrix A and vector b from input fields
+        function readMatrix() {
+            var m = parseInt(document.getElementById("m").value, 10);
+            var n = parseInt(document.getElementById("n").value, 10);
+            if (isNaN(m) || m <= 0 || isNaN(n) || n <= 0) {
+                alert("Please enter valid positive integers for m and n.");
+                return null;
+            }
+            var A = [];
+            for (var i = 0; i < m; i++) {
+                var row = [];
+                for (var j = 0; j < n; j++) {
+                    var cell = document.getElementById("cell_" + i + "_" + j);
+                    var value = cell.value.trim();
+                    var num = parseFraction(value);
+                    if (num === null) return null;
+                    row.push(num);
+                }
+                A.push(row);
+            }
+            var b = [];
+            for (var i = 0; i < m; i++) {
+                var cell = document.getElementById("b_" + i);
+                var value = cell.value.trim();
+                var num = parseFraction(value);
+                if (num === null) return null;
+                b.push(num);
+            }
+            return { A: A, b: b, m: m, n: n };
+        }
+
+        // Convert number to fraction for display (fallback if needed)
+        function toFraction(x, tolerance, maxIterations) {
+            tolerance = tolerance || 1e-6;
+            maxIterations = maxIterations || 20;
+            if (x === 0) return "0";
+            var sign = x < 0 ? "-" : "";
+            x = Math.abs(x);
+            var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+            for (var i = 0; i < maxIterations; i++) {
+                var a = Math.floor(b);
+                var h = a * h1 + h2;
+                var k = a * k1 + k2;
+                if (Math.abs(x - h / k) < tolerance) {
+                    if (k === 1) {
+                        return sign + h;
+                    } else {
+                        return sign + h + "/" + k;
+                    }
+                }
+                h2 = h1; h1 = h;
+                k2 = k1; k1 = k;
+                b = 1 / (b - a);
+            }
+            if (k1 === 1) {
+                return sign + h1;
+            } else {
+                return sign + h1 + "/" + k1;
+            }
+        }
+
+        // Format numbers based on display mode
+        function formatNumber(num) {
+            var epsilon = 1e-10;
+            if (num instanceof Fraction) {
+                if (currentDisplayMode === "decimal") {
+                    return parseFloat(num.valueOf().toFixed(3)).toString();
+                } else {
+                    return num.toString();
+                }
+            }
+            if (Math.abs(num - Math.round(num)) < epsilon) {
+                return Math.round(num).toString();
+            }
+            if (currentDisplayMode === "fraction") {
+                return toFraction(num);
+            }
+            return parseFloat(num.toFixed(3)).toString();
+        }
+
+        // Compute Reduced Row Echelon Form (RREF)
+        function computeRREF(matrix) {
+            var m = matrix.length;
+            if (m === 0) return matrix;
+            var n = matrix[0].length;
+            var lead = 0;
+            for (var r = 0; r < m; r++) {
+                if (lead >= n) break;
+                var i = r;
+                while (Math.abs(matrix[i][lead].valueOf()) < 1e-10) {
+                    i++;
+                    if (i === m) {
+                        i = r;
+                        lead++;
+                        if (lead === n) break;
+                    }
+                }
+                if (lead === n) break;
+                if (i !== r) {
+                    var temp = matrix[r];
+                    matrix[r] = matrix[i];
+                    matrix[i] = temp;
+                }
+                var pivotValue = matrix[r][lead];
+                if (Math.abs(pivotValue.valueOf()) > 1e-10) {
+                    var reciprocal = new Fraction(1).divide(pivotValue);
+                    for (var j = 0; j < n; j++) {
+                        matrix[r][j] = matrix[r][j].multiply(reciprocal);
+                    }
+                }
+                for (var i = 0; i < m; i++) {
+                    if (i !== r) {
+                        var factor = matrix[i][lead];
+                        for (var j = 0; j < n; j++) {
+                            matrix[i][j] = matrix[i][j].subtract(factor.multiply(matrix[r][j]));
+                        }
+                    }
+                }
+                lead++;
+            }
+            return matrix;
+        }
+
+        // Extract solution from RREF for m x n system
+        function extractSolution(rref, n) {
+            var m = rref.length;
+            // Check for inconsistency
+            var hasNoSolution = false;
+            for (var i = 0; i < m; i++) {
+                var isZeroRow = true;
+                for (var j = 0; j < n; j++) {
+                    if (Math.abs(rref[i][j].valueOf()) > 1e-10) {
+                        isZeroRow = false;
+                        break;
+                    }
+                }
+                if (isZeroRow && Math.abs(rref[i][n].valueOf()) > 1e-10) {
+                    hasNoSolution = true;
+                    break;
+                }
+            }
+            if (hasNoSolution) {
+                return { type: "no_solution" };
+            }
+
+            // Find pivot columns
+            var pivotColumns = [];
+            var pivotRowMap = {};
+            var currentCol = 0;
+            for (var row = 0; row < m; row++) {
+                while (currentCol < n && Math.abs(rref[row][currentCol].valueOf()) < 1e-10) {
+                    currentCol++;
+                }
+                if (currentCol < n && Math.abs(rref[row][currentCol].valueOf() - 1) < 1e-10) {
+                    pivotColumns.push(currentCol);
+                    pivotRowMap[currentCol] = row;
+                    currentCol++;
+                }
+            }
+            var r = pivotColumns.length;
+
+            if (r === n) {
+                // Unique solution
+                var x = [];
+                for (var j = 0; j < n; j++) {
+                    var row = pivotRowMap[j];
+                    x.push(rref[row][n]);
+                }
+                return { type: "unique", solution: x };
+            } else {
+                // Infinite solutions
+                var freeVars = [];
+                for (var j = 0; j < n; j++) {
+                    if (!pivotColumns.includes(j)) {
+                        freeVars.push(j);
+                    }
+                }
+                freeVars.sort((a, b) => a - b);
+                var greekLetters = ["\\alpha", "\\beta", "\\gamma", "\\delta", "\\epsilon", "\\zeta", "\\eta", "\\theta", "\\iota", "\\kappa", "\\lambda", "\\mu", "\\nu", "\\xi", "\\pi", "\\rho", "\\sigma", "\\tau", "\\upsilon", "\\phi", "\\chi", "\\psi", "\\omega"];
+
+                // Initialize particular and direction vectors
+                var particular = new Array(n).fill(new Fraction(0));
+                var directionVectors = freeVars.map(() => new Array(n).fill(new Fraction(0)));
+
+                for (var j = 0; j < n; j++) {
+                    if (pivotColumns.includes(j)) {
+                        var row = pivotRowMap[j];
+                        particular[j] = rref[row][n];
+                    } else {
+                        var freeVarIndex = freeVars.indexOf(j);
+                        directionVectors[freeVarIndex][j] = new Fraction(1);
+                        for (var k = 0; k < pivotColumns.length; k++) {
+                            var pivotCol = pivotColumns[k];
+                            var row = pivotRowMap[pivotCol];
+                            directionVectors[freeVarIndex][pivotCol] = rref[row][j].multiply(new Fraction(-1));
+                        }
+                    }
+                }
+
+                var isZeroVector = particular.every(val => Math.abs(val.valueOf()) < 1e-10);
+
+                // Build LaTeX for vector form
+                var latex = "\\text{The system has infinitely many solutions, given by:} \\\\ \\begin{align*} \\mathbf{x} = ";
+                if (!isZeroVector) {
+                    latex += "\\begin{bmatrix} ";
+                    particular.forEach((val, idx) => {
+                        latex += formatNumber(val);
+                        if (idx < n - 1) latex += " \\\\ ";
+                    });
+                    latex += " \\end{bmatrix}";
+                }
+                freeVars.forEach((freeVar, k) => {
+                    if (!isZeroVector || k > 0) {
+                        latex += " + ";
+                    }
+                    latex += (k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}") + " \\begin{bmatrix} ";
+                    directionVectors[k].forEach((val, idx) => {
+                        latex += formatNumber(val);
+                        if (idx < n - 1) latex += " \\\\ ";
+                    });
+                    latex += " \\end{bmatrix}";
+                });
+                latex += " \\end{align*} \\\\ \\text{where } ";
+                var params = freeVars.map((_, k) => k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}");
+                if (params.length === 1) {
+                    latex += params[0] + " \\in \\mathbb{R}.";
+                } else if (params.length === 2) {
+                    latex += params[0] + ", " + params[1] + " \\in \\mathbb{R}.";
+                } else if (params.length >= 3) {
+                    latex += params.slice(0, -1).join(", ") + ", " + params[params.length - 1] + " \\in \\mathbb{R}.";
+                }
+                return { type: "infinite_solutions", latex: latex };
+            }
+        }
+
+        // Solve button event listener
+        document.getElementById("calcBtn").addEventListener("click", function () {
+            var input = readMatrix();
+            if (input === null) return;
+            var A = input.A;
+            var b = input.b;
+            var n = input.n;
+            var augmented = A.map((row, i) => row.concat(b[i]));
+            var rref = computeRREF(augmented);
+            var solution = extractSolution(rref, n);
+            var resultDiv = document.getElementById("result");
+            resultDiv.innerHTML = "";
+
+            if (solution.type === "unique") {
+                var x = solution.solution;
+                var latex = "\\mathbf{x} = \\begin{bmatrix} ";
+                x.forEach(function(val, idx) {
+                    var formatted = formatNumber(val);
+                    latex += formatted;
+                    if (idx < n - 1) latex += " \\\\ ";
+                });
+                latex += " \\end{bmatrix}";
+                resultDiv.innerHTML = '<h2 class="text-2xl font-bold text-center mb-6">Unique Solution</h2><div class="latex text-center text-2xl">$$' + latex + '$$</div>';
+            } else if (solution.type === "no_solution") {
+                resultDiv.innerHTML = '<h2 class="text-2xl font-bold text-center text-red-600">No Solution</h2><p class="text-center text-xl mt-4">The system is inconsistent and has no solutions.</p>';
+            } else if (solution.type === "infinite_solutions") {
+                resultDiv.innerHTML = '<h2 class="text-2xl font-bold text-center mb-6">Infinite Solutions</h2><div class="latex text-center text-xl">$$' + solution.latex + '$$</div>';
+            }
+            renderMathInElement(resultDiv, { delimiters: [{ left: "$$", right: "$$", display: true }] });
+        });
+    </script>
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5B8PRB2WZT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-5B8PRB2WZT');
+    </script>
+</body>
+</html>
