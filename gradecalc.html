@@ -7,7 +7,6 @@
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-
   gtag('config', 'G-LEQE004C92');
 </script>
     <meta charset="UTF-8">
@@ -36,7 +35,7 @@
         input[name="grading_scheme"]:checked + .radio-label {
             font-weight: bold;
         }
-        /* Ensure gradients are applied */
+        /* Existing schemes */
         .radio-label.green {
             background-image: linear-gradient(to right, #4ade80, #22c55e, #16a34a);
         }
@@ -55,6 +54,19 @@
         .radio-label.blue:hover {
             background-image: linear-gradient(to bottom right, #60a5fa, #3b82f6, #2563eb);
         }
+
+        /* UK scheme gradient */
+        .radio-label.uk {
+            background-image: linear-gradient(to right, #52c234 0%, #061700 51%, #52c234 100%);
+            background-size: 200% auto;
+            transition: 0.5s;
+            box-shadow: 0 0 20px #eee;
+            border-radius: 10px;
+        }
+        .radio-label.uk:hover {
+            background-position: right center;
+        }
+
         /* D3 chart styles */
         .bar {
             fill: #4169E1;
@@ -75,7 +87,7 @@
     <div class="container mx-auto p-8">
         <!-- Centered Title -->
         <h1 class="text-4xl font-bold mb-8 text-blue-600 text-center">Grades Statistics Calculator</h1>
-        
+       
         <!-- Centered File Upload Input -->
         <div class="mb-6">
             <label for="file-upload" class="block text-sm font-medium text-gray-700 mb-2 text-center">
@@ -86,7 +98,7 @@
                 file:mr-4 file:py-3 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold
                 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
         </div>
-        
+       
         <!-- Centered Column Title Input -->
         <div class="mb-6">
             <label for="column-title" class="block text-sm font-medium text-gray-700 mb-2 text-center">
@@ -95,7 +107,7 @@
             <input type="text" id="column-title" placeholder="e.g., Total Score"
                 class="mt-1 block w-full max-w-md mx-auto border-gray-300 rounded-md shadow-sm p-3 focus:ring-blue-500 focus:border-blue-500">
         </div>
-        
+       
         <!-- Grading Scheme Selection -->
         <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 mb-2 text-center">Grading Scheme</label>
@@ -112,9 +124,13 @@
                     <input type="radio" name="grading_scheme" value="with_aplus" class="hidden">
                     <span class="radio-label blue text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center shadow-lg shadow-blue-500/50 dark:shadow-lg dark:shadow-blue-800/80 focus:ring-4 focus:outline-none focus:ring-blue-300 dark:focus:ring-blue-800">A+, A, A-, B+, B, B-, C+, C, C-, D+, D, D-</span>
                 </label>
+                <label class="inline-flex items-center">
+                    <input type="radio" name="grading_scheme" value="uk" class="hidden">
+                    <span class="radio-label uk text-white font-medium rounded-lg text-sm px-7 py-3 text-center">1, 2.1, 2.2, 3, F</span>
+                </label>
             </div>
         </div>
-        
+       
         <!-- Centered Grade Ranges Inputs -->
         <div id="grade-ranges-section" class="mb-6" style="display: none;">
             <label class="block text-sm font-medium text-gray-700 mb-2 text-center">Grade Ranges (used for numerical grades only)</label>
@@ -122,7 +138,7 @@
                 <!-- Dynamically populated -->
             </div>
         </div>
-        
+       
         <!-- Centered Process and Clear Buttons -->
         <div class="flex justify-center gap-4 mb-8">
             <button id="process-btn" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-md transition duration-200">
@@ -132,7 +148,7 @@
                 Clear
             </button>
         </div>
-        
+       
         <!-- Results Display with Graph -->
         <div id="results" class="mt-8 flex flex-col md:flex-row gap-8">
             <div id="chart-container" class="w-full md:w-1/2 p-6 bg-gray-100 shadow-md rounded-lg mx-auto">
@@ -144,14 +160,14 @@
             </div>
         </div>
     </div>
-    
+   
     <!-- Footer with Copyright and Last Modified Date -->
     <footer class="text-center py-4 text-gray-600 text-sm">
     <p>&copy; 2025 Shelvean Kapita: kapita@tamu.edu</p>
     <p>All code released under the MIT License.</p>
-    <p>Last Modified: October 22, 2025</p>
+    <p>Last Modified: December 31, 2025</p>
 </footer>
-    
+   
     <script>
         // Schemes definition
         const schemes = {
@@ -202,9 +218,20 @@
                     'D-': '60-62.99',
                     F: '0-59.99'
                 }
+            },
+            uk: {
+                grades: ['1', '2.1', '2.2', '3', 'F'],
+                // No GPA points for UK – we will compute weighted average class instead
+                classValues: { '1': 4, '2.1': 3, '2.2': 2, '3': 1, 'F': 0 },
+                defaultRangeStrings: {
+                    '1': '70-100',
+                    '2.1': '60-69.99',
+                    '2.2': '50-59.99',
+                    '3': '40-49.99',
+                    F: '0-39.99'
+                }
             }
         };
-
         // Function to populate ranges
         function populateRanges(schemeKey) {
             const container = document.getElementById('ranges-container');
@@ -214,12 +241,11 @@
                 const div = document.createElement('div');
                 div.innerHTML = `
                     <label for="range-${grade}" class="block text-sm font-medium text-gray-700">${grade}</label>
-                    <input type="text" id="range-${grade}" value="${scheme.defaultRangeStrings[grade]}" class="mt-1 block w-24 border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500">
+                    <input type="text" id="range-${grade}" value="${scheme.defaultRangeStrings[grade]}" class="mt-1 block w-32 border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500">
                 `;
                 container.appendChild(div);
             });
         }
-
         // Add event listeners to radio buttons
         const radios = document.querySelectorAll('input[name="grading_scheme"]');
         radios.forEach(radio => {
@@ -228,7 +254,6 @@
                 document.getElementById('grade-ranges-section').style.display = 'block';
             });
         });
-
         // Function to parse range string into min and max
         function parseRange(rangeStr) {
             const parts = rangeStr.trim().split('-');
@@ -242,7 +267,6 @@
             }
             return { min, max };
         }
-
         // Function to validate ranges for overlap
         function validateRanges(ranges, gradeList) {
             const sortedRanges = gradeList.map(g => ({ grade: g, ...ranges[g] })).sort((a, b) => a.min - b.min);
@@ -252,21 +276,18 @@
                 }
             }
         }
-
         // Function to calculate the median
         function calculateMedian(grades) {
             const sorted = [...grades].sort((a, b) => a - b);
             const mid = Math.floor(sorted.length / 2);
             return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
         }
-
         // Function to calculate the standard deviation
         function calculateStdDev(grades) {
             const mean = grades.reduce((a, b) => a + b, 0) / grades.length;
             const variance = grades.reduce((a, b) => a + (b - mean) ** 2, 0) / (grades.length - 1);
             return Math.sqrt(variance);
         }
-
         // Function to count grades in each range based on user-defined ranges (for numerical grades)
         function countGrades(grades, ranges, gradeList) {
             const counts = {};
@@ -281,36 +302,37 @@
             }
             return counts;
         }
-
+        // Function to map numeric class value back to class name
+        function valueToClass(value) {
+            if (value >= 3.5) return '1 (First)';
+            if (value >= 2.5) return '2.1 (Upper Second)';
+            if (value >= 1.5) return '2.2 (Lower Second)';
+            if (value >= 0.5) return '3 (Third)';
+            return 'F (Fail)';
+        }
         // Function to create the D3 bar chart with animation
         let gradeChart = null;
         function createGradeChart(counts, gradeLabels) {
             const svg = d3.select("#gradeChart");
             svg.selectAll("*").remove(); // Clear previous chart
-
             const margin = { top: 50, right: 30, bottom: 70, left: 60 };
             const width = parseInt(svg.style("width")) - margin.left - margin.right;
             const height = 400 - margin.top - margin.bottom;
-
             const chart = svg
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
                 .attr("transform", `translate(${margin.left},${margin.top})`);
-
             const data = gradeLabels.map(label => ({ grade: label, count: counts[label] }));
             const maxFrequency = d3.max(data, d => d.count);
             const padding = maxFrequency > 0 ? Math.max(1, Math.ceil(maxFrequency * 0.1)) : 1;
-
             const x = d3.scaleBand()
                 .domain(gradeLabels)
                 .range([0, width])
                 .padding(0.1);
-
             const y = d3.scaleLinear()
                 .domain([0, maxFrequency + padding])
                 .range([height, 0]);
-
             // Append x-axis
             chart.append("g")
                 .attr("class", "axis")
@@ -322,7 +344,6 @@
                 .attr("y", 40)
                 .attr("text-anchor", "middle")
                 .text("Grades");
-
             // Append y-axis
             chart.append("g")
                 .attr("class", "axis")
@@ -334,7 +355,6 @@
                 .attr("y", -40)
                 .attr("text-anchor", "middle")
                 .text("Frequency");
-
             // Append bars with animation
             chart.selectAll(".bar")
                 .data(data)
@@ -342,14 +362,13 @@
                 .append("rect")
                 .attr("class", "bar")
                 .attr("x", d => x(d.grade))
-                .attr("y", height) // Start at bottom (height = 0)
+                .attr("y", height) // Start at bottom
                 .attr("width", x.bandwidth())
                 .attr("height", 0) // Initial height is 0
                 .transition()
-                .duration(1000) // Animation duration in milliseconds
+                .duration(1000)
                 .attr("y", d => y(d.count))
                 .attr("height", d => height - y(d.count));
-
             // Append chart title
             chart.append("text")
                 .attr("class", "axis-title")
@@ -358,38 +377,33 @@
                 .attr("text-anchor", "middle")
                 .text("Grade Frequency");
         }
-
         // Helper functions
         function isMissing(value) {
             if (value === undefined || value === null || value === '') return true;
             const strVal = String(value).trim().toUpperCase();
             return strVal === 'NA' || strVal === 'E';
         }
-
         function isNumerical(value) {
             const strVal = value === undefined || value === null ? '' : String(value).trim();
             return !isNaN(parseFloat(strVal));
         }
-
         function isLetterGrade(value) {
-            const possibleGrades = new Set(['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F']);
+            const possibleGrades = new Set(['A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'F', '1', '2.1', '2.2', '3']);
             const strVal = String(value).trim().toUpperCase();
             return possibleGrades.has(strVal);
         }
-
         // Event listener for the process button
         document.getElementById('process-btn').addEventListener('click', async () => {
             const fileInput = document.getElementById('file-upload');
             const columnTitleInput = document.getElementById('column-title').value.trim();
             const statsDiv = document.getElementById('stats');
             const selectedSchemeElem = document.querySelector('input[name="grading_scheme"]:checked');
-            
+           
             // Show processing indicators
             statsDiv.innerHTML = '<p class="text-gray-500 text-center">Processing...</p>';
             document.getElementById('chart-placeholder').innerHTML = 'Generating chart...';
             document.getElementById('chart-placeholder').style.display = 'block';
             document.getElementById('gradeChart').style.display = 'none';
-
             if (!selectedSchemeElem) {
                 statsDiv.innerHTML = '<p class="text-red-500">Please select a grading scheme.</p>';
                 document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
@@ -398,7 +412,7 @@
             const selectedSchemeKey = selectedSchemeElem.value;
             const selectedScheme = schemes[selectedSchemeKey];
             const gradeList = selectedScheme.grades;
-
+            const isUK = selectedSchemeKey === 'uk';
             let ranges, min_valid, max_valid;
             try {
                 ranges = {};
@@ -413,13 +427,11 @@
                 document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                 return;
             }
-
             if (!fileInput.files.length) {
                 statsDiv.innerHTML = '<p class="text-red-500">Please upload a file.</p>';
                 document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                 return;
             }
-
             const file = fileInput.files[0];
             let jsonData;
             try {
@@ -433,24 +445,20 @@
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
                 jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 0, defval: '' });
-
                 if (jsonData.length === 0) {
                     statsDiv.innerHTML = '<p class="text-red-500">File is empty or no valid data rows found.</p>';
                     document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                     return;
                 }
-
                 const filteredData = jsonData.filter(row => {
                     const values = Object.values(row);
                     return !values.includes("Manual Posting") && !values.some(val => String(val).includes("(read only)"));
                 });
-
                 if (filteredData.length === 0) {
                     statsDiv.innerHTML = '<p class="text-red-500">No valid student data rows found after filtering.</p>';
                     document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                     return;
                 }
-
                 const headers = Object.keys(filteredData[0]);
                 const columnCount = headers.length;
                 if (columnCount === 0) {
@@ -458,7 +466,6 @@
                     document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                     return;
                 }
-
                 let allValues, columnTitle;
                 if (columnCount === 1) {
                     columnTitle = headers[0];
@@ -477,21 +484,17 @@
                     }
                     allValues = filteredData.map(row => row[columnTitle]);
                 }
-
                 allValues = allValues.filter(value => isMissing(value) || isNumerical(value) || isLetterGrade(value));
                 const missingCount = allValues.filter(isMissing).length;
                 const nonMissingValues = allValues.filter(val => !isMissing(val));
-
                 if (nonMissingValues.length === 0) {
                     statsDiv.innerHTML = `<p class="text-red-500">No valid grades found in column "${columnTitle}". Missing grades: ${missingCount}</p>`;
                     document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                     return;
                 }
-
                 const allNumerical = nonMissingValues.every(isNumerical);
                 const allLetters = nonMissingValues.every(isLetterGrade);
-
-                let counts, numberOfStudents, averageGpa;
+                let counts, numberOfStudents, averageMetric;
                 if (allNumerical) {
                     const grades = nonMissingValues.map(val => parseFloat(val));
                     const validGrades = grades.filter(grade => grade >= min_valid && grade <= max_valid);
@@ -507,17 +510,26 @@
                     const median = calculateMedian(validGrades);
                     const stdDev = calculateStdDev(validGrades);
                     counts = countGrades(validGrades, ranges, gradeList);
-                    let totalGpaPoints = 0;
-                    gradeList.forEach(g => {
-                        totalGpaPoints += counts[g] * selectedScheme.gpaPoints[g];
-                    });
-                    averageGpa = totalGpaPoints / numberOfStudents;
-                    const totalMissing = missingCount;
 
+                    let totalPoints = 0;
+                    let pointMap = isUK ? selectedScheme.classValues : selectedScheme.gpaPoints;
+                    gradeList.forEach(g => {
+                        totalPoints += counts[g] * pointMap[g];
+                    });
+                    averageMetric = totalPoints / numberOfStudents;
+
+                    const totalMissing = missingCount;
                     let countsHtml = '';
                     gradeList.forEach(g => {
                         countsHtml += `<p><span class="font-medium">Number of ${g}s (${ranges[g].min}-${ranges[g].max}):</span> ${counts[g]}</p>`;
                     });
+
+                    let averageLine = '';
+                    if (isUK) {
+                        averageLine = `<p><span class="font-medium">Average Class:</span> ${valueToClass(averageMetric)}</p>`;
+                    } else {
+                        averageLine = `<p><span class="font-medium">Average GPA:</span> ${averageMetric.toFixed(2)}</p>`;
+                    }
 
                     statsDiv.innerHTML = `
                         <p><span class="font-medium">Number of Students with Valid Grades:</span> ${numberOfStudents}</p>
@@ -529,18 +541,21 @@
                         ${countsHtml}
                         <p><span class="font-medium">Total Classified Grades:</span> ${numberOfStudents}</p>
                         <p><span class="font-medium">Number of Missing Grades:</span> ${totalMissing}</p>
-                        <p><span class="font-medium">Average GPA:</span> ${averageGpa.toFixed(2)}</p>
+                        ${averageLine}
                     `;
                     document.getElementById('chart-placeholder').style.display = 'none';
                     document.getElementById('gradeChart').style.display = 'block';
                     createGradeChart(counts, gradeList);
                 } else if (allLetters) {
-                    const letterGrades = nonMissingValues.map(val => String(val).trim().toUpperCase());
+                    const letterGrades = nonMissingValues.map(val => String(val).trim().toUpperCase().replace('.', '')); // Normalize 2.1 → 21, etc.
                     counts = {};
                     gradeList.forEach(g => counts[g] = 0);
                     letterGrades.forEach(grade => {
-                        if (gradeList.includes(grade)) {
-                            counts[grade]++;
+                        let normalized = grade;
+                        if (grade === '21') normalized = '2.1';
+                        if (grade === '22') normalized = '2.2';
+                        if (gradeList.includes(normalized)) {
+                            counts[normalized]++;
                         }
                     });
                     numberOfStudents = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -549,24 +564,33 @@
                         document.getElementById('chart-placeholder').innerHTML = 'Upload a file to see the grade distribution chart.';
                         return;
                     }
-                    let totalGpaPoints = 0;
-                    gradeList.forEach(g => {
-                        totalGpaPoints += counts[g] * selectedScheme.gpaPoints[g];
-                    });
-                    averageGpa = totalGpaPoints / numberOfStudents;
-                    const totalMissing = missingCount;
 
+                    let totalPoints = 0;
+                    let pointMap = isUK ? selectedScheme.classValues : selectedScheme.gpaPoints;
+                    gradeList.forEach(g => {
+                        totalPoints += counts[g] * pointMap[g];
+                    });
+                    averageMetric = totalPoints / numberOfStudents;
+
+                    const totalMissing = missingCount;
                     let countsHtml = '';
                     gradeList.forEach(g => {
                         countsHtml += `<p><span class="font-medium">Number of ${g}s:</span> ${counts[g]}</p>`;
                     });
+
+                    let averageLine = '';
+                    if (isUK) {
+                        averageLine = `<p><span class="font-medium">Average Class:</span> ${valueToClass(averageMetric)}</p>`;
+                    } else {
+                        averageLine = `<p><span class="font-medium">Average GPA:</span> ${averageMetric.toFixed(2)}</p>`;
+                    }
 
                     statsDiv.innerHTML = `
                         <p><span class="font-medium">Number of Students with Valid Grades:</span> ${numberOfStudents}</p>
                         ${countsHtml}
                         <p><span class="font-medium">Total Classified Grades:</span> ${numberOfStudents}</p>
                         <p><span class="font-medium">Number of Missing Grades:</span> ${totalMissing}</p>
-                        <p><span class="font-medium">Average GPA:</span> ${averageGpa.toFixed(2)}</p>
+                        ${averageLine}
                     `;
                     document.getElementById('chart-placeholder').style.display = 'none';
                     document.getElementById('gradeChart').style.display = 'block';
@@ -582,7 +606,6 @@
                 console.error('Processing error:', error);
             }
         });
-
         // Event listener for the clear button
         document.getElementById('clear-btn').addEventListener('click', () => {
             const fileInput = document.getElementById('file-upload');
