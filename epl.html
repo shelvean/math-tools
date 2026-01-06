@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Premier League 2025/26 - Live Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%); color: #333; line-height: 1.6; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 40px; padding: 30px; background: linear-gradient(to right, #38003c 0%, #00ff85 100%); border-radius: 15px; color: white; box-shadow: 0 8px 30px rgba(56, 0, 60, 0.2); }
+        h1 { font-size: 3rem; font-weight: 800; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+        .season-badge { display: inline-block; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); padding: 8px 20px; border-radius: 25px; font-weight: 600; margin-top: 15px; }
+        .controls { display: flex; flex-wrap: wrap; gap: 25px; margin-bottom: 35px; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); }
+        .team-selector { flex: 1; min-width: 300px; }
+        h2 { font-size: 1.4rem; margin-bottom: 20px; color: #38003c; font-weight: 700; display: flex; align-items: center; }
+        h2 i { margin-right: 12px; color: #00ff85; background: #38003c; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        select { width: 100%; padding: 14px 20px; border: 2px solid #e0e6ed; border-radius: 10px; font-size: 1rem; background: white url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2338003c' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") no-repeat right 20px center; background-size: 16px; cursor: pointer; }
+        select:focus { border-color: #38003c; box-shadow: 0 0 0 4px rgba(56,0,60,0.1); outline: none; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 30px; margin-bottom: 40px; }
+        .card { background: white; border-radius: 15px; padding: 30px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); position: relative; overflow: hidden; transition: transform 0.3s; }
+        .card:hover { transform: translateY(-8px); box-shadow: 0 15px 35px rgba(0,0,0,0.15); }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(to right, #38003c, #00ff85); }
+        .loading { text-align: center; padding: 40px 20px; color: #666; }
+        .loading i { font-size: 2.5rem; margin-bottom: 20px; color: #38003c; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        th { text-align: left; padding: 16px 12px; background: #f8f9fa; color: #38003c; font-weight: 700; text-transform: uppercase; font-size: 0.9rem; border-bottom: 2px solid #e9ecef; }
+        td { padding: 16px 12px; border-bottom: 1px solid #f0f0f0; }
+        tr:hover td { background-color: #f8f9ff; }
+        .team-cell { display: flex; align-items: center; }
+        .team-logo { width: 32px; height: 32px; margin-right: 14px; object-fit: contain; }
+        .match-time { color: #666; font-size: 0.85rem; margin-top: 4px; }
+        .score { display: inline-block; padding: 8px 18px; background: linear-gradient(to right, #38003c, #4a1b4e); color: white; border-radius: 20px; font-weight: 700; min-width: 70px; }
+        .position { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-right: 12px; font-weight: 700; border-radius: 6px; font-size: 0.9rem; }
+        .position-1 { background: linear-gradient(135deg, #ffd700, #ffed4e); color: #000; }
+        .position-2 { background: linear-gradient(135deg, #c0c0c0, #e0e0e0); color: #000; }
+        .position-3 { background: linear-gradient(135deg, #cd7f32, #e59b55); color: #000; }
+        .position-4, .position-5-7 { background: linear-gradient(135deg, #38003c, #5a1a5f); color: white; }
+        .relegation { background: linear-gradient(135deg, #e90052, #ff2a72); color: white; }
+        .highlight { background: linear-gradient(90deg, rgba(56,0,60,0.08), rgba(56,0,60,0.15)); font-weight: 700; position: relative; }
+        .highlight::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #00ff85; }
+        .next-ten-card { grid-column: 1 / -1; }
+        .api-status { display: inline-flex; align-items: center; padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; margin-left: 12px; background: #00ff85; color: #000; font-weight: 700; gap: 6px; }
+        .api-status.offline { background: #e90052; color: white; }
+        .last-updated { font-size: 0.8rem; color: #666; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+        footer { text-align: center; margin-top: 50px; padding: 25px; background: white; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.08); color: #666; font-size: 0.9rem; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spinner { display: inline-block; animation: spin 1s linear infinite; }
+        .error-msg { color: #e90052; font-size: 0.9rem; margin-top: 10px; }
+        @media (max-width: 992px) { .dashboard { grid-template-columns: 1fr; } .controls { flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Premier League 2025/26 <span style="background:#38003c;padding:4px 12px;border-radius:12px;font-size:0.75rem;margin-left:10px;">LIVE</span></h1>
+            <p class="subtitle">Real-time fixtures, results, and standings</p>
+            <div class="season-badge"><i class="fas fa-calendar-alt"></i> Season 2025/26</div>
+        </header>
+
+        <div class="controls">
+            <div class="team-selector">
+                <h2><i class="fas fa-filter"></i> Filter by Team</h2>
+                <select id="team-select">
+                    <option value="all">All Premier League Teams</option>
+                    <option value="57">Arsenal</option>
+                    <option value="58">Aston Villa</option>
+                    <option value="402">Brentford</option>
+                    <option value="397">Brighton & Hove Albion</option>
+                    <option value="61">Chelsea</option>
+                    <option value="354">Crystal Palace</option>
+                    <option value="62">Everton</option>
+                    <option value="63">Fulham</option>
+                    <option value="338">Leicester City</option>
+                    <option value="64">Liverpool</option>
+                    <option value="65">Manchester City</option>
+                    <option value="66">Manchester United</option>
+                    <option value="67">Newcastle United</option>
+                    <option value="351">Nottingham Forest</option>
+                    <option value="340">Southampton</option>
+                    <option value="73">Tottenham Hotspur</option>
+                    <option value="563">West Ham United</option>
+                    <option value="76">Wolverhampton Wanderers</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <h2><i class="fas fa-calendar-alt"></i> Upcoming Fixtures <span id="fixtures-status" class="api-status"><i class="fas fa-circle"></i> Loading...</span></h2>
+                <div id="fixtures-loading" class="loading"><i class="fas fa-spinner spinner"></i><p>Loading fixtures...</p></div>
+                <div id="fixtures-error" class="error-msg" style="display:none;"></div>
+                <table id="next-fixtures" style="display:none;">
+                    <thead><tr><th>Date & Time</th><th>Match</th><th>Venue</th></tr></thead>
+                    <tbody id="fixtures-body"></tbody>
+                </table>
+                <div class="last-updated" id="fixtures-updated" style="display:none;"></div>
+            </div>
+
+            <div class="card">
+                <h2><i class="fas fa-futbol"></i> Recent Results <span id="results-status" class="api-status"><i class="fas fa-circle"></i> Loading...</span></h2>
+                <div id="results-loading" class="loading"><i class="fas fa-spinner spinner"></i><p>Loading results...</p></div>
+                <div id="results-error" class="error-msg" style="display:none;"></div>
+                <table id="recent-results" style="display:none;">
+                    <thead><tr><th>Date</th><th>Match</th><th>Result</th></tr></thead>
+                    <tbody id="results-body"></tbody>
+                </table>
+                <div class="last-updated" id="results-updated" style="display:none;"></div>
+            </div>
+
+            <div class="card">
+                <h2><i class="fas fa-table"></i> Current Standings <span id="standings-status" class="api-status"><i class="fas fa-circle"></i> Loading...</span></h2>
+                <div id="standings-loading" class="loading"><i class="fas fa-spinner spinner"></i><p>Loading table...</p></div>
+                <div id="standings-error" class="error-msg" style="display:none;"></div>
+                <table id="league-table" style="display:none;">
+                    <thead><tr><th>Pos</th><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
+                    <tbody id="standings-body"></tbody>
+                </table>
+                <div class="last-updated" id="standings-updated" style="display:none;"></div>
+            </div>
+        </div>
+
+        <div class="card next-ten-card">
+            <h2><i class="fas fa-list-ol"></i> Next 10 Games <span id="next-ten-status" class="api-status">Select a team</span></h2>
+            <div id="next-ten-loading" class="loading" style="display:none;"><i class="fas fa-spinner spinner"></i><p>Loading...</p></div>
+            <div id="next-ten-error" class="error-msg" style="display:none;"></div>
+            <table id="next-ten-games" style="display:none;">
+                <thead><tr><th>Date & Time</th><th>Home</th><th>Away</th></tr></thead>
+                <tbody id="next-ten-body"></tbody>
+            </table>
+            <div id="next-ten-placeholder" class="loading"><i class="fas fa-mouse-pointer"></i><p>Select a team to view their next 10 games</p></div>
+            <div class="last-updated" id="next-ten-updated" style="display:none;"></div>
+        </div>
+
+        <footer>
+            <p><strong>Premier League 2025/26 Live Dashboard</strong> • Powered by football-data.org API</p>
+            <p style="margin-top:10px; font-size:0.8rem;">If data not loading, check browser console (F12 > Console) for error messages (e.g. 403 Forbidden means key issue).</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = 'https://api.football-data.org/v4';
+        const COMP = 'PL';
+        const API_KEY = 'a25fc2793fb8419292b0fcc8b36668ff';  // Your verified key
+
+        const teamLogos = {
+            '57': 'https://resources.premierleague.com/premierleague/badges/50/t3.png',
+            '58': 'https://resources.premierleague.com/premierleague/badges/50/t7.png',
+            '402': 'https://resources.premierleague.com/premierleague/badges/50/t94.png',
+            '397': 'https://resources.premierleague.com/premierleague/badges/50/t36.png',
+            '61': 'https://resources.premierleague.com/premierleague/badges/50/t8.png',
+            '354': 'https://resources.premierleague.com/premierleague/badges/50/t31.png',
+            '62': 'https://resources.premierleague.com/premierleague/badges/50/t11.png',
+            '63': 'https://resources.premierleague.com/premierleague/badges/50/t54.png',
+            '338': 'https://resources.premierleague.com/premierleague/badges/50/t13.png',
+            '64': 'https://resources.premierleague.com/premierleague/badges/50/t14.png',
+            '65': 'https://resources.premierleague.com/premierleague/badges/50/t43.png',
+            '66': 'https://resources.premierleague.com/premierleague/badges/50/t1.png',
+            '67': 'https://resources.premierleague.com/premierleague/badges/50/t4.png',
+            '351': 'https://resources.premierleague.com/premierleague/badges/50/t17.png',
+            '340': 'https://resources.premierleague.com/premierleague/badges/50/t20.png',
+            '73': 'https://resources.premierleague.com/premierleague/badges/50/t6.png',
+            '563': 'https://resources.premierleague.com/premierleague/badges/50/t21.png',
+            '76': 'https://resources.premierleague.com/premierleague/badges/50/t39.png'
+        };
+
+        function getLogo(id) { return teamLogos[id] || 'https://resources.premierleague.com/premierleague/badges/50/t0.png'; }
+
+        function formatDate(d) {
+            const date = new Date(d);
+            const now = new Date();
+            const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+            if (date.toDateString() === now.toDateString()) return 'Today';
+            if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+            return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+        }
+
+        function formatTime(d) { return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+
+        async function fetchAPI(endpoint, errorId) {
+            try {
+                const res = await fetch(`${API_BASE}/${endpoint}`, {
+                    headers: { 'X-Auth-Token': API_KEY }
+                });
+                if (!res.ok) {
+                    const errText = await res.text();
+                    throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errText.substring(0,200)}`);
+                }
+                return await res.json();
+            } catch (e) {
+                console.error('API Error for ' + endpoint + ':', e);
+                if (errorId) {
+                    document.getElementById(errorId).textContent = 'API Error: ' + e.message + ' (Check console for details)';
+                    document.getElementById(errorId).style.display = 'block';
+                }
+                return null;
+            }
+        }
+
+        function updateStatus(id, text, isError = false) {
+            const el = document.getElementById(id);
+            el.innerHTML = `<i class="fas fa-circle"></i> ${text}`;
+            el.classList.toggle('offline', isError);
+        }
+
+        function showLoading(loadId, tableId) {
+            document.getElementById(loadId).style.display = 'block';
+            document.getElementById(tableId).style.display = 'none';
+        }
+
+        function hideLoading(loadId, tableId) {
+            document.getElementById(loadId).style.display = 'none';
+            document.getElementById(tableId).style.display = 'table';
+        }
+
+        function showUpdated(id) {
+            const el = document.getElementById(id);
+            el.innerHTML = `<i class="fas fa-sync"></i> Updated ${new Date().toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'})}`;
+            el.style.display = 'flex';
+        }
+
+        async function loadFixtures() {
+            updateStatus('fixtures-status', 'Loading...');
+            showLoading('fixtures-loading', 'next-fixtures');
+            const data = await fetchAPI(`competitions/${COMP}/matches?status=SCHEDULED`, 'fixtures-error');
+            const matches = (data?.matches || []).sort((a,b) => new Date(a.utcDate) - new Date(b.utcDate)).slice(0,5);
+            const tbody = document.getElementById('fixtures-body'); tbody.innerHTML = '';
+            if (matches.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No upcoming fixtures found</td></tr>';
+            } else {
+                matches.forEach(m => {
+                    tbody.innerHTML += `<tr><td><div>${formatDate(m.utcDate)}</div><div class="match-time">${formatTime(m.utcDate)}</div></td><td><div class="team-cell"><img src="${getLogo(m.homeTeam.id)}" class="team-logo">${m.homeTeam.name || m.homeTeam.shortName}</div><div class="team-cell" style="margin-top:5px;"><img src="${getLogo(m.awayTeam.id)}" class="team-logo">${m.awayTeam.name || m.awayTeam.shortName}</div></td><td>${m.venue || 'TBD'}</td></tr>`;
+                });
+            }
+            hideLoading('fixtures-loading', 'next-fixtures');
+            updateStatus('fixtures-status', matches.length ? 'Live' : 'No data', !matches.length);
+            showUpdated('fixtures-updated');
+        }
+
+        // Similar improvements for loadResults, loadStandings, loadNextTen (added error displays and better handling)
+
+        // ... (The rest of the functions are the same as previous, with added errorId parameters for display)
+
+        async function loadResults() {
+            updateStatus('results-status', 'Loading...');
+            showLoading('results-loading', 'recent-results');
+            const data = await fetchAPI(`competitions/${COMP}/matches?status=FINISHED`, 'results-error');
+            const matches = (data?.matches || []).sort((a,b) => new Date(b.utcDate) - new Date(a.utcDate)).slice(0,5);
+            const tbody = document.getElementById('results-body'); tbody.innerHTML = '';
+            if (matches.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No recent results found</td></tr>';
+            } else {
+                matches.forEach(m => {
+                    const s = m.score.fullTime || {home: '-', away: '-'};
+                    tbody.innerHTML += `<tr><td>${formatDate(m.utcDate)}</td><td><div class="team-cell"><img src="${getLogo(m.homeTeam.id)}" class="team-logo">${m.homeTeam.name}</div><div class="team-cell" style="margin-top:5px;"><img src="${getLogo(m.awayTeam.id)}" class="team-logo">${m.awayTeam.name}</div></td><td class="match-center"><div class="score">${s.home} - ${s.away}</div></td></tr>`;
+                });
+            }
+            hideLoading('results-loading', 'recent-results');
+            updateStatus('results-status', matches.length ? 'Live' : 'No data', !matches.length);
+            showUpdated('results-updated');
+        }
+
+        async function loadStandings() {
+            updateStatus('standings-status', 'Loading...');
+            showLoading('standings-loading', 'league-table');
+            const data = await fetchAPI(`competitions/${COMP}/standings`, 'standings-error');
+            const table = data?.standings?.[0]?.table || [];
+            const tbody = document.getElementById('standings-body'); tbody.innerHTML = '';
+            if (table.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">No standings data available</td></tr>';
+            } else {
+                const selected = document.getElementById('team-select').value;
+                table.forEach(t => {
+                    const pos = t.position;
+                    let posClass = pos <= 3 ? `position-${pos}` : pos === 4 ? 'position-4' : pos <= 7 ? 'position-5-7' : pos >= 18 ? 'relegation' : '';
+                    const highlight = selected !== 'all' && t.team.id.toString() === selected ? 'highlight' : '';
+                    tbody.innerHTML += `<tr><td class="${posClass}">${pos}</td><td><div class="team-name ${highlight}"><span class="position ${posClass}">${pos}</span><img src="${getLogo(t.team.id)}" class="team-logo">${t.team.name}</div></td><td>${t.playedGames}</td><td>${t.goalDifference}</td><td><strong>${t.points}</strong></td></tr>`;
+                });
+            }
+            hideLoading('standings-loading', 'league-table');
+            updateStatus('standings-status', table.length ? 'Live' : 'Error', !table.length);
+            showUpdated('standings-updated');
+        }
+
+        async function loadNextTen() {
+            const teamId = document.getElementById('team-select').value;
+            const placeholder = document.getElementById('next-ten-placeholder');
+            const table = document.getElementById('next-ten-games');
+            const tbody = document.getElementById('next-ten-body'); tbody.innerHTML = '';
+            if (teamId === 'all') {
+                placeholder.style.display = 'block'; table.style.display = 'none';
+                updateStatus('next-ten-status', 'Select a team');
+                return;
+            }
+            placeholder.style.display = 'none';
+            showLoading('next-ten-loading', 'next-ten-games');
+            updateStatus('next-ten-status', 'Loading...');
+            const data = await fetchAPI(`teams/${teamId}/matches?status=SCHEDULED&limit=10`, 'next-ten-error');
+            const matches = data?.matches || [];
+            if (matches.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No upcoming games found</td></tr>';
+            } else {
+                matches.forEach(m => {
+                    const isHome = m.homeTeam.id.toString() === teamId;
+                    tbody.innerHTML += `<tr><td><div>${formatDate(m.utcDate)}</div><div class="match-time">${formatTime(m.utcDate)}</div></td><td class="${isHome ? 'highlight' : ''}"><div class="team-cell"><img src="${getLogo(m.homeTeam.id)}" class="team-logo">${m.homeTeam.name}</div></td><td class="${!isHome ? 'highlight' : ''}"><div class="team-cell"><img src="${getLogo(m.awayTeam.id)}" class="team-logo">${m.awayTeam.name}</div></td></tr>`;
+                });
+            }
+            hideLoading('next-ten-loading', 'next-ten-games');
+            table.style.display = 'table';
+            updateStatus('next-ten-status', matches.length ? 'Live' : 'No data', !matches.length);
+            showUpdated('next-ten-updated');
+        }
+
+        document.getElementById('team-select').addEventListener('change', () => { loadNextTen(); loadStandings(); });
+
+        async function init() {
+            await Promise.all([loadFixtures(), loadResults(), loadStandings()]);
+            loadNextTen();
+            setInterval(async () => {
+                await Promise.all([loadFixtures(), loadResults(), loadStandings()]);
+                if (document.getElementById('team-select').value !== 'all') loadNextTen();
+            }, 300000);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
