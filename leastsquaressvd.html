@@ -359,6 +359,10 @@
       return a;
     }
 
+    function lcm(a, b) {
+      return (a * b) / gcd(a, b);
+    }
+
     function decimalToFraction(val, maxDen = 500) {
       if (Math.abs(val) < 1e-10) return {num: 0, den: 1};
       let sign = val < 0 ? -1 : 1;
@@ -377,6 +381,26 @@
       }
       let g = gcd(bestNum, bestDen);
       return {num: sign * (bestNum / g), den: bestDen / g};
+    }
+
+    function findCommonDenominator(fractions) {
+      let l = 1;
+      for (let i = 0; i < fractions.length; i++) {
+        const den = fractions[i].den;
+        if (den !== 1) {
+          l = lcm(l, den);
+        }
+      }
+      // Check if all numerators become integers when scaled
+      let allValid = true;
+      for (let i = 0; i < fractions.length; i++) {
+        const scaledNum = fractions[i].num * (l / fractions[i].den);
+        if (Math.abs(scaledNum - Math.round(scaledNum)) > 1e-10) {
+          allValid = false;
+          break;
+        }
+      }
+      return allValid ? l : 1;
     }
 
     function formatFraction(val) {
@@ -416,6 +440,28 @@
       }
       latex += "\\end{bmatrix}";
       return latex;
+    }
+
+    function formatSolutionVector(x) {
+      // Convert the solution vector to fractions
+      const fractions = x.map(row => decimalToFraction(row[0]));
+      const commonDen = findCommonDenominator(fractions);
+      
+      if (commonDen > 1) {
+        // Factor out the common denominator
+        const integerVector = fractions.map(frac => {
+          const scaledNum = frac.num * (commonDen / frac.den);
+          return Math.round(scaledNum);
+        });
+        return `\\frac{1}{${commonDen}}\\begin{bmatrix} ${integerVector.join(' \\\\ ')} \\end{bmatrix}`;
+      } else {
+        // No common denominator to factor out
+        const vectorStr = fractions.map(frac => {
+          if (frac.den === 1) return frac.num.toString();
+          return `\\frac{${frac.num}}{${frac.den}}`;
+        }).join(' \\\\ ');
+        return `\\begin{bmatrix} ${vectorStr} \\end{bmatrix}`;
+      }
     }
 
     function computeSVD(A) {
@@ -497,8 +543,9 @@
 
       let resultHTML = '';
       let x_latex;
+      
       if (currentDisplayMode === "fractions") {
-        x_latex = matrixToFractionLatex(x);
+        x_latex = formatSolutionVector(x);
       } else {
         x_latex = matrixToDecimalLatex(x);
       }
@@ -529,7 +576,12 @@
       resultHTML += '<div class="latex text-center">$$ \\Sigma^+ = ' + Sigma_plus_latex + ' $$</div>';
       resultHTML += '<div class="latex text-center">$$ A^{\\dagger} = V \\Sigma^+ U^T = ' + A_plus_latex + ' $$</div>';
 
-      let x_step_latex = matrixToDecimalLatex(x);
+      let x_step_latex;
+      if (currentDisplayMode === "fractions") {
+        x_step_latex = formatSolutionVector(x);
+      } else {
+        x_step_latex = matrixToDecimalLatex(x);
+      }
       resultHTML += '<p class="font-semibold text-center text-black mt-8">Solution Calculation:</p>';
       resultHTML += '<div class="latex text-center">$$ x = A^{\\dagger} b = ' + x_step_latex + ' $$</div>';
 
@@ -546,4 +598,3 @@
   </script>
 </body>
 </html>
-
