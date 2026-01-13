@@ -215,7 +215,7 @@
                 var input = document.createElement("input");
                 input.type = "text";
                 input.className = "matrix-cell w-16 p-2 text-center border-2 border-gray-300 hover:border-blue-500 hover:border-4 rounded-md focus:outline-none";
-                input.id = "b_" + i;
+                    input.id = "b_" + i;
                 td.appendChild(input);
                 tr.appendChild(td);
                 bTable.appendChild(tr);
@@ -403,6 +403,44 @@
             return { rref: matrix, steps: steps };
         }
 
+        function findCommonDenominator(fractions) {
+            // Find the least common multiple of all denominators
+            let lcm = 1;
+            for (const frac of fractions) {
+                if (frac instanceof Fraction) {
+                    const denom = Math.abs(frac.denominator);
+                    lcm = (lcm * denom) / gcd(lcm, denom);
+                }
+            }
+            
+            // Check if all numerators are divisible by the LCM
+            let allNumeratorsDivisible = true;
+            for (const frac of fractions) {
+                if (frac instanceof Fraction) {
+                    const scaledNum = frac.numerator * (lcm / frac.denominator);
+                    if (Math.abs(scaledNum - Math.round(scaledNum)) > 1e-10) {
+                        allNumeratorsDivisible = false;
+                        break;
+                    }
+                }
+            }
+            
+            // If all numerators become integers when scaled by LCM, return LCM
+            // Otherwise, return 1 (no common factor to factor out)
+            return allNumeratorsDivisible ? lcm : 1;
+            
+            function gcd(a, b) {
+                a = Math.abs(a);
+                b = Math.abs(b);
+                while (b !== 0) {
+                    const t = b;
+                    b = a % b;
+                    a = t;
+                }
+                return a;
+            }
+        }
+
         function extractSolution(rref, n) {
             var m = rref.length;
             var hasNoSolution = false;
@@ -448,7 +486,27 @@
                     var row = pivotRowMap[j];
                     x.push(rref[row][n]);
                 }
-                var latexQuick = "\\mathbf{x} = \\begin{bmatrix} " + x.map(formatForLatex).join(" \\\\ ") + " \\end{bmatrix}";
+                
+                // Check if we can factor out a common denominator
+                var commonDen = findCommonDenominator(x);
+                var latexQuick = "";
+                
+                if (commonDen > 1) {
+                    // Factor out 1/commonDen
+                    var factoredX = x.map(frac => {
+                        if (frac instanceof Fraction) {
+                            return new Fraction(frac.numerator * (commonDen / frac.denominator), commonDen);
+                        }
+                        return new Fraction(frac * commonDen, commonDen);
+                    });
+                    
+                    latexQuick = "\\mathbf{x} = \\frac{1}{" + commonDen + "}\\begin{bmatrix} " + 
+                                factoredX.map(frac => formatForLatex(frac.numerator)).join(" \\\\ ") + 
+                                " \\end{bmatrix}";
+                } else {
+                    latexQuick = "\\mathbf{x} = \\begin{bmatrix} " + x.map(formatForLatex).join(" \\\\ ") + " \\end{bmatrix}";
+                }
+                
                 var latexFull = "\\text{The RREF has a leading 1 in every column of } A\\text{, indicating a unique solution. The values of } \\mathbf{x} \\text{ are read from the last column:} \\\\ " + latexQuick;
                 return { type: "unique", quick: latexQuick, full: latexFull };
             } else {
@@ -476,15 +534,36 @@
                     }
                 }
 
+                // Check if we can factor out a common denominator from particular solution only
+                var commonDenParticular = findCommonDenominator(particular);
+                
                 var isZeroVector = particular.every(val => Math.abs(val.valueOf()) < 1e-10);
                 var latexQuick = "\\mathbf{x} = ";
+                
                 if (!isZeroVector) {
-                    latexQuick += "\\begin{bmatrix} " + particular.map(formatForLatex).join(" \\\\ ") + " \\end{bmatrix}";
+                    if (commonDenParticular > 1) {
+                        // Factor out common denominator from particular solution only
+                        var factoredParticular = particular.map(frac => {
+                            if (frac instanceof Fraction) {
+                                return new Fraction(frac.numerator * (commonDenParticular / frac.denominator), commonDenParticular);
+                            }
+                            return new Fraction(frac * commonDenParticular, commonDenParticular);
+                        });
+                        latexQuick += "\\frac{1}{" + commonDenParticular + "}\\begin{bmatrix} " + 
+                                     factoredParticular.map(frac => formatForLatex(frac.numerator)).join(" \\\\ ") + 
+                                     " \\end{bmatrix}";
+                    } else {
+                        latexQuick += "\\begin{bmatrix} " + particular.map(formatForLatex).join(" \\\\ ") + " \\end{bmatrix}";
+                    }
                 }
+                
                 freeVars.forEach((freeVar, k) => {
                     if (!isZeroVector || k > 0) latexQuick += " + ";
-                    latexQuick += (k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}") +
-                                  " \\begin{bmatrix} " + directionVectors[k].map(formatForLatex).join(" \\\\ ") + " \\end{bmatrix}";
+                    var param = k < greekLetters.length ? greekLetters[k] : "t_{" + (k - greekLetters.length + 1) + "}";
+                    
+                    // Do NOT factor out fractions from direction vectors (parameter vectors)
+                    // The fraction is absorbed into the parameter
+                    latexQuick += param + " \\begin{bmatrix} " + directionVectors[k].map(formatForLatex).join(" \\\\ ") + " \\end{bmatrix}";
                 });
 
                 var latexFull = "\\text{The RREF has free variables (columns without leading 1s), so there are infinitely many solutions. } \\\\ \\text{The solution is expressed in parametric form:} \\\\ \\begin{align*} " + latexQuick + " \\end{align*} \\\\ \\text{where } ";
@@ -607,5 +686,3 @@
     </script>
 </body>
 </html>
-
-
