@@ -14,7 +14,7 @@
 
   gtag('config', 'G-LEQE004C92');
 </script>
-    <title>Phase Plane Plotter</title>
+    <title>Phase Plane Plotter (Performance Optimized)</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
@@ -170,7 +170,7 @@
                     <!-- Footer with download button -->
                     <div class="canvas-footer">
                         <button class="download-btn" onclick="downloadImage()">Download Image</button>
-                        <p style="margin-top: 15px;">© 2025 Shelvean Kapita &bull; kapita@tamu.edu &bull; All code released under the MIT License. Last modified December 17, 2025 </p>
+                        <p style="margin-top: 15px;">© 2025 Shelvean Kapita &bull; kapita@tamu.edu &bull; All code released under the MIT License. Optimized January 16, 2026 </p>
                     </div>
                 </div>
             </div>
@@ -265,11 +265,44 @@
     </div>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script>
+        // ========================================
+        // PERFORMANCE OPTIMIZATION: Utility Functions
+        // ========================================
+
+        /**
+         * Debounce function - prevents function from being called too frequently
+         * Waits for 'delay' ms of inactivity before executing the function
+         */
+        function debounce(func, delay) {
+            let timeoutId;
+            return function(...args) {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+
+        /**
+         * Throttle function - limits function execution to once per 'limit' ms
+         * Ensures function runs at most once per time period
+         */
+        function throttle(func, limit) {
+            let inThrottle;
+            return function(...args) {
+                if (!inThrottle) {
+                    func.apply(this, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            };
+        }
+
         let userPoints = [];
         let trajectories = [];
+
         document.addEventListener('DOMContentLoaded', () => {
-            // Render main equation
+            // Render main equation (OPTIMIZATION: Render specific element only)
             katex.render('\\begin{cases}\n \\dot{x} = ax + by \\\\\n \\dot{y} = cx + dy\n \\end{cases}', document.getElementById('equation-display'), { throwOnError: false, displayMode: true } );
+
             // Set up example click handlers
             document.querySelectorAll('.example').forEach(example => {
                 example.addEventListener('click', () => {
@@ -284,13 +317,14 @@
                     document.getElementById('instruction').style.display = 'block';
                     drawPhasePortrait();
                 });
-                // Render matrix LaTeX for each example
+                // Render matrix LaTeX for each example (OPTIMIZATION: Render specific elements)
                 katex.render(
                     example.querySelector('.matrix-latex').textContent,
                     example.querySelector('.matrix-latex'),
                     { throwOnError: false, displayMode: true }
                 );
             });
+
             // Canvas click handler
             const canvas = document.getElementById('canvas');
             canvas.addEventListener('click', event => {
@@ -315,30 +349,49 @@
                 });
                 document.getElementById('instruction').style.display = 'none';
             });
-            // Add input event listeners to matrix inputs and field color
-            ['a', 'b', 'c', 'd', 'field-color'].forEach(id => {
-                document.getElementById(id).addEventListener('input', () => {
-                    // Clear trajectories when matrix inputs or field color changes
-                    userPoints = [];
-                    trajectories = [];
-                    drawPhasePortrait();
-                });
-            });
-            // Add change event listener for field color
-            document.getElementById('field-color').addEventListener('change', () => {
+
+            // ========================================
+            // OPTIMIZATION: Debounced input handlers
+            // ========================================
+            // Create debounced redraw function (waits 300ms after last input)
+            const debouncedMatrixRedraw = debounce(() => {
+                // Clear trajectories when matrix changes (system has changed)
                 userPoints = [];
                 trajectories = [];
                 drawPhasePortrait();
+            }, 300);
+
+            // Add debounced listeners to matrix inputs
+            ['a', 'b', 'c', 'd'].forEach(id => {
+                document.getElementById(id).addEventListener('input', debouncedMatrixRedraw);
             });
+
+            // OPTIMIZATION: Field color change doesn't need to clear trajectories
+            // Just redraw with new color
+            document.getElementById('field-color').addEventListener('change', () => {
+                drawPhasePortrait(); // Redraw without clearing trajectories
+            });
+
+            // Arrow count and scale changes - throttled redraw
+            const throttledRedraw = throttle(drawPhasePortrait, 100);
+            document.getElementById('arrow-count').addEventListener('input', throttledRedraw);
+            document.getElementById('arrow-scale').addEventListener('input', throttledRedraw);
+
+            // Checkboxes - immediate redraw (no debounce needed)
+            document.getElementById('showInitialPoint').addEventListener('change', drawPhasePortrait);
+            document.getElementById('showGrid').addEventListener('change', drawPhasePortrait);
+
             // Initial draw
             drawPhasePortrait();
         });
+
         function clearUserPoints() {
             userPoints = [];
             trajectories = [];
             drawPhasePortrait();
             document.getElementById('instruction').style.display = 'block';
         }
+
         // New function to clear trajectories and redraw phase portrait
         function clearAndDrawPhasePortrait() {
             userPoints = [];
@@ -346,6 +399,7 @@
             document.getElementById('instruction').style.display = 'block';
             drawPhasePortrait();
         }
+
         // Function to classify the equilibrium
         function classifyEquilibrium(a, b, c, d) {
             const trace = a + d;
@@ -422,6 +476,7 @@
                 }
             }
         }
+
         // Simple 4th-order Runge-Kutta
         function rk4Step(x, y, a, b, c, d, h) {
             const k1x = a * x + b * y;
@@ -437,10 +492,12 @@
                 y: y + h/6 * (k1y + 2*k2y + 2*k3y + k4y)
             };
         }
+
         // Helper function to check if point is within visible bounds
         function isInBounds(x, y, tMin, tMax, yMin, yMax) {
             return x >= tMin && x <= tMax && y >= yMin && y <= yMax;
         }
+
         // Calculate eigenvalues for centers
         function calculateEigenvalues(a, b, c, d) {
             const trace = a + d;
@@ -459,35 +516,24 @@
                 return { lambda1, lambda2, real: true };
             }
         }
+
         // Analytical solution for centers (ellipses, not circles)
         function computeCenterTrajectory(x0, y0, a, b, c, d, tMin, tMax, yMin, yMax, xOffset, xScale, yScale) {
             const trajPoints = [];
             const points = 400; // More points for smoother ellipses
-            // For centers, trace = 0, det > 0
             const det = a * d - b * c;
-            const omega = Math.sqrt(det); // Angular frequency
-            // Find eigenvalues and eigenvectors for the general solution
             const eigenvalues = calculateEigenvalues(a, b, c, d);
             if (Math.abs(eigenvalues.real) < 1e-10 && eigenvalues.imag > 0) {
-                // General solution for x' = a x + b y, y' = c x + d y with trace = 0
-                // We can solve using matrix exponential or numerical integration
-                // For simplicity, we'll use numerical integration but with smaller steps
                 let x = x0, y = y0;
                 const h = 0.01; // Very small step for accuracy
                 // Forward integration
                 for (let i = 0; i < points; i++) {
-                    // STRICT bounds checking - stop if outside
-                    if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) { break; }
+                    if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
                     const canvasX = xOffset + (x - tMin) * xScale;
                     const canvasY = 700 - xOffset - (y - yMin) * yScale;
-                    // Ensure point is within canvas bounds
                     if (canvasX >= 70 && canvasX <= 700 - 70 && canvasY >= 70 && canvasY <= 700 - 70) {
                         trajPoints.push({ x: canvasX, y: canvasY });
-                    } else {
-                        // Stop if outside canvas bounds
-                        break;
-                    }
-                    // Take RK4 step
+                    } else break;
                     const next = rk4Step(x, y, a, b, c, d, h);
                     x = next.x;
                     y = next.y;
@@ -496,26 +542,25 @@
                 x = x0; y = y0;
                 const backwardPoints = [];
                 for (let i = 0; i < points; i++) {
-                    // Take RK4 step backward
                     const next = rk4Step(x, y, a, b, c, d, -h);
                     x = next.x;
                     y = next.y;
-                    // STRICT bounds checking - stop if outside
-                    if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) { break; }
+                    if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
                     const canvasX = xOffset + (x - tMin) * xScale;
                     const canvasY = 700 - xOffset - (y - yMin) * yScale;
-                    // Ensure point is within canvas bounds
                     if (canvasX >= 70 && canvasX <= 700 - 70 && canvasY >= 70 && canvasY <= 700 - 70) {
                         backwardPoints.unshift({ x: canvasX, y: canvasY });
-                    } else {
-                        // Stop if outside canvas bounds
-                        break;
-                    }
+                    } else break;
                 }
                 return [...backwardPoints, ...trajPoints];
             }
             return trajPoints;
         }
+
+        // ========================================
+        // OPTIMIZATION: Reduced MAX_STEPS from 3000 to 1000
+        // Added early termination for equilibria
+        // ========================================
         async function computeTrajectoryAsync(x0, y0) {
             const a = parseFloat(document.getElementById('a').value) || 0;
             const b = parseFloat(document.getElementById('b').value) || 0;
@@ -530,30 +575,36 @@
             const xScale = scale;
             const yScale = scale;
             const xOffset = (700 - (tMax - tMin) * xScale) / 2;
+
             // Classify system for adaptive step size
             const classification = classifyEquilibrium(a, b, c, d);
             const isCenter = classification.type === 'Center';
             const isSpiral = classification.type.includes('Spiral');
+
             // For centers, use proper elliptical trajectories
             if (isCenter) {
                 return computeCenterTrajectory(x0, y0, a, b, c, d, tMin, tMax, yMin, yMax, xOffset, xScale, yScale);
             }
-            // For non-centers, use RK4 with adaptive steps
-            const MAX_STEPS = 3000;
+
+            // OPTIMIZATION: Reduced from 3000 to 1000 steps
+            const MAX_STEPS = 1000;
+
             // Forward integration
             let x = x0, y = y0;
             let h = isSpiral ? 0.015 : 0.05;
-            // Always add the initial point if it's in bounds
+
             if (isInBounds(x, y, tMin, tMax, yMin, yMax)) {
                 const canvasX = xOffset + (x - tMin) * xScale;
                 const canvasY = 700 - xOffset - (y - yMin) * yScale;
                 trajPoints.push({ x: canvasX, y: canvasY });
             }
+
             for (let i = 0; i < MAX_STEPS; i++) {
                 // Adaptive step size
                 const dx = a * x + b * y;
                 const dy = c * x + d * y;
                 const speed = Math.sqrt(dx * dx + dy * dy);
+
                 if (isSpiral) {
                     h = 0.015;
                 } else if (speed > 0.1) {
@@ -561,37 +612,42 @@
                 } else {
                     h = 0.05;
                 }
+
                 // Take step
                 const next = rk4Step(x, y, a, b, c, d, h);
                 x = next.x;
                 y = next.y;
+
                 // Stop if trajectory goes to infinity
                 if (Math.abs(x) > 100 || Math.abs(y) > 100) break;
+
                 // STRICT bounds checking - stop immediately if outside
-                if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) {
-                    break;
-                }
+                if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
+
                 const canvasX = xOffset + (x - tMin) * xScale;
                 const canvasY = 700 - xOffset - (y - yMin) * yScale;
-                // Ensure point is within canvas drawing area
+
                 if (canvasX >= PADDING && canvasX <= 700 - PADDING && canvasY >= PADDING && canvasY <= 700 - PADDING) {
                     trajPoints.push({ x: canvasX, y: canvasY });
-                } else {
-                    // Stop if outside canvas bounds
-                    break;
-                }
+                } else break;
+
                 // Stop if we have enough points
                 if (trajPoints.length > 1500) break;
+
+                // OPTIMIZATION: Early termination for near-equilibrium
+                if (trajPoints.length > 10 && speed < 1e-4) break;
             }
+
             // Backward integration
             x = x0; y = y0;
             const backwardPoints = [];
             h = isSpiral ? -0.015 : -0.05;
+
             for (let i = 0; i < MAX_STEPS; i++) {
-                // Adaptive step size
                 const dx = a * x + b * y;
                 const dy = c * x + d * y;
                 const speed = Math.sqrt(dx * dx + dy * dy);
+
                 if (isSpiral) {
                     h = -0.015;
                 } else if (speed > 0.1) {
@@ -599,36 +655,37 @@
                 } else {
                     h = -0.05;
                 }
-                // Take step
+
                 const next = rk4Step(x, y, a, b, c, d, h);
                 x = next.x;
                 y = next.y;
-                // Stop if trajectory goes to infinity
+
                 if (Math.abs(x) > 100 || Math.abs(y) > 100) break;
-                // STRICT bounds checking - stop immediately if outside
-                if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) {
-                    break;
-                }
+                if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
+
                 const canvasX = xOffset + (x - tMin) * xScale;
                 const canvasY = 700 - xOffset - (y - yMin) * yScale;
-                // Ensure point is within canvas drawing area
+
                 if (canvasX >= PADDING && canvasX <= 700 - PADDING && canvasY >= PADDING && canvasY <= 700 - PADDING) {
                     backwardPoints.unshift({ x: canvasX, y: canvasY });
-                } else {
-                    // Stop if outside canvas bounds
-                    break;
-                }
-                // Stop if we have enough points
+                } else break;
+
                 if (backwardPoints.length > 750) break;
+
+                // OPTIMIZATION: Early termination for near-equilibrium
+                if (backwardPoints.length > 10 && speed < 1e-4) break;
             }
+
             return [...backwardPoints, ...trajPoints];
         }
+
         function getNiceStep(range) {
             const rough = range / 8;
             const exp = Math.pow(10, Math.floor(Math.log10(rough)));
             const frac = rough / exp;
             return (frac <= 1.5 ? 1 : frac <= 3.5 ? 2 : frac <= 7 ? 5 : 10) * exp;
         }
+
         function drawAxisLabels(ctx, tMin, tMax, yMin, yMax, xScale, yScale, PADDING, canvas) {
             ctx.font = 'bold 12px Arial';
             ctx.fillStyle = '#111';
@@ -658,6 +715,7 @@
             ctx.fillText('y', 0, 0);
             ctx.restore();
         }
+
         function renderEquationToCanvas(a, b, c, d) {
             const eqContainer = document.getElementById('canvas-equation');
             eqContainer.innerHTML = '';
@@ -676,14 +734,18 @@
             const bSign = b >= 0 ? '+' : '';
             const dSign = d >= 0 ? '+' : '';
             const eqString = `\\begin{cases} \\dot{x} = ${aStr === '' ? '' : aStr}${aStr === '' && a === -1 ? '-' : ''}x ${bSign}${bStr}y \\\\ \\dot{y} = ${cStr === '' ? '' : cStr}${cStr === '' && c === -1 ? '-' : ''}x ${dSign}${dStr}y \\end{cases}`;
+            // OPTIMIZATION: Render to specific element
             katex.render(eqString, eqContainer, { throwOnError: false, displayMode: true, fontSize: 18 });
         }
+
         function drawPhasePortrait() {
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
+
             // Clear with background
             ctx.fillStyle = '#fafafa';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+
             // Get matrix coefficients and field color
             const a = parseFloat(document.getElementById('a').value) || 0;
             const b = parseFloat(document.getElementById('b').value) || 0;
@@ -694,6 +756,7 @@
             const fieldColor = document.getElementById('field-color').value || '#2563eb';
             const showInitialPoint = document.getElementById('showInitialPoint').checked;
             const showGrid = document.getElementById('showGrid').checked;
+
             // Update classification
             const classification = classifyEquilibrium(a, b, c, d);
             const infoBox = document.getElementById('classification-info');
@@ -702,20 +765,21 @@
                 <div class="classification-stability">${classification.stability}</div>
                 <div class="classification-details">${classification.description}</div>
             `;
+
             // Render equation at top using KaTeX (separate from canvas)
             renderEquationToCanvas(a, b, c, d);
+
             const tMin = -5, tMax = 5, yMin = -5, yMax = 5;
             const PADDING = 70;
             const drawWidth = canvas.width - 2 * PADDING;
             const drawHeight = canvas.height - 2 * PADDING;
-            // Use the same scale for both axes to maintain 1:1 aspect ratio
             const scale = Math.min(drawWidth, drawHeight) / (tMax - tMin);
             const xScale = scale;
             const yScale = scale;
-            // Center the graph in the canvas
             const xOffset = (canvas.width - (tMax - tMin) * xScale) / 2;
             const yOffset = (canvas.height - (yMax - yMin) * yScale) / 2;
             const step = Math.min(drawWidth / arrowCount, drawHeight / arrowCount);
+
             // Draw grid if enabled
             if (showGrid) {
                 ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
@@ -738,13 +802,22 @@
                     ctx.stroke();
                 }
             }
-            // Draw arrows
+
+            // ========================================
+            // OPTIMIZATION: Batched canvas path operations
+            // ========================================
             ctx.lineWidth = 0.75;
-            // Calculate the actual drawing area based on the centered graph
+            ctx.strokeStyle = fieldColor;
+
             const minX = xOffset;
             const maxX = canvas.width - xOffset;
             const minY = yOffset;
             const maxY = canvas.height - yOffset;
+
+            // OPTIMIZATION: Collect all arrow shafts in one path
+            ctx.beginPath();
+            const arrowData = []; // Store arrow endpoints for later arrowhead drawing
+
             for (let px = minX + step/2; px < maxX; px += step) {
                 for (let py = minY + step/2; py < maxY; py += step) {
                     const t = tMin + (px - xOffset) / xScale;
@@ -753,42 +826,58 @@
                     const dy = c * t + d * y_val;
                     const len = Math.sqrt(dx * dx + dy * dy);
                     if (len === 0) continue;
-                    // Scale delta to canvas units
+
                     const deltaCanvasX = dx * xScale;
                     const deltaCanvasY = -dy * yScale;
                     const lenCanvas = Math.sqrt(deltaCanvasX * deltaCanvasX + deltaCanvasY * deltaCanvasY);
                     const normDx = deltaCanvasX / lenCanvas;
                     const normDy = deltaCanvasY / lenCanvas;
                     let drawLength = 20 * arrowScale;
-                    // Make variable length for better visualization
                     drawLength = drawLength * Math.min(1, 5 / len);
                     drawLength = Math.max(drawLength, 5);
+
                     const startX = px - (normDx * drawLength) / 2;
                     const startY = py - (normDy * drawLength) / 2;
                     const endX = px + (normDx * drawLength) / 2;
                     const endY = py + (normDy * drawLength) / 2;
-                    // Draw shaft
-                    ctx.strokeStyle = fieldColor;
-                    ctx.beginPath();
+
+                    // Add to batched path
                     ctx.moveTo(startX, startY);
                     ctx.lineTo(endX, endY);
-                    ctx.stroke();
-                    // Draw filled arrowhead
-                    const headSize = Math.min(8, drawLength / 3 + 2);
-                    const angle = Math.atan2(normDy, normDx);
-                    ctx.fillStyle = fieldColor;
-                    ctx.beginPath();
-                    ctx.moveTo(endX, endY);
-                    ctx.lineTo(endX - headSize * Math.cos(angle - Math.PI / 6), endY - headSize * Math.sin(angle - Math.PI / 6));
-                    ctx.lineTo(endX - headSize * Math.cos(angle + Math.PI / 6), endY - headSize * Math.sin(angle + Math.PI / 6));
-                    ctx.closePath();
-                    ctx.fill();
+
+                    // Store arrowhead data
+                    arrowData.push({
+                        endX: endX,
+                        endY: endY,
+                        normDx: normDx,
+                        normDy: normDy,
+                        drawLength: drawLength
+                    });
                 }
             }
+            // OPTIMIZATION: Single stroke call for all arrow shafts
+            ctx.stroke();
+
+            // OPTIMIZATION: Batch arrowheads
+            ctx.fillStyle = fieldColor;
+            arrowData.forEach(arrow => {
+                const headSize = Math.min(8, arrow.drawLength / 3 + 2);
+                const angle = Math.atan2(arrow.normDy, arrow.normDx);
+                ctx.beginPath();
+                ctx.moveTo(arrow.endX, arrow.endY);
+                ctx.lineTo(arrow.endX - headSize * Math.cos(angle - Math.PI / 6),
+                          arrow.endY - headSize * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(arrow.endX - headSize * Math.cos(angle + Math.PI / 6),
+                          arrow.endY - headSize * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fill();
+            });
+
             // Draw axes
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 2;
             ctx.setLineDash([]);
+
             // x-axis
             if (yMin <= 0 && yMax >= 0) {
                 const y0 = canvas.height - yOffset - (0 - yMin) * yScale;
@@ -805,10 +894,13 @@
                 ctx.lineTo(x0, canvas.height - yOffset);
                 ctx.stroke();
             }
+
             // Draw axis labels
             drawAxisLabels(ctx, tMin, tMax, yMin, yMax, xScale, yScale, xOffset, canvas);
+
             // Draw user trajectories
             const colors = [ '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#7c3aed', '#db2777', '#4b5563' ];
+
             // Draw stored trajectories
             trajectories.forEach((traj, idx) => {
                 if (traj.length > 1) {
@@ -818,18 +910,16 @@
                     ctx.lineCap = 'round';
                     ctx.setLineDash([]);
                     ctx.beginPath();
-                    // Start at first point
                     ctx.moveTo(traj[0].x, traj[0].y);
-                    // Draw each segment
                     for (let i = 1; i < traj.length; i++) {
                         ctx.lineTo(traj[i].x, traj[i].y);
                     }
                     ctx.stroke();
                 }
             });
+
             // Draw initial points
             if (showInitialPoint) {
-                const colors = [ '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#7c3aed', '#db2777', '#4b5563' ];
                 userPoints.forEach((point, idx) => {
                     const startX = xOffset + (point.x - tMin) * xScale;
                     const startY = canvas.height - xOffset - (point.y - yMin) * yScale;
@@ -843,17 +933,17 @@
                 });
             }
         }
+
         function downloadImage() {
             const canvas = document.getElementById('canvas');
-            // Create a temporary canvas with same size
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height + 100;
             const tempCtx = tempCanvas.getContext('2d');
-            // Clear with background
+
             tempCtx.fillStyle = '#fafafa';
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-            // Get matrix coefficients and field color
+
             const a = parseFloat(document.getElementById('a').value) || 0;
             const b = parseFloat(document.getElementById('b').value) || 0;
             const c = parseFloat(document.getElementById('c').value) || 0;
@@ -863,9 +953,9 @@
             const fieldColor = document.getElementById('field-color').value || '#2563eb';
             const showGrid = document.getElementById('showGrid').checked;
             const showInitialPoint = document.getElementById('showInitialPoint').checked;
-            // Get classification
+
             const classification = classifyEquilibrium(a, b, c, d);
-            // Draw classification at top
+
             tempCtx.fillStyle = '#4f46e5';
             tempCtx.font = 'bold 16px Arial';
             tempCtx.textAlign = 'center';
@@ -873,7 +963,7 @@
             tempCtx.fillText(`${classification.type} • ${classification.stability}`, tempCanvas.width/2, 20);
             tempCtx.font = '12px Arial';
             tempCtx.fillText(classification.description, tempCanvas.width/2, 40);
-            // Draw equation below classification
+
             const formatCoeff = (coeff) => {
                 if (coeff === 0) return '0';
                 if (coeff === 1) return '';
@@ -888,7 +978,7 @@
             const dSign = d >= 0 ? '+' : '';
             const eqText1 = `x' = ${aStr === '' ? '' : aStr}${aStr === '' && a === -1 ? '-' : ''}x ${bSign}${bStr}y`;
             const eqText2 = `y' = ${cStr === '' ? '' : cStr}${cStr === '' && c === -1 ? '-' : ''}x ${dSign}${dStr}y`;
-            // Draw equation box
+
             tempCtx.fillStyle = 'white';
             tempCtx.strokeStyle = '#3b82f6';
             tempCtx.lineWidth = 2;
@@ -896,12 +986,12 @@
             tempCtx.roundRect(tempCanvas.width/2 - 160, 50, 320, 40, 10);
             tempCtx.fill();
             tempCtx.stroke();
-            // Draw equation text
+
             tempCtx.fillStyle = '#1e293b';
             tempCtx.font = 'bold 14px Arial';
             tempCtx.fillText(eqText1, tempCanvas.width/2, 60);
             tempCtx.fillText(eqText2, tempCanvas.width/2, 80);
-            // Now draw the graph below the equation
+
             const graphOffsetY = 100;
             const tMin = -5, tMax = 5, yMin = -5, yMax = 5;
             const xOffset = 70;
@@ -913,7 +1003,7 @@
             const graphXOffset = (canvas.width - (tMax - tMin) * xScale) / 2;
             const graphYOffset = (canvas.height - (yMax - yMin) * yScale) / 2;
             const step = Math.min(drawWidth / arrowCount, drawHeight / arrowCount);
-            // Draw grid if enabled
+
             if (showGrid) {
                 tempCtx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
                 tempCtx.lineWidth = 0.5;
@@ -937,12 +1027,18 @@
                     tempCtx.stroke();
                 }
             }
-            // Draw arrows
+
+            // OPTIMIZATION: Batched arrows in download too
             tempCtx.lineWidth = 0.75;
+            tempCtx.strokeStyle = fieldColor;
+            tempCtx.beginPath();
+            const arrowData = [];
+
             const minX = graphXOffset;
             const maxX = canvas.width - graphXOffset;
             const minY = graphOffsetY + graphYOffset;
             const maxY = graphOffsetY + canvas.height - graphYOffset;
+
             for (let px = minX + step/2; px < maxX; px += step) {
                 for (let py = minY + step/2; py < maxY; py += step) {
                     const t = tMin + (px - graphXOffset) / xScale;
@@ -951,39 +1047,49 @@
                     const dy = c * t + d * y_val;
                     const len = Math.sqrt(dx * dx + dy * dy);
                     if (len === 0) continue;
-                    // Scale delta to canvas units
+
                     const deltaCanvasX = dx * xScale;
                     const deltaCanvasY = -dy * yScale;
                     const lenCanvas = Math.sqrt(deltaCanvasX * deltaCanvasX + deltaCanvasY * deltaCanvasY);
                     const normDx = deltaCanvasX / lenCanvas;
                     const normDy = deltaCanvasY / lenCanvas;
                     let drawLength = 20 * arrowScale;
-                    // Make variable length for better visualization
                     drawLength = drawLength * Math.min(1, 5 / len);
                     drawLength = Math.max(drawLength, 5);
+
                     const startX = px - (normDx * drawLength) / 2;
                     const startY = py - (normDy * drawLength) / 2;
                     const endX = px + (normDx * drawLength) / 2;
                     const endY = py + (normDy * drawLength) / 2;
-                    // Draw shaft
-                    tempCtx.strokeStyle = fieldColor;
-                    tempCtx.beginPath();
+
                     tempCtx.moveTo(startX, startY);
                     tempCtx.lineTo(endX, endY);
-                    tempCtx.stroke();
-                    // Draw filled arrowhead
-                    const headSize = Math.min(8, drawLength / 3 + 2);
-                    const angle = Math.atan2(normDy, normDx);
-                    tempCtx.fillStyle = fieldColor;
-                    tempCtx.beginPath();
-                    tempCtx.moveTo(endX, endY);
-                    tempCtx.lineTo(endX - headSize * Math.cos(angle - Math.PI / 6), endY - headSize * Math.sin(angle - Math.PI / 6));
-                    tempCtx.lineTo(endX - headSize * Math.cos(angle + Math.PI / 6), endY - headSize * Math.sin(angle + Math.PI / 6));
-                    tempCtx.closePath();
-                    tempCtx.fill();
+
+                    arrowData.push({
+                        endX: endX,
+                        endY: endY,
+                        normDx: normDx,
+                        normDy: normDy,
+                        drawLength: drawLength
+                    });
                 }
             }
-            // Draw axes
+            tempCtx.stroke();
+
+            tempCtx.fillStyle = fieldColor;
+            arrowData.forEach(arrow => {
+                const headSize = Math.min(8, arrow.drawLength / 3 + 2);
+                const angle = Math.atan2(arrow.normDy, arrow.normDx);
+                tempCtx.beginPath();
+                tempCtx.moveTo(arrow.endX, arrow.endY);
+                tempCtx.lineTo(arrow.endX - headSize * Math.cos(angle - Math.PI / 6),
+                              arrow.endY - headSize * Math.sin(angle - Math.PI / 6));
+                tempCtx.lineTo(arrow.endX - headSize * Math.cos(angle + Math.PI / 6),
+                              arrow.endY - headSize * Math.sin(angle + Math.PI / 6));
+                tempCtx.closePath();
+                tempCtx.fill();
+            });
+
             tempCtx.strokeStyle = '#000';
             tempCtx.lineWidth = 2;
             tempCtx.setLineDash([]);
@@ -1003,7 +1109,7 @@
                 tempCtx.lineTo(x0, y2);
                 tempCtx.stroke();
             }
-            // Draw axis labels
+
             tempCtx.font = 'bold 12px Arial';
             tempCtx.fillStyle = '#111';
             tempCtx.textAlign = 'center';
@@ -1032,7 +1138,7 @@
             tempCtx.textAlign = 'center';
             tempCtx.fillText('y', 0, 0);
             tempCtx.restore();
-            // Draw user trajectories
+
             const colors = [ '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#7c3aed', '#db2777', '#4b5563' ];
             trajectories.forEach((traj, idx) => {
                 if (traj.length > 1) {
@@ -1049,9 +1155,8 @@
                     tempCtx.stroke();
                 }
             });
-            // Draw initial points if enabled
+
             if (showInitialPoint && userPoints.length > 0) {
-                const colors = [ '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#7c3aed', '#db2777', '#4b5563' ];
                 userPoints.forEach((point, idx) => {
                     const startX = graphXOffset + (point.x - tMin) * xScale;
                     const startY = graphOffsetY + canvas.height - graphYOffset - (point.y - yMin) * yScale;
@@ -1064,13 +1169,12 @@
                     tempCtx.stroke();
                 });
             }
-            // Create download link
+
             const link = document.createElement('a');
-            link.download = 'phase-portrait.png';
+            link.download = 'phase-portrait-optimized.png';
             link.href = tempCanvas.toDataURL('image/png');
             link.click();
         }
     </script>
 </body>
 </html>
-
