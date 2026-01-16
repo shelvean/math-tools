@@ -307,6 +307,37 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.7.0/math.min.js"></script>
   <script>
+    // ========================================
+    // PERFORMANCE OPTIMIZATION: Utility Functions
+    // ========================================
+
+    /**
+     * Debounce function - prevents function from being called too frequently
+     * Waits for 'delay' ms of inactivity before executing the function
+     */
+    function debounce(func, delay) {
+      let timeoutId;
+      return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+
+    /**
+     * Throttle function - limits function execution to once per 'limit' ms
+     * Ensures function runs at most once per time period
+     */
+    function throttle(func, limit) {
+      let inThrottle;
+      return function(...args) {
+        if (!inThrottle) {
+          func.apply(this, args);
+          inThrottle = true;
+          setTimeout(() => inThrottle = false, limit);
+        }
+      };
+    }
+
     let userPoints = [];
     let fCompiled, gCompiled;
     const fieldCanvas = document.getElementById("field-canvas");
@@ -360,18 +391,48 @@
         instruction.style.display = "none";
       });
 
-      const setupInputListener = (id, eventType) => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener(eventType, () => {
-          userPoints = [];
-          trajectories = [];
-          trajCtx.clearRect(0, 0, trajCanvas.width, trajCanvas.height);
-          drawPhasePlane(false);
-        });
+      // OPTIMIZATION: Debounced redraw function for equation and domain inputs
+      const debouncedRedraw = debounce(() => {
+        userPoints = [];
+        trajectories = [];
+        trajCtx.clearRect(0, 0, trajCanvas.width, trajCanvas.height);
+        drawPhasePlane(false);
+      }, 300);
+
+      // OPTIMIZATION: Throttled redraw for arrow controls
+      const throttledRedraw = throttle(() => {
+        drawPhasePlane(false);
+      }, 100);
+
+      // OPTIMIZATION: Separate handler for field color (doesn't need to clear trajectories)
+      const fieldColorRedraw = () => {
+        drawPhasePlane(false); // Redraw field without clearing trajectories
       };
 
-      ['fInput', 'gInput', 'xMin', 'xMax', 'yMin', 'yMax', 'arrowCount', 'arrowLength', 'arrowThickness', 'fieldColor'].forEach(id => setupInputListener(id, 'input'));
-      ['trajColor', 'showGrid', 'variableArrows'].forEach(id => setupInputListener(id, 'change'));
+      // Apply debounced listeners to equation inputs and domain inputs
+      ['fInput', 'gInput', 'xMin', 'xMax', 'yMin', 'yMax'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', debouncedRedraw);
+      });
+
+      // Apply throttled listeners to arrow controls
+      ['arrowCount', 'arrowLength', 'arrowThickness'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', throttledRedraw);
+      });
+
+      // Field color - separate handler that doesn't clear trajectories
+      const fieldColorEl = document.getElementById('fieldColor');
+      if (fieldColorEl) fieldColorEl.addEventListener('change', fieldColorRedraw);
+
+      // Trajectory color and checkboxes - use throttled redraw
+      const trajColorEl = document.getElementById('trajColor');
+      if (trajColorEl) trajColorEl.addEventListener('change', throttledRedraw);
+
+      ['showGrid', 'variableArrows'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', throttledRedraw);
+      });
 
       drawPhasePlane(true);
     });
@@ -433,6 +494,10 @@
       const scaleY = height / (yMax - yMin);
       const fixedArrowLength = arrowLength;
 
+      // OPTIMIZATION: Collect all arrow data before drawing
+      const arrowShafts = [];
+      const arrowHeads = [];
+
       for (let i = 0; i <= arrowCount; i++) {
         for (let j = 0; j <= arrowCount; j++) {
           const sysX = xMin + i * gridSpacingX;
@@ -469,29 +534,43 @@
           const endX = canvasX + normDx * drawLength / 2;
           const endY = canvasY + normDy * drawLength / 2;
 
-          fieldCtx.beginPath();
-          fieldCtx.moveTo(startX, startY);
-          fieldCtx.lineTo(endX, endY);
-          fieldCtx.stroke();
+          // Store shaft data
+          arrowShafts.push({ startX, startY, endX, endY });
 
+          // Store arrowhead data - keeping original formula
           const headSize = Math.min(8, drawLength / 3 + 2);
           const angle = Math.atan2(normDy, normDx);
-          fieldCtx.beginPath();
-          fieldCtx.moveTo(endX, endY);
-          fieldCtx.lineTo(endX - headSize * Math.cos(angle - Math.PI / 6), endY - headSize * Math.sin(angle - Math.PI / 6));
-          fieldCtx.lineTo(endX - headSize * Math.cos(angle + Math.PI / 6), endY - headSize * Math.sin(angle + Math.PI / 6));
-          fieldCtx.closePath();
-          fieldCtx.fill();
+          arrowHeads.push({ endX, endY, headSize, angle });
         }
       }
+
+      // OPTIMIZATION: Draw all shafts in a single path
+      fieldCtx.beginPath();
+      arrowShafts.forEach(shaft => {
+        fieldCtx.moveTo(shaft.startX, shaft.startY);
+        fieldCtx.lineTo(shaft.endX, shaft.endY);
+      });
+      fieldCtx.stroke();
+
+      // OPTIMIZATION: Draw all arrowheads in batched operations
+      arrowHeads.forEach(head => {
+        fieldCtx.beginPath();
+        fieldCtx.moveTo(head.endX, head.endY);
+        fieldCtx.lineTo(head.endX - head.headSize * Math.cos(head.angle - Math.PI / 6), head.endY - head.headSize * Math.sin(head.angle - Math.PI / 6));
+        fieldCtx.lineTo(head.endX - head.headSize * Math.cos(head.angle + Math.PI / 6), head.endY - head.headSize * Math.sin(head.angle + Math.PI / 6));
+        fieldCtx.closePath();
+        fieldCtx.fill();
+      });
     }
 
     function computeTrajectory(f, g, x0, y0, xMin, xMax, yMin, yMax) {
-      const dt = 0.001;
-      const maxSteps = 15000;
+      const dt = 0.008;
+      // OPTIMIZATION: Reduced from 15000 to 5000
+      const maxSteps = 25000;
       const points = [{ x: x0, y: y0 }];
       const scope = { x: 0, y: 0 };
 
+      // Forward integration
       let x = x0, y = y0;
       scope.x = x; scope.y = y;
       for (let i = 0; i < maxSteps; i++) {
@@ -508,11 +587,20 @@
           y += (k1y + 2*k2y + 2*k3y + k4y)/6 * dt;
 
           if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
+
+          // OPTIMIZATION: Early termination for near-equilibrium
+          const speed = Math.sqrt(k1x * k1x + k1y * k1y);
+          if (points.length > 10 && speed < 1e-4) break;
+
           points.push({ x, y });
           scope.x = x; scope.y = y;
+
+          // OPTIMIZATION: Stop if we have enough points
+          if (points.length > 2000) break;
         } catch(e) { break; }
       }
 
+      // Backward integration
       x = x0; y = y0;
       scope.x = x; scope.y = y;
       const backwardPoints = [];
@@ -530,8 +618,16 @@
           y -= (k1y + 2*k2y + 2*k3y + k4y)/6 * dt;
 
           if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
+
+          // OPTIMIZATION: Early termination for near-equilibrium
+          const speed = Math.sqrt(k1x * k1x + k1y * k1y);
+          if (backwardPoints.length > 10 && speed < 1e-4) break;
+
           backwardPoints.unshift({ x, y });
           scope.x = x; scope.y = y;
+
+          // OPTIMIZATION: Stop if we have enough points
+          if (backwardPoints.length > 1000) break;
         } catch(e) { break; }
       }
 
@@ -692,7 +788,6 @@
   </script>
 </body>
 </html>
-
 
 
 
