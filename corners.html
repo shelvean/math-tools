@@ -234,7 +234,7 @@
                     </div>
                 </div>
                 <div class="inequality-inputs" id="inequality-inputs"></div>
-                <div class="help-text">Examples: "2x+3y", "x-y", "y", "0.5x+2y"</div>
+                <div class="help-text">Examples: "2x+3y", "x-y", "y", "0.5x+2y", "(1/2)x+(3/5)y", "-x/2+3y/5"</div>
             </div>
 
             <div class="objective-section">
@@ -376,33 +376,107 @@
                 this.updatePlot();
             }
 
+            evaluateFraction(fractionStr) {
+                // Handle fractions like "1/2", "-3/4", etc.
+                const parts = fractionStr.split('/');
+                if (parts.length === 2) {
+                    const numerator = parseFloat(parts[0]);
+                    const denominator = parseFloat(parts[1]);
+                    if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
+                        return numerator / denominator;
+                    }
+                }
+                return parseFloat(fractionStr);
+            }
+
+            parseCoefficient(coeffStr) {
+                if (coeffStr === '' || coeffStr === '+') return 1;
+                if (coeffStr === '-') return -1;
+
+                // Check if it contains a fraction
+                if (coeffStr.includes('/')) {
+                    // Handle cases like (-1/2) or -1/2
+                    coeffStr = coeffStr.replace(/[()]/g, '');
+                    return this.evaluateFraction(coeffStr);
+                }
+
+                return parseFloat(coeffStr);
+            }
+
             parseLHS(lhsString) {
                 let str = lhsString.replace(/\s+/g, '').toLowerCase();
                 str = str.replace(/\*/g, '');
                 let a = 0;
                 let b = 0;
+
                 if (str === '') return { a: 0, b: 0 };
                 if (str === 'x') return { a: 1, b: 0 };
                 if (str === 'y') return { a: 0, b: 1 };
                 if (str === '-x') return { a: -1, b: 0 };
                 if (str === '-y') return { a: 0, b: -1 };
-                const xMatch = str.match(/([+-]?\d*\.?\d*)x/);
-                if (xMatch) {
-                    const coeff = xMatch[1];
-                    if (coeff === '' || coeff === '+') a = 1;
-                    else if (coeff === '-') a = -1;
-                    else a = parseFloat(coeff);
-                    str = str.replace(xMatch[0], '');
+
+                // Match x terms with various coefficient formats
+                // Handles: 2x, -3x, (1/2)x, (-1/2)x, x/2, -x/2, 0.5x, etc.
+                const xPatterns = [
+                    /(\([+-]?\d+\/\d+\))x/,           // (1/2)x or (-1/2)x
+                    /([+-]?\d+\.?\d*)x\/(\d+\.?\d*)/,  // 3x/2 or -x/2
+                    /([+-]?\d+\/\d+)x/,                // 1/2x or -1/2x
+                    /([+-]?\d*\.?\d*)x/                // 2x, -3x, 0.5x
+                ];
+
+                for (const pattern of xPatterns) {
+                    const xMatch = str.match(pattern);
+                    if (xMatch) {
+                        if (pattern.source.includes('x\\/')) {
+                            // Handle x/denominator format (e.g., 3x/2)
+                            const numeratorCoeff = xMatch[1];
+                            const denominator = xMatch[2];
+                            const num = this.parseCoefficient(numeratorCoeff);
+                            const den = parseFloat(denominator);
+                            a = num / den;
+                        } else {
+                            // Handle (fraction)x or regular coefficient
+                            const coeff = xMatch[1];
+                            a = this.parseCoefficient(coeff);
+                        }
+                        str = str.replace(xMatch[0], '');
+                        break;
+                    }
                 }
-                const yMatch = str.match(/([+-]?\d*\.?\d*)y/);
-                if (yMatch) {
-                    const coeff = yMatch[1];
-                    if (coeff === '' || coeff === '+') b = 1;
-                    else if (coeff === '-') b = -1;
-                    else b = parseFloat(coeff);
-                } else if (str !== '' && !isNaN(parseFloat(str))) {
+
+                // Match y terms with various coefficient formats
+                const yPatterns = [
+                    /(\([+-]?\d+\/\d+\))y/,           // (1/2)y or (-3/5)y
+                    /([+-]?\d+\.?\d*)y\/(\d+\.?\d*)/,  // 3y/5 or -y/2
+                    /([+-]?\d+\/\d+)y/,                // 1/2y or -3/5y
+                    /([+-]?\d*\.?\d*)y/                // 2y, -3y, 0.5y
+                ];
+
+                for (const pattern of yPatterns) {
+                    const yMatch = str.match(pattern);
+                    if (yMatch) {
+                        if (pattern.source.includes('y\\/')) {
+                            // Handle y/denominator format (e.g., 3y/5)
+                            const numeratorCoeff = yMatch[1];
+                            const denominator = yMatch[2];
+                            const num = this.parseCoefficient(numeratorCoeff);
+                            const den = parseFloat(denominator);
+                            b = num / den;
+                        } else {
+                            // Handle (fraction)y or regular coefficient
+                            const coeff = yMatch[1];
+                            b = this.parseCoefficient(coeff);
+                        }
+                        str = str.replace(yMatch[0], '');
+                        break;
+                    }
+                }
+
+                // Check for remaining constant term
+                if (str !== '' && !isNaN(parseFloat(str))) {
                     b = parseFloat(str);
                 }
+
                 if (isNaN(a)) a = 0;
                 if (isNaN(b)) b = 0;
                 return { a, b };
