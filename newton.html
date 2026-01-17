@@ -279,6 +279,19 @@
     function formatDecimal(d, decimals = 12) { return d.toDecimalPlaces(decimals).toString(); }
     function formatDecimalScientific(d, decimals = 8) { return d.toExponential(decimals); }
 
+    // Debounce utility function
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
     const functions = [
       { f: x => { const xd = new Decimal(x); return xd.minus(1).exp().minus(1); }, df: x => { const xd = new Decimal(x); return xd.minus(1).exp(); }, fStr: "e^{x-1} - 1", plotFn: "exp(x-1) - 1", root: new Decimal(1), multiplicity: 1 },
       { f: x => { const xd = new Decimal(x); const term1 = xd.minus(1).pow(2); const term2 = xd.minus(2).exp(); return term1.times(term2); }, df: x => { const xd = new Decimal(x); const term1 = new Decimal(2).times(xd.minus(1)).times(xd.minus(2).exp()); const term2 = xd.minus(1).pow(2).times(xd.minus(2).exp()); return term1.plus(term2); }, fStr: "(x-1)^2 e^{x-2}", plotFn: "(x-1)^2 * exp(x-2)", root: new Decimal(1), multiplicity: 2 },
@@ -300,16 +313,34 @@
     let currentAnimationElements = null;
     let sessionId = 0;
 
+    // Cache DOM elements to avoid repeated queries
+    const domCache = {
+      x0: null,
+      modifiedMethod: null,
+      multiplicity: null,
+      toleranceInput: null,
+      durationSlider: null,
+      durationDisplay: null,
+      currentIteration: null,
+      currentError: null,
+      currentFx: null,
+      convergedMessage: null,
+      iterationData: null,
+      currentFunction: null,
+      animateBtn: null,
+      stopBtn: null
+    };
+
     function clearAllData() {
       stopAnimation();
       if (currentAnimationElements) { currentAnimationElements.remove(); currentAnimationElements = null; }
       iterations = [];
       currentIteration = 0;
-      document.getElementById('iteration-data').innerHTML = '';
-      document.getElementById('current-iteration').textContent = '0';
-      document.getElementById('current-error').textContent = '1.00e+0';
-      document.getElementById('current-fx').textContent = '-';
-      document.getElementById('converged-message').classList.remove('show');
+      domCache.iterationData.innerHTML = '';
+      domCache.currentIteration.textContent = '0';
+      domCache.currentError.textContent = '1.00e+0';
+      domCache.currentFx.textContent = '-';
+      domCache.convergedMessage.classList.remove('show');
       sessionId++;
       drawGraph();
     }
@@ -317,9 +348,9 @@
     function updateStatusDisplay() {
       if (iterations.length > 0) {
         const lastIter = iterations[iterations.length - 1];
-        document.getElementById('current-iteration').textContent = lastIter.n;
-        document.getElementById('current-error').textContent = formatDecimalScientific(lastIter.error, 2);
-        document.getElementById('current-fx').textContent = formatDecimalScientific(lastIter.fx, 4);
+        domCache.currentIteration.textContent = lastIter.n;
+        domCache.currentError.textContent = formatDecimalScientific(lastIter.error, 2);
+        domCache.currentFx.textContent = formatDecimalScientific(lastIter.fx, 4);
       }
     }
 
@@ -336,8 +367,9 @@
       });
     }
 
-    function renderKaTeX() {
-      renderMathInElement(document.body, {
+    function renderKaTeX(element = null) {
+      const target = element || document.body;
+      renderMathInElement(target, {
         delimiters: [
           {left: "$$", right: "$$", display: true},
           {left: "\\[", right: "\\]", display: true},
@@ -347,6 +379,9 @@
         output: 'html'
       });
     }
+
+    // Track if initial KaTeX render is done to avoid re-rendering static content
+    let katexInitialized = false;
 
     function parseTolerance(value) {
       value = value.trim();
@@ -364,45 +399,62 @@
     }
 
     function init() {
-      const durationSlider = document.getElementById('animation-duration');
-      const durationDisplay = document.getElementById('duration-display');
-      const toleranceInput = document.getElementById('convergence-tolerance');
+      // Populate DOM cache
+      domCache.x0 = document.getElementById('x0');
+      domCache.modifiedMethod = document.getElementById('modifiedMethod');
+      domCache.multiplicity = document.getElementById('multiplicity');
+      domCache.toleranceInput = document.getElementById('convergence-tolerance');
+      domCache.durationSlider = document.getElementById('animation-duration');
+      domCache.durationDisplay = document.getElementById('duration-display');
+      domCache.currentIteration = document.getElementById('current-iteration');
+      domCache.currentError = document.getElementById('current-error');
+      domCache.currentFx = document.getElementById('current-fx');
+      domCache.convergedMessage = document.getElementById('converged-message');
+      domCache.iterationData = document.getElementById('iteration-data');
+      domCache.currentFunction = document.getElementById('current-function');
+      domCache.animateBtn = document.getElementById('animate-btn');
+      domCache.stopBtn = document.getElementById('stop-btn');
 
-      function updateDurationDisplay() { durationDisplay.textContent = `${durationSlider.value} s`; }
+      function updateDurationDisplay() { domCache.durationDisplay.textContent = `${domCache.durationSlider.value} s`; }
 
       function updateTolerance() {
-        const value = toleranceInput.value;
+        const value = domCache.toleranceInput.value;
         const parsed = parseTolerance(value);
         CONVERGENCE_TOLERANCE = parsed;
         if (value !== '' && value !== parsed.toString() && value !== parsed.toExponential()) {
-          setTimeout(() => { toleranceInput.value = parsed.toExponential(); }, 100);
+          setTimeout(() => { domCache.toleranceInput.value = parsed.toExponential(); }, 100);
         }
         updateConvergenceMessage();
       }
 
-      document.getElementById('x0').addEventListener('change', clearAllData);
-      document.getElementById('modifiedMethod').addEventListener('change', clearAllData);
-      document.getElementById('multiplicity').addEventListener('change', clearAllData);
-      document.getElementById('convergence-tolerance').addEventListener('change', updateTolerance);
-      toleranceInput.addEventListener('blur', updateTolerance);
-      toleranceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { updateTolerance(); toleranceInput.blur(); } });
-      durationSlider.addEventListener('input', updateDurationDisplay);
+      domCache.x0.addEventListener('change', clearAllData);
+      domCache.modifiedMethod.addEventListener('change', clearAllData);
+      domCache.multiplicity.addEventListener('change', clearAllData);
+      domCache.toleranceInput.addEventListener('change', updateTolerance);
+      domCache.toleranceInput.addEventListener('blur', updateTolerance);
+      domCache.toleranceInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { updateTolerance(); domCache.toleranceInput.blur(); } });
+      domCache.durationSlider.addEventListener('input', updateDurationDisplay);
 
       runSimpleRoot();
       updateDurationDisplay();
       updateTolerance();
-      renderKaTeX();
+      // Only render KaTeX once on initialization for static elements
+      if (!katexInitialized) {
+        renderKaTeX();
+        katexInitialized = true;
+      }
       drawGraph();
     }
 
     function selectFunction(index) {
       clearAllData();
       currentFunction = functions[index];
-      document.getElementById('current-function').innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
-      document.getElementById('multiplicity').value = currentFunction.multiplicity || 1;
-      document.getElementById('modifiedMethod').checked = false;
+      domCache.currentFunction.innerHTML = `\\[ f(x) = ${currentFunction.fStr} \\]`;
+      domCache.multiplicity.value = currentFunction.multiplicity || 1;
+      domCache.modifiedMethod.checked = false;
       updateFunctionButtons(index);
-      renderKaTeX();
+      // Only render KaTeX for the function display element
+      renderKaTeX(domCache.currentFunction);
     }
 
     function getAbsoluteError(x) { return new Decimal(x).minus(currentFunction.root).abs(); }
@@ -413,21 +465,20 @@
     }
 
     function updateConvergenceMessage() {
-      const messageDiv = document.getElementById('converged-message');
       if (hasConverged() && iterations.length > 0) {
         const lastError = iterations[iterations.length - 1].error;
         const iterationCount = iterations.length - 1;
-        messageDiv.innerHTML = `✓ Convergence achieved after ${iterationCount} iterations! Absolute error = ${lastError.toExponential(2)} ≤ ${CONVERGENCE_TOLERANCE.toExponential(2)}`;
-        messageDiv.classList.add('show');
+        domCache.convergedMessage.innerHTML = `✓ Convergence achieved after ${iterationCount} iterations! Absolute error = ${lastError.toExponential(2)} ≤ ${CONVERGENCE_TOLERANCE.toExponential(2)}`;
+        domCache.convergedMessage.classList.add('show');
       } else {
-        messageDiv.classList.remove('show');
+        domCache.convergedMessage.classList.remove('show');
       }
     }
 
     function resetIterations() {
       stopAnimation();
       let x0;
-      try { x0 = new Decimal(document.getElementById('x0').value); } catch (e) { showError("Invalid initial guess"); return; }
+      try { x0 = new Decimal(domCache.x0.value); } catch (e) { showError("Invalid initial guess"); return; }
 
       const fx0 = currentFunction.f(x0);
       const dfx0 = currentFunction.df(x0);
@@ -471,8 +522,8 @@
       stopAnimation();
       if (currentIteration >= 50 || hasConverged()) return;
 
-      const modified = document.getElementById('modifiedMethod').checked;
-      const multiplicity = modified ? parseInt(document.getElementById('multiplicity').value) : 1;
+      const modified = domCache.modifiedMethod.checked;
+      const multiplicity = modified ? parseInt(domCache.multiplicity.value) : 1;
       const last = iterations[iterations.length - 1];
 
       if (last.dfx.abs().lt(new Decimal(1e-30))) { showError("Derivative is zero"); return; }
@@ -492,7 +543,7 @@
 
       if (currentIteration >= 50 || hasConverged()) {
         stopAnimation();
-        if (autoRestart && currentFunction === functions[2] && document.getElementById('x0').value === "2" && !document.getElementById('modifiedMethod').checked) {
+        if (autoRestart && currentFunction === functions[2] && domCache.x0.value === "2" && !domCache.modifiedMethod.checked) {
           setTimeout(() => { if (sessionId === currentSession) { resetIterations(); startAnimation(); } }, 1500);
         }
         callback();
@@ -500,8 +551,8 @@
       }
 
       const last = iterations[iterations.length - 1];
-      const modified = document.getElementById('modifiedMethod').checked;
-      const multiplicity = modified ? parseInt(document.getElementById('multiplicity').value) : 1;
+      const modified = domCache.modifiedMethod.checked;
+      const multiplicity = modified ? parseInt(domCache.multiplicity.value) : 1;
 
       if (last.dfx.abs().lt(new Decimal(1e-30))) { showError("Derivative is zero"); stopAnimation(); callback(); return; }
 
@@ -539,7 +590,7 @@
         const tangentDistance = Math.hypot(endX - curveX, endY - curveY);
         const totalDistance = verticalDistance + tangentDistance;
 
-        const baseDuration = parseFloat(document.getElementById('animation-duration').value) * 1000;
+        const baseDuration = parseFloat(domCache.durationSlider.value) * 1000;
         const durationVertical = totalDistance > 0 ? (verticalDistance / totalDistance) * baseDuration : baseDuration / 2;
         const durationTangent = totalDistance > 0 ? (tangentDistance / totalDistance) * baseDuration : baseDuration / 2;
 
@@ -609,8 +660,8 @@
     function startAnimation() {
       if (isAnimating || iterations.length === 0) return;
       isAnimating = true;
-      document.getElementById('animate-btn').classList.add('running', 'hidden');
-      document.getElementById('stop-btn').classList.remove('hidden');
+      domCache.animateBtn.classList.add('running', 'hidden');
+      domCache.stopBtn.classList.remove('hidden');
       animateNext();
     }
 
@@ -618,45 +669,116 @@
       isAnimating = false;
       if (currentAnimationElements) { currentAnimationElements.remove(); currentAnimationElements = null; }
       d3.select('#graph').selectAll('*').interrupt();
-      document.getElementById('animate-btn').classList.remove('running', 'hidden');
-      document.getElementById('stop-btn').classList.add('hidden');
+      domCache.animateBtn.classList.remove('running', 'hidden');
+      domCache.stopBtn.classList.add('hidden');
       drawGraph();
     }
 
     function updateTable() {
-      const tbody = document.getElementById('iteration-data');
-      tbody.innerHTML = '';
-      iterations.forEach((iter, i) => {
-        const row = document.createElement('tr');
-        const isCurrent = i === iterations.length - 1;
-        const isPrev = i === iterations.length - 2;
-        let bg = '';
-        if (iter.error.lte(CONVERGENCE_TOLERANCE)) bg = 'bg-green-50';
-        else if (isCurrent) bg = 'active-iteration';
-        else if (isPrev) bg = 'iteration-highlight';
+      const tbody = domCache.iterationData;
+      const existingRowCount = tbody.children.length;
+      const iterCount = iterations.length;
 
-        row.innerHTML = `
-          <td class="border border-gray-300 px-3 py-2 ${bg} mono-font font-medium">${iter.n}</td>
-          <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimal(iter.x, 12)}</td>
-          <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimalScientific(iter.fx, 8)}</td>
-          <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimalScientific(iter.dfx, 8)}</td>
-          <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimalScientific(iter.error, 8)}</td>
-          <td class="border border-gray-300 px-3 py-2 ${bg} ratio-col mono-font text-sm">${iter.prevRatioLinear || '-'}</td>
-          <td class="border border-gray-300 px-3 py-2 ${bg} ratio-col mono-font text-sm">${iter.prevRatioQuadratic || '-'}</td>
-        `;
-        tbody.appendChild(row);
-      });
+      // Only rebuild if we have fewer rows than iterations (or full rebuild needed)
+      if (existingRowCount === 0) {
+        // Full rebuild on first call
+        tbody.innerHTML = '';
+        iterations.forEach((iter, i) => {
+          tbody.appendChild(createTableRow(iter, i, iterCount));
+        });
+      } else if (existingRowCount < iterCount) {
+        // Incremental update: just add new rows and update highlights
+        for (let i = existingRowCount; i < iterCount; i++) {
+          tbody.appendChild(createTableRow(iterations[i], i, iterCount));
+        }
+        // Update highlighting on previous rows
+        updateTableHighlights(tbody, iterCount);
+      } else {
+        // Just update highlights
+        updateTableHighlights(tbody, iterCount);
+      }
+    }
+
+    function createTableRow(iter, index, totalCount) {
+      const row = document.createElement('tr');
+      const isCurrent = index === totalCount - 1;
+      const isPrev = index === totalCount - 2;
+      let bg = '';
+      if (iter.error.lte(CONVERGENCE_TOLERANCE)) bg = 'bg-green-50';
+      else if (isCurrent) bg = 'active-iteration';
+      else if (isPrev) bg = 'iteration-highlight';
+
+      row.innerHTML = `
+        <td class="border border-gray-300 px-3 py-2 ${bg} mono-font font-medium">${iter.n}</td>
+        <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimal(iter.x, 12)}</td>
+        <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimalScientific(iter.fx, 8)}</td>
+        <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimalScientific(iter.dfx, 8)}</td>
+        <td class="border border-gray-300 px-3 py-2 ${bg} mono-font text-sm">${formatDecimalScientific(iter.error, 8)}</td>
+        <td class="border border-gray-300 px-3 py-2 ${bg} ratio-col mono-font text-sm">${iter.prevRatioLinear || '-'}</td>
+        <td class="border border-gray-300 px-3 py-2 ${bg} ratio-col mono-font text-sm">${iter.prevRatioQuadratic || '-'}</td>
+      `;
+      return row;
+    }
+
+    function updateTableHighlights(tbody, totalCount) {
+      // Only update the last 3 rows to avoid unnecessary DOM manipulation
+      const startIdx = Math.max(0, totalCount - 3);
+      for (let i = startIdx; i < totalCount && i < tbody.children.length; i++) {
+        const row = tbody.children[i];
+        const iter = iterations[i];
+        const isCurrent = i === totalCount - 1;
+        const isPrev = i === totalCount - 2;
+
+        // Remove old highlights
+        row.classList.remove('active-iteration', 'iteration-highlight', 'bg-green-50');
+
+        // Add new highlights
+        if (iter.error.lte(CONVERGENCE_TOLERANCE)) {
+          row.classList.add('bg-green-50');
+        } else if (isCurrent) {
+          row.classList.add('active-iteration');
+        } else if (isPrev) {
+          row.classList.add('iteration-highlight');
+        }
+
+        // Update each cell's background class
+        Array.from(row.children).forEach(cell => {
+          cell.classList.remove('active-iteration', 'iteration-highlight', 'bg-green-50');
+          if (iter.error.lte(CONVERGENCE_TOLERANCE)) {
+            cell.classList.add('bg-green-50');
+          } else if (isCurrent) {
+            cell.classList.add('active-iteration');
+          } else if (isPrev) {
+            cell.classList.add('iteration-highlight');
+          }
+        });
+      }
     }
 
     function calculateGraphBounds(extraX = null) {
-      let points = iterations.map(it => decimalToNumber(it.x));
-      points.push(decimalToNumber(currentFunction.root));
-      if (extraX !== null) points.push(decimalToNumber(extraX));
-      if (points.length === 0) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+
+      // Use reduce instead of spread operator to avoid stack overflow
+      for (const iter of iterations) {
+        const x = decimalToNumber(iter.x);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+
+      const rootX = decimalToNumber(currentFunction.root);
+      if (rootX < minX) minX = rootX;
+      if (rootX > maxX) maxX = rootX;
+
+      if (extraX !== null) {
+        const extraXNum = decimalToNumber(extraX);
+        if (extraXNum < minX) minX = extraXNum;
+        if (extraXNum > maxX) maxX = extraXNum;
+      }
+
+      if (!isFinite(minX) || !isFinite(maxX)) {
         xMin = -5; xMax = 5;
       } else {
-        let minX = Math.min(...points);
-        let maxX = Math.max(...points);
         let range = maxX - minX;
         let padding = Math.max(range * 0.4, 1.0);
         xMin = minX - padding;
@@ -706,14 +828,7 @@
         data: data
       });
 
-      renderMathInElement(document.getElementById('graph'), {
-        delimiters: [
-          {left: "$$", right: "$$", display: true},
-          {left: "\\[", right: "\\]", display: true},
-          {left: "\\(", right: "\\)", display: false}
-        ],
-        throwOnError: false
-      });
+      // No need to render KaTeX for graph - function-plot doesn't use it
     }
 
     function showError(msg) { alert(msg); }
@@ -721,9 +836,9 @@
     function runSimpleRoot() {
       clearAllData();
       selectFunction(2);
-      document.getElementById('x0').value = 2;
-      document.getElementById('modifiedMethod').checked = false;
-      document.getElementById('multiplicity').value = 1;
+      domCache.x0.value = 2;
+      domCache.modifiedMethod.checked = false;
+      domCache.multiplicity.value = 1;
       autoRestart = true;
       resetIterations();
       setTimeout(startAnimation, 800);
@@ -732,9 +847,9 @@
     function runRepeatedNewton() {
       clearAllData();
       selectFunction(3);
-      document.getElementById('x0').value = 3;
-      document.getElementById('modifiedMethod').checked = false;
-      document.getElementById('multiplicity').value = 2;
+      domCache.x0.value = 3;
+      domCache.modifiedMethod.checked = false;
+      domCache.multiplicity.value = 2;
       autoRestart = false;
       resetIterations();
       setTimeout(startAnimation, 800);
@@ -743,9 +858,9 @@
     function runModifiedNewton() {
       clearAllData();
       selectFunction(3);
-      document.getElementById('x0').value = 3;
-      document.getElementById('modifiedMethod').checked = true;
-      document.getElementById('multiplicity').value = 2;
+      domCache.x0.value = 3;
+      domCache.modifiedMethod.checked = true;
+      domCache.multiplicity.value = 2;
       autoRestart = false;
       resetIterations();
       setTimeout(startAnimation, 800);
@@ -754,9 +869,9 @@
     function runNonConvergent() {
       clearAllData();
       selectFunction(2);
-      document.getElementById('x0').value = 2.26;
-      document.getElementById('modifiedMethod').checked = false;
-      document.getElementById('multiplicity').value = 1;
+      domCache.x0.value = 2.26;
+      domCache.modifiedMethod.checked = false;
+      domCache.multiplicity.value = 1;
       autoRestart = false;
       resetIterations();
       setTimeout(startAnimation, 800);
@@ -767,9 +882,9 @@
     }
 
     window.addEventListener('load', init);
-    window.addEventListener('resize', drawGraph);
+    // Debounce resize to avoid excessive redraws
+    window.addEventListener('resize', debounce(drawGraph, 300));
   </script>
 </body>
 </html>
-
 
