@@ -355,7 +355,7 @@
                         <option value="<" ${data.relation === '<' ? 'selected' : ''}>&lt;</option>
                         <option value=">" ${data.relation === '>' ? 'selected' : ''}>&gt;</option>
                     </select>
-                    <input type="number" class="rhs-input" placeholder="10" value="${data.rhs}" step="any">
+                    <input type="text" class="rhs-input" placeholder="10 or 10/3" value="${data.rhs}">
                     <button class="remove-btn" title="Remove">×</button>
                 `;
                 row.querySelector('.remove-btn').addEventListener('click', () => {
@@ -488,7 +488,8 @@
                 rows.forEach((row, i) => {
                     const lhs = row.querySelector('.lhs-input').value || '';
                     const relation = row.querySelector('.relation-select').value;
-                    const rhs = parseFloat(row.querySelector('.rhs-input').value) || 0;
+                    const rhsString = row.querySelector('.rhs-input').value || '0';
+                    const rhs = this.evaluateFraction(rhsString);
                     const coefficients = this.parseLHS(lhs);
                     inequalities.push({
                         a: coefficients.a,
@@ -496,7 +497,8 @@
                         c: rhs,
                         relation: relation,
                         color: this.colors[i % this.colors.length],
-                        lhsString: lhs
+                        lhsString: lhs,
+                        rhsString: rhsString.trim()
                     });
                 });
                 return inequalities;
@@ -531,11 +533,34 @@
                 });
             }
 
+            formatRHSForLatex(rhsString, rhsValue) {
+                // Check if the input is in fraction format
+                if (rhsString.includes('/')) {
+                    const parts = rhsString.split('/');
+                    if (parts.length === 2) {
+                        const num = parts[0].trim();
+                        const den = parts[1].trim();
+                        if (!isNaN(parseFloat(num)) && !isNaN(parseFloat(den))) {
+                            return `\\frac{${num}}{${den}}`;
+                        }
+                    }
+                }
+                // Otherwise, try to convert to fraction if it's not an integer
+                if (!Number.isInteger(rhsValue)) {
+                    const frac = this.toFraction(rhsValue);
+                    if (frac.denominator !== 1) {
+                        return `\\frac{${frac.numerator}}{${frac.denominator}}`;
+                    }
+                }
+                // Return as regular number
+                return this.formatNumber(rhsValue);
+            }
+
             generateLatex(ineq, index) {
                 const a = this.formatCoefficient(ineq.a, false);
                 const b = this.formatCoefficient(ineq.b, true);
                 const relation = this.getLatexRelation(ineq.relation);
-                const c = this.formatNumber(ineq.c);
+                const c = this.formatRHSForLatex(ineq.rhsString, ineq.c);
                 let latex = '';
                 if (a === '0' && b === '0') {
                     latex = `0 ${relation} ${c}`;
