@@ -245,6 +245,13 @@
                     <span>P =</span>
                     <input type="text" class="objective-input" id="objective-function" placeholder="e.g., 3x+4y" value="3x+4y">
                 </div>
+                <div style="margin-top: 20px;">
+                    <label for="display-mode" style="font-weight: 600; color: #2c3e50; display: block; margin-bottom: 8px;">Coordinates Display Format:</label>
+                    <select id="display-mode" class="relation-select" style="width: 100%; padding: 10px;">
+                        <option value="decimal">Decimals</option>
+                        <option value="fraction">Fractions</option>
+                    </select>
+                </div>
             </div>
         </div>
     </div>
@@ -283,6 +290,14 @@
                 document.getElementById('update-plot').addEventListener('click', () => this.updatePlot());
                 document.getElementById('clear-all').addEventListener('click', () => this.clearAll());
                 document.getElementById('objective-function').addEventListener('input', () => this.updatePlot());
+
+                // Add event listener for display mode dropdown
+                setTimeout(() => {
+                    const displayModeSelect = document.getElementById('display-mode');
+                    if (displayModeSelect) {
+                        displayModeSelect.addEventListener('change', () => this.updatePlot());
+                    }
+                }, 200);
 
                 document.querySelectorAll('.example-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => {
@@ -552,6 +567,65 @@
                 return obj.px * point[0] + obj.py * point[1];
             }
 
+            toFraction(decimal, tolerance = 1e-6) {
+                // Handle integers
+                if (Math.abs(decimal - Math.round(decimal)) < tolerance) {
+                    return { numerator: Math.round(decimal), denominator: 1 };
+                }
+
+                // Handle negative numbers
+                const sign = decimal < 0 ? -1 : 1;
+                decimal = Math.abs(decimal);
+
+                // Use continued fractions algorithm
+                let numerator = 1;
+                let denominator = 1;
+                let bestNumerator = Math.round(decimal);
+                let bestDenominator = 1;
+                let bestError = Math.abs(decimal - bestNumerator);
+
+                for (let d = 2; d <= 10000; d++) {
+                    numerator = Math.round(decimal * d);
+                    const error = Math.abs(decimal - numerator / d);
+
+                    if (error < bestError) {
+                        bestNumerator = numerator;
+                        bestDenominator = d;
+                        bestError = error;
+                    }
+
+                    if (error < tolerance) {
+                        break;
+                    }
+                }
+
+                // Simplify the fraction
+                const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+                const divisor = gcd(bestNumerator, bestDenominator);
+
+                return {
+                    numerator: sign * (bestNumerator / divisor),
+                    denominator: bestDenominator / divisor
+                };
+            }
+
+            formatNumberAsLatex(num, useLatex = true) {
+                const displayMode = document.getElementById('display-mode')?.value || 'decimal';
+
+                if (displayMode === 'fraction') {
+                    const frac = this.toFraction(num);
+                    if (frac.denominator === 1) {
+                        return useLatex ? frac.numerator.toString() : frac.numerator.toString();
+                    } else {
+                        return useLatex ? `\\frac{${frac.numerator}}{${frac.denominator}}` : `${frac.numerator}/${frac.denominator}`;
+                    }
+                } else {
+                    // Decimal mode
+                    if (Number.isInteger(num)) return num.toString();
+                    return (Math.round(num * 100) / 100).toString();
+                }
+            }
+
             updateCornerPointsTable(cornerPoints, obj) {
                 const tbody = document.querySelector('#corner-points-table tbody');
                 tbody.innerHTML = '';
@@ -563,11 +637,35 @@
                     const val = this.evaluateObjective(p, obj);
                     const label = this.cornerLabels[i] || String.fromCharCode(65 + i);
                     const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td class="corner-label">${label}</td>
-                        <td class="corner-coordinates">(${this.formatNumber(p[0])}, ${this.formatNumber(p[1])})</td>
-                        <td class="objective-value">${this.formatNumber(val)}</td>
-                    `;
+
+                    // Create cells
+                    const labelCell = document.createElement('td');
+                    labelCell.className = 'corner-label';
+                    labelCell.textContent = label;
+
+                    const coordCell = document.createElement('td');
+                    coordCell.className = 'corner-coordinates';
+                    const xLatex = this.formatNumberAsLatex(p[0], true);
+                    const yLatex = this.formatNumberAsLatex(p[1], true);
+                    const coordLatex = `\\left(${xLatex}, ${yLatex}\\right)`;
+                    try {
+                        katex.render(coordLatex, coordCell, { throwOnError: false });
+                    } catch (error) {
+                        coordCell.textContent = `(${this.formatNumber(p[0])}, ${this.formatNumber(p[1])})`;
+                    }
+
+                    const valueCell = document.createElement('td');
+                    valueCell.className = 'objective-value';
+                    const valLatex = this.formatNumberAsLatex(val, true);
+                    try {
+                        katex.render(valLatex, valueCell, { throwOnError: false });
+                    } catch (error) {
+                        valueCell.textContent = this.formatNumber(val);
+                    }
+
+                    tr.appendChild(labelCell);
+                    tr.appendChild(coordCell);
+                    tr.appendChild(valueCell);
                     tbody.appendChild(tr);
                 });
             }
