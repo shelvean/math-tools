@@ -185,21 +185,34 @@
       letter-spacing: 0.5px;
       font-size: 0.8rem;
     }
-    button:hover {
-      background: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+    /* Only enable hover effects on non-touch devices for better mobile performance */
+    @media (hover: hover) and (pointer: fine) {
+      button {
+        transition: all 0.3s ease;
+      }
+      button:hover {
+        background: var(--accent);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+      }
+      .green-button:hover {
+        background: #218838;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+      }
+      nav a {
+        transition: color 0.3s ease, transform 0.2s ease;
+      }
+      nav a:hover {
+        color: var(--accent) !important;
+        transform: scale(1.1);
+      }
     }
     .green-button {
       background: var(--green);
       padding: 0.4rem 0.2rem;
       font-size: 0.7rem;
       text-transform: none;
-    }
-    .green-button:hover {
-      background: #218838;
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
     }
     #equation {
       font-size: 1em;
@@ -237,9 +250,6 @@
     nav a {
       color: var(--text);
       text-decoration: none;
-    }
-    nav a:hover {
-      color: var(--primary);
     }
     .control-group {
       display: flex;
@@ -301,16 +311,10 @@
 }
 
 nav a {
-    font-size: 1.5rem;           
-    font-weight: 900;          
-    padding: 0.5rem 1rem;      
-    margin: 0 1rem;            
-    transition: color 0.3s ease, transform 0.2s ease;
-}
-
-nav a:hover {
-    color: var(--accent) !important;
-    transform: scale(1.1);     /* Slight grow effect on hover */
+    font-size: 1.5rem;
+    font-weight: 900;
+    padding: 0.5rem 1rem;
+    margin: 0 1rem;
 }
   </style>
 </head>
@@ -447,6 +451,12 @@ nav a:hover {
     // Forcing function related
     let forcingFunction = "5*delta(t-10)+u(t-35)*cos(2*(t-35))";
     let alertBox = null;
+
+    // Offscreen canvases for static content
+    let simBackgroundCanvas = null;
+    let graphBackgroundCanvas = null;
+    let needsRedrawSimBackground = true;
+    let needsRedrawGraphBackground = true;
     function setupInputLinks() {
       document.getElementById('massSlider').addEventListener('input', function() {
         document.getElementById('mass').value = this.value;
@@ -636,13 +646,96 @@ nav a:hover {
       }
       return F;
     }
+
+    // Create offscreen canvas for static simulation background
+    function createSimBackground() {
+      if (!simBackgroundCanvas) {
+        simBackgroundCanvas = document.createElement('canvas');
+        simBackgroundCanvas.width = canvas.width;
+        simBackgroundCanvas.height = canvas.height;
+      }
+      const bgCtx = simBackgroundCanvas.getContext('2d');
+
+      // Sky gradient
+      const gradient = bgCtx.createLinearGradient(0, 0, 0, simBackgroundCanvas.height);
+      gradient.addColorStop(0, '#E3F2FD');
+      gradient.addColorStop(1, '#BBDEFB');
+      bgCtx.fillStyle = gradient;
+      bgCtx.fillRect(0, 0, simBackgroundCanvas.width, simBackgroundCanvas.height);
+
+      // Ground
+      bgCtx.fillStyle = '#795548';
+      bgCtx.fillRect(0, simBackgroundCanvas.height - 50, simBackgroundCanvas.width, 50);
+      bgCtx.strokeStyle = '#6D4C41';
+      bgCtx.lineWidth = 2;
+      for (let i = 0; i < simBackgroundCanvas.width; i += 20) {
+        bgCtx.beginPath();
+        bgCtx.moveTo(i, simBackgroundCanvas.height - 50);
+        bgCtx.lineTo(i, simBackgroundCanvas.height);
+        bgCtx.stroke();
+      }
+
+      // Support structure
+      const supportWidth = 120;
+      const supportHeight = 40;
+      const supportX = canvasCenterX - supportWidth / 2;
+      const supportY = 20;
+
+      const supportGradient = bgCtx.createLinearGradient(supportX, supportY, supportX, supportY + supportHeight);
+      supportGradient.addColorStop(0, '#B0B0B0');
+      supportGradient.addColorStop(0.5, '#909090');
+      supportGradient.addColorStop(1, '#707070');
+      bgCtx.fillStyle = supportGradient;
+      bgCtx.fillRect(supportX, supportY, supportWidth, supportHeight);
+
+      bgCtx.strokeStyle = '#606060';
+      bgCtx.lineWidth = 2;
+      bgCtx.strokeRect(supportX, supportY, supportWidth, supportHeight);
+
+      // Bolt holes
+      bgCtx.fillStyle = '#404040';
+      for (let i = 0; i < 3; i++) {
+        const holeX = supportX + 20 + i * 40;
+        const holeY = supportY + supportHeight / 2;
+        bgCtx.beginPath();
+        bgCtx.arc(holeX, holeY, 4, 0, Math.PI * 2);
+        bgCtx.fill();
+        bgCtx.strokeStyle = '#505050';
+        bgCtx.lineWidth = 1;
+        bgCtx.beginPath();
+        bgCtx.moveTo(holeX - 3, holeY);
+        bgCtx.lineTo(holeX + 3, holeY);
+        bgCtx.moveTo(holeX, holeY - 3);
+        bgCtx.lineTo(holeX, holeY + 3);
+        bgCtx.stroke();
+      }
+
+      // Attachment point
+      bgCtx.fillStyle = '#303030';
+      bgCtx.beginPath();
+      bgCtx.arc(canvasCenterX, supportY + supportHeight, 5, 0, Math.PI * 2);
+      bgCtx.fill();
+
+      // Equilibrium dashed line
+      bgCtx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      bgCtx.setLineDash([5, 5]);
+      bgCtx.beginPath();
+      bgCtx.moveTo(50, supportY + supportHeight + springLength);
+      bgCtx.lineTo(simBackgroundCanvas.width - 50, supportY + supportHeight + springLength);
+      bgCtx.stroke();
+      bgCtx.setLineDash([]);
+
+      needsRedrawSimBackground = false;
+    }
+
     function drawHelicalSpring(startY, endY) {
       const totalLength = endY - startY;
       const coils = springCoils;
       const radius = springRadius;
-      ctx.save();
       const points = [];
       const segmentsPerCoil = 20;
+
+      // Generate spring points
       for (let i = 0; i <= coils * segmentsPerCoil; i++) {
         const progress = i / (coils * segmentsPerCoil);
         const yPos = startY + progress * totalLength;
@@ -651,15 +744,8 @@ nav a:hover {
         const y = yPos;
         points.push({x, y});
       }
-      ctx.beginPath();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      for (let i = 0; i < points.length; i++) {
-        if (i === 0) ctx.moveTo(points[i].x + 2, points[i].y + 2);
-        else ctx.lineTo(points[i].x + 2, points[i].y + 2);
-      }
-      ctx.stroke();
+
+      // Draw main spring body
       ctx.beginPath();
       ctx.strokeStyle = '#181b59';
       ctx.lineWidth = 3;
@@ -669,6 +755,8 @@ nav a:hover {
         else ctx.lineTo(points[i].x, points[i].y);
       }
       ctx.stroke();
+
+      // Draw highlights (simplified for performance)
       ctx.beginPath();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.lineWidth = 1;
@@ -683,25 +771,25 @@ nav a:hover {
         }
       }
       ctx.stroke();
-      ctx.restore();
     }
     function drawRealisticMass(massY) {
       const sideLength = ballRadius * 2;
       const x = canvasCenterX - ballRadius;
       const y = massY - ballRadius;
-      ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 5;
+
+      // Draw mass with gradient (no shadow for performance)
       const gradient = ctx.createLinearGradient(x, y, x, y + sideLength);
       gradient.addColorStop(0, '#A0522D');
       gradient.addColorStop(0.5, '#8B4513');
       gradient.addColorStop(1, '#654321');
       ctx.fillStyle = gradient;
       ctx.fillRect(x, y, sideLength, sideLength);
+
       ctx.strokeStyle = '#5D4037';
       ctx.lineWidth = 2;
       ctx.strokeRect(x, y, sideLength, sideLength);
+
+      // Highlights
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -712,108 +800,75 @@ nav a:hover {
       ctx.moveTo(x + 5, y + sideLength - 5);
       ctx.lineTo(x + sideLength - 5, y + sideLength - 5);
       ctx.stroke();
-      ctx.restore();
-    }
-    function drawRealisticSupport() {
-      const supportWidth = 120;
-      const supportHeight = 40;
-      const supportX = canvasCenterX - supportWidth / 2;
-      const supportY = 20;
-      ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 5;
-      const gradient = ctx.createLinearGradient(supportX, supportY, supportX, supportY + supportHeight);
-      gradient.addColorStop(0, '#B0B0B0');
-      gradient.addColorStop(0.5, '#909090');
-      gradient.addColorStop(1, '#707070');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(supportX, supportY, supportWidth, supportHeight);
-      ctx.strokeStyle = '#606060';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(supportX, supportY, supportWidth, supportHeight);
-      ctx.fillStyle = '#404040';
-      for (let i = 0; i < 3; i++) {
-        const holeX = supportX + 20 + i * 40;
-        const holeY = supportY + supportHeight / 2;
-        ctx.beginPath();
-        ctx.arc(holeX, holeY, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#505050';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(holeX - 3, holeY);
-        ctx.lineTo(holeX + 3, holeY);
-        ctx.moveTo(holeX, holeY - 3);
-        ctx.lineTo(holeX, holeY + 3);
-        ctx.stroke();
-      }
-      ctx.restore();
-      ctx.fillStyle = '#303030';
-      ctx.beginPath();
-      ctx.arc(canvasCenterX, supportY + supportHeight, 5, 0, Math.PI * 2);
-      ctx.fill();
     }
     function drawSpringMass() {
-      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      gradient.addColorStop(0, '#E3F2FD');
-      gradient.addColorStop(1, '#BBDEFB');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#795548';
-      ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
-      ctx.strokeStyle = '#6D4C41';
-      ctx.lineWidth = 2;
-      for (let i = 0; i < canvas.width; i += 20) {
-        ctx.beginPath();
-        ctx.moveTo(i, canvas.height - 50);
-        ctx.lineTo(i, canvas.height);
-        ctx.stroke();
+      // Draw static background from offscreen canvas
+      if (needsRedrawSimBackground || !simBackgroundCanvas) {
+        createSimBackground();
       }
-      drawRealisticSupport();
+      ctx.drawImage(simBackgroundCanvas, 0, 0);
+
+      // Draw dynamic elements only
       const supportBottom = 20 + 40;
       const displacement = y * 80;
       const springEnd = supportBottom + springLength + displacement;
       drawHelicalSpring(supportBottom, springEnd);
       drawRealisticMass(springEnd);
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
-      ctx.setLineDash([5, 5]);
-      ctx.beginPath();
-      ctx.moveTo(50, supportBottom + springLength);
-      ctx.lineTo(canvas.width - 50, supportBottom + springLength);
-      ctx.stroke();
-      ctx.setLineDash([]);
     }
-    function drawGraph() {
-      graphCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
-      const gradient = graphCtx.createLinearGradient(0, 0, 0, graphCanvas.height);
+
+    // Create offscreen canvas for static graph background
+    function createGraphBackground() {
+      if (!graphBackgroundCanvas) {
+        graphBackgroundCanvas = document.createElement('canvas');
+        graphBackgroundCanvas.width = graphCanvas.width;
+        graphBackgroundCanvas.height = graphCanvas.height;
+      }
+      const bgCtx = graphBackgroundCanvas.getContext('2d');
+
+      // Background gradient
+      const gradient = bgCtx.createLinearGradient(0, 0, 0, graphBackgroundCanvas.height);
       gradient.addColorStop(0, '#f8f9fa');
       gradient.addColorStop(1, '#e9ecef');
-      graphCtx.fillStyle = gradient;
-      graphCtx.fillRect(0, 0, graphCanvas.width, graphCanvas.height);
-      graphCtx.strokeStyle = '#ddd';
-      graphCtx.lineWidth = 0.5;
+      bgCtx.fillStyle = gradient;
+      bgCtx.fillRect(0, 0, graphBackgroundCanvas.width, graphBackgroundCanvas.height);
+
+      // Grid lines
+      bgCtx.strokeStyle = '#ddd';
+      bgCtx.lineWidth = 0.5;
       for (let i = 1; i < 7; i++) {
-        const x = 50 + (i * (graphCanvas.width - 70)) / 6;
-        graphCtx.beginPath();
-        graphCtx.moveTo(x, 20);
-        graphCtx.lineTo(x, graphCanvas.height - 20);
-        graphCtx.stroke();
+        const x = 50 + (i * (graphBackgroundCanvas.width - 70)) / 6;
+        bgCtx.beginPath();
+        bgCtx.moveTo(x, 20);
+        bgCtx.lineTo(x, graphBackgroundCanvas.height - 20);
+        bgCtx.stroke();
       }
       for (let i = 1; i < 5; i++) {
-        const y = 20 + (i * (graphCanvas.height - 40)) / 4;
-        graphCtx.beginPath();
-        graphCtx.moveTo(50, y);
-        graphCtx.lineTo(graphCanvas.width - 20, y);
-        graphCtx.stroke();
+        const y = 20 + (i * (graphBackgroundCanvas.height - 40)) / 4;
+        bgCtx.beginPath();
+        bgCtx.moveTo(50, y);
+        bgCtx.lineTo(graphBackgroundCanvas.width - 20, y);
+        bgCtx.stroke();
       }
-      graphCtx.beginPath();
-      graphCtx.moveTo(50, 20);
-      graphCtx.lineTo(50, graphCanvas.height - 20);
-      graphCtx.lineTo(graphCanvas.width - 20, graphCanvas.height - 20);
-      graphCtx.strokeStyle = '#333';
-      graphCtx.lineWidth = 2;
-      graphCtx.stroke();
+
+      // Axes
+      bgCtx.beginPath();
+      bgCtx.moveTo(50, 20);
+      bgCtx.lineTo(50, graphBackgroundCanvas.height - 20);
+      bgCtx.lineTo(graphBackgroundCanvas.width - 20, graphBackgroundCanvas.height - 20);
+      bgCtx.strokeStyle = '#333';
+      bgCtx.lineWidth = 2;
+      bgCtx.stroke();
+
+      needsRedrawGraphBackground = false;
+    }
+
+    function drawGraph() {
+      // Draw static background from offscreen canvas
+      if (needsRedrawGraphBackground || !graphBackgroundCanvas) {
+        createGraphBackground();
+      }
+      graphCtx.drawImage(graphBackgroundCanvas, 0, 0);
+
       if (graphData.length === 0) return;
       const maxY = Math.max(...graphData.map(d => d.y));
       const minY = Math.min(...graphData.map(d => d.y));
