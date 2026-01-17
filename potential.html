@@ -39,11 +39,16 @@
             border-radius: 12px;
             background: white;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
-        canvas:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+        /* Only enable hover effects on non-touch devices for better mobile performance */
+        @media (hover: hover) and (pointer: fine) {
+            canvas {
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            canvas:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+            }
         }
         #controls {
             background: rgba(255, 255, 255, 0.9);
@@ -275,7 +280,6 @@
 
         // Simulation step function
         function simulateStep() {
-            const dt = 0.015;
             if (useStiffSolver) {
                 if (yHistory.length < 2) {
                     const result = rk4Step(x, v, dt, c);
@@ -340,164 +344,190 @@
             return plotTop + plotSize - ((v - phaseBounds.vMin) / (phaseBounds.vMax - phaseBounds.vMin)) * plotSize;
         }
 
-        // Drawing functions with enhanced 3D effects
-        function drawPotentialCurve() {
+        // Create offscreen canvas for static potential curve background
+        function createCurveBackground() {
+            if (!curveBackgroundCanvas) {
+                curveBackgroundCanvas = document.createElement('canvas');
+                curveBackgroundCanvas.width = curveCanvas.width;
+                curveBackgroundCanvas.height = curveCanvas.height;
+            }
+            const ctx = curveBackgroundCanvas.getContext('2d');
+
             // Clear with gradient background
-            const gradient = curveCtx.createLinearGradient(0, 0, 0, curveCanvas.height);
+            const gradient = ctx.createLinearGradient(0, 0, 0, curveBackgroundCanvas.height);
             gradient.addColorStop(0, '#e6f3ff');
             gradient.addColorStop(1, '#cce7ff');
-            curveCtx.fillStyle = gradient;
-            curveCtx.fillRect(0, 0, curveCanvas.width, curveCanvas.height);
-            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, curveBackgroundCanvas.width, curveBackgroundCanvas.height);
+
             // Draw grid
-            curveCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-            curveCtx.lineWidth = 1;
-            for (let x = 0; x <= curveCanvas.width; x += 50) {
-                curveCtx.beginPath();
-                curveCtx.moveTo(x, 0);
-                curveCtx.lineTo(x, curveCanvas.height);
-                curveCtx.stroke();
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= curveBackgroundCanvas.width; x += 50) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, curveBackgroundCanvas.height);
+                ctx.stroke();
             }
-            for (let y = 0; y <= curveCanvas.height; y += 50) {
-                curveCtx.beginPath();
-                curveCtx.moveTo(0, y);
-                curveCtx.lineTo(curveCanvas.width, y);
-                curveCtx.stroke();
+            for (let y = 0; y <= curveBackgroundCanvas.height; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(curveBackgroundCanvas.width, y);
+                ctx.stroke();
             }
-            
+
             // Draw the potential curve with 3D effect
-            curveCtx.beginPath();
-            curveCtx.moveTo(0, curveCanvas.height - bottomMargin);
+            ctx.beginPath();
+            ctx.moveTo(0, curveBackgroundCanvas.height - bottomMargin);
             for (let x = -2.5; x <= 2.5; x += 0.05) {
-                curveCtx.lineTo(xToCurve(x), yToCurve(potential(x)));
+                ctx.lineTo(xToCurve(x), yToCurve(potential(x)));
             }
-            curveCtx.lineTo(curveCanvas.width, curveCanvas.height - bottomMargin);
-            curveCtx.closePath();
-            
+            ctx.lineTo(curveBackgroundCanvas.width, curveBackgroundCanvas.height - bottomMargin);
+            ctx.closePath();
+
             // Create gradient for the curve area
-            const areaGradient = curveCtx.createLinearGradient(0, 0, 0, curveCanvas.height);
+            const areaGradient = ctx.createLinearGradient(0, 0, 0, curveBackgroundCanvas.height);
             areaGradient.addColorStop(0, 'rgba(135, 206, 250, 0.7)');
             areaGradient.addColorStop(1, 'rgba(70, 130, 180, 0.7)');
-            curveCtx.fillStyle = areaGradient;
-            curveCtx.fill();
-            
-            // Draw curve line with shadow
-            curveCtx.strokeStyle = '#1e3a8a';
-            curveCtx.lineWidth = 3;
-            curveCtx.beginPath();
+            ctx.fillStyle = areaGradient;
+            ctx.fill();
+
+            // Draw curve line
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
             for (let x = -2.5; x <= 2.5; x += 0.05) {
                 if (x === -2.5) {
-                    curveCtx.moveTo(xToCurve(x), yToCurve(potential(x)));
+                    ctx.moveTo(xToCurve(x), yToCurve(potential(x)));
                 } else {
-                    curveCtx.lineTo(xToCurve(x), yToCurve(potential(x)));
+                    ctx.lineTo(xToCurve(x), yToCurve(potential(x)));
                 }
             }
-            curveCtx.stroke();
-            
+            ctx.stroke();
+
             // Draw axes with arrowheads
-            curveCtx.strokeStyle = '#2d3748';
-            curveCtx.lineWidth = 2;
-            
+            ctx.strokeStyle = '#2d3748';
+            ctx.lineWidth = 2;
+
             // X-axis
-            curveCtx.beginPath();
-            curveCtx.moveTo(50, curveCanvas.height - bottomMargin);
-            curveCtx.lineTo(curveCanvas.width - 20, curveCanvas.height - bottomMargin);
+            ctx.beginPath();
+            ctx.moveTo(50, curveBackgroundCanvas.height - bottomMargin);
+            ctx.lineTo(curveBackgroundCanvas.width - 20, curveBackgroundCanvas.height - bottomMargin);
             // Arrowhead
-            curveCtx.lineTo(curveCanvas.width - 30, curveCanvas.height - bottomMargin - 5);
-            curveCtx.moveTo(curveCanvas.width - 20, curveCanvas.height - bottomMargin);
-            curveCtx.lineTo(curveCanvas.width - 30, curveCanvas.height - bottomMargin + 5);
-            curveCtx.stroke();
-            
+            ctx.lineTo(curveBackgroundCanvas.width - 30, curveBackgroundCanvas.height - bottomMargin - 5);
+            ctx.moveTo(curveBackgroundCanvas.width - 20, curveBackgroundCanvas.height - bottomMargin);
+            ctx.lineTo(curveBackgroundCanvas.width - 30, curveBackgroundCanvas.height - bottomMargin + 5);
+            ctx.stroke();
+
             // Y-axis
-            curveCtx.beginPath();
-            curveCtx.moveTo(50, curveCanvas.height - 20);
-            curveCtx.lineTo(50, 30);
+            ctx.beginPath();
+            ctx.moveTo(50, curveBackgroundCanvas.height - 20);
+            ctx.lineTo(50, 30);
             // Arrowhead
-            curveCtx.lineTo(45, 40);
-            curveCtx.moveTo(50, 30);
-            curveCtx.lineTo(55, 40);
-            curveCtx.stroke();
-            
+            ctx.lineTo(45, 40);
+            ctx.moveTo(50, 30);
+            ctx.lineTo(55, 40);
+            ctx.stroke();
+
             // Axis labels
-            curveCtx.fillStyle = '#2d3748';
-            curveCtx.font = 'bold 14px Arial';
-            curveCtx.textAlign = 'center';
-            curveCtx.fillText('x', curveCanvas.width - 10, curveCanvas.height - bottomMargin + 20);
-            curveCtx.textAlign = 'left';
-            curveCtx.fillText('U(x)', 30, 20);
-            
+            ctx.fillStyle = '#2d3748';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('x', curveBackgroundCanvas.width - 10, curveBackgroundCanvas.height - bottomMargin + 20);
+            ctx.textAlign = 'left';
+            ctx.fillText('U(x)', 30, 20);
+
             // Scale markings
-            curveCtx.strokeStyle = '#4a5568';
-            curveCtx.lineWidth = 1;
-            curveCtx.beginPath();
+            ctx.strokeStyle = '#4a5568';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
             for (let x = -2.5; x <= 2.5; x += 0.5) {
                 const px = xToCurve(x);
-                curveCtx.moveTo(px, curveCanvas.height - bottomMargin - 5);
-                curveCtx.lineTo(px, curveCanvas.height - bottomMargin);
-                curveCtx.fillStyle = '#4a5568';
-                curveCtx.fillText(x.toFixed(1), px, curveCanvas.height - bottomMargin + 20);
+                ctx.moveTo(px, curveBackgroundCanvas.height - bottomMargin - 5);
+                ctx.lineTo(px, curveBackgroundCanvas.height - bottomMargin);
+                ctx.fillStyle = '#4a5568';
+                ctx.fillText(x.toFixed(1), px, curveBackgroundCanvas.height - bottomMargin + 20);
             }
-            curveCtx.stroke();
+            ctx.stroke();
+
+            needsRedrawCurveBackground = false;
         }
 
-        function drawPhasePlot() {
+        // Drawing functions with enhanced 3D effects
+        function drawPotentialCurve() {
+            // Draw static background from offscreen canvas
+            if (needsRedrawCurveBackground || !curveBackgroundCanvas) {
+                createCurveBackground();
+            }
+            curveCtx.drawImage(curveBackgroundCanvas, 0, 0);
+        }
+
+        // Create offscreen canvas for static phase plot background
+        function createPhaseBackground() {
+            if (!phaseBackgroundCanvas) {
+                phaseBackgroundCanvas = document.createElement('canvas');
+                phaseBackgroundCanvas.width = phaseCanvas.width;
+                phaseBackgroundCanvas.height = phaseCanvas.height;
+            }
+            const ctx = phaseBackgroundCanvas.getContext('2d');
+
             // Clear with gradient background
-            const gradient = phaseCtx.createLinearGradient(0, 0, 0, phaseCanvas.height);
+            const gradient = ctx.createLinearGradient(0, 0, 0, phaseBackgroundCanvas.height);
             gradient.addColorStop(0, '#f0f9ff');
             gradient.addColorStop(1, '#e1f5fe');
-            phaseCtx.fillStyle = gradient;
-            phaseCtx.fillRect(0, 0, phaseCanvas.width, phaseCanvas.height);
-            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, phaseBackgroundCanvas.width, phaseBackgroundCanvas.height);
+
             // Draw grid
-            phaseCtx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-            phaseCtx.lineWidth = 1;
-            for (let x = 0; x <= phaseCanvas.width; x += 40) {
-                phaseCtx.beginPath();
-                phaseCtx.moveTo(x, 0);
-                phaseCtx.lineTo(x, phaseCanvas.height);
-                phaseCtx.stroke();
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= phaseBackgroundCanvas.width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, phaseBackgroundCanvas.height);
+                ctx.stroke();
             }
-            for (let y = 0; y <= phaseCanvas.height; y += 40) {
-                phaseCtx.beginPath();
-                phaseCtx.moveTo(0, y);
-                phaseCtx.lineTo(phaseCanvas.width, y);
-                phaseCtx.stroke();
+            for (let y = 0; y <= phaseBackgroundCanvas.height; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(phaseBackgroundCanvas.width, y);
+                ctx.stroke();
             }
-            
+
             // Draw axes with arrowheads
-            phaseCtx.strokeStyle = '#2d3748';
-            phaseCtx.lineWidth = 2;
-            
+            ctx.strokeStyle = '#2d3748';
+            ctx.lineWidth = 2;
+
             // X-axis
-            phaseCtx.beginPath();
-            phaseCtx.moveTo(plotPadding, phaseCanvas.height - plotPadding);
-            phaseCtx.lineTo(phaseCanvas.width - 20, phaseCanvas.height - plotPadding);
+            ctx.beginPath();
+            ctx.moveTo(plotPadding, phaseBackgroundCanvas.height - plotPadding);
+            ctx.lineTo(phaseBackgroundCanvas.width - 20, phaseBackgroundCanvas.height - plotPadding);
             // Arrowhead
-            phaseCtx.lineTo(phaseCanvas.width - 30, phaseCanvas.height - plotPadding - 5);
-            phaseCtx.moveTo(phaseCanvas.width - 20, phaseCanvas.height - plotPadding);
-            phaseCtx.lineTo(phaseCanvas.width - 30, phaseCanvas.height - plotPadding + 5);
-            phaseCtx.stroke();
-            
+            ctx.lineTo(phaseBackgroundCanvas.width - 30, phaseBackgroundCanvas.height - plotPadding - 5);
+            ctx.moveTo(phaseBackgroundCanvas.width - 20, phaseBackgroundCanvas.height - plotPadding);
+            ctx.lineTo(phaseBackgroundCanvas.width - 30, phaseBackgroundCanvas.height - plotPadding + 5);
+            ctx.stroke();
+
             // Y-axis
-            phaseCtx.beginPath();
-            phaseCtx.moveTo(plotPadding, phaseCanvas.height - 20);
-            phaseCtx.lineTo(plotPadding, 20);
+            ctx.beginPath();
+            ctx.moveTo(plotPadding, phaseBackgroundCanvas.height - 20);
+            ctx.lineTo(plotPadding, 20);
             // Arrowhead
-            phaseCtx.lineTo(plotPadding - 5, 30);
-            phaseCtx.moveTo(plotPadding, 20);
-            phaseCtx.lineTo(plotPadding + 5, 30);
-            phaseCtx.stroke();
-            
+            ctx.lineTo(plotPadding - 5, 30);
+            ctx.moveTo(plotPadding, 20);
+            ctx.lineTo(plotPadding + 5, 30);
+            ctx.stroke();
+
             // Axis labels
-            phaseCtx.fillStyle = '#2d3748';
-            phaseCtx.font = 'bold 14px Arial';
-            phaseCtx.textAlign = 'center';
-            phaseCtx.fillText('x', phaseCanvas.width - 10, phaseCanvas.height - plotPadding + 20);
-            phaseCtx.textAlign = 'right';
-            phaseCtx.fillText('v', plotPadding - 10, 20);
-            
+            ctx.fillStyle = '#2d3748';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('x', phaseBackgroundCanvas.width - 10, phaseBackgroundCanvas.height - plotPadding + 20);
+            ctx.textAlign = 'right';
+            ctx.fillText('v', plotPadding - 10, 20);
+
             // Scale markings
-            phaseCtx.textAlign = 'center';
+            ctx.textAlign = 'center';
             // X-axis labels
             const xLabels = [
                 phaseBounds.xMin.toFixed(1),
@@ -507,11 +537,11 @@
             xLabels.forEach((xVal, i) => {
                 const xPos = phaseBounds.xMin + (i * (phaseBounds.xMax - phaseBounds.xMin) / 2);
                 const px = xToPhase(xPos);
-                phaseCtx.fillText(xVal, px, phaseCanvas.height - plotPadding + 20);
+                ctx.fillText(xVal, px, phaseBackgroundCanvas.height - plotPadding + 20);
             });
-            
+
             // Y-axis labels
-            phaseCtx.textAlign = 'right';
+            ctx.textAlign = 'right';
             const vLabels = [
                 phaseBounds.vMin.toFixed(1),
                 ((phaseBounds.vMin + phaseBounds.vMax) / 2).toFixed(1),
@@ -520,59 +550,55 @@
             vLabels.forEach((vVal, i) => {
                 const vPos = phaseBounds.vMin + (i * (phaseBounds.vMax - phaseBounds.vMin) / 2);
                 const py = vToPhase(vPos);
-                phaseCtx.fillText(vVal, plotPadding - 10, py + 5);
+                ctx.fillText(vVal, plotPadding - 10, py + 5);
             });
-            
-            // Draw phase trajectory with gradient
+
+            needsRedrawPhaseBackground = false;
+        }
+
+        function drawPhasePlot() {
+            // Draw static background from offscreen canvas
+            if (needsRedrawPhaseBackground || !phaseBackgroundCanvas) {
+                createPhaseBackground();
+            }
+            phaseCtx.drawImage(phaseBackgroundCanvas, 0, 0);
+
+            // Draw phase trajectory (simplified for performance)
             if (phaseData.length > 1) {
-                // Create gradient for trajectory
-                const gradient = phaseCtx.createLinearGradient(
-                    xToPhase(phaseData[0].x), vToPhase(phaseData[0].y),
-                    xToPhase(phaseData[phaseData.length-1].x), vToPhase(phaseData[phaseData.length-1].y)
-                );
-                gradient.addColorStop(0, '#1e40af');
-                gradient.addColorStop(1, '#7e22ce');
-                
                 phaseCtx.beginPath();
                 phaseCtx.moveTo(xToPhase(phaseData[0].x), vToPhase(phaseData[0].y));
                 for (let i = 1; i < phaseData.length; i++) {
                     phaseCtx.lineTo(xToPhase(phaseData[i].x), vToPhase(phaseData[i].y));
                 }
-                phaseCtx.strokeStyle = gradient;
+                phaseCtx.strokeStyle = '#4f46e5';
                 phaseCtx.lineWidth = 2;
                 phaseCtx.lineJoin = 'round';
                 phaseCtx.lineCap = 'round';
                 phaseCtx.stroke();
-                
-                // Add a glow effect
-                phaseCtx.shadowColor = 'rgba(79, 70, 229, 0.5)';
-                phaseCtx.shadowBlur = 10;
-                phaseCtx.stroke();
-                phaseCtx.shadowBlur = 0;
             }
-            
+
             // Draw current position with 3D effect
             if (phaseData.length > 0) {
                 const current = phaseData[phaseData.length - 1];
                 const px = xToPhase(current.x);
                 const py = vToPhase(current.y);
-                
+
                 // Outer glow
                 phaseCtx.beginPath();
                 phaseCtx.arc(px, py, 10, 0, Math.PI * 2);
                 phaseCtx.fillStyle = 'rgba(220, 38, 38, 0.3)';
                 phaseCtx.fill();
-                
+
                 // Main circle with gradient
                 const ballGradient = phaseCtx.createRadialGradient(px-3, py-3, 1, px, py, 8);
                 ballGradient.addColorStop(0, '#dc2626');
                 ballGradient.addColorStop(1, '#7f1d1d');
-                
+
                 phaseCtx.beginPath();
                 phaseCtx.arc(px, py, 8, 0, Math.PI * 2);
                 phaseCtx.fillStyle = ballGradient;
                 phaseCtx.fill();
-                
+
                 // Highlight
                 phaseCtx.beginPath();
                 phaseCtx.arc(px-2, py-2, 3, 0, Math.PI * 2);
@@ -581,11 +607,11 @@
             }
         }
 
-        // Draw 3D ball on potential curve
+        // Draw 3D ball on potential curve (optimized for mobile)
         function drawBall() {
             const canvasX = xToCurve(x);
             const canvasY = yToCurve(potential(x));
-            
+
             // Compute normal to curve for ball positioning
             const du_dx = 1 - x * x;
             const scale_x = curveCanvas.width / 5;
@@ -594,16 +620,10 @@
             const norm_len = Math.sqrt(m * m + 1);
             const n_x = m / norm_len;
             const n_y = -1 / norm_len;
-            
+
             const ballX = canvasX + ballRadius * n_x;
             const ballY = canvasY + ballRadius * n_y;
-            
-            // Shadow
-            curveCtx.beginPath();
-            curveCtx.ellipse(ballX + 3, ballY + 3, ballRadius, ballRadius/2, 0, 0, Math.PI * 2);
-            curveCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-            curveCtx.fill();
-            
+
             // Ball with gradient for 3D effect
             const ballGradient = curveCtx.createRadialGradient(
                 ballX - ballRadius/3, ballY - ballRadius/3, 1,
@@ -611,12 +631,12 @@
             );
             ballGradient.addColorStop(0, '#f97316');
             ballGradient.addColorStop(1, '#ea580c');
-            
+
             curveCtx.beginPath();
             curveCtx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
             curveCtx.fillStyle = ballGradient;
             curveCtx.fill();
-            
+
             // Highlight
             curveCtx.beginPath();
             curveCtx.arc(ballX - ballRadius/3, ballY - ballRadius/3, ballRadius/3, 0, Math.PI * 2);
@@ -631,8 +651,15 @@
         let yHistory = [];
         let useStiffSolver = false;
         const stepsPerFrame = 5;
-        const dt = 0.05;
+        const dt = 0.01; // Smaller step size for better accuracy (was 0.05)
         let totalTime = 0;
+        const maxPhaseDataPoints = 5000; // Limit phase data to prevent slowdown
+
+        // Offscreen canvases for static content
+        let curveBackgroundCanvas = null;
+        let phaseBackgroundCanvas = null;
+        let needsRedrawCurveBackground = true;
+        let needsRedrawPhaseBackground = true;
 
         // Simulation control functions
         function startSimulation() {
@@ -645,6 +672,7 @@
             yHistory = [[x, v]];
             phaseData = [];
             phaseBounds = { xMin: x, xMax: x, vMin: v, vMax: v };
+            needsRedrawPhaseBackground = true; // Redraw phase background with new bounds
             totalTime = 0;
             // Simulate up to t=0.05 without plotting
             const tTarget = 0.05;
@@ -688,6 +716,12 @@
                     return;
                 }
                 phaseData.push({x, y: v});
+
+                // Limit phase data to prevent performance degradation
+                if (phaseData.length > maxPhaseDataPoints) {
+                    phaseData.shift(); // Remove oldest point
+                }
+
                 updatePhaseBounds(x, v);
             }
             drawPotentialCurve();
