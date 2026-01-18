@@ -759,17 +759,31 @@
                 return { x: [x1, x2], y: [y1, y2] };
             }
 
-            updatePlot() {
+            updatePlot(customBounds = null) {
                 const inequalities = this.getInequalities();
                 const objective = this.getObjective();
                 this.updateInequalitiesDisplay(inequalities);
-                const bounds = this.calculateBounds(inequalities);
+                const bounds = customBounds || this.calculateBounds(inequalities);
                 const rawCornerPoints = this.findCornerPoints(inequalities, bounds);
                 const cornerPoints = this.sortPointsClockwise(rawCornerPoints);
                 this.updateCornerPointsTable(cornerPoints, objective);
 
                 const data = [];
                 const isReverse = this.getShadingMode() === 'reverse';
+
+                // Get actual visible range from plot if it exists, otherwise use calculated bounds
+                let visibleBounds = bounds;
+                if (this.plotInitialized) {
+                    const plotDiv = document.getElementById('plot');
+                    if (plotDiv && plotDiv.layout) {
+                        visibleBounds = {
+                            xMin: plotDiv.layout.xaxis.range[0],
+                            xMax: plotDiv.layout.xaxis.range[1],
+                            yMin: plotDiv.layout.yaxis.range[0],
+                            yMax: plotDiv.layout.yaxis.range[1]
+                        };
+                    }
+                }
 
                 inequalities.forEach((ineq, i) => {
                     const isStrict = ineq.relation === '<' || ineq.relation === '>';
@@ -802,21 +816,21 @@
                         });
                     }
 
-                    // Shading polygons
+                    // Shading polygons - use visibleBounds to extend to entire visible region
                     let x = [], y = [];
                     let shadeAbove = (ineq.relation === '≥' || ineq.relation === '>') && ineq.b > 0 ||
                                     (ineq.relation === '≤' || ineq.relation === '<') && ineq.b < 0;
                     if (isReverse) shadeAbove = !shadeAbove;
 
                     if (Math.abs(ineq.b) > 0.001) {
-                        const yLeft = (ineq.c - ineq.a * bounds.xMin) / ineq.b;
-                        const yRight = (ineq.c - ineq.a * bounds.xMax) / ineq.b;
+                        const yLeft = (ineq.c - ineq.a * visibleBounds.xMin) / ineq.b;
+                        const yRight = (ineq.c - ineq.a * visibleBounds.xMax) / ineq.b;
                         if (shadeAbove) {
-                            x = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin];
-                            y = [yLeft, yRight, bounds.yMax, bounds.yMax];
+                            x = [visibleBounds.xMin, visibleBounds.xMax, visibleBounds.xMax, visibleBounds.xMin];
+                            y = [yLeft, yRight, visibleBounds.yMax, visibleBounds.yMax];
                         } else {
-                            x = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin];
-                            y = [yLeft, yRight, bounds.yMin, bounds.yMin];
+                            x = [visibleBounds.xMin, visibleBounds.xMax, visibleBounds.xMax, visibleBounds.xMin];
+                            y = [yLeft, yRight, visibleBounds.yMin, visibleBounds.yMin];
                         }
                     } else if (Math.abs(ineq.a) > 0.001) {
                         const xVal = ineq.c / ineq.a;
@@ -824,11 +838,11 @@
                                         (ineq.relation === '≤' || ineq.relation === '<') && ineq.a < 0;
                         if (isReverse) shadeRight = !shadeRight;
                         if (shadeRight) {
-                            x = [xVal, bounds.xMax, bounds.xMax, xVal];
-                            y = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax];
+                            x = [xVal, visibleBounds.xMax, visibleBounds.xMax, xVal];
+                            y = [visibleBounds.yMin, visibleBounds.yMin, visibleBounds.yMax, visibleBounds.yMax];
                         } else {
-                            x = [bounds.xMin, xVal, xVal, bounds.xMin];
-                            y = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax];
+                            x = [visibleBounds.xMin, xVal, xVal, visibleBounds.xMin];
+                            y = [visibleBounds.yMin, visibleBounds.yMin, visibleBounds.yMax, visibleBounds.yMax];
                         }
                     } else {
                         return;
@@ -906,7 +920,8 @@
                     responsive: true,
                     displayModeBar: true,
                     displaylogo: false,
-                    modeBarButtonsToRemove: ['lasso2d', 'select2d']
+                    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+                    scrollZoom: true
                 };
 
                 if (this.plotInitialized) {
@@ -914,6 +929,16 @@
                 } else {
                     Plotly.newPlot('plot', data, layout, config);
                     this.plotInitialized = true;
+
+                    // Add event listener for pan/zoom to update shading
+                    const plotDiv = document.getElementById('plot');
+                    plotDiv.on('plotly_relayout', (eventData) => {
+                        // Check if this is a pan/zoom event (range changed)
+                        if (eventData['xaxis.range[0]'] !== undefined || eventData['xaxis.range'] !== undefined) {
+                            // Redraw with updated visible bounds
+                            this.updatePlot();
+                        }
+                    });
                 }
             }
 
