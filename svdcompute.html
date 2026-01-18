@@ -54,13 +54,6 @@
       <label class="flex items-center"><input type="radio" name="svdType" value="full" checked class="mr-2">Full</label>
       <label class="flex items-center"><input type="radio" name="svdType" value="economy" class="mr-2">Economy (reduced rank)</label>
     </div>
-    <div class="flex justify-center mb-6 space-x-6">
-      <span class="text-gray-700">Display:</span>
-      <select id="displayType" class="p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <option value="decimals">Decimals</option>
-        <option value="surds" selected>Surds</option>
-      </select>
-    </div>
     <div class="flex justify-center space-x-4 mb-6">
       <button id="calcBtn" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Compute SVD</button>
       <button id="clearBtn" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
@@ -199,7 +192,6 @@
       document.getElementById("n").value = "";
       document.getElementById("matrixInput").innerHTML = "";
       document.getElementById("result").innerHTML = "";
-      document.getElementById("displayType").value = "surds";
       document.querySelector('input[name="svdType"][value="full"]').checked = true;
     }
 
@@ -453,6 +445,20 @@
       return false;
     }
 
+    function determineDisplayMode(matrices) {
+      // Check if all values in all matrices can be represented as surds or fractions
+      for (const matrix of matrices) {
+        for (const row of matrix) {
+          for (const val of row) {
+            if (!canRepresentAsSurdOrFraction(val)) {
+              return "decimals";
+            }
+          }
+        }
+      }
+      return "surds";
+    }
+
     function formatForLatex(val, mode) {
       if (Math.abs(val) < 1e-7) return "0";
       if (mode === "decimals") {
@@ -548,7 +554,6 @@
         if (!A) return;
         let { U, Sigma, Vt, singularValues } = computeSVD(A);
         let svdType = document.querySelector('input[name="svdType"]:checked').value;
-        let displayType = document.getElementById("displayType").value;
         let U_disp, S_disp, Vt_disp, th = 1e-7;
         if (svdType === "economy") {
           let keep = [];
@@ -564,32 +569,11 @@
           Vt_disp = Vt;
         }
 
-        // If surds mode is selected, check if all values can be represented as surds/fractions
-        if (displayType === "surds") {
-          let allRepresentable = true;
-          const checkMatrix = (M) => {
-            for (let row of M) {
-              for (let val of row) {
-                if (!canRepresentAsSurdOrFraction(val)) {
-                  allRepresentable = false;
-                  return;
-                }
-              }
-            }
-          };
-          checkMatrix(A);
-          if (allRepresentable) checkMatrix(U_disp);
-          if (allRepresentable) checkMatrix(S_disp);
-          if (allRepresentable) checkMatrix(Vt_disp);
-
-          // If not all values can be represented, fall back to decimals
-          if (!allRepresentable) {
-            displayType = "decimals";
-          }
-        }
+        // Automatically determine display mode: surds if possible, otherwise decimals
+        const displayMode = determineDisplayMode([A, U_disp, S_disp, Vt_disp]);
 
         let A_label = "\\mathbf{A}", U_label = "\\mathbf{U}", S_label = "\\boldsymbol{\\Sigma}", Vt_label = "\\mathbf{V}^T";
-        let resultLatex = `${A_label} = ${U_label} ${S_label} ${Vt_label} \\\\${matrixToLatex(A, displayType)} = ${matrixToLatex(U_disp, displayType)} \\; ${matrixToLatex(S_disp, displayType)} \\; ${matrixToLatex(Vt_disp, displayType)}`;
+        let resultLatex = `${A_label} = ${U_label} ${S_label} ${Vt_label} \\\\${matrixToLatex(A, displayMode)} = ${matrixToLatex(U_disp, displayMode)} \\; ${matrixToLatex(S_disp, displayMode)} \\; ${matrixToLatex(Vt_disp, displayMode)}`;
         resultDiv.innerHTML = `<div class="latex">$$${resultLatex}$$</div>`;
         renderMathInElement(resultDiv, {
           delimiters: [{ left: "$$", right: "$$", display: true }],
@@ -603,5 +587,4 @@
     });
   </script>
 </body>
-
 </html>
