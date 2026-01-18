@@ -295,7 +295,7 @@
     const labelsG = g.append('g').attr('class', 'labels-group');
 
     // Draw arrow helper
-    function drawArrow(group, x1, y1, x2, y2, color, label) {
+    function drawArrow(group, x1, y1, x2, y2, color, label, isLatex = false) {
       const dx = x2 - x1;
       const dy = y2 - y1;
       const length = Math.sqrt(dx * dx + dy * dy);
@@ -322,12 +322,28 @@
 
       if (label) {
         const offset = 15;
-        labelsG.append('text')
-          .attr('class', 'vector-label')
-          .attr('x', xScale(x2) + offset)
-          .attr('y', yScale(y2) - offset)
-          .attr('fill', color)
-          .html(label);
+        const foreignObj = labelsG.append('foreignObject')
+          .attr('x', xScale(x2) + offset - 30)
+          .attr('y', yScale(y2) - offset - 15)
+          .attr('width', 100)
+          .attr('height', 40)
+          .attr('class', 'label-container');
+
+        const labelDiv = foreignObj.append('xhtml:div')
+          .style('color', color)
+          .style('font-size', '16px')
+          .style('font-weight', 'bold')
+          .style('background', 'rgba(255, 255, 255, 0.9)')
+          .style('padding', '2px 6px')
+          .style('border-radius', '4px')
+          .style('text-shadow', '0 0 3px white')
+          .style('white-space', 'nowrap');
+
+        if (isLatex) {
+          labelDiv.html(`\\(${label}\\)`);
+        } else {
+          labelDiv.html(label);
+        }
       }
     }
 
@@ -354,9 +370,9 @@
           .attr('stroke-width', 1);
       }
 
-      // Draw vectors
-      const v1Label = formatCoefficient(c1) ? `${formatCoefficient(c1)} <tspan font-weight="bold">v</tspan><tspan baseline-shift="sub" font-size="0.8em">1</tspan>` : '<tspan font-weight="bold">v</tspan><tspan baseline-shift="sub" font-size="0.8em">1</tspan>';
-      const v2Label = formatCoefficient(c2) ? `${formatCoefficient(c2)} <tspan font-weight="bold">v</tspan><tspan baseline-shift="sub" font-size="0.8em">2</tspan>` : '<tspan font-weight="bold">v</tspan><tspan baseline-shift="sub" font-size="0.8em">2</tspan>';
+      // Draw vectors - create LaTeX labels
+      const v1LatexLabel = c1 === 1 ? '\\mathbf{v_1}' : c1 === -1 ? '-\\mathbf{v_1}' : `${formatCoefficient(c1)} \\mathbf{v_1}`;
+      const v2LatexLabel = c2 === 1 ? '\\mathbf{v_2}' : c2 === -1 ? '-\\mathbf{v_2}' : `${formatCoefficient(c2)} \\mathbf{v_2}`;
 
       const terms = [];
       if (c1 !== 0) terms.push(c1 === -1 ? '-\\mathbf{v_1}' : c1 === 1 ? '\\mathbf{v_1}' : `${formatCoefficient(c1)} \\mathbf{v_1}`);
@@ -370,14 +386,14 @@
         }
       }
 
-      if (c1 !== 0) drawArrow(plotG, 0, 0, scaledV1.x, scaledV1.y, '#b91c1c', v1Label);
-      if (c2 !== 0) drawArrow(plotG, 0, 0, scaledV2.x, scaledV2.y, '#1e40af', v2Label);
-      if (sum.x !== 0 || sum.y !== 0) drawArrow(plotG, 0, 0, sum.x, sum.y, '#000', sumLabel);
+      if (c1 !== 0) drawArrow(plotG, 0, 0, scaledV1.x, scaledV1.y, '#b91c1c', v1LatexLabel, true);
+      if (c2 !== 0) drawArrow(plotG, 0, 0, scaledV2.x, scaledV2.y, '#1e40af', v2LatexLabel, true);
+      if (sum.x !== 0 || sum.y !== 0) drawArrow(plotG, 0, 0, sum.x, sum.y, '#000', sumLabel, true);
 
       document.getElementById('solution-info').innerHTML = `Linear Combination: \\(${sumLabel} = \\begin{bmatrix} ${formatCoordinate(sum.x)} \\\\ ${formatCoordinate(sum.y)} \\end{bmatrix}\\)`;
 
       if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetPromise(['#solution-info']).catch(err => console.warn('MathJax error:', err));
+        MathJax.typesetPromise(['#solution-info', '#plot-svg']).catch(err => console.warn('MathJax error:', err));
       }
     }
 
@@ -467,12 +483,23 @@
               .attr('y2', yScale(points[1][1]))
               .attr('stroke', color);
 
-            labelsG.append('text')
-              .attr('class', 'vector-label')
-              .attr('x', xScale(points[0][0]) + 15)
-              .attr('y', yScale(points[0][1]) - 15)
-              .attr('fill', color)
-              .html(label);
+            const foreignObj = labelsG.append('foreignObject')
+              .attr('x', xScale(points[0][0]) + 15 - 20)
+              .attr('y', yScale(points[0][1]) - 15 - 15)
+              .attr('width', 80)
+              .attr('height', 40)
+              .attr('class', 'label-container');
+
+            foreignObj.append('xhtml:div')
+              .style('color', color)
+              .style('font-size', '16px')
+              .style('font-weight', 'bold')
+              .style('background', 'rgba(255, 255, 255, 0.9)')
+              .style('padding', '2px 6px')
+              .style('border-radius', '4px')
+              .style('text-shadow', '0 0 3px white')
+              .style('white-space', 'nowrap')
+              .html(`\\(${label}\\)`);
           }
         }
 
@@ -481,8 +508,8 @@
           const x = D_x / D;
           const y = D_y / D;
 
-          drawLine(a1, b1, c1, '#991b1b', 'L<tspan baseline-shift="sub" font-size="0.8em">1</tspan>');
-          drawLine(a2, b2, c2, '#1e3a8a', 'L<tspan baseline-shift="sub" font-size="0.8em">2</tspan>');
+          drawLine(a1, b1, c1, '#991b1b', 'L_1');
+          drawLine(a2, b2, c2, '#1e3a8a', 'L_2');
 
           plotG.append('circle')
             .attr('class', 'solution-point')
@@ -493,17 +520,17 @@
           document.getElementById('solution-info').innerHTML = `Solution: \\(\\begin{bmatrix} ${formatCoordinate(x)} \\\\ ${formatCoordinate(y)} \\end{bmatrix}\\)`;
         } else if (Math.abs(D_x) < 1e-10 && Math.abs(D_y) < 1e-10) {
           // Infinitely many solutions
-          drawLine(a1, b1, c1, '#166534', 'L<tspan baseline-shift="sub" font-size="0.8em">1</tspan> and L<tspan baseline-shift="sub" font-size="0.8em">2</tspan>');
+          drawLine(a1, b1, c1, '#166534', 'L_1 \\text{ and } L_2');
           document.getElementById('solution-info').innerHTML = 'Infinitely many solutions (coincident lines)';
         } else {
           // No solution
-          drawLine(a1, b1, c1, '#991b1b', 'L<tspan baseline-shift="sub" font-size="0.8em">1</tspan>');
-          drawLine(a2, b2, c2, '#1e3a8a', 'L<tspan baseline-shift="sub" font-size="0.8em">2</tspan>');
+          drawLine(a1, b1, c1, '#991b1b', 'L_1');
+          drawLine(a2, b2, c2, '#1e3a8a', 'L_2');
           document.getElementById('solution-info').innerHTML = 'No solution (parallel lines)';
         }
 
         if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-          MathJax.typesetPromise(['#solution-info']).catch(err => console.warn('MathJax error:', err));
+          MathJax.typesetPromise(['#solution-info', '#plot-svg']).catch(err => console.warn('MathJax error:', err));
         }
       } catch (error) {
         displayError(error.message);
