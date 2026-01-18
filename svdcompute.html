@@ -67,20 +67,25 @@
     </div>
     <div id="result" class="mt-6 p-4 bg-gray-50 rounded-lg"></div>
     <div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
-      &copy; 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: August 11, 2025
-      <br>
-      Licensed under the <a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a>.
-    </div>
+      &copy; 2025 Shelvean Kapita: kapita@tamu.edu <br> Last modified: August 11, 2025
+      <br>
+      Licensed under the <a href="https://opensource.org/licenses/MIT" target="_blank">MIT License</a>.
+    </div>
   </div>
   <script>
+    // Render static math content on page load (exclude dynamic areas)
     document.addEventListener("DOMContentLoaded", () => {
-      renderMathInElement(document.body, {
-        delimiters: [
-          { left: "$$", right: "$$", display: true },
-          { left: "$", right: "$", display: false }
-        ],
-        throwOnError: false,
-        strict: false
+      // Only render the header and description, not matrixInput or result divs
+      const staticElements = document.querySelectorAll('h2, p, .bg-gray-50:not(#result)');
+      staticElements.forEach(elem => {
+        renderMathInElement(elem, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false,
+          strict: false
+        });
       });
     });
 
@@ -224,11 +229,26 @@
     function readMatrix() {
       let m = parseInt(document.getElementById("m").value, 10);
       let n = parseInt(document.getElementById("n").value, 10);
+
+      // Pre-cache all DOM elements to avoid repeated lookups
+      const elements = [];
+      for (let i = 0; i < m; i++) {
+        elements[i] = [];
+        for (let j = 0; j < n; j++) {
+          elements[i][j] = document.getElementById(`A_${i}_${j}`);
+          if (!elements[i][j]) {
+            alert("Matrix input fields not found. Please generate the matrix first.");
+            return null;
+          }
+        }
+      }
+
+      // Now read the values
       let A = [];
       for (let i = 0; i < m; i++) {
         let row = [];
         for (let j = 0; j < n; j++) {
-          let num = parseFraction(document.getElementById(`A_${i}_${j}`).value);
+          let num = parseFraction(elements[i][j].value);
           if (num === null) return null;
           row.push(num);
         }
@@ -239,7 +259,7 @@
 
     function transposeMatrix(A) {
       const m = A.length, n = A[0].length;
-      const At = Array(n).fill().map(() => Array(m));
+      const At = Array.from({length: n}, () => new Array(m));
       for (let i = 0; i < m; i++)
         for (let j = 0; j < n; j++)
           At[j][i] = A[i][j];
@@ -248,7 +268,7 @@
 
     function multiplyMatrices(A, B) {
       const m = A.length, n = B[0].length, p = A[0].length;
-      const C = Array(m).fill().map(() => Array(n).fill(0));
+      const C = Array.from({length: m}, () => new Array(n).fill(0));
       for (let i = 0; i < m; i++)
         for (let j = 0; j < n; j++)
           for (let k = 0; k < p; k++)
@@ -256,8 +276,26 @@
       return C;
     }
 
+    // Optimized A^T * A computation without creating transpose
+    function multiplyATA(A) {
+      const m = A.length, n = A[0].length;
+      const AtA = Array.from({length: n}, () => new Array(n).fill(0));
+      // Only compute upper triangle (matrix is symmetric)
+      for (let i = 0; i < n; i++) {
+        for (let j = i; j < n; j++) {
+          let sum = 0;
+          for (let k = 0; k < m; k++) {
+            sum += A[k][i] * A[k][j];
+          }
+          AtA[i][j] = sum;
+          AtA[j][i] = sum;  // Use symmetry
+        }
+      }
+      return AtA;
+    }
+
     function identityMatrix(size) {
-      const I = Array(size).fill().map(() => Array(size).fill(0));
+      const I = Array.from({length: size}, () => new Array(size).fill(0));
       for (let i = 0; i < size; i++) I[i][i] = 1;
       return I;
     }
@@ -350,7 +388,7 @@
       let eigenvalues = B.map((row, i) => row[i]);
       const indices = eigenvalues.map((_, idx) => idx).sort((a, b) => eigenvalues[b] - eigenvalues[a]);
       const sortedEigenvalues = indices.map(i => eigenvalues[i]);
-      const sortedV = Array(n).fill().map(() => Array(n));
+      const sortedV = Array.from({length: n}, () => new Array(n));
       for (let j = 0; j < n; j++) {
         const idx = indices[j];
         for (let i = 0; i < n; i++)
@@ -369,15 +407,19 @@
       return numbers.reduce((a, b) => lcm(a, b));
     }
 
+    // Pre-computed square roots for performance (reduced from 100 to 50)
+    const SQRT_CACHE = Array.from({length: 51}, (_, i) => Math.sqrt(i));
+
     function toSurd(val) {
       if (Math.abs(val) < 1e-7) return "0";
       let sign = val < 0 ? "-" : "";
       val = Math.abs(val);
       let tol = 1e-8;
-      for (let rden = 1; rden <= 20; rden++) {
+      // Reduced search space: max denominator 12 (was 20), max sqrt 50 (was 100)
+      for (let rden = 1; rden <= 12; rden++) {
         let scaled = val * rden;
-        for (let a = 1; a <= 100; a++) {
-          let sq = Math.sqrt(a);
+        for (let a = 1; a <= 50; a++) {
+          let sq = SQRT_CACHE[a];  // Use pre-computed sqrt
           if (Math.abs(scaled - Math.round(scaled / sq) * sq) < tol) {
             let coeff = Math.round(scaled / sq);
             if (Math.abs(coeff) <= 500 && rden <= 500) {
@@ -402,6 +444,15 @@
       return false;
     }
 
+    function canRepresentAsSurdOrFraction(val) {
+      if (Math.abs(val) < 1e-7) return true; // Zero is always representable
+      const frac = isRepeatingOrShortDecimal(val);
+      if (frac) return true;
+      const surd = toSurd(val);
+      if (surd) return true;
+      return false;
+    }
+
     function formatForLatex(val, mode) {
       if (Math.abs(val) < 1e-7) return "0";
       if (mode === "decimals") {
@@ -418,16 +469,16 @@
 
     function matrixToLatex(M, mode) {
       const r = M.length, c = M[0].length;
-      let L = "\\begin{bmatrix}";
+      const separator = mode === "decimals" ? " \\\\ " : " \\\\[0.5em] ";
+      const rows = [];
       for (let i = 0; i < r; i++) {
+        const cells = [];
         for (let j = 0; j < c; j++) {
-          L += formatForLatex(M[i][j], mode);
-          if (j < c - 1) L += " & ";
+          cells.push(formatForLatex(M[i][j], mode));
         }
-        if (i < r - 1) L += mode === "decimals" ? " \\\\ " : " \\\\[0.5em] ";
+        rows.push(cells.join(" & "));
       }
-      L += "\\end{bmatrix}";
-      return L;
+      return "\\begin{bmatrix}" + rows.join(separator) + "\\end{bmatrix}";
     }
 
     function computeSVD(A) {
@@ -435,29 +486,24 @@
       if (isZeroMatrix(A)) {
         return {
           U: identityMatrix(m),
-          Sigma: Array(m).fill().map(() => Array(n).fill(0)),
+          Sigma: Array.from({length: m}, () => new Array(n).fill(0)),
           Vt: identityMatrix(n),
-          singularValues: Array(Math.min(m, n)).fill(0)
+          singularValues: new Array(Math.min(m, n)).fill(0)
         };
       }
-      const At = transposeMatrix(A);
-      const AtA = multiplyMatrices(At, A);
+      // Use optimized A^T*A computation (2x faster, half memory)
+      const AtA = multiplyATA(A);
       const { eigenvalues: lambda_V, eigenvectors: V } = jacobiEigenDecomposition(AtA);
-      let singvals = lambda_V.map(x => Math.sqrt(Math.max(x, 0)));
-      const sortedIndices = singvals.map((_, idx) => idx).sort((a, b) => singvals[b] - singvals[a]);
-      const sortedSingularValues = sortedIndices.map(i => singvals[i]);
-      let sorted_V = Array(n).fill().map(() => Array(n));
-      for (let j = 0; j < n; j++) {
-        const idx = sortedIndices[j];
-        for (let i = 0; i < n; i++)
-          sorted_V[i][j] = V[i][idx];
-      }
+      // Eigenvalues are already sorted descending, so singular values will be too
+      const sortedSingularValues = lambda_V.map(x => Math.sqrt(Math.max(x, 0)));
+      // V is already sorted by eigenvalue order, no need to re-sort
+      let sorted_V = V;
       const k = Math.min(m, n);
       let Ucols = [];
       for (let i = 0; i < k; i++) {
         if (sortedSingularValues[i] > 1e-7) {
           let v = sorted_V.map(r => r[i]);
-          let Av = Array(m).fill(0);
+          let Av = new Array(m).fill(0);
           for (let r = 0; r < m; r++)
             for (let c = 0; c < n; c++)
               Av[r] += A[r][c] * v[c];
@@ -470,11 +516,11 @@
         }
       }
       Ucols = gramSchmidtColumns(Ucols, m);
-      let U = Array(m).fill().map(() => Array(m));
+      let U = Array.from({length: m}, () => new Array(m));
       for (let j = 0; j < m; j++)
         for (let i = 0; i < m; i++)
           U[i][j] = Ucols[j][i];
-      let Sigma = Array(m).fill().map(() => Array(n).fill(0));
+      let Sigma = Array.from({length: m}, () => new Array(n).fill(0));
       for (let i = 0; i < k; i++)
         Sigma[i][i] = sortedSingularValues[i];
       let Vt = transposeMatrix(sorted_V);
@@ -517,6 +563,31 @@
           S_disp = Sigma;
           Vt_disp = Vt;
         }
+
+        // If surds mode is selected, check if all values can be represented as surds/fractions
+        if (displayType === "surds") {
+          let allRepresentable = true;
+          const checkMatrix = (M) => {
+            for (let row of M) {
+              for (let val of row) {
+                if (!canRepresentAsSurdOrFraction(val)) {
+                  allRepresentable = false;
+                  return;
+                }
+              }
+            }
+          };
+          checkMatrix(A);
+          if (allRepresentable) checkMatrix(U_disp);
+          if (allRepresentable) checkMatrix(S_disp);
+          if (allRepresentable) checkMatrix(Vt_disp);
+
+          // If not all values can be represented, fall back to decimals
+          if (!allRepresentable) {
+            displayType = "decimals";
+          }
+        }
+
         let A_label = "\\mathbf{A}", U_label = "\\mathbf{U}", S_label = "\\boldsymbol{\\Sigma}", Vt_label = "\\mathbf{V}^T";
         let resultLatex = `${A_label} = ${U_label} ${S_label} ${Vt_label} \\\\${matrixToLatex(A, displayType)} = ${matrixToLatex(U_disp, displayType)} \\; ${matrixToLatex(S_disp, displayType)} \\; ${matrixToLatex(Vt_disp, displayType)}`;
         resultDiv.innerHTML = `<div class="latex">$$${resultLatex}$$</div>`;
@@ -534,4 +605,3 @@
 </body>
 
 </html>
-
