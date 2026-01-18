@@ -293,18 +293,78 @@
             throw e;
         }
     }
+
+    // DOM cache for performance
+    const domCache = {
+        output: null,
+        outputToggles: null,
+        downloadContainer: null,
+        evalContainer: null,
+        evalOutput: null,
+        plot: null,
+        xValues: null,
+        fValues: null,
+        fpValues: null,
+        endpointFpValues: null,
+        fpInput: null,
+        endpointFpInput: null,
+        funcStr: null,
+        a: null,
+        b: null,
+        nPoints: null,
+        showPolynomial: null,
+        showTable: null,
+        showMatrix: null,
+        showPoints: null,
+        evalX: null,
+        downloadBtn: null,
+        custom: null,
+        functionRadio: null,
+        customInputs: null,
+        functionInputs: null
+    };
+
+    function initDOMCache() {
+        domCache.output = document.getElementById('output');
+        domCache.outputToggles = document.getElementById('output-toggles');
+        domCache.downloadContainer = document.getElementById('download-container');
+        domCache.evalContainer = document.getElementById('eval-container');
+        domCache.evalOutput = document.getElementById('eval-output');
+        domCache.plot = document.getElementById('plot');
+        domCache.xValues = document.getElementById('x_values');
+        domCache.fValues = document.getElementById('f_values');
+        domCache.fpValues = document.getElementById('fp_values');
+        domCache.endpointFpValues = document.getElementById('endpoint_fp_values');
+        domCache.fpInput = document.getElementById('fp_input');
+        domCache.endpointFpInput = document.getElementById('endpoint_fp_input');
+        domCache.funcStr = document.getElementById('func_str');
+        domCache.a = document.getElementById('a');
+        domCache.b = document.getElementById('b');
+        domCache.nPoints = document.getElementById('n_points');
+        domCache.showPolynomial = document.getElementById('show_polynomial');
+        domCache.showTable = document.getElementById('show_table');
+        domCache.showMatrix = document.getElementById('show_matrix');
+        domCache.showPoints = document.getElementById('show_points');
+        domCache.evalX = document.getElementById('eval_x');
+        domCache.downloadBtn = document.getElementById('download-btn');
+        domCache.custom = document.getElementById('custom');
+        domCache.functionRadio = document.getElementById('function');
+        domCache.customInputs = document.getElementById('custom-inputs');
+        domCache.functionInputs = document.getElementById('function-inputs');
+    }
+
     let pFunc = null;
     let originalFunc = null;
     function computeInterpolation() {
-        const output = document.getElementById('output');
+        const output = domCache.output;
         output.innerHTML = '<div class="text-red-500">Computing...</div>';
-        const togglesDiv = document.getElementById('output-toggles');
+        const togglesDiv = domCache.outputToggles;
         togglesDiv.classList.add('hidden');
-        const downloadContainer = document.getElementById('download-container');
+        const downloadContainer = domCache.downloadContainer;
         downloadContainer.classList.add('hidden');
-        const evalContainer = document.getElementById('eval-container');
+        const evalContainer = domCache.evalContainer;
         evalContainer.classList.add('hidden');
-        document.getElementById('eval-output').innerHTML = '';
+        domCache.evalOutput.innerHTML = '';
         pFunc = null;
         originalFunc = null;
         try {
@@ -317,8 +377,8 @@
             let func = null;
             let rangeA, rangeB;
             if (inputType === 'custom') {
-                const xStr = document.getElementById('x_values').value.trim();
-                const yStr = document.getElementById('f_values').value.trim();
+                const xStr = domCache.xValues.value.trim();
+                const yStr = domCache.fValues.value.trim();
                 if (xStr === '' || yStr === '') {
                     output.innerHTML = '<div class="text-red-500">Error: Please enter x and f(x) values</div>';
                     return;
@@ -353,9 +413,9 @@
                     return;
                 }
                 if (method === 'hermite') {
-                    const fpInputDiv = document.getElementById('fp_input');
+                    const fpInputDiv = domCache.fpInput;
                     if (!fpInputDiv.classList.contains('hidden')) {
-                        const ypStr = document.getElementById('fp_values').value.trim();
+                        const ypStr = domCache.fpValues.value.trim();
                         yp = ypStr ? ypStr.split(',').map(s => {
                             const expr = s.trim();
                             if (expr === '') return NaN;
@@ -374,9 +434,9 @@
                     }
                 }
                 if (method === 'clamped_cubic_spline') {
-                    const endpointFpInputDiv = document.getElementById('endpoint_fp_input');
+                    const endpointFpInputDiv = domCache.endpointFpInput;
                     if (!endpointFpInputDiv.classList.contains('hidden')) {
-                        const ypStr = document.getElementById('endpoint_fp_values').value.trim();
+                        const ypStr = domCache.endpointFpValues.value.trim();
                         const endpointYp = ypStr.split(',').map(s => {
                             const expr = s.trim();
                             try {
@@ -396,10 +456,10 @@
                     }
                 }
             } else {
-                const funcStr = document.getElementById('func_str').value.trim();
-                const aStr = document.getElementById('a').value.trim();
-                const bStr = document.getElementById('b').value.trim();
-                const nPoints = parseInt(document.getElementById('n_points').value);
+                const funcStr = domCache.funcStr.value.trim();
+                const aStr = domCache.a.value.trim();
+                const bStr = domCache.b.value.trim();
+                const nPoints = parseInt(domCache.nPoints.value);
                 const nodeType = selectedNodeType;
                 try {
                     rangeA = math.evaluate(aStr);
@@ -514,11 +574,16 @@
                     const coeffs = solveLinearSystem(V, y);
                     matrixDiv = document.createElement('div');
                     matrixDiv.id = 'matrix-section';
-                    let vMatrix = '\\begin{pmatrix}';
+                    // Build matrix string efficiently
+                    let vMatrixRows = [];
                     for (let i = 0; i < n; i++) {
-                        vMatrix += V[i].map(v => formatNumber(v)).join(' & ') + ' \\\\ ';
+                        vMatrixRows.push(V[i].map(v => formatNumber(v)).join(' & ') + ' \\\\ ');
                     }
-                    vMatrix += '\\end{pmatrix} \\begin{pmatrix} ' + Array.from({length: n}, (_, i) => `a_${i}`).join(' \\\\ ') + ' \\end{pmatrix} = \\begin{pmatrix} ' + y.map(yy => toFraction(yy)).join(' \\\\ ') + ' \\end{pmatrix}';
+                    let vMatrix = '\\begin{pmatrix}' + vMatrixRows.join('') +
+                                  '\\end{pmatrix} \\begin{pmatrix} ' +
+                                  Array.from({length: n}, (_, i) => `a_${i}`).join(' \\\\ ') +
+                                  ' \\end{pmatrix} = \\begin{pmatrix} ' +
+                                  y.map(yy => toFraction(yy)).join(' \\\\ ') + ' \\end{pmatrix}';
                     const vanDiv = document.createElement('div');
                     katex.render(vMatrix, vanDiv, {throwOnError: false, displayMode: true});
                     matrixDiv.appendChild(vanDiv);
@@ -640,26 +705,26 @@
                     tableDiv.id = 'divided-differences-table';
                     const table = document.createElement('table');
                     table.className = 'min-w-full bg-white border border-gray-300';
-                    let header = '<tr><th class="border px-4 py-2">' + katex.renderToString('x') + '</th>';
-                    header += '<th class="border px-4 py-2">' + katex.renderToString('f[\\cdot]') + '</th>';
+                    // Build table HTML efficiently with array join
+                    let headerCells = ['<th class="border px-4 py-2">' + katex.renderToString('x') + '</th>',
+                                      '<th class="border px-4 py-2">' + katex.renderToString('f[\\cdot]') + '</th>'];
                     for (let k = 1; k < n; k++) {
-                        header += '<th class="border px-4 py-2">' + katex.renderToString('f[' + '\\cdot,'.repeat(k) + '\\cdot]') + '</th>';
+                        headerCells.push('<th class="border px-4 py-2">' + katex.renderToString('f[' + '\\cdot,'.repeat(k) + '\\cdot]') + '</th>');
                     }
-                    header += '</tr>';
-                    table.innerHTML = header;
+                    let rows = ['<tr>' + headerCells.join('') + '</tr>'];
                     for (let i = 0; i < n; i++) {
-                        let row = '<tr><td class="border px-4 py-2">' + katex.renderToString('x_{' + i + '} = ' + formatNumber(x[i])) + '</td>';
+                        let rowCells = ['<td class="border px-4 py-2">' + katex.renderToString('x_{' + i + '} = ' + formatNumber(x[i])) + '</td>'];
                         for (let k = 0; k < n; k++) {
                             if (k <= i) {
                                 let style = (i === k) ? 'class="border px-4 py-2 text-red-600 font-bold"' : 'class="border px-4 py-2"';
-                                row += '<td ' + style + '>' + (dd[i-k][k] !== undefined ? katex.renderToString(toFraction(dd[i-k][k])) : '') + '</td>';
+                                rowCells.push('<td ' + style + '>' + (dd[i-k][k] !== undefined ? katex.renderToString(toFraction(dd[i-k][k])) : '') + '</td>');
                             } else {
-                                row += '<td class="border px-4 py-2"></td>';
+                                rowCells.push('<td class="border px-4 py-2"></td>');
                             }
                         }
-                        row += '</tr>';
-                        table.innerHTML += row;
+                        rows.push('<tr>' + rowCells.join('') + '</tr>');
                     }
+                    table.innerHTML = rows.join('');
                     tableDiv.appendChild(table);
                     hasTable = true;
                     polynomialDiv = document.createElement('div');
@@ -740,26 +805,26 @@
                     tableDiv.id = 'divided-differences-table';
                     const table = document.createElement('table');
                     table.className = 'min-w-full bg-white border border-gray-300';
-                    let header = '<tr><th class="border px-4 py-2">' + katex.renderToString('z') + '</th>';
-                    header += '<th class="border px-4 py-2">' + katex.renderToString('f[\\cdot]') + '</th>';
+                    // Build table HTML efficiently with array join
+                    let headerCells = ['<th class="border px-4 py-2">' + katex.renderToString('z') + '</th>',
+                                      '<th class="border px-4 py-2">' + katex.renderToString('f[\\cdot]') + '</th>'];
                     for (let k = 1; k < totalRows; k++) {
-                        header += '<th class="border px-4 py-2">' + katex.renderToString('f[' + '\\cdot,'.repeat(k) + '\\cdot]') + '</th>';
+                        headerCells.push('<th class="border px-4 py-2">' + katex.renderToString('f[' + '\\cdot,'.repeat(k) + '\\cdot]') + '</th>');
                     }
-                    header += '</tr>';
-                    table.innerHTML = header;
+                    let rows = ['<tr>' + headerCells.join('') + '</tr>'];
                     for (let i = 0; i < totalRows; i++) {
-                        let row = '<tr><td class="border px-4 py-2">' + katex.renderToString('z_{' + i + '} = ' + formatNumber(z[i])) + '</td>';
+                        let rowCells = ['<td class="border px-4 py-2">' + katex.renderToString('z_{' + i + '} = ' + formatNumber(z[i])) + '</td>'];
                         for (let k = 0; k < totalRows; k++) {
                             if (k <= i) {
                                 let style = (i === k) ? 'class="border px-4 py-2 text-red-600 font-bold"' : 'class="border px-4 py-2"';
-                                row += '<td ' + style + '>' + (Q[i-k][k] !== undefined ? katex.renderToString(toFraction(Q[i-k][k])) : '') + '</td>';
+                                rowCells.push('<td ' + style + '>' + (Q[i-k][k] !== undefined ? katex.renderToString(toFraction(Q[i-k][k])) : '') + '</td>');
                             } else {
-                                row += '<td class="border px-4 py-2"></td>';
+                                rowCells.push('<td class="border px-4 py-2"></td>');
                             }
                         }
-                        row += '</tr>';
-                        table.innerHTML += row;
+                        rows.push('<tr>' + rowCells.join('') + '</tr>');
                     }
+                    table.innerHTML = rows.join('');
                     tableDiv.appendChild(table);
                     hasTable = true;
                     polynomialDiv = document.createElement('div');
@@ -1007,13 +1072,13 @@
             }
             if (hasPolynomial || hasTable || hasMatrix || hasPoints) {
                 togglesDiv.classList.remove('hidden');
-                const showPolynomialCheckbox = document.getElementById('show_polynomial');
+                const showPolynomialCheckbox = domCache.showPolynomial;
                 showPolynomialCheckbox.parentElement.classList.toggle('hidden', !hasPolynomial);
-                const showTableCheckbox = document.getElementById('show_table');
+                const showTableCheckbox = domCache.showTable;
                 showTableCheckbox.parentElement.classList.toggle('hidden', !hasTable);
-                const showMatrixCheckbox = document.getElementById('show_matrix');
+                const showMatrixCheckbox = domCache.showMatrix;
                 showMatrixCheckbox.parentElement.classList.toggle('hidden', !hasMatrix);
-                const showPointsCheckbox = document.getElementById('show_points');
+                const showPointsCheckbox = domCache.showPoints;
                 showPointsCheckbox.parentElement.classList.toggle('hidden', !hasPoints);
                 if (hasPolynomial) {
                     polynomialDiv.style.display = showPolynomialCheckbox.checked ? 'block' : 'none';
@@ -1040,17 +1105,10 @@
                     };
                 }
             }
-            // Re-render all math in output
-            renderMathInElement(output, {
-                delimiters: [
-                    { left: "$$", right: "$$", display: true },
-                    { left: "$", right: "$", display: false }
-                ],
-                throwOnError: false
-            });
+            // Math is already rendered by individual katex.render() calls above
             if (pFunc) {
                 try {
-                    const plotDiv = document.getElementById('plot');
+                    const plotDiv = domCache.plot;
                     plotDiv.innerHTML = '';
                     const numSamplesPerInterval = 50;
                     let sampleX = [];
@@ -1219,7 +1277,7 @@
                     }
                     // Show download button after graph is drawn
                     downloadContainer.classList.remove('hidden');
-                    document.getElementById('download-btn').onclick = function() {
+                    domCache.downloadBtn.onclick = function() {
                         const svgElement = plotDiv.querySelector('svg');
                         const svgData = new XMLSerializer().serializeToString(svgElement);
                         const canvas = document.createElement('canvas');
@@ -1251,55 +1309,52 @@
         }
     }
     function clearAll() {
-        document.getElementById('x_values').value = '';
-        document.getElementById('f_values').value = '';
-        document.getElementById('fp_values').value = '';
-        document.getElementById('endpoint_fp_values').value = '';
-        document.getElementById('func_str').value = 'sin(x)';
-        document.getElementById('a').value = '-5';
-        document.getElementById('b').value = '5';
-        document.getElementById('n_points').value = '5';
-        document.getElementById('output').innerHTML = '';
-        document.getElementById('plot').innerHTML = '';
-        document.getElementById('output-toggles').classList.add('hidden');
-        document.getElementById('download-container').classList.add('hidden');
-        document.getElementById('eval-container').classList.add('hidden');
-        document.getElementById('eval-output').innerHTML = '';
+        domCache.xValues.value = '';
+        domCache.fValues.value = '';
+        domCache.fpValues.value = '';
+        domCache.endpointFpValues.value = '';
+        domCache.funcStr.value = 'sin(x)';
+        domCache.a.value = '-5';
+        domCache.b.value = '5';
+        domCache.nPoints.value = '5';
+        domCache.output.innerHTML = '';
+        domCache.plot.innerHTML = '';
+        domCache.outputToggles.classList.add('hidden');
+        domCache.downloadContainer.classList.add('hidden');
+        domCache.evalContainer.classList.add('hidden');
+        domCache.evalOutput.innerHTML = '';
         pFunc = null;
         originalFunc = null;
         updateInputDisplay();
     }
-    const custom = document.getElementById('custom');
-    const functionRadio = document.getElementById('function');
-    const customInputs = document.getElementById('custom-inputs');
-    const functionInputs = document.getElementById('function-inputs');
-    const fpInput = document.getElementById('fp_input');
-    const endpointFpInput = document.getElementById('endpoint_fp_input');
     let selectedMethod = 'monomial';
     let selectedNodeType = 'equispaced';
     function updateInputDisplay() {
-        if (custom.checked) {
-            functionInputs.style.display = 'none';
-            customInputs.style.display = 'block';
+        if (domCache.custom.checked) {
+            domCache.functionInputs.style.display = 'none';
+            domCache.customInputs.style.display = 'block';
         } else {
-            customInputs.style.display = 'none';
-            functionInputs.style.display = 'block';
+            domCache.customInputs.style.display = 'none';
+            domCache.functionInputs.style.display = 'block';
         }
         const methodValue = selectedMethod;
         const isHermite = methodValue === 'hermite';
         const isClamped = methodValue === 'clamped_cubic_spline';
-        fpInput.classList.toggle('hidden', !isHermite || !custom.checked);
-        endpointFpInput.classList.toggle('hidden', !isClamped || !custom.checked);
-        document.getElementById('output').innerHTML = '';
-        document.getElementById('plot').innerHTML = '';
-        document.getElementById('download-container').classList.add('hidden');
-        document.getElementById('eval-container').classList.add('hidden');
-        document.getElementById('eval-output').innerHTML = '';
+        domCache.fpInput.classList.toggle('hidden', !isHermite || !domCache.custom.checked);
+        domCache.endpointFpInput.classList.toggle('hidden', !isClamped || !domCache.custom.checked);
+        domCache.output.innerHTML = '';
+        domCache.plot.innerHTML = '';
+        domCache.downloadContainer.classList.add('hidden');
+        domCache.evalContainer.classList.add('hidden');
+        domCache.evalOutput.innerHTML = '';
         pFunc = null;
         originalFunc = null;
     }
-    custom.addEventListener('change', updateInputDisplay);
-    functionRadio.addEventListener('change', updateInputDisplay);
+    // Event listeners will be initialized in initDOMCache
+    function initEventListeners() {
+        domCache.custom.addEventListener('change', updateInputDisplay);
+        domCache.functionRadio.addEventListener('change', updateInputDisplay);
+    }
     document.querySelectorAll('.method-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.method-btn').forEach(b => {
@@ -1330,8 +1385,12 @@
     // Set initial node type active
     document.querySelector('[data-node-type="equispaced"]').classList.remove('bg-white', 'text-black', 'border', 'border-gray-300');
     document.querySelector('[data-node-type="equispaced"]').classList.add('text-white', 'bg-gradient-to-br', 'from-purple-600', 'to-blue-500');
-    updateInputDisplay();
+    // Initialize on page load
     window.onload = function() {
+        initDOMCache();
+        initEventListeners();
+        initEvalButton();
+        updateInputDisplay();
         renderMathInElement(document.body, {
             delimiters: [
                 { left: "$$", right: "$$", display: true },
@@ -1340,29 +1399,31 @@
             throwOnError: false
         });
     };
-    document.getElementById('eval-btn').addEventListener('click', function() {
-        if (!pFunc) {
-            document.getElementById('eval-output').innerHTML = '<div class="text-red-500">Compute interpolation first</div>';
-            return;
-        }
-        const evalStr = document.getElementById('eval_x').value.trim();
-        if (evalStr === '') {
-            document.getElementById('eval-output').innerHTML = '<div class="text-red-500">Enter x values</div>';
-            return;
-        }
-        let evalX;
-        try {
-            evalX = evalStr.split(',').map(s => {
-                const val = math.evaluate(s.trim());
-                if (isNaN(val) || !isFinite(val)) throw new Error('Invalid x value');
-                return val;
-            });
-        } catch (e) {
-            document.getElementById('eval-output').innerHTML = '<div class="text-red-500">Invalid x values</div>';
-            return;
-        }
-        const evalY = evalX.map(xx => pFunc(xx));
-        const outputDiv = document.getElementById('eval-output');
+    function initEvalButton() {
+        const evalBtn = document.getElementById('eval-btn');
+        evalBtn.addEventListener('click', function() {
+            if (!pFunc) {
+                domCache.evalOutput.innerHTML = '<div class="text-red-500">Compute interpolation first</div>';
+                return;
+            }
+            const evalStr = domCache.evalX.value.trim();
+            if (evalStr === '') {
+                domCache.evalOutput.innerHTML = '<div class="text-red-500">Enter x values</div>';
+                return;
+            }
+            let evalX;
+            try {
+                evalX = evalStr.split(',').map(s => {
+                    const val = math.evaluate(s.trim());
+                    if (isNaN(val) || !isFinite(val)) throw new Error('Invalid x value');
+                    return val;
+                });
+            } catch (e) {
+                domCache.evalOutput.innerHTML = '<div class="text-red-500">Invalid x values</div>';
+                return;
+            }
+            const evalY = evalX.map(xx => pFunc(xx));
+            const outputDiv = domCache.evalOutput;
         outputDiv.innerHTML = '';
         let tableHTML;
         if (originalFunc) {
@@ -1428,7 +1489,8 @@
             ],
             throwOnError: false
         });
-    });
+        });
+    }
 </script>
 </body>
 
