@@ -14,54 +14,185 @@
 </script>
   <title>Geometry of Linear Systems in 2D</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
   <script>
     MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
   </script>
   <script async src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" crossorigin="anonymous"></script>
   <style>
-    #canvas-labels {
-      position: absolute;
-      left: 0;
-      top: 0;
-      pointer-events: none;
-      width: 800px;
-      height: 600px;
-      z-index: 2;
+    .axis line {
+      stroke: #666;
+      stroke-width: 1.5px;
+    }
+    .axis text {
+      font-size: 12px;
+      fill: #333;
+      font-family: Arial, sans-serif;
+    }
+    .grid line {
+      stroke: #e0e0e0;
+      stroke-width: 0.5px;
+      shape-rendering: crispEdges;
+    }
+    .grid path {
+      stroke-width: 0;
+    }
+    .vector-arrow {
+      stroke-width: 2.5px;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .line-plot {
+      stroke-width: 2.5px;
+      fill: none;
+      stroke-linecap: round;
+    }
+    .solution-point {
+      fill: #000;
+      stroke: #fff;
+      stroke-width: 2px;
     }
     .vector-label {
-      position: absolute;
-      font-size: 18px;
-      background: rgba(255,255,255,0.8);
-      padding: 2px 6px;
-      border-radius: 5px;
-      transform: translate(-50%, -50%);
-      white-space: nowrap;
+      font-size: 16px;
+      font-weight: bold;
       pointer-events: none;
+      text-shadow: 0 0 3px white, 0 0 3px white, 0 0 3px white;
+    }
+    #plot-svg {
+      border: 2px solid #d1d5db;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .zoom-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 10;
+    }
+    .zoom-btn {
+      width: 36px;
+      height: 36px;
+      background: white;
+      border: 2px solid #3b82f6;
+      border-radius: 6px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #3b82f6;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .zoom-btn:hover {
+      background: #3b82f6;
+      color: white;
+    }
+    .zoom-hint {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #666;
+      border: 1px solid #ddd;
+      pointer-events: none;
+    }
+    .mathjax-inline {
+      display: inline;
+    }
+    .mathjax-block {
+      display: block;
+      text-align: center;
     }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans antialiased">
-  <nav class="fixed top-0 left-0 w-full z-10 bg-white shadow-md">
+  <nav class="fixed top-0 left-0 w-full z-20 bg-white shadow-md">
     <div class="max-w-4xl mx-auto px-4 py-2">
       <ul class="flex justify-center space-x-4">
         <li><a href="index.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Home</a></li>
         <li><a href="teaching.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Teaching</a></li>
         <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
         <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
-		<li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
-
+        <li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
       </ul>
     </div>
   </nav>
   <h1 class="text-4xl text-center text-blue-600 font-bold mt-16 mb-6">Geometry of Linear Systems in 2D</h1>
-  <div class="relative w-[800px] h-[600px] mx-auto">
-    <canvas id="vectorCanvas" width="800" height="600" class="border border-gray-300 bg-white shadow-md"></canvas>
-    <div id="canvas-labels"></div>
-    <div class="absolute top-0 right-[-160px] w-40 bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
-      <h3 class="text-lg font-semibold text-gray-600 mb-2">Scale</h3>
-      <button id="zoomIn" class="w-full bg-blue-600 text-white py-1 rounded hover:bg-blue-700 transition-colors mb-2">Zoom In</button>
-      <button id="zoomOut" class="w-full bg-blue-600 text-white py-1 rounded hover:bg-blue-700 transition-colors mb-2">Zoom Out</button>
-      <button id="resetView" class="w-full bg-gray-600 text-white py-1 rounded hover:bg-gray-700 transition-colors">Reset View</button>
+  <div class="flex justify-center gap-6 max-w-7xl mx-auto px-4 mb-4">
+    <div class="relative w-[800px] h-[600px]">
+      <svg id="plot-svg" width="800" height="600"></svg>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+        <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
+        <button class="zoom-btn" id="zoom-reset" title="Reset View" style="font-size: 16px;">⟲</button>
+      </div>
+      <div class="zoom-hint">
+        💡 Use mouse wheel to zoom • Drag to pan
+      </div>
+    </div>
+    <div class="w-[350px] bg-white p-5 border-2 border-blue-200 rounded-lg shadow-md h-[600px] overflow-y-auto">
+      <h3 class="text-xl font-bold text-blue-700 mb-3 border-b-2 border-blue-200 pb-2">About This Visualization</h3>
+
+      <div class="mb-4">
+        <h4 class="text-md font-semibold text-gray-800 mb-2">📐 Row Picture (Lines)</h4>
+        <p class="text-sm text-gray-700 mb-2">When you click <strong>"Solve System"</strong>, you see the <em>row picture</em>:</p>
+        <ul class="text-sm text-gray-700 list-disc ml-5 mb-2">
+          <li>Each equation represents a <strong>line</strong> in 2D space</li>
+          <li><span class="mathjax-inline">$2x + y = 8$</span> is line <span class="mathjax-inline">$L_1$</span></li>
+          <li><span class="mathjax-inline">$4x - 3y = 6$</span> is line <span class="mathjax-inline">$L_2$</span></li>
+          <li>The solution is where the lines <strong>intersect</strong></li>
+        </ul>
+        <p class="text-sm text-gray-700 italic">This is how we traditionally visualize linear systems.</p>
+      </div>
+
+      <div class="mb-4">
+        <h4 class="text-md font-semibold text-gray-800 mb-2">📊 Column Picture (Vectors)</h4>
+        <p class="text-sm text-gray-700 mb-2">When you click <strong>"Show Linear Combination"</strong>, you see the <em>column picture</em>:</p>
+        <ul class="text-sm text-gray-700 list-disc ml-5 mb-2">
+          <li>The system becomes: <span class="mathjax-inline">$c_1 \mathbf{v_1} + c_2 \mathbf{v_2} = \mathbf{b}$</span></li>
+          <li><span class="mathjax-inline">$\mathbf{v_1}$</span> and <span class="mathjax-inline">$\mathbf{v_2}$</span> are the <strong>column vectors</strong></li>
+          <li>We find scalars <span class="mathjax-inline">$c_1, c_2$</span> that combine them to reach <span class="mathjax-inline">$\mathbf{b}$</span></li>
+          <li>The <strong>parallelogram</strong> shows the vector addition</li>
+        </ul>
+        <p class="text-sm text-gray-700 italic">This reveals the geometric structure of solutions.</p>
+      </div>
+
+      <div class="mb-4">
+        <h4 class="text-md font-semibold text-gray-800 mb-2">🔗 How They Connect</h4>
+        <p class="text-sm text-gray-700 mb-2">For the system:</p>
+        <div class="bg-gray-50 p-2 rounded mb-2 text-sm mathjax-block">
+          $$\begin{cases}
+          2x + y = 8 \\
+          4x - 3y = 6
+          \end{cases}$$
+        </div>
+        <p class="text-sm text-gray-700 mb-2"><strong>Row form:</strong> Two equations, two unknowns</p>
+        <p class="text-sm text-gray-700 mb-2"><strong>Column form:</strong></p>
+        <div class="bg-gray-50 p-2 rounded mb-2 text-sm mathjax-block">
+          $$x \begin{bmatrix} 2 \\ 4 \end{bmatrix} + y \begin{bmatrix} 1 \\ -3 \end{bmatrix} = \begin{bmatrix} 8 \\ 6 \end{bmatrix}$$
+        </div>
+        <p class="text-sm text-gray-700">Here, <span class="mathjax-inline">$x$</span> and <span class="mathjax-inline">$y$</span> tell us <em>how much</em> of each column vector we need.</p>
+      </div>
+
+      <div class="mb-2">
+        <h4 class="text-md font-semibold text-gray-800 mb-2">🎯 Try It!</h4>
+        <ul class="text-sm text-gray-700 list-disc ml-5">
+          <li>Change the equations to see different line configurations</li>
+          <li>Modify <span class="mathjax-inline">$c_1, c_2$</span> to explore different linear combinations</li>
+          <li>Zoom and pan to examine the solution closely</li>
+          <li>Notice: parallel lines = no solution, coincident lines = infinite solutions</li>
+        </ul>
+      </div>
     </div>
   </div>
   <div id="solution-info" class="text-center mt-5 text-xl"></div>
@@ -119,14 +250,26 @@
       <button id="solveSystem" class="w-full bg-blue-600 text-white py-1 rounded hover:bg-blue-700 transition-colors">Solve System</button>
     </div>
   </div>
-  <footer class="text-center text-gray-500 text-sm mt-6">
-    &copy; Shelvean Kapita. All code released under the MIT License. Last Modified: June 30, 2025
-</footer>
+  <footer class="text-center text-gray-500 text-sm mt-6 mb-4">
+    &copy; Shelvean Kapita. All code released under the MIT License. Last Modified: January 18, 2026
+  </footer>
   <script>
-    // Utility to display errors
+    // Utility functions
     function displayError(message) {
       const solutionInfo = document.getElementById('solution-info');
       solutionInfo.innerHTML = `<span class="text-red-500 text-lg">${message}</span>`;
+    }
+
+    function formatCoefficient(c) {
+      if (c === 1) return '';
+      if (c === -1) return '-';
+      if (Number.isInteger(c)) return c.toString();
+      return c.toFixed(2);
+    }
+
+    function formatCoordinate(v) {
+      if (Number.isInteger(v)) return v.toString();
+      return v.toFixed(2);
     }
 
     // Initialize MathJax labels
@@ -147,245 +290,181 @@
         document.getElementById(id).innerHTML = labels[id];
       });
       if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetPromise(Object.keys(labels).map(id => `#${id}`)).catch(err => {
+        MathJax.typesetPromise([
+          ...Object.keys(labels).map(id => `#${id}`),
+          '.mathjax-inline',
+          '.mathjax-block'
+        ]).catch(err => {
           console.warn('MathJax failed to render:', err);
-          Object.keys(labels).forEach(id => {
-            document.getElementById(id).textContent = id.includes('v1-label') ? 'v₁ = [x₁, y₁]' :
-              id.includes('v2-label') ? 'v₂ = [x₂, y₂]' :
-              id.includes('c1-coeff-label') ? 'c₁' :
-              id.includes('c2-coeff-label') ? 'c₂' :
-              id.includes('x1-label') ? 'x₁' :
-              id.includes('y1-label') ? 'y₁' :
-              id.includes('x2-label') ? 'x₂' :
-              id.includes('y2-label') ? 'y₂' :
-              id.includes('l1-label') ? 'L₁:' : 'L₂:';
-          });
-        });
-      } else {
-        displayError('MathJax failed to load. Some labels may not render correctly.');
-        Object.keys(labels).forEach(id => {
-          document.getElementById(id).textContent = id.includes('v1-label') ? 'v₁ = [x₁, y₁]' :
-            id.includes('v2-label') ? 'v₂ = [x₂, y₂]' :
-            id.includes('c1-coeff-label') ? 'c₁' :
-            id.includes('c2-coeff-label') ? 'c₂' :
-            id.includes('x1-label') ? 'x₁' :
-            id.includes('y1-label') ? 'y₁' :
-            id.includes('x2-label') ? 'x₂' :
-            id.includes('y2-label') ? 'y₂' :
-            id.includes('l1-label') ? 'L₁:' : 'L₂:';
         });
       }
     }
 
-    // Wait for MathJax to load before rendering
-    function initializeMathJax() {
-      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        renderMathJaxLabels();
-        setTimeout(() => {
-          document.getElementById('solveSystem').click();
-        }, 100);
-      } else {
-        setTimeout(initializeMathJax, 100);
-      }
-    }
-    document.addEventListener('DOMContentLoaded', initializeMathJax);
+    // D3 Setup
+    const width = 800;
+    const height = 600;
+    const margin = {top: 20, right: 20, bottom: 40, left: 50};
 
-    const canvas = document.getElementById('vectorCanvas');
-    const ctx = canvas.getContext('2d');
-    let scaleFactor = 20;
+    const svg = d3.select('#plot-svg');
 
-    // Coordinate transformation
-    function mathToCanvasX(x) {
-      return 400 + x * scaleFactor;
-    }
-    function mathToCanvasY(y) {
-      return 300 - y * scaleFactor;
-    }
+    // Create zoom behavior
+    const zoom = d3.zoom()
+      .scaleExtent([0.5, 20])
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform);
+      });
 
-    // Label management
-    const labelContainer = document.getElementById('canvas-labels');
-    function clearVectorLabels() {
-      labelContainer.innerHTML = '';
-    }
-    function addVectorLabel(mathX, mathY, latex, color) {
-      const label = document.createElement('span');
-      label.className = 'vector-label';
-      label.style.color = color;
-      label.innerHTML = `\\(${latex}\\)`;
-      const offset = 20;
-      let canvasX = mathToCanvasX(mathX);
-      let canvasY = mathToCanvasY(mathY);
-      canvasX += offset;
-      canvasY -= offset;
-      label.style.left = `${canvasX}px`;
-      label.style.top = `${canvasY}px`;
-      labelContainer.appendChild(label);
-    }
-    function renderVectorLabels() {
-      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetPromise([labelContainer, '#solution-info']).catch(err => {
-          console.warn('MathJax typesetting failed:', err);
-          displayError('Failed to render mathematical labels.');
-        });
-      }
-    }
+    svg.call(zoom);
 
-    // Draw arrow (vector)
-    function drawArrow(mathStartX, mathStartY, mathEndX, mathEndY, color) {
-      const startCanvasX = mathToCanvasX(mathStartX);
-      const startCanvasY = mathToCanvasY(mathStartY);
-      const endCanvasX = mathToCanvasX(mathEndX);
-      const endCanvasY = mathToCanvasY(mathEndY);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(startCanvasX, startCanvasY);
-      ctx.lineTo(endCanvasX, endCanvasY);
-      ctx.stroke();
-      const dx = mathEndX - mathStartX;
-      const dy = mathEndY - mathStartY;
-      const theta = Math.atan2(dy, dx);
-      const arrowAngle = Math.PI / 6;
-      const arrowLength = 0.5;
-      const p1x = mathEndX - arrowLength * Math.cos(theta + arrowAngle);
-      const p1y = mathEndY - arrowLength * Math.sin(theta + arrowAngle);
-      const p2x = mathEndX - arrowLength * Math.cos(theta - arrowAngle);
-      const p2y = mathEndY - arrowLength * Math.sin(theta - arrowAngle);
-      const p1CanvasX = mathToCanvasX(p1x);
-      const p1CanvasY = mathToCanvasY(p1y);
-      const p2CanvasX = mathToCanvasX(p2x);
-      const p2CanvasY = mathToCanvasY(p2y);
-      ctx.beginPath();
-      ctx.moveTo(endCanvasX, endCanvasY);
-      ctx.lineTo(p1CanvasX, p1CanvasY);
-      ctx.moveTo(endCanvasX, endCanvasY);
-      ctx.lineTo(p2CanvasX, p2CanvasY);
-      ctx.stroke();
-    }
+    // Create main group for zoom/pan
+    const g = svg.append('g');
 
-    // Draw grid and axes
-    function drawGridAndAxes() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      clearVectorLabels();
-      ctx.strokeStyle = 'lightgray';
-      ctx.lineWidth = 1;
-      const minX = -400 / scaleFactor;
-      const maxX = 400 / scaleFactor;
-      const minY = -300 / scaleFactor;
-      const maxY = 300 / scaleFactor;
+    // Create scales
+    let xScale = d3.scaleLinear()
+      .domain([-20, 20])
+      .range([0, width]);
 
-      // Draw vertical grid lines
-      for (let k = Math.ceil(minX); k <= Math.floor(maxX); k++) {
-        const canvasX = mathToCanvasX(k);
-        ctx.beginPath();
-        ctx.moveTo(canvasX, 0);
-        ctx.lineTo(canvasX, canvas.height);
-        ctx.stroke();
-      }
+    let yScale = d3.scaleLinear()
+      .domain([-15, 15])
+      .range([height, 0]);
 
-      // Draw horizontal grid lines
-      for (let k = Math.ceil(minY); k <= Math.floor(maxY); k++) {
-        const canvasY = mathToCanvasY(k);
-        ctx.beginPath();
-        ctx.moveTo(0, canvasY);
-        ctx.lineTo(canvas.width, canvasY);
-        ctx.stroke();
-      }
+    // Create axes
+    const xAxis = d3.axisBottom(xScale).ticks(20);
+    const yAxis = d3.axisLeft(yScale).ticks(15);
 
-      // Draw axes
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 2;
-      const canvasOriginX = mathToCanvasX(0);
-      const canvasOriginY = mathToCanvasY(0);
-      ctx.beginPath();
-      ctx.moveTo(0, canvasOriginY);
-      ctx.lineTo(canvas.width, canvasOriginY);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(canvasOriginX, 0);
-      ctx.lineTo(canvasOriginX, canvas.height);
-      ctx.stroke();
+    // Grid
+    const xGrid = d3.axisBottom(xScale).tickSize(-height).tickFormat('').ticks(40);
+    const yGrid = d3.axisLeft(yScale).tickSize(-width).tickFormat('').ticks(30);
 
-      // Draw coordinate labels
-      ctx.fillStyle = 'white';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      for (let k = Math.ceil(minX); k <= Math.floor(maxX); k++) {
-        if (k !== 0) {
-          const canvasX = mathToCanvasX(k);
-          ctx.fillText(k.toString(), canvasX, canvasOriginY + 5);
+    // Append grid
+    const gridG = g.append('g').attr('class', 'grid-group');
+    gridG.append('g')
+      .attr('class', 'grid')
+      .attr('transform', `translate(0,${height})`)
+      .call(xGrid);
+    gridG.append('g')
+      .attr('class', 'grid')
+      .call(yGrid);
+
+    // Append axes
+    const axesG = g.append('g').attr('class', 'axes-group');
+    axesG.append('g')
+      .attr('class', 'axis x-axis')
+      .attr('transform', `translate(0,${yScale(0)})`)
+      .call(xAxis);
+    axesG.append('g')
+      .attr('class', 'axis y-axis')
+      .attr('transform', `translate(${xScale(0)},0)`)
+      .call(yAxis);
+
+    // Container for plot elements
+    const plotG = g.append('g').attr('class', 'plot-group');
+    const labelsG = g.append('g').attr('class', 'labels-group');
+
+    // Draw arrow helper
+    function drawArrow(group, x1, y1, x2, y2, color, label, isLatex = false) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      if (length < 0.01) return;
+
+      const path = group.append('path')
+        .attr('class', 'vector-arrow')
+        .attr('d', () => {
+          const arrowLength = 0.6;
+          const angle = Math.atan2(dy, dx);
+          const arrowAngle = Math.PI / 6;
+
+          const headX = x2;
+          const headY = y2;
+          const p1x = headX - arrowLength * Math.cos(angle - arrowAngle);
+          const p1y = headY - arrowLength * Math.sin(angle - arrowAngle);
+          const p2x = headX - arrowLength * Math.cos(angle + arrowAngle);
+          const p2y = headY - arrowLength * Math.sin(angle + arrowAngle);
+
+          return `M ${xScale(x1)},${yScale(y1)} L ${xScale(x2)},${yScale(y2)} M ${xScale(headX)},${yScale(headY)} L ${xScale(p1x)},${yScale(p1y)} M ${xScale(headX)},${yScale(headY)} L ${xScale(p2x)},${yScale(p2y)}`;
+        })
+        .attr('stroke', color);
+
+      if (label) {
+        const offset = 15;
+        const foreignObj = labelsG.append('foreignObject')
+          .attr('x', xScale(x2) + offset - 30)
+          .attr('y', yScale(y2) - offset - 15)
+          .attr('width', 100)
+          .attr('height', 40)
+          .attr('class', 'label-container');
+
+        const labelDiv = foreignObj.append('xhtml:div')
+          .style('color', color)
+          .style('font-size', '16px')
+          .style('font-weight', 'bold')
+          .style('background', 'rgba(255, 255, 255, 0.9)')
+          .style('padding', '2px 6px')
+          .style('border-radius', '4px')
+          .style('text-shadow', '0 0 3px white')
+          .style('white-space', 'nowrap');
+
+        if (isLatex) {
+          labelDiv.html(`\\(${label}\\)`);
+        } else {
+          labelDiv.html(label);
         }
       }
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      for (let k = Math.ceil(minY); k <= Math.floor(maxY); k++) {
-        if (k !== 0) {
-          const canvasY = mathToCanvasY(k);
-          ctx.fillText(k.toString(), canvasOriginX - 10, canvasY);
-        }
-      }
+    }
+
+    // Clear plot
+    function clearPlot() {
+      plotG.selectAll('*').remove();
+      labelsG.selectAll('*').remove();
     }
 
     // Draw linear combination
-    function drawAddition(vec1, vec2, c1, c2) {
-      return function() {
-        drawGridAndAxes();
-        const scaledVec1 = { x: c1 * vec1.x, y: c1 * vec1.y, color: vec1.color };
-        const scaledVec2 = { x: c2 * vec2.x, y: c2 * vec2.y, color: vec2.color };
-        const sum = { x: scaledVec1.x + scaledVec2.x, y: scaledVec1.y + scaledVec2.y, color: 'black' };
+    function drawLinearCombination(v1, v2, c1, c2) {
+      clearPlot();
 
-        function formatCoefficient(c) {
-          if (c === 1) return '';
-          if (c === -1) return '-';
-          if (Number.isInteger(c)) return c.toString();
-          return c.toFixed(2);
+      const scaledV1 = {x: c1 * v1.x, y: c1 * v1.y};
+      const scaledV2 = {x: c2 * v2.x, y: c2 * v2.y};
+      const sum = {x: scaledV1.x + scaledV2.x, y: scaledV1.y + scaledV2.y};
+
+      // Draw parallelogram if both vectors are non-zero
+      if ((scaledV1.x !== 0 || scaledV1.y !== 0) && (scaledV2.x !== 0 || scaledV2.y !== 0)) {
+        plotG.append('path')
+          .attr('d', `M ${xScale(0)},${yScale(0)} L ${xScale(scaledV1.x)},${yScale(scaledV1.y)} L ${xScale(sum.x)},${yScale(sum.y)} L ${xScale(scaledV2.x)},${yScale(scaledV2.y)} Z`)
+          .attr('fill', 'rgba(59, 130, 246, 0.15)')
+          .attr('stroke', 'rgba(59, 130, 246, 0.3)')
+          .attr('stroke-width', 1);
+      }
+
+      // Draw vectors - create LaTeX labels
+      const v1LatexLabel = c1 === 1 ? '\\mathbf{v_1}' : c1 === -1 ? '-\\mathbf{v_1}' : `${formatCoefficient(c1)} \\mathbf{v_1}`;
+      const v2LatexLabel = c2 === 1 ? '\\mathbf{v_2}' : c2 === -1 ? '-\\mathbf{v_2}' : `${formatCoefficient(c2)} \\mathbf{v_2}`;
+
+      const terms = [];
+      if (c1 !== 0) terms.push(c1 === -1 ? '-\\mathbf{v_1}' : c1 === 1 ? '\\mathbf{v_1}' : `${formatCoefficient(c1)} \\mathbf{v_1}`);
+      if (c2 !== 0) terms.push(c2 === -1 ? '-\\mathbf{v_2}' : c2 === 1 ? '\\mathbf{v_2}' : `${formatCoefficient(c2)} \\mathbf{v_2}`);
+      let sumLabel = terms.length > 0 ? '' : '0';
+      for (let i = 0; i < terms.length; i++) {
+        if (i === 0) {
+          sumLabel += terms[i];
+        } else {
+          sumLabel += terms[i].startsWith('-') ? ` ${terms[i]}` : ` + ${terms[i]}`;
         }
-        function formatCoordinate(v) {
-          if (Number.isInteger(v)) return v.toString();
-          return v.toFixed(2);
-        }
+      }
 
-        const v1Label = formatCoefficient(c1) ? `${formatCoefficient(c1)} \\mathbf{v_1}` : '\\mathbf{v_1}';
-        const v2Label = formatCoefficient(c2) ? `${formatCoefficient(c2)} \\mathbf{v_2}` : '\\mathbf{v_2}';
-        const terms = [];
-        if (c1 !== 0) terms.push(c1 === -1 ? '-\\mathbf{v_1}' : c1 === 1 ? '\\mathbf{v_1}' : `${formatCoefficient(c1)} \\mathbf{v_1}`);
-        if (c2 !== 0) terms.push(c2 === -1 ? '-\\mathbf{v_2}' : c2 === 1 ? '\\mathbf{v_2}' : `${formatCoefficient(c2)} \\mathbf{v_2}`);
-        let sumLabel = terms.length > 0 ? '' : '0';
-        for (let i = 0; i < terms.length; i++) {
-          if (i === 0) {
-            sumLabel += terms[i];
-          } else {
-            sumLabel += terms[i].startsWith('-') ? ` ${terms[i]}` : ` + ${terms[i]}`;
-          }
-        }
+      if (c1 !== 0) drawArrow(plotG, 0, 0, scaledV1.x, scaledV1.y, '#b91c1c', v1LatexLabel, true);
+      if (c2 !== 0) drawArrow(plotG, 0, 0, scaledV2.x, scaledV2.y, '#1e40af', v2LatexLabel, true);
+      if (sum.x !== 0 || sum.y !== 0) drawArrow(plotG, 0, 0, sum.x, sum.y, '#000', sumLabel, true);
 
-        if (c1 !== 0) drawArrow(0, 0, scaledVec1.x, scaledVec1.y, scaledVec1.color);
-        if (c2 !== 0) drawArrow(0, 0, scaledVec2.x, scaledVec2.y, scaledVec2.color);
-        if (sum.x !== 0 || sum.y !== 0) drawArrow(0, 0, sum.x, sum.y, sum.color);
+      document.getElementById('solution-info').innerHTML = `Linear Combination: \\(${sumLabel} = \\begin{bmatrix} ${formatCoordinate(sum.x)} \\\\ ${formatCoordinate(sum.y)} \\end{bmatrix}\\)`;
 
-        if (sum.x !== 0 || sum.y !== 0) {
-          ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
-          ctx.beginPath();
-          ctx.moveTo(mathToCanvasX(0), mathToCanvasY(0));
-          ctx.lineTo(mathToCanvasX(scaledVec1.x), mathToCanvasY(scaledVec1.y));
-          ctx.lineTo(mathToCanvasX(scaledVec1.x + scaledVec2.x), mathToCanvasY(scaledVec1.y + scaledVec2.y));
-          ctx.lineTo(mathToCanvasX(scaledVec2.x), mathToCanvasY(scaledVec2.y));
-          ctx.closePath();
-          ctx.fill();
-        }
-
-        clearVectorLabels();
-        if (c1 !== 0) addVectorLabel(scaledVec1.x, scaledVec1.y, v1Label, scaledVec1.color);
-        if (c2 !== 0) addVectorLabel(scaledVec2.x, scaledVec2.y, v2Label, scaledVec2.color);
-        if (sum.x !== 0 || sum.y !== 0) addVectorLabel(sum.x, sum.y, sumLabel, sum.color);
-
-        document.getElementById('solution-info').innerHTML = `Linear Combination: \\(${sumLabel} = \\begin{bmatrix} ${formatCoordinate(sum.x)} \\\\ ${formatCoordinate(sum.y)} \\end{bmatrix}\\)`; 
-        renderVectorLabels();
-      };
+      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+        MathJax.typesetPromise(['#solution-info', '#plot-svg']).catch(err => console.warn('MathJax error:', err));
+      }
     }
 
-    // Parse linear equation
+    // Parse equation
     function parseEquation(equation) {
       if (!equation) throw new Error('Equation cannot be empty.');
       equation = equation.replace(/\s+/g, '');
@@ -414,49 +493,8 @@
       return { a, b, c: c - leftConstant };
     }
 
-    // Get line segment within view
-    function getLineSegment(a, b, c, minX, maxX, minY, maxY) {
-      if (b === 0) {
-        if (a === 0) return null;
-        const x = c / a;
-        if (x >= minX && x <= maxX) return { p1: {x, y: minY}, p2: {x, y: maxY} };
-        return null;
-      } else if (a === 0) {
-        if (b === 0) return null;
-        const y = c / b;
-        if (y >= minY && y <= maxY) return { p1: {x: minX, y}, p2: {x: maxX, y} };
-        return null;
-      } else {
-        const points = [];
-        const y_at_minX = (c - a * minX) / b;
-        if (y_at_minX >= minY && y_at_minX <= maxY) points.push({x: minX, y: y_at_minX});
-        const y_at_maxX = (c - a * maxX) / b;
-        if (y_at_maxX >= minY && y_at_maxX <= maxY) points.push({x: maxX, y: y_at_maxX});
-        const x_at_minY = (c - b * minY) / a;
-        if (x_at_minY >= minX && x_at_minY <= maxX) points.push({x: x_at_minY, y: minY});
-        const x_at_maxY = (c - b * maxY) / a;
-        if (x_at_maxY >= minX && x_at_maxY <= maxX) points.push({x: x_at_maxY, y: maxY});
-        const uniquePoints = points.filter((p, i) => points.findIndex(q => q.x === p.x && q.y === p.y) === i);
-        return uniquePoints.length >= 2 ? { p1: uniquePoints[0], p2: uniquePoints[1] } : null;
-      }
-    }
-
-    // Draw line
-    function drawLine(p1, p2, color) {
-      const canvasX1 = mathToCanvasX(p1.x);
-      const canvasY1 = mathToCanvasY(p1.y);
-      const canvasX2 = mathToCanvasX(p2.x);
-      const canvasY2 = mathToCanvasY(p2.y);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(canvasX1, canvasY1);
-      ctx.lineTo(canvasX2, canvasY2);
-      ctx.stroke();
-    }
-
-    // Solve and draw system
-    document.getElementById('solveSystem').addEventListener('click', () => {
+    // Solve system
+    function solveSystem() {
       try {
         const eq1 = document.getElementById('eq1').value.trim();
         const eq2 = document.getElementById('eq2').value.trim();
@@ -464,74 +502,109 @@
         const line2 = parseEquation(eq2);
         const { a: a1, b: b1, c: c1 } = line1;
         const { a: a2, b: b2, c: c2 } = line2;
+
+        clearPlot();
+
         const D = a1 * b2 - a2 * b1;
         const D_x = c1 * b2 - c2 * b1;
         const D_y = a1 * c2 - a2 * c1;
-        currentDrawFunction = () => {
-          drawGridAndAxes();
-          const minX = -400 / scaleFactor;
-          const maxX = 400 / scaleFactor;
-          const minY = -300 / scaleFactor;
-          const maxY = 300 / scaleFactor;
-          const segment1 = getLineSegment(a1, b1, c1, minX, maxX, minY, maxY);
-          const segment2 = getLineSegment(a2, b2, c2, minX, maxX, minY, maxY);
-          if (D !== 0) {
-            const x = D_x / D;
-            const y = D_y / D;
-            if (x < minX || x > maxX || y < minY || y > maxY) {
-              let scaleFactor_x = x !== 0 ? 350 / Math.abs(x) : Infinity;
-              let scaleFactor_y = y !== 0 ? 250 / Math.abs(y) : Infinity;
-              scaleFactor = Math.min(scaleFactor_x, scaleFactor_y) * 0.8 || 20;
+
+        const xDomain = xScale.domain();
+        const yDomain = yScale.domain();
+        const minX = xDomain[0];
+        const maxX = xDomain[1];
+        const minY = yDomain[0];
+        const maxY = yDomain[1];
+
+        // Draw line helper
+        function drawLine(a, b, c, color, label) {
+          const points = [];
+
+          if (Math.abs(b) < 1e-10) {
+            // Vertical line
+            if (Math.abs(a) > 1e-10) {
+              const x = c / a;
+              points.push([x, minY], [x, maxY]);
             }
-            if (segment1) {
-              drawLine(segment1.p1, segment1.p2, 'darkred');
-              addVectorLabel(segment1.p1.x, segment1.p1.y, '\\mathbf{L_1}', 'darkred');
-            }
-            if (segment2) {
-              drawLine(segment2.p1, segment2.p2, 'darkblue');
-              addVectorLabel(segment2.p1.x, segment2.p1.y, '\\mathbf{L_2}', 'darkblue');
-            }
-            const canvasX = mathToCanvasX(x);
-            const canvasY = mathToCanvasY(y);
-            ctx.fillStyle = 'black';
-            ctx.beginPath();
-            ctx.arc(canvasX, canvasY, 5, 0, 2 * Math.PI);
-            ctx.fill();
-            document.getElementById('solution-info').innerHTML = `Solution: \\(\\begin{bmatrix} ${formatCoordinate(x)} \\\\ ${formatCoordinate(y)} \\end{bmatrix}\\)`;
           } else {
-            scaleFactor = 20;
-            if (D_x === 0 && D_y === 0) {
-              if (segment1) {
-                drawLine(segment1.p1, segment1.p2, 'darkgreen');
-                addVectorLabel(segment1.p1.x, segment1.p1.y, '\\mathbf{L_1} \\text{ and } \\mathbf{L_2}', 'darkgreen');
-              }
-              document.getElementById('solution-info').innerHTML = 'Infinitely many solutions';
-            } else {
-              if (segment1) {
-                drawLine(segment1.p1, segment1.p2, 'darkred');
-                addVectorLabel(segment1.p1.x, segment1.p1.y, '\\mathbf{L_1}', 'darkred');
-              }
-              if (segment2) {
-                drawLine(segment2.p1, segment2.p2, 'darkblue');
-                addVectorLabel(segment2.p1.x, segment2.p1.y, '\\mathbf{L_2}', 'darkblue');
-              }
-              document.getElementById('solution-info').innerHTML = 'No solution';
+            // y = (c - ax) / b
+            const y1 = (c - a * minX) / b;
+            const y2 = (c - a * maxX) / b;
+            if (y1 >= minY && y1 <= maxY) points.push([minX, y1]);
+            if (y2 >= minY && y2 <= maxY) points.push([maxX, y2]);
+
+            if (points.length < 2) {
+              const x1 = (c - b * minY) / a;
+              const x2 = (c - b * maxY) / a;
+              if (x1 >= minX && x1 <= maxX) points.push([x1, minY]);
+              if (x2 >= minX && x2 <= maxX) points.push([x2, maxY]);
             }
           }
-          renderVectorLabels();
-        };
-        currentDrawFunction();
+
+          if (points.length >= 2) {
+            plotG.append('line')
+              .attr('class', 'line-plot')
+              .attr('x1', xScale(points[0][0]))
+              .attr('y1', yScale(points[0][1]))
+              .attr('x2', xScale(points[1][0]))
+              .attr('y2', yScale(points[1][1]))
+              .attr('stroke', color);
+
+            const foreignObj = labelsG.append('foreignObject')
+              .attr('x', xScale(points[0][0]) + 15 - 20)
+              .attr('y', yScale(points[0][1]) - 15 - 15)
+              .attr('width', 80)
+              .attr('height', 40)
+              .attr('class', 'label-container');
+
+            foreignObj.append('xhtml:div')
+              .style('color', color)
+              .style('font-size', '16px')
+              .style('font-weight', 'bold')
+              .style('background', 'rgba(255, 255, 255, 0.9)')
+              .style('padding', '2px 6px')
+              .style('border-radius', '4px')
+              .style('text-shadow', '0 0 3px white')
+              .style('white-space', 'nowrap')
+              .html(`\\(${label}\\)`);
+          }
+        }
+
+        if (Math.abs(D) > 1e-10) {
+          // Unique solution
+          const x = D_x / D;
+          const y = D_y / D;
+
+          drawLine(a1, b1, c1, '#991b1b', 'L_1');
+          drawLine(a2, b2, c2, '#1e3a8a', 'L_2');
+
+          plotG.append('circle')
+            .attr('class', 'solution-point')
+            .attr('cx', xScale(x))
+            .attr('cy', yScale(y))
+            .attr('r', 6);
+
+          document.getElementById('solution-info').innerHTML = `Solution: \\(\\begin{bmatrix} ${formatCoordinate(x)} \\\\ ${formatCoordinate(y)} \\end{bmatrix}\\)`;
+        } else if (Math.abs(D_x) < 1e-10 && Math.abs(D_y) < 1e-10) {
+          // Infinitely many solutions
+          drawLine(a1, b1, c1, '#166534', 'L_1 \\text{ and } L_2');
+          document.getElementById('solution-info').innerHTML = 'Infinitely many solutions (coincident lines)';
+        } else {
+          // No solution
+          drawLine(a1, b1, c1, '#991b1b', 'L_1');
+          drawLine(a2, b2, c2, '#1e3a8a', 'L_2');
+          document.getElementById('solution-info').innerHTML = 'No solution (parallel lines)';
+        }
+
+        if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+          MathJax.typesetPromise(['#solution-info', '#plot-svg']).catch(err => console.warn('MathJax error:', err));
+        }
       } catch (error) {
         displayError(error.message);
-        drawGridAndAxes();
       }
-    });
+    }
 
-    // Initial draw
-    let currentDrawFunction = drawGridAndAxes;
-    drawGridAndAxes();
-
-    // Vector addition event
+    // Event listeners
     document.getElementById('showAddition').addEventListener('click', () => {
       const vec1x = parseFloat(document.getElementById('vec1x').value);
       const vec1y = parseFloat(document.getElementById('vec1y').value);
@@ -539,50 +612,42 @@
       const vec2y = parseFloat(document.getElementById('vec2y').value);
       const c1 = parseFloat(document.getElementById('c1').value) || 1;
       const c2 = parseFloat(document.getElementById('c2').value) || 1;
+
       if (isNaN(vec1x) || isNaN(vec1y) || isNaN(vec2x) || isNaN(vec2y) || isNaN(c1) || isNaN(c2)) {
         displayError('Please enter valid numbers for all vector components and coefficients.');
-        drawGridAndAxes();
       } else {
-        const vec1 = { x: vec1x, y: vec1y, color: 'darkred' };
-        const vec2 = { x: vec2x, y: vec2y, color: 'darkblue' };
-        currentDrawFunction = drawAddition(vec1, vec2, c1, c2);
-        currentDrawFunction();
+        drawLinearCombination({x: vec1x, y: vec1y}, {x: vec2x, y: vec2y}, c1, c2);
       }
     });
 
-    // Reset view
-    document.getElementById('resetView').addEventListener('click', () => {
-      scaleFactor = 20;
-      document.getElementById('c1').value = '3';
-      document.getElementById('c2').value = '2';
-      document.getElementById('vec1x').value = '2';
-      document.getElementById('vec1y').value = '4';
-      document.getElementById('vec2x').value = '1';
-      document.getElementById('vec2y').value = '-3';
-      document.getElementById('eq1').value = '2x + y = 8';
-      document.getElementById('eq2').value = '4x - 3y = 6';
-      currentDrawFunction = drawGridAndAxes;
-      drawGridAndAxes();
-      document.getElementById('solution-info').innerHTML = '';
-    });
+    document.getElementById('solveSystem').addEventListener('click', solveSystem);
 
     // Zoom controls
-    document.getElementById('zoomIn').addEventListener('click', () => {
-      scaleFactor += 5;
-      currentDrawFunction();
-    });
-    document.getElementById('zoomOut').addEventListener('click', () => {
-      scaleFactor = Math.max(5, scaleFactor - 5);
-      currentDrawFunction();
+    document.getElementById('zoom-in').addEventListener('click', () => {
+      svg.transition().duration(300).call(zoom.scaleBy, 1.3);
     });
 
-    // Format coordinate for display
-    function formatCoordinate(v) {
-      if (Number.isInteger(v)) return v.toString();
-      return v.toFixed(2);
+    document.getElementById('zoom-out').addEventListener('click', () => {
+      svg.transition().duration(300).call(zoom.scaleBy, 0.77);
+    });
+
+    document.getElementById('zoom-reset').addEventListener('click', () => {
+      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    });
+
+    // Initialize
+    function init() {
+      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+        renderMathJaxLabels();
+        setTimeout(() => {
+          document.getElementById('solveSystem').click();
+        }, 100);
+      } else {
+        setTimeout(init, 100);
+      }
     }
+
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
-
 </html>
-
