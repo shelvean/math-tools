@@ -308,7 +308,11 @@
     }
 
     function dot(a, b) {
-      return a.reduce((s, v, i) => s + v * b[i], 0);
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        sum += a[i] * b[i];
+      }
+      return sum;
     }
 
     function norm2(v) {
@@ -316,36 +320,99 @@
     }
 
     function scalarMult(v, s) {
-      return v.map(e => e * s);
+      const result = new Array(v.length);
+      for (let i = 0; i < v.length; i++) {
+        result[i] = v[i] * s;
+      }
+      return result;
     }
 
     function addVecs(a, b) {
-      return a.map((e, i) => e + b[i]);
+      const result = new Array(a.length);
+      for (let i = 0; i < a.length; i++) {
+        result[i] = a[i] + b[i];
+      }
+      return result;
     }
 
-    function gramSchmidtColumns(vecs, outCount) {
+    function subtractProjection(u, q, proj) {
+      // Optimized: u = u - proj*q (in-place modification)
+      for (let i = 0; i < u.length; i++) {
+        u[i] -= proj * q[i];
+      }
+    }
+
+    // Optimized Gram-Schmidt with step tracking
+    function gramSchmidtColumns(vecs, outCount, trackSteps = false) {
       let m = vecs[0] ? vecs[0].length : outCount;
       let Q = [];
-      for (let v of vecs) {
-        let u = v.slice();
-        for (let q of Q) {
-          let proj = dot(u, q);
-          u = addVecs(u, scalarMult(q, -proj));
+      let steps = trackSteps ? [] : null;
+
+      // Orthogonalize input vectors
+      for (let vecIdx = 0; vecIdx < vecs.length; vecIdx++) {
+        let v = vecs[vecIdx];
+        let u = v.slice(); // Copy initial vector
+
+        if (trackSteps) {
+          steps.push({
+            type: 'start',
+            vecIndex: vecIdx,
+            original: v.slice(),
+            intermediate: []
+          });
         }
+
+        // Subtract projections onto all previous orthonormal vectors
+        for (let qIdx = 0; qIdx < Q.length; qIdx++) {
+          let q = Q[qIdx];
+          let proj = dot(u, q);
+
+          if (trackSteps && Math.abs(proj) > 1e-10) {
+            steps[steps.length - 1].intermediate.push({
+              projectionOnto: qIdx,
+              projectionValue: proj,
+              beforeSubtraction: u.slice()
+            });
+          }
+
+          subtractProjection(u, q, proj);
+        }
+
         let nu = norm2(u);
-        if (nu > 1e-7) Q.push(scalarMult(u, 1 / nu));
+        if (nu > 1e-7) {
+          // Normalize
+          for (let i = 0; i < u.length; i++) {
+            u[i] /= nu;
+          }
+          Q.push(u);
+
+          if (trackSteps) {
+            steps[steps.length - 1].afterOrthogonalization = u.slice();
+            steps[steps.length - 1].norm = nu;
+          }
+        }
       }
+
+      // Complete to full basis if needed
       for (let i = 0; Q.length < outCount && i < m; i++) {
-        let e = Array(m).fill(0);
+        let e = new Array(m).fill(0);
         e[i] = 1;
+
         for (let q of Q) {
           let proj = dot(e, q);
-          e = addVecs(e, scalarMult(q, -proj));
+          subtractProjection(e, q, proj);
         }
+
         let ne = norm2(e);
-        if (ne > 1e-7) Q.push(scalarMult(e, 1 / ne));
+        if (ne > 1e-7) {
+          for (let j = 0; j < e.length; j++) {
+            e[j] /= ne;
+          }
+          Q.push(e);
+        }
       }
-      return Q;
+
+      return trackSteps ? { Q, steps } : Q;
     }
 
     function jacobiEigenDecomposition(A, maxIter = 100, tol = 1e-7) {

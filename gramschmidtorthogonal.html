@@ -46,17 +46,6 @@
             <button type="button" onclick="generateMatrix()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition duration-300">Generate Matrix</button>
         </div>
         <div id="matrixInput" class="mb-6 overflow-x-auto"></div>
-        <div class="flex justify-center mb-6 space-x-6">
-            <span class="text-gray-700">Display Values as:</span>
-            <label class="flex items-center">
-                <input type="radio" name="displayMode" value="fraction" checked class="mr-2">
-                <span>Fraction</span>
-            </label>
-            <label class="flex items-center">
-                <input type="radio" name="displayMode" value="decimal" class="mr-2">
-                <span>Decimal</span>
-            </label>
-        </div>
         <div class="flex justify-center space-x-4 mb-6">
             <button id="calcBtn" type="button" class="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition duration-300 w-1/3">Calculate</button>
             <button id="clearBtn" type="button" class="bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition duration-300 w-1/3">Clear All</button>
@@ -82,12 +71,7 @@
             });
         };
 
-        var currentDisplayMode = "fraction";
-        document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
-            radio.addEventListener("change", function() {
-                currentDisplayMode = this.value;
-            });
-        });
+        var currentDisplayMode = "fraction";  // Will auto-detect surds, else use decimals
 
         // FRACTION CLASS
         class Fraction {
@@ -195,6 +179,50 @@
             return Number.isInteger(sqrt) && sqrt * sqrt === n;
         }
 
+        // Pre-computed square roots for performance
+        const SQRT_CACHE = Array.from({length: 51}, (_, i) => Math.sqrt(i));
+
+        function toSurd(val) {
+            if (Math.abs(val) < 1e-7) return "0";
+            let sign = val < 0 ? "-" : "";
+            val = Math.abs(val);
+            let tol = 1e-8;
+            // Reduced search space for performance
+            for (let rden = 1; rden <= 12; rden++) {
+                let scaled = val * rden;
+                for (let a = 1; a <= 50; a++) {
+                    let sq = SQRT_CACHE[a];
+                    if (Math.abs(scaled - Math.round(scaled / sq) * sq) < tol) {
+                        let coeff = Math.round(scaled / sq);
+                        if (Math.abs(coeff) <= 500 && rden <= 500) {
+                            if (a === 1) return sign + (coeff / rden).toString();
+                            return sign + (coeff === 1 ? "" : coeff.toString()) + "\\sqrt{" + a + "}" + (rden === 1 ? "" : "/" + rden);
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function isRepeatingOrShortDecimal(val) {
+            if (Math.abs(val) < 1e-7) return false;
+            const frac = Fraction.fromDecimal(val, 100);
+            const decimalVal = frac.numerator / frac.denominator;
+            if (Math.abs(decimalVal - val) < 1e-8 && Math.abs(frac.numerator) <= 500 && frac.denominator <= 500) {
+                return frac;
+            }
+            return false;
+        }
+
+        function canRepresentAsSurdOrFraction(val) {
+            if (Math.abs(val) < 1e-7) return true;
+            const frac = isRepeatingOrShortDecimal(val);
+            if (frac) return true;
+            const surd = toSurd(val);
+            if (surd) return true;
+            return false;
+        }
+
         function generateMatrix() {
             var m = parseInt(document.getElementById("rows").value, 10);
             var n = parseInt(document.getElementById("cols").value, 10);
@@ -250,7 +278,6 @@
             document.getElementById("cols").value = "";
             document.getElementById("matrixInput").innerHTML = "";
             document.getElementById("result").innerHTML = "";
-            document.querySelector('input[value="fraction"]').checked = true;
             currentDisplayMode = "fraction";
             renderMathInElement(document.body, {
                 delimiters: [
@@ -295,12 +322,26 @@
             var m = parseInt(document.getElementById("rows").value, 10);
             var n = parseInt(document.getElementById("cols").value, 10);
             if (isNaN(m) || isNaN(n) || m <= 0 || n <= 0) return null;
+
+            // Pre-cache all DOM elements to avoid repeated lookups
+            var elements = [];
+            for (var i = 0; i < m; i++) {
+                elements[i] = [];
+                for (var j = 0; j < n; j++) {
+                    elements[i][j] = document.getElementById("cell_" + i + "_" + j);
+                    if (!elements[i][j]) {
+                        alert("Matrix input fields not found. Please generate the matrix first.");
+                        return null;
+                    }
+                }
+            }
+
+            // Now read the values
             var matrix = [];
             for (var i = 0; i < m; i++) {
                 var row = [];
                 for (var j = 0; j < n; j++) {
-                    var cell = document.getElementById("cell_" + i + "_" + j);
-                    var value = cell.value.trim();
+                    var value = elements[i][j].value.trim();
                     var num = parseFraction(value);
                     if (num === null) return null;
                     row.push(num);
@@ -428,7 +469,15 @@
         function computeGramSchmidt(origMatrix) {
             const m = origMatrix.length;
             const n = origMatrix[0].length;
-            const vectors = Array(n).fill(null).map((_, j) => origMatrix.map(row => row[j]));
+            // Optimized: extract column vectors without intermediate null array
+            const vectors = [];
+            for (let j = 0; j < n; j++) {
+                const col = [];
+                for (let i = 0; i < m; i++) {
+                    col.push(origMatrix[i][j]);
+                }
+                vectors.push(col);
+            }
             const steps = [];
             steps.push({desc: "Initial Basis", basis: vectors, type: "textbasis", label: "\\mathbf{v}"});
             const orthogonal = [];
@@ -494,39 +543,21 @@
             const resultDiv = document.getElementById("result");
             resultDiv.innerHTML = "";
 
-            // Top: Initial and Orthonormal side-by-side
-            const basisContainer = document.createElement("div");
-            basisContainer.className = "flex flex-row mt-6 gap-8 justify-center";
-
-            const initialDiv = document.createElement("div");
-            initialDiv.className = "w-1/2 max-w-md";
-            const initialTitle = document.createElement("h3");
-            initialTitle.className = "text-lg font-semibold text-gray-800 mb-2 text-center";
-            initialTitle.textContent = steps[0].desc;
-            initialDiv.appendChild(initialTitle);
-            const initialMath = document.createElement("div");
-            initialMath.className = "latex mb-4";
-            const numVectors = steps[0].basis.length;
-            const vectorLabels = numVectors > 0 ? `\\{ ${Array.from({length: numVectors}, (_, i) => `\\mathbf{v}_{${i+1}}`).join(", ")} \\} = ` : "";
-            initialMath.textContent = "$$" + vectorLabels + basisToLatex(steps[0].basis, false, "") + "$$";
-            initialDiv.appendChild(initialMath);
-            basisContainer.appendChild(initialDiv);
-
+            // Top: Orthonormal basis - centered and prominent
             const orthonormalStep = steps.find(step => step.type === "textorthonormal");
             if (orthonormalStep) {
                 const orthonormalDiv = document.createElement("div");
-                orthonormalDiv.className = "w-1/2 max-w-md";
+                orthonormalDiv.className = "mt-6 mb-8 text-center";
                 const orthonormalTitle = document.createElement("h3");
-                orthonormalTitle.className = "text-lg font-semibold text-gray-800 mb-2 text-center";
+                orthonormalTitle.className = "text-2xl font-bold text-gray-800 mb-4";
                 orthonormalTitle.textContent = orthonormalStep.desc;
                 orthonormalDiv.appendChild(orthonormalTitle);
                 const orthonormalMath = document.createElement("div");
-                orthonormalMath.className = "latex mb-4";
+                orthonormalMath.className = "latex mb-4 text-center";
                 orthonormalMath.textContent = "$$" + basisToLatex(orthonormalStep.basis, true, "\\mathbf{q}") + "$$";
                 orthonormalDiv.appendChild(orthonormalMath);
-                basisContainer.appendChild(orthonormalDiv);
+                resultDiv.appendChild(orthonormalDiv);
             }
-            resultDiv.appendChild(basisContainer);
 
             if (dependent) {
                 const note = document.createElement("p");
@@ -535,9 +566,24 @@
                 resultDiv.appendChild(note);
             }
 
-            // Orthogonal basis at the bottom (after steps)
+            // Show initial basis
+            const initialDiv = document.createElement("div");
+            initialDiv.className = "mt-8 mb-6 text-center";
+            const initialTitle = document.createElement("h3");
+            initialTitle.className = "text-xl font-semibold text-gray-800 mb-3";
+            initialTitle.textContent = steps[0].desc;
+            initialDiv.appendChild(initialTitle);
+            const initialMath = document.createElement("div");
+            initialMath.className = "latex mb-4 text-center";
+            const numVectors = steps[0].basis.length;
+            const vectorLabels = numVectors > 0 ? `\\{ ${Array.from({length: numVectors}, (_, i) => `\\mathbf{v}_{${i+1}}`).join(", ")} \\} = ` : "";
+            initialMath.textContent = "$$" + vectorLabels + basisToLatex(steps[0].basis, false, "") + "$$";
+            initialDiv.appendChild(initialMath);
+            resultDiv.appendChild(initialDiv);
+
+            // Transformation steps
             const stepsHeader = document.createElement("h3");
-            stepsHeader.className = "text-lg font-semibold text-gray-800 mb-2 mt-8";
+            stepsHeader.className = "text-xl font-semibold text-gray-800 mb-4 mt-8 text-center";
             stepsHeader.textContent = "Transformation Steps:";
             resultDiv.appendChild(stepsHeader);
 
