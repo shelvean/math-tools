@@ -96,7 +96,7 @@
     <div class="row">
       <div class="input-group">
         <label for="nInput">Number of Fourier Modes (n):</label>
-        <input type="number" id="nInput" value="35" min="0">
+        <input type="number" id="nInput" value="35" min="0" max="200">
       </div>
       <div class="input-group">
         <label for="speedInput">Animation Speed (ms per frame):</label>
@@ -264,49 +264,135 @@
       plotOriginalFunction(xValues, originalYValues);
     }
 
-    // Simpson's rule for integration
-    function simpson(yValues, dx) {
-      const N = yValues.length;
-      if (N < 3 || (N - 1) % 2 !== 0) {
-        throw new Error("Number of subintervals must be even for Simpson's rule.");
+    // Gauss-Legendre quadrature nodes and weights (10-point rule)
+    // High accuracy for smooth functions
+    const gaussNodes = [
+      -0.9739065285171717,
+      -0.8650633666889845,
+      -0.6794095682990244,
+      -0.4333953941292472,
+      -0.1488743389816312,
+       0.1488743389816312,
+       0.4333953941292472,
+       0.6794095682990244,
+       0.8650633666889845,
+       0.9739065285171717
+    ];
+
+    const gaussWeights = [
+      0.0666713443086881,
+      0.1494513491505806,
+      0.2190863625159820,
+      0.2692667193099963,
+      0.2955242247147529,
+      0.2955242247147529,
+      0.2692667193099963,
+      0.2190863625159820,
+      0.1494513491505806,
+      0.0666713443086881
+    ];
+
+    // Composite Gaussian quadrature integration
+    // Subdivides interval [a,b] into subintervals and applies Gauss-Legendre quadrature
+    function gaussianQuadrature(func, a, b, numSubintervals = 50) {
+      const h = (b - a) / numSubintervals;
+      let integral = 0;
+
+      for (let i = 0; i < numSubintervals; i++) {
+        const x_left = a + i * h;
+        const x_right = x_left + h;
+        const midpoint = (x_left + x_right) / 2;
+        const halfWidth = (x_right - x_left) / 2;
+
+        // Transform Gauss nodes from [-1,1] to [x_left, x_right]
+        let subIntegral = 0;
+        for (let j = 0; j < gaussNodes.length; j++) {
+          const x = midpoint + halfWidth * gaussNodes[j];
+          subIntegral += gaussWeights[j] * func(x);
+        }
+        integral += halfWidth * subIntegral;
       }
-      let sum = yValues[0] + yValues[N - 1];
-      for (let i = 1; i < N - 1; i += 2) {
-        sum += 4 * yValues[i];
+
+      return integral;
+    }
+
+    // Vectorized Gaussian quadrature for precomputed function values
+    function gaussianQuadratureVectorized(yValues, xValues) {
+      const n = xValues.length;
+      const a = xValues[0];
+      const b = xValues[n - 1];
+      const numSubintervals = Math.floor((n - 1) / 4); // Adaptive subdivision
+      const h = (b - a) / numSubintervals;
+      let integral = 0;
+
+      for (let i = 0; i < numSubintervals; i++) {
+        const x_left = a + i * h;
+        const x_right = x_left + h;
+        const midpoint = (x_left + x_right) / 2;
+        const halfWidth = (x_right - x_left) / 2;
+
+        let subIntegral = 0;
+        for (let j = 0; j < gaussNodes.length; j++) {
+          const x = midpoint + halfWidth * gaussNodes[j];
+          // Linear interpolation from precomputed values
+          let idx = 0;
+          for (let k = 0; k < n - 1; k++) {
+            if (x >= xValues[k] && x <= xValues[k + 1]) {
+              idx = k;
+              break;
+            }
+          }
+          const t = (x - xValues[idx]) / (xValues[idx + 1] - xValues[idx]);
+          const y = yValues[idx] * (1 - t) + yValues[idx + 1] * t;
+          subIntegral += gaussWeights[j] * y;
+        }
+        integral += halfWidth * subIntegral;
       }
-      for (let i = 2; i < N - 2; i += 2) {
-        sum += 2 * yValues[i];
-      }
-      return (dx / 3) * sum;
+
+      return integral;
     }
 
     // Precompute trigonometric terms
-    function precomputeTrigTerms(xValues, L, n) {
+    function precomputeTrigTerms(xValues, L, n, center) {
       const cosTerms = [];
       const sinTerms = [];
       for (let k = 0; k < n; k++) {
-        cosTerms.push(xValues.map(x => Math.cos((k * Math.PI * x) / L)));
-        sinTerms.push(xValues.map(x => Math.sin((k * Math.PI * x) / L)));
+        cosTerms.push(xValues.map(x => Math.cos((k * Math.PI * (x - center)) / L)));
+        sinTerms.push(xValues.map(x => Math.sin((k * Math.PI * (x - center)) / L)));
       }
       return { cosTerms, sinTerms };
     }
 
-    // Compute Fourier series
-    function computeFourierSeries(func, n, xValues, L, dx) {
+    // Compute Fourier series using Gaussian quadrature
+    function computeFourierSeries(func, n, xValues, L, dx, center) {
       const fValues = xValues.map(x => evaluateFunction(func, x));
-      const integral_f = simpson(fValues, dx);
+      const integral_f = gaussianQuadratureVectorized(fValues, xValues);
       const a0 = (1 / L) * integral_f;
       const coefficients = { a: [a0 / 2], b: [0] }; // b[0] = 0 for k=0
-      const trigTerms = precomputeTrigTerms(xValues, L, n);
+      const trigTerms = precomputeTrigTerms(xValues, L, n, center);
       for (let k = 1; k < n; k++) {
         const cosTerm = trigTerms.cosTerms[k];
         const sinTerm = trigTerms.sinTerms[k];
         const akValues = fValues.map((f, i) => f * cosTerm[i]);
         const bkValues = fValues.map((f, i) => f * sinTerm[i]);
-        coefficients.a.push((1 / L) * simpson(akValues, dx));
-        coefficients.b.push((1 / L) * simpson(bkValues, dx));
+        coefficients.a.push((1 / L) * gaussianQuadratureVectorized(akValues, xValues));
+        coefficients.b.push((1 / L) * gaussianQuadratureVectorized(bkValues, xValues));
       }
       return { coefficients, trigTerms, fValues };
+    }
+
+    // Compute relative L2 norm error
+    function computeL2Error(originalYValues, fourierYValues, dx) {
+      let sumSquaredError = 0;
+      let sumSquaredOriginal = 0;
+      for (let i = 0; i < originalYValues.length; i++) {
+        const diff = originalYValues[i] - fourierYValues[i];
+        sumSquaredError += diff * diff;
+        sumSquaredOriginal += originalYValues[i] * originalYValues[i];
+      }
+      const l2Error = Math.sqrt(sumSquaredError * dx);
+      const l2Norm = Math.sqrt(sumSquaredOriginal * dx);
+      return l2Norm > 1e-10 ? l2Error / l2Norm : 0;
     }
 
     // Start animation
@@ -314,10 +400,14 @@
       const exampleSelect = document.getElementById('exampleSelect');
       const functionInput = document.getElementById('functionInput');
       const func = exampleSelect.value !== '' ? exampleSelect.value : functionInput.value;
-      const n = parseInt(document.getElementById('nInput').value);
+      let n = parseInt(document.getElementById('nInput').value);
       const xMin = parseFloat(document.getElementById('xMin').value);
       const xMax = parseFloat(document.getElementById('xMax').value);
       const speed = parseInt(document.getElementById('speedInput').value);
+
+      // Cap n at 200 without warning
+      if (n > 200) n = 200;
+
       if (isNaN(n) || n < 0 || isNaN(xMin) || isNaN(xMax) || xMin >= xMax) {
         alert('Invalid inputs. Ensure n >= 0 and xMin < xMax.');
         return;
@@ -340,14 +430,36 @@
         return;
       }
       const L = (xMax - xMin) / 2;
-      const { coefficients, trigTerms } = computeFourierSeries(func, n, xValues, L, dx);
+      const center = (xMin + xMax) / 2;
+
+      // Precompute function values and trigonometric terms only
+      const fValues = xValues.map(x => evaluateFunction(func, x));
+      const trigTerms = precomputeTrigTerms(xValues, L, n, center);
+
+      // Compute a0 coefficient immediately for first frame
+      const integral_f = gaussianQuadratureVectorized(fValues, xValues);
+      const a0 = (1 / L) * integral_f;
+      const coefficients = { a: [a0 / 2], b: [0] };
+
       if (animationInterval) clearInterval(animationInterval);
       let k = 0;
+
       animationInterval = setInterval(() => {
         if (k > n) {
           clearInterval(animationInterval);
           return;
         }
+
+        // Compute coefficient for current k on-the-fly (if not already computed)
+        if (k > 0 && coefficients.a.length <= k) {
+          const cosTerm = trigTerms.cosTerms[k];
+          const sinTerm = trigTerms.sinTerms[k];
+          const akValues = fValues.map((f, i) => f * cosTerm[i]);
+          const bkValues = fValues.map((f, i) => f * sinTerm[i]);
+          coefficients.a.push((1 / L) * gaussianQuadratureVectorized(akValues, xValues));
+          coefficients.b.push((1 / L) * gaussianQuadratureVectorized(bkValues, xValues));
+        }
+
         const series = xValues.map((_, i) => {
           let sum = coefficients.a[0]; // Constant term
           for (let j = 1; j < k; j++) {
@@ -355,7 +467,9 @@
           }
           return sum;
         });
-        plotGraph(xValues, originalYValues, series, k);
+
+        const l2Error = computeL2Error(originalYValues, series, dx);
+        plotGraph(xValues, originalYValues, series, k, l2Error);
         k++;
       }, speed);
     }
@@ -365,7 +479,7 @@
     }
 
     // Plot both original and Fourier series
-    function plotGraph(xValues, originalYValues, fourierYValues, k) {
+    function plotGraph(xValues, originalYValues, fourierYValues, k, l2Error) {
       const trace1 = {
         x: xValues,
         y: originalYValues,
@@ -380,8 +494,9 @@
         name: `Fourier (terms = ${k})`,
         line: { color: '#e74c3c' }
       };
+      const errorText = l2Error < 0.0001 ? l2Error.toExponential(3) : l2Error.toFixed(4);
       const layout = {
-        title: `Fourier Series (terms = ${k})`,
+        title: `Fourier Series: terms = ${k}, relative L² error = ${errorText}`,
         xaxis: { title: 'x' },
         yaxis: { title: 'f(x)' },
         plot_bgcolor: '#f4f4f9',
