@@ -59,7 +59,6 @@
         <li><a href="projects.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Diff Eq</a></li>
         <li><a href="linear.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Linear Algebra</a></li>
 		<li><a href="numerical.html" class="text-indigo-500 hover:text-blue-600 font-bold text-xl">Numerical Methods</a></li>
-
       </ul>
     </div>
   </nav>
@@ -120,6 +119,7 @@
   <script>
     let animationInterval;
     let parsedFunction = null;
+    const EPSILON = 1e-12;
 
     // Custom functions
     const sawtooth = x => 2 * (x / (2 * Math.PI) - Math.floor(0.5 + x / (2 * Math.PI)));
@@ -146,19 +146,30 @@
         if (match1) { condition1 = operator; a1 = parseFloat(match1[1]); }
         if (match2) { condition2 = operator; a2 = parseFloat(match2[1]); }
       }
-      if (!condition1 || !condition2 || isNaN(a1) || isNaN(a2) || a1 !== a2) return null;
+      if (!condition1 || !condition2 || isNaN(a1) || isNaN(a2) || Math.abs(a1 - a2) > EPSILON) return null;
       const validPairs = { '<': '>=', '<=': '>', '>': '<=', '>=': '<' };
       if (validPairs[condition1] !== condition2) return null;
       return { expr1, expr2, a: a1, condition1 };
     }
 
-    // Evaluate function
+    // Evaluate function with proper endpoint handling
     function evaluateFunction(func, x) {
       try {
         const piecewise = parsePiecewise(func);
         if (piecewise) {
           const { expr1, expr2, a, condition1 } = piecewise;
           const scope = { x };
+          
+          // Explicitly handle the breakpoint for equality cases
+          if (Math.abs(x - a) < EPSILON) {
+            // For exact equality, use the "inclusive" branch
+            if (condition1 === '<=' || condition1 === '>=') {
+              return math.evaluate(expr1, scope);
+            } else {
+              return math.evaluate(expr2, scope);
+            }
+          }
+          
           switch (condition1) {
             case '<': return x < a ? math.evaluate(expr1, scope) : math.evaluate(expr2, scope);
             case '<=': return x <= a ? math.evaluate(expr1, scope) : math.evaluate(expr2, scope);
@@ -265,7 +276,6 @@
     }
 
     // Gauss-Legendre quadrature nodes and weights (10-point rule)
-    // High accuracy for smooth functions
     const gaussNodes = [
       -0.9739065285171717,
       -0.8650633666889845,
@@ -292,36 +302,14 @@
       0.0666713443086881
     ];
 
-    // Composite Gaussian quadrature integration
-    // Subdivides interval [a,b] into subintervals and applies Gauss-Legendre quadrature
-    function gaussianQuadrature(func, a, b, numSubintervals = 50) {
-      const h = (b - a) / numSubintervals;
-      let integral = 0;
-
-      for (let i = 0; i < numSubintervals; i++) {
-        const x_left = a + i * h;
-        const x_right = x_left + h;
-        const midpoint = (x_left + x_right) / 2;
-        const halfWidth = (x_right - x_left) / 2;
-
-        // Transform Gauss nodes from [-1,1] to [x_left, x_right]
-        let subIntegral = 0;
-        for (let j = 0; j < gaussNodes.length; j++) {
-          const x = midpoint + halfWidth * gaussNodes[j];
-          subIntegral += gaussWeights[j] * func(x);
-        }
-        integral += halfWidth * subIntegral;
-      }
-
-      return integral;
-    }
-
-    // Vectorized Gaussian quadrature for precomputed function values
+    // Composite Gaussian quadrature integration with endpoint handling
     function gaussianQuadratureVectorized(yValues, xValues) {
       const n = xValues.length;
       const a = xValues[0];
       const b = xValues[n - 1];
-      const numSubintervals = Math.floor((n - 1) / 4); // Adaptive subdivision
+      
+      // Use more subintervals for better endpoint coverage
+      const numSubintervals = Math.max(10, Math.floor((n - 1) / 4));
       const h = (b - a) / numSubintervals;
       let integral = 0;
 
@@ -334,17 +322,25 @@
         let subIntegral = 0;
         for (let j = 0; j < gaussNodes.length; j++) {
           const x = midpoint + halfWidth * gaussNodes[j];
-          // Linear interpolation from precomputed values
-          let idx = 0;
-          for (let k = 0; k < n - 1; k++) {
-            if (x >= xValues[k] && x <= xValues[k + 1]) {
-              idx = k;
-              break;
+          
+          // Handle endpoints explicitly
+          if (x <= xValues[0] + EPSILON) {
+            subIntegral += gaussWeights[j] * yValues[0];
+          } else if (x >= xValues[n-1] - EPSILON) {
+            subIntegral += gaussWeights[j] * yValues[n-1];
+          } else {
+            // Find the interval containing x
+            let idx = 0;
+            for (let k = 0; k < n - 1; k++) {
+              if (x >= xValues[k] - EPSILON && x <= xValues[k + 1] + EPSILON) {
+                idx = k;
+                break;
+              }
             }
+            const t = (x - xValues[idx]) / (xValues[idx + 1] - xValues[idx]);
+            const y = yValues[idx] * (1 - t) + yValues[idx + 1] * t;
+            subIntegral += gaussWeights[j] * y;
           }
-          const t = (x - xValues[idx]) / (xValues[idx + 1] - xValues[idx]);
-          const y = yValues[idx] * (1 - t) + yValues[idx + 1] * t;
-          subIntegral += gaussWeights[j] * y;
         }
         integral += halfWidth * subIntegral;
       }
@@ -368,7 +364,7 @@
       const fValues = xValues.map(x => evaluateFunction(func, x));
       const integral_f = gaussianQuadratureVectorized(fValues, xValues);
       const a0 = (1 / L) * integral_f;
-      const coefficients = { a: [a0 / 2], b: [0] }; // b[0] = 0 for k=0
+      const coefficients = { a: [a0 / 2], b: [0] };
       const trigTerms = precomputeTrigTerms(xValues, L, n, center);
       for (let k = 1; k < n; k++) {
         const cosTerm = trigTerms.cosTerms[k];
@@ -381,7 +377,7 @@
       return { coefficients, trigTerms, fValues };
     }
 
-    // Compute relative L2 norm error
+    // Compute relative L2 norm error with numerical stability
     function computeL2Error(originalYValues, fourierYValues, dx) {
       let sumSquaredError = 0;
       let sumSquaredOriginal = 0;
@@ -390,9 +386,9 @@
         sumSquaredError += diff * diff;
         sumSquaredOriginal += originalYValues[i] * originalYValues[i];
       }
-      const l2Error = Math.sqrt(sumSquaredError * dx);
-      const l2Norm = Math.sqrt(sumSquaredOriginal * dx);
-      return l2Norm > 1e-10 ? l2Error / l2Norm : 0;
+      const l2Error = Math.sqrt(Math.max(0, sumSquaredError) * dx);
+      const l2Norm = Math.sqrt(Math.max(0, sumSquaredOriginal) * dx);
+      return l2Norm > EPSILON ? l2Error / l2Norm : 0;
     }
 
     // Start animation
@@ -405,7 +401,7 @@
       const xMax = parseFloat(document.getElementById('xMax').value);
       const speed = parseInt(document.getElementById('speedInput').value);
 
-      // Cap n at 200 without warning
+      // Cap n at 200
       if (n > 200) n = 200;
 
       if (isNaN(n) || n < 0 || isNaN(xMin) || isNaN(xMax) || xMin >= xMax) {
@@ -440,6 +436,14 @@
       const integral_f = gaussianQuadratureVectorized(fValues, xValues);
       const a0 = (1 / L) * integral_f;
       const coefficients = { a: [a0 / 2], b: [0] };
+
+      // Handle n=0 case
+      if (n === 0) {
+        const series = xValues.map(() => coefficients.a[0]);
+        const l2Error = computeL2Error(originalYValues, series, dx);
+        plotGraph(xValues, originalYValues, series, 0, l2Error);
+        return;
+      }
 
       if (animationInterval) clearInterval(animationInterval);
       let k = 0;
@@ -480,6 +484,12 @@
 
     // Plot both original and Fourier series
     function plotGraph(xValues, originalYValues, fourierYValues, k, l2Error) {
+      // Handle k=0 case for proper array
+      if (k === 0 && (!fourierYValues || fourierYValues.length !== xValues.length)) {
+        const constantValue = fourierYValues[0] || 0;
+        fourierYValues = xValues.map(() => constantValue);
+      }
+      
       const trace1 = {
         x: xValues,
         y: originalYValues,
