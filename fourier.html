@@ -381,6 +381,16 @@
       return { coefficients, trigTerms, fValues };
     }
 
+    // Compute L2 norm error
+    function computeL2Error(originalYValues, fourierYValues, dx) {
+      let sumSquaredError = 0;
+      for (let i = 0; i < originalYValues.length; i++) {
+        const diff = originalYValues[i] - fourierYValues[i];
+        sumSquaredError += diff * diff;
+      }
+      return Math.sqrt(sumSquaredError * dx);
+    }
+
     // Start animation
     function startAnimation() {
       const exampleSelect = document.getElementById('exampleSelect');
@@ -412,14 +422,35 @@
         return;
       }
       const L = (xMax - xMin) / 2;
-      const { coefficients, trigTerms } = computeFourierSeries(func, n, xValues, L, dx);
+
+      // Precompute function values and trigonometric terms only
+      const fValues = xValues.map(x => evaluateFunction(func, x));
+      const trigTerms = precomputeTrigTerms(xValues, L, n);
+
+      // Compute a0 coefficient immediately for first frame
+      const integral_f = gaussianQuadratureVectorized(fValues, xValues);
+      const a0 = (1 / L) * integral_f;
+      const coefficients = { a: [a0 / 2], b: [0] };
+
       if (animationInterval) clearInterval(animationInterval);
       let k = 0;
+
       animationInterval = setInterval(() => {
         if (k > n) {
           clearInterval(animationInterval);
           return;
         }
+
+        // Compute coefficient for current k on-the-fly (if not already computed)
+        if (k > 0 && coefficients.a.length <= k) {
+          const cosTerm = trigTerms.cosTerms[k];
+          const sinTerm = trigTerms.sinTerms[k];
+          const akValues = fValues.map((f, i) => f * cosTerm[i]);
+          const bkValues = fValues.map((f, i) => f * sinTerm[i]);
+          coefficients.a.push((1 / L) * gaussianQuadratureVectorized(akValues, xValues));
+          coefficients.b.push((1 / L) * gaussianQuadratureVectorized(bkValues, xValues));
+        }
+
         const series = xValues.map((_, i) => {
           let sum = coefficients.a[0]; // Constant term
           for (let j = 1; j < k; j++) {
@@ -427,7 +458,9 @@
           }
           return sum;
         });
-        plotGraph(xValues, originalYValues, series, k);
+
+        const l2Error = computeL2Error(originalYValues, series, dx);
+        plotGraph(xValues, originalYValues, series, k, l2Error);
         k++;
       }, speed);
     }
@@ -437,7 +470,7 @@
     }
 
     // Plot both original and Fourier series
-    function plotGraph(xValues, originalYValues, fourierYValues, k) {
+    function plotGraph(xValues, originalYValues, fourierYValues, k, l2Error) {
       const trace1 = {
         x: xValues,
         y: originalYValues,
@@ -452,8 +485,9 @@
         name: `Fourier (terms = ${k})`,
         line: { color: '#e74c3c' }
       };
+      const errorText = l2Error < 0.0001 ? l2Error.toExponential(3) : l2Error.toFixed(4);
       const layout = {
-        title: `Fourier Series (terms = ${k})`,
+        title: `Fourier Series: terms = ${k}, L² error = ${errorText}`,
         xaxis: { title: 'x' },
         yaxis: { title: 'f(x)' },
         plot_bgcolor: '#f4f4f9',
