@@ -210,6 +210,27 @@
                 <label><input type="radio" name="shading-mode" value="reverse" checked> Reverse Shading (infeasible side)</label>
             </div>
 
+            <div class="shading-controls">
+                <div class="panel-title" style="margin-bottom:10px;font-size:18px;">Sweep Settings</div>
+                <label style="margin-bottom: 8px;">
+                    <span style="display: block; margin-bottom: 4px; font-weight: 600;">Optimization Type:</span>
+                    <select id="optimization-type" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px;">
+                        <option value="maximize">Maximize</option>
+                        <option value="minimize">Minimize</option>
+                        <option value="auto">Auto-detect</option>
+                    </select>
+                </label>
+                <label>
+                    <span style="display: block; margin-bottom: 4px; font-weight: 600;">Animation Speed:</span>
+                    <select id="animation-speed" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 16px;">
+                        <option value="2000">Fast (2s)</option>
+                        <option value="3000" selected>Normal (3s)</option>
+                        <option value="5000">Slow (5s)</option>
+                        <option value="8000">Very Slow (8s)</option>
+                    </select>
+                </label>
+            </div>
+
             <div class="controls">
                 <button class="action-btn" id="update-plot">Update Plot</button>
                 <button class="action-btn" id="play-sweep">▶ Play Sweep Animation</button>
@@ -1020,6 +1041,20 @@
                     return;
                 }
 
+                // Determine optimization type
+                const optType = document.getElementById('optimization-type').value;
+                let isMaximize = true;
+
+                if (optType === 'auto') {
+                    // Auto-detect: count >= vs <= constraints
+                    const greaterCount = inequalities.filter(ineq => ineq.relation === '≥' || ineq.relation === '>').length;
+                    const lessCount = inequalities.filter(ineq => ineq.relation === '≤' || ineq.relation === '<').length;
+                    // If more >= constraints, likely unbounded above, so minimize
+                    isMaximize = lessCount > greaterCount;
+                } else {
+                    isMaximize = optType === 'maximize';
+                }
+
                 // Disable the button during animation
                 const button = document.getElementById('play-sweep');
                 button.disabled = true;
@@ -1029,12 +1064,13 @@
                 const pValues = cornerPoints.map(p => this.evaluateObjective(p, objective));
                 const minP = Math.min(...pValues);
                 const maxP = Math.max(...pValues);
-                const maxIndex = pValues.indexOf(maxP);
+                const optimalP = isMaximize ? maxP : minP;
+                const optimalIndex = isMaximize ? pValues.indexOf(maxP) : pValues.indexOf(minP);
 
                 // Calculate sweep range (extend beyond min and max for better visualization)
                 const range = maxP - minP;
-                const startP = minP - range * 0.3;
-                const endP = maxP + range * 0.1;
+                const startP = isMaximize ? (minP - range * 0.3) : (maxP + range * 0.3);
+                const endP = isMaximize ? (maxP + range * 0.1) : (minP - range * 0.1);
 
                 // Show P value display
                 const display = document.getElementById('p-value-display');
@@ -1042,17 +1078,18 @@
                 display.classList.remove('maximum');
 
                 // Animation parameters
-                const duration = 3000; // 3 seconds
+                const duration = parseInt(document.getElementById('animation-speed').value) || 3000;
                 const fps = 30;
                 const frames = Math.floor(duration / 1000 * fps);
                 let currentFrame = 0;
 
                 const animate = () => {
                     if (currentFrame >= frames) {
-                        // Animation complete - highlight maximum
+                        // Animation complete - highlight optimal
                         display.classList.add('maximum');
-                        const maxLabel = this.cornerLabels[maxIndex];
-                        document.getElementById('p-value-text').innerHTML = `<strong>Maximum: P = ${this.formatNumberAsLatex(maxP, false)} at point ${maxLabel}</strong>`;
+                        const optimalLabel = this.cornerLabels[optimalIndex];
+                        const optType = isMaximize ? 'Maximum' : 'Minimum';
+                        document.getElementById('p-value-text').innerHTML = `<strong>${optType}: P = ${this.formatNumberAsLatex(optimalP, false)} at point ${optimalLabel}</strong>`;
 
                         // Re-enable button after a delay
                         setTimeout(() => {
@@ -1072,8 +1109,9 @@
                     // Update display
                     document.getElementById('p-value-text').textContent = `P = ${this.formatNumberAsLatex(currentP, false)}`;
 
-                    // Check if we're at or near the maximum
-                    if (Math.abs(currentP - maxP) < range * 0.05) {
+                    // Check if we're at or near the optimal
+                    const atOptimal = isMaximize ? (currentP >= optimalP - range * 0.05) : (currentP <= optimalP + range * 0.05);
+                    if (atOptimal) {
                         display.style.borderColor = '#f39c12';
                         display.style.background = 'rgba(243, 156, 18, 0.95)';
                         display.style.color = 'white';
@@ -1084,7 +1122,8 @@
                     }
 
                     // Update plot with sweep line
-                    this.updatePlotWithSweepLine(currentP, objective, bounds, inequalities, cornerPoints, maxIndex, currentP >= maxP);
+                    const reachedOptimal = isMaximize ? (currentP >= optimalP) : (currentP <= optimalP);
+                    this.updatePlotWithSweepLine(currentP, objective, bounds, inequalities, cornerPoints, optimalIndex, reachedOptimal);
 
                     currentFrame++;
                     requestAnimationFrame(animate);
@@ -1093,7 +1132,7 @@
                 animate();
             }
 
-            updatePlotWithSweepLine(pValue, objective, bounds, inequalities, cornerPoints, maxIndex, atMaximum) {
+            updatePlotWithSweepLine(pValue, objective, bounds, inequalities, cornerPoints, optimalIndex, atOptimal) {
                 const data = [];
                 const isReverse = this.getShadingMode() === 'reverse';
 
@@ -1183,8 +1222,8 @@
                     const y2 = (pValue - objective.px * x2) / objective.py;
 
                     // Determine line color and width
-                    const lineColor = atMaximum ? '#27ae60' : '#e74c3c';
-                    const lineWidth = atMaximum ? 5 : 4;
+                    const lineColor = atOptimal ? '#27ae60' : '#e74c3c';
+                    const lineWidth = atOptimal ? 5 : 4;
 
                     data.push({
                         x: [x1, x2],
@@ -1198,8 +1237,8 @@
                 } else if (Math.abs(objective.px) > 0.001) {
                     // Vertical line case: x = P / px
                     const xVal = pValue / objective.px;
-                    const lineColor = atMaximum ? '#27ae60' : '#e74c3c';
-                    const lineWidth = atMaximum ? 5 : 4;
+                    const lineColor = atOptimal ? '#27ae60' : '#e74c3c';
+                    const lineWidth = atOptimal ? 5 : 4;
 
                     data.push({
                         x: [xVal, xVal],
@@ -1216,7 +1255,7 @@
                 if (cornerPoints.length > 0) {
                     cornerPoints.forEach((point, i) => {
                         const label = this.cornerLabels[i] || String.fromCharCode(65 + i);
-                        const isMaxPoint = i === maxIndex && atMaximum;
+                        const isMaxPoint = i === optimalIndex && atOptimal;
 
                         data.push({
                             x: [point[0]],
