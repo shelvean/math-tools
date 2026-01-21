@@ -612,6 +612,8 @@
                 if (inequalities.length === 0) {
                     return { xMin: -5, xMax: 5, yMin: -5, yMax: 5 };
                 }
+
+                // Calculate initial bounds from intercepts
                 let xMin = -10, xMax = 10, yMin = -10, yMax = 10;
                 inequalities.forEach(ineq => {
                     if (Math.abs(ineq.a) > 0.001) {
@@ -625,13 +627,39 @@
                         yMax = Math.max(yMax, yInt);
                     }
                 });
+
+                // Check if we have corner points (bounded region)
+                const cornerPoints = this.findCornerPoints(inequalities, { xMin, xMax, yMin, yMax });
+                const isBounded = cornerPoints.length > 0;
+
+                let paddingFactor, minPadding;
+                if (isBounded) {
+                    // For bounded regions, use corner points to determine bounds
+                    const xCoords = cornerPoints.map(p => p[0]);
+                    const yCoords = cornerPoints.map(p => p[1]);
+                    xMin = Math.min(...xCoords);
+                    xMax = Math.max(...xCoords);
+                    yMin = Math.min(...yCoords);
+                    yMax = Math.max(...yCoords);
+
+                    // Smaller padding for bounded regions (15-20% instead of 40%)
+                    paddingFactor = 0.2;
+                    minPadding = 1;
+                } else {
+                    // Larger padding for unbounded regions
+                    paddingFactor = 0.4;
+                    minPadding = 4;
+                }
+
                 const rangeX = xMax - xMin || 10;
                 const rangeY = yMax - yMin || 10;
-                const padding = Math.max(rangeX * 0.4, rangeY * 0.4, 4);
+                const padding = Math.max(rangeX * paddingFactor, rangeY * paddingFactor, minPadding);
+
                 xMin -= padding;
                 xMax += padding;
                 yMin -= padding;
                 yMax += padding;
+
                 return { xMin, xMax, yMin, yMax };
             }
 
