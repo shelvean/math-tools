@@ -766,6 +766,77 @@
                 }
             }
 
+            isRegionUnbounded(inequalities) {
+                // A region is unbounded if it's not completely enclosed
+                // Check if we have constraints in all directions
+                let hasUpperX = false, hasLowerX = false, hasUpperY = false, hasLowerY = false;
+
+                inequalities.forEach(ineq => {
+                    // x <= c or x < c (upper bound on x)
+                    if (Math.abs(ineq.a - 1) < 0.001 && Math.abs(ineq.b) < 0.001 && (ineq.relation === '≤' || ineq.relation === '<')) {
+                        hasUpperX = true;
+                    }
+                    // x >= c or x > c (lower bound on x)
+                    if (Math.abs(ineq.a - 1) < 0.001 && Math.abs(ineq.b) < 0.001 && (ineq.relation === '≥' || ineq.relation === '>')) {
+                        hasLowerX = true;
+                    }
+                    // y <= c or y < c (upper bound on y)
+                    if (Math.abs(ineq.b - 1) < 0.001 && Math.abs(ineq.a) < 0.001 && (ineq.relation === '≤' || ineq.relation === '<')) {
+                        hasUpperY = true;
+                    }
+                    // y >= c or y > c (lower bound on y)
+                    if (Math.abs(ineq.b - 1) < 0.001 && Math.abs(ineq.a) < 0.001 && (ineq.relation === '≥' || ineq.relation === '>')) {
+                        hasLowerY = true;
+                    }
+                    // Mixed constraints can also bound
+                    if (ineq.a > 0 && ineq.b > 0 && (ineq.relation === '≤' || ineq.relation === '<')) {
+                        hasUpperX = true;
+                        hasUpperY = true;
+                    }
+                });
+
+                return !(hasUpperX && hasLowerX && hasUpperY && hasLowerY);
+            }
+
+            hasMaximum(inequalities, objective) {
+                // Check if the objective function is bounded above
+                // If the feasible region is unbounded in the direction of the gradient, there's no maximum
+                const unbounded = this.isRegionUnbounded(inequalities);
+                if (!unbounded) return true; // Bounded region always has max
+
+                // Check if we can increase the objective indefinitely
+                // The gradient direction is (px, py)
+                // We need to check if the constraints prevent unbounded growth in this direction
+
+                // Simple heuristic: if most constraints are ≤, likely bounded above
+                const upperBounds = inequalities.filter(ineq => ineq.relation === '≤' || ineq.relation === '<').length;
+                const lowerBounds = inequalities.filter(ineq => ineq.relation === '≥' || ineq.relation === '>').length;
+
+                // If objective coefficients are positive and we have upper bound constraints, likely has max
+                if (objective.px >= 0 && objective.py >= 0 && upperBounds > 0) return true;
+                // If objective coefficients are negative and we have lower bound constraints, likely has max
+                if (objective.px <= 0 && objective.py <= 0 && lowerBounds > 0) return true;
+
+                // Mixed case - be conservative and say it might not have max
+                return upperBounds > lowerBounds;
+            }
+
+            hasMinimum(inequalities, objective) {
+                // Check if the objective function is bounded below
+                const unbounded = this.isRegionUnbounded(inequalities);
+                if (!unbounded) return true; // Bounded region always has min
+
+                const upperBounds = inequalities.filter(ineq => ineq.relation === '≤' || ineq.relation === '<').length;
+                const lowerBounds = inequalities.filter(ineq => ineq.relation === '≥' || ineq.relation === '>').length;
+
+                // If objective coefficients are positive and we have lower bound constraints, likely has min
+                if (objective.px >= 0 && objective.py >= 0 && lowerBounds > 0) return true;
+                // If objective coefficients are negative and we have upper bound constraints, likely has min
+                if (objective.px <= 0 && objective.py <= 0 && upperBounds > 0) return true;
+
+                return lowerBounds > upperBounds;
+            }
+
             updateCornerPointsTable(cornerPoints, obj) {
                 const tbody = document.querySelector('#corner-points-table tbody');
                 tbody.innerHTML = '';
@@ -773,10 +844,29 @@
                     tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #adb5bd; font-style: italic;">No corner points (unbounded or empty region)</td></tr>`;
                     return;
                 }
+
+                // Calculate all P values
+                const pValues = cornerPoints.map(p => this.evaluateObjective(p, obj));
+                const minP = Math.min(...pValues);
+                const maxP = Math.max(...pValues);
+                const tolerance = 1e-6;
+
+                // Find all corners with min/max values
+                const minIndices = pValues.map((v, i) => Math.abs(v - minP) < tolerance ? i : -1).filter(i => i >= 0);
+                const maxIndices = pValues.map((v, i) => Math.abs(v - maxP) < tolerance ? i : -1).filter(i => i >= 0);
+
                 cornerPoints.forEach((p, i) => {
                     const val = this.evaluateObjective(p, obj);
                     const label = this.cornerLabels[i] || String.fromCharCode(65 + i);
                     const tr = document.createElement('tr');
+
+                    // Highlight if this is optimal
+                    const isMin = minIndices.includes(i);
+                    const isMax = maxIndices.includes(i);
+                    if (isMin || isMax) {
+                        tr.style.backgroundColor = '#e8f5e9';
+                        tr.style.fontWeight = '600';
+                    }
 
                     // Create cells
                     const labelCell = document.createElement('td');
@@ -808,6 +898,48 @@
                     tr.appendChild(valueCell);
                     tbody.appendChild(tr);
                 });
+
+                // Add summary row for edge optimals or unbounded
+                const inequalities = this.getInequalities();
+                const hasMax = this.hasMaximum(inequalities, obj);
+                const hasMin = this.hasMinimum(inequalities, obj);
+
+                if (minIndices.length > 1 || maxIndices.length > 1 || !hasMax || !hasMin) {
+                    const tr = document.createElement('tr');
+                    tr.style.borderTop = '2px solid #2c3e50';
+                    tr.style.fontStyle = 'italic';
+                    const td = document.createElement('td');
+                    td.colSpan = 3;
+                    td.style.padding = '12px';
+                    td.style.textAlign = 'center';
+
+                    let msg = '';
+
+                    // Edge optimal messages
+                    if (maxIndices.length > 1) {
+                        const labels = maxIndices.map(i => this.cornerLabels[i]).join(', ');
+                        msg += `<span style="color: #27ae60; font-weight: 600;">Maximum occurs along edge: ${labels}</span>`;
+                    }
+                    if (minIndices.length > 1) {
+                        const labels = minIndices.map(i => this.cornerLabels[i]).join(', ');
+                        if (msg) msg += '<br>';
+                        msg += `<span style="color: #27ae60; font-weight: 600;">Minimum occurs along edge: ${labels}</span>`;
+                    }
+
+                    // Unbounded messages
+                    if (!hasMax) {
+                        if (msg) msg += '<br>';
+                        msg += `<span style="color: #e74c3c; font-weight: 600;">⚠ No maximum (unbounded above)</span>`;
+                    }
+                    if (!hasMin) {
+                        if (msg) msg += '<br>';
+                        msg += `<span style="color: #e74c3c; font-weight: 600;">⚠ No minimum (unbounded below)</span>`;
+                    }
+
+                    td.innerHTML = msg;
+                    tr.appendChild(td);
+                    tbody.appendChild(tr);
+                }
             }
 
             extendLineToEdges(ineq, bounds) {
@@ -1074,13 +1206,28 @@
                 let isMaximize = true;
 
                 if (optType === 'auto') {
-                    // Auto-detect: count >= vs <= constraints
-                    const greaterCount = inequalities.filter(ineq => ineq.relation === '≥' || ineq.relation === '>').length;
-                    const lessCount = inequalities.filter(ineq => ineq.relation === '≤' || ineq.relation === '<').length;
-                    // If more >= constraints, likely unbounded above, so minimize
-                    isMaximize = lessCount > greaterCount;
+                    // Auto-detect: check if we have max/min
+                    const hasMax = this.hasMaximum(inequalities, objective);
+                    const hasMin = this.hasMinimum(inequalities, objective);
+
+                    if (!hasMax && !hasMin) {
+                        alert('Cannot determine optimization type. The region appears to be unbounded in both directions.');
+                        return;
+                    }
+
+                    isMaximize = hasMax;
                 } else {
                     isMaximize = optType === 'maximize';
+                }
+
+                // Check if the requested optimization is possible
+                if (isMaximize && !this.hasMaximum(inequalities, objective)) {
+                    alert('No maximum exists! The objective function is unbounded above for this feasible region.\n\nTry minimizing instead.');
+                    return;
+                }
+                if (!isMaximize && !this.hasMinimum(inequalities, objective)) {
+                    alert('No minimum exists! The objective function is unbounded below for this feasible region.\n\nTry maximizing instead.');
+                    return;
                 }
 
                 // Disable the button during animation
@@ -1093,7 +1240,10 @@
                 const minP = Math.min(...pValues);
                 const maxP = Math.max(...pValues);
                 const optimalP = isMaximize ? maxP : minP;
-                const optimalIndex = isMaximize ? pValues.indexOf(maxP) : pValues.indexOf(minP);
+                const tolerance = 1e-6;
+
+                // Find all corners with optimal value
+                const optimalIndices = pValues.map((v, i) => Math.abs(v - optimalP) < tolerance ? i : -1).filter(i => i >= 0);
 
                 // Calculate sweep range (extend beyond min and max for better visualization)
                 const range = maxP - minP;
@@ -1115,9 +1265,18 @@
                     if (currentFrame >= frames) {
                         // Animation complete - highlight optimal
                         display.classList.add('maximum');
-                        const optimalLabel = this.cornerLabels[optimalIndex];
                         const optType = isMaximize ? 'Maximum' : 'Minimum';
-                        document.getElementById('p-value-text').innerHTML = `<strong>${optType}: P = ${this.formatNumberAsLatex(optimalP, false)} at point ${optimalLabel}</strong>`;
+
+                        let message;
+                        if (optimalIndices.length === 1) {
+                            const optimalLabel = this.cornerLabels[optimalIndices[0]];
+                            message = `<strong>${optType}: P = ${this.formatNumberAsLatex(optimalP, false)} at point ${optimalLabel}</strong>`;
+                        } else {
+                            // Multiple corners with same optimal value
+                            const labels = optimalIndices.map(i => this.cornerLabels[i]).join(', ');
+                            message = `<strong>${optType}: P = ${this.formatNumberAsLatex(optimalP, false)}<br>Along edge: ${labels}</strong>`;
+                        }
+                        document.getElementById('p-value-text').innerHTML = message;
 
                         // Re-enable button after a delay
                         setTimeout(() => {
@@ -1151,7 +1310,7 @@
 
                     // Update plot with sweep line
                     const reachedOptimal = isMaximize ? (currentP >= optimalP) : (currentP <= optimalP);
-                    this.updatePlotWithSweepLine(currentP, objective, bounds, inequalities, cornerPoints, optimalIndex, reachedOptimal);
+                    this.updatePlotWithSweepLine(currentP, objective, bounds, inequalities, cornerPoints, optimalIndices, reachedOptimal);
 
                     currentFrame++;
                     requestAnimationFrame(animate);
@@ -1160,7 +1319,7 @@
                 animate();
             }
 
-            updatePlotWithSweepLine(pValue, objective, bounds, inequalities, cornerPoints, optimalIndex, atOptimal) {
+            updatePlotWithSweepLine(pValue, objective, bounds, inequalities, cornerPoints, optimalIndices, atOptimal) {
                 const data = [];
                 const isReverse = this.getShadingMode() === 'reverse';
 
@@ -1279,28 +1438,68 @@
                     });
                 }
 
+                // Draw optimal edge if multiple optimal points
+                if (atOptimal && optimalIndices.length > 1) {
+                    // Check if optimal points are adjacent (form an edge)
+                    const sortedIndices = [...optimalIndices].sort((a, b) => a - b);
+                    for (let i = 0; i < sortedIndices.length - 1; i++) {
+                        const idx1 = sortedIndices[i];
+                        const idx2 = sortedIndices[i + 1];
+
+                        // Check if adjacent (consecutive or wraps around)
+                        const areAdjacent = (idx2 - idx1 === 1) ||
+                                          (idx1 === 0 && idx2 === cornerPoints.length - 1);
+
+                        if (areAdjacent) {
+                            const p1 = cornerPoints[idx1];
+                            const p2 = cornerPoints[idx2];
+                            data.push({
+                                x: [p1[0], p2[0]],
+                                y: [p1[1], p2[1]],
+                                mode: 'lines',
+                                line: { color: '#27ae60', width: 6 },
+                                showlegend: false,
+                                hoverinfo: 'none'
+                            });
+                        }
+                    }
+                    // Check wrap-around case
+                    if (sortedIndices.includes(0) && sortedIndices.includes(cornerPoints.length - 1)) {
+                        const p1 = cornerPoints[0];
+                        const p2 = cornerPoints[cornerPoints.length - 1];
+                        data.push({
+                            x: [p1[0], p2[0]],
+                            y: [p1[1], p2[1]],
+                            mode: 'lines',
+                            line: { color: '#27ae60', width: 6 },
+                            showlegend: false,
+                            hoverinfo: 'none'
+                        });
+                    }
+                }
+
                 // Draw corner points
                 if (cornerPoints.length > 0) {
                     cornerPoints.forEach((point, i) => {
                         const label = this.cornerLabels[i] || String.fromCharCode(65 + i);
-                        const isMaxPoint = i === optimalIndex && atOptimal;
+                        const isOptimalPoint = optimalIndices.includes(i) && atOptimal;
 
                         data.push({
                             x: [point[0]],
                             y: [point[1]],
                             mode: 'markers+text',
                             marker: {
-                                size: isMaxPoint ? 20 : 14,
-                                color: isMaxPoint ? '#27ae60' : '#2c3e50',
+                                size: isOptimalPoint ? 20 : 14,
+                                color: isOptimalPoint ? '#27ae60' : '#2c3e50',
                                 line: { color: 'white', width: 3 }
                             },
                             text: [label],
                             textposition: 'top center',
                             textfont: {
-                                size: isMaxPoint ? 22 : 18,
+                                size: isOptimalPoint ? 22 : 18,
                                 family: 'Arial',
                                 weight: 'bold',
-                                color: isMaxPoint ? '#27ae60' : '#2c3e50'
+                                color: isOptimalPoint ? '#27ae60' : '#2c3e50'
                             },
                             showlegend: false,
                             hoverinfo: 'none'
