@@ -800,25 +800,46 @@
 
             hasMaximum(inequalities, objective) {
                 // Check if the objective function is bounded above
-                // If the feasible region is unbounded in the direction of the gradient, there's no maximum
                 const unbounded = this.isRegionUnbounded(inequalities);
                 if (!unbounded) return true; // Bounded region always has max
 
-                // Check if we can increase the objective indefinitely
-                // The gradient direction is (px, py)
-                // We need to check if the constraints prevent unbounded growth in this direction
+                // For unbounded regions, check if objective can increase indefinitely
+                // Check which directions are unbounded
+                let hasUpperX = false, hasLowerX = false, hasUpperY = false, hasLowerY = false;
 
-                // Simple heuristic: if most constraints are ≤, likely bounded above
-                const upperBounds = inequalities.filter(ineq => ineq.relation === '≤' || ineq.relation === '<').length;
-                const lowerBounds = inequalities.filter(ineq => ineq.relation === '≥' || ineq.relation === '>').length;
+                inequalities.forEach(ineq => {
+                    if (Math.abs(ineq.a - 1) < 0.001 && Math.abs(ineq.b) < 0.001 && (ineq.relation === '≤' || ineq.relation === '<')) {
+                        hasUpperX = true;
+                    }
+                    if (Math.abs(ineq.a - 1) < 0.001 && Math.abs(ineq.b) < 0.001 && (ineq.relation === '≥' || ineq.relation === '>')) {
+                        hasLowerX = true;
+                    }
+                    if (Math.abs(ineq.b - 1) < 0.001 && Math.abs(ineq.a) < 0.001 && (ineq.relation === '≤' || ineq.relation === '<')) {
+                        hasUpperY = true;
+                    }
+                    if (Math.abs(ineq.b - 1) < 0.001 && Math.abs(ineq.a) < 0.001 && (ineq.relation === '≥' || ineq.relation === '>')) {
+                        hasLowerY = true;
+                    }
+                    // Mixed constraints like 2x + y <= 10 can also bound
+                    if (ineq.a > 0 && ineq.b > 0 && (ineq.relation === '≤' || ineq.relation === '<')) {
+                        hasUpperX = true;
+                        hasUpperY = true;
+                    }
+                    if (ineq.a < 0 && ineq.b < 0 && (ineq.relation === '≥' || ineq.relation === '>')) {
+                        hasUpperX = true;
+                        hasUpperY = true;
+                    }
+                });
 
-                // If objective coefficients are positive and we have upper bound constraints, likely has max
-                if (objective.px >= 0 && objective.py >= 0 && upperBounds > 0) return true;
-                // If objective coefficients are negative and we have lower bound constraints, likely has max
-                if (objective.px <= 0 && objective.py <= 0 && lowerBounds > 0) return true;
+                // Check if objective can increase indefinitely in unbounded directions
+                // If x is unbounded above and px > 0, or unbounded below and px < 0, no max
+                if (!hasUpperX && objective.px > 0.001) return false;
+                if (!hasLowerX && objective.px < -0.001) return false;
+                // If y is unbounded above and py > 0, or unbounded below and py < 0, no max
+                if (!hasUpperY && objective.py > 0.001) return false;
+                if (!hasLowerY && objective.py < -0.001) return false;
 
-                // Mixed case - be conservative and say it might not have max
-                return upperBounds > lowerBounds;
+                return true; // Objective is bounded above
             }
 
             hasMinimum(inequalities, objective) {
