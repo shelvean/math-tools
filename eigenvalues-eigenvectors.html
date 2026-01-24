@@ -888,35 +888,50 @@
         }
         let sortedPairs = Array.from(eigenMap.values()).sort((a, b) => math.abs(a.value) - math.abs(b.value));
         const A_latex = matrixToLatex(A);
-        let align_content = sortedPairs.map((pair, index) => {
+
+        // Header with legend
+        let resultHtml = `<div class="latex">$$ A = ${A_latex} $$</div>`;
+        if (hasGeneralizedEigenvectors) {
+          resultHtml += `
+            <div class="text-center mb-4 mt-4">
+              <span class="text-gray-700 text-base">Regular Eigenvectors</span>
+              <span class="mx-2">|</span>
+              <span class="text-blue-600 text-base font-semibold">Generalized Eigenvectors</span>
+            </div>
+          `;
+        }
+
+        // Create horizontal boxes for each eigenvalue
+        resultHtml += `<div class="flex flex-wrap justify-center gap-4 mt-4">`;
+        sortedPairs.forEach((pair, index) => {
           const lambda_latex = formatForLatex(pair.value, true);
           const key = getKey(pair.value);
           const algMultiplicity = algMultMap.get(key) || pair.vectors.length;
-          const mult_latex = algMultiplicity >= 2 ? `(\\text{multiplicity } ${algMultiplicity})` : '';
+          const mult_latex = algMultiplicity >= 2 ? `\\text{mult. } ${algMultiplicity}` : '';
+
           const vecs_latex = pair.vectors.map((vec, vecIndex) => {
             try {
               const { latex } = vectorToLatex(vec);
               if (vecIndex < pair.geometricMultiplicity) {
-                return latex;
+                return `$$ ${latex} $$`;
               } else {
-                return `\\textcolor{blue}{${latex}}`;
+                return `<div class="text-blue-600">$$ ${latex} $$</div>`;
               }
             } catch (e) {
               console.error(`Error formatting vector ${vecIndex} for eigenvalue ${pair.value}:`, e);
-              return "\\text{error}";
+              return "<div>error</div>";
             }
-          }).join(', \\quad ');
-          return `\\lambda_{${index + 1}} = ${lambda_latex}${mult_latex ? '\\,' : ''}${mult_latex}, \\quad ${vecs_latex}`;
-        }).join(' \\\\ ');
-        let resultHtml = `
-          <div class="latex">$$ A = ${A_latex} $$</div>
-          <div class="latex">$$ \\begin{align*} ${align_content} \\end{align*} $$</div>
-        `;
-        if (hasGeneralizedEigenvectors) {
+          }).join('');
+
           resultHtml += `
-            <div class="latex">$$ \\text{Eigenvectors}, \\quad \\textcolor{blue}{\\text{Generalized Eigenvectors}} $$</div>
+            <div class="border-2 border-gray-300 rounded-lg p-4 bg-gray-50" style="min-width: 200px; max-width: 300px;">
+              <div class="font-bold text-center mb-2 latex">$$ \\lambda_{${index + 1}} = ${lambda_latex} $$</div>
+              ${mult_latex ? `<div class="text-center text-sm text-gray-600 mb-2 latex">$$ ${mult_latex} $$</div>` : ''}
+              <div class="text-center">${vecs_latex}</div>
+            </div>
           `;
-        }
+        });
+        resultHtml += `</div>`;
         resultDiv.innerHTML = resultHtml;
         renderMathInElement(resultDiv, {
           delimiters: [{ left: "$$", right: "$$", display: true }],
