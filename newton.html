@@ -196,6 +196,10 @@
     let plotInstance = null;
     let animationInterval = null;
 
+    // Track previous bounds for smooth transitions
+    let prevBounds = { xMin: -5, xMax: 5, yMin: -10, yMax: 10 };
+    const SMOOTHING_FACTOR = 0.3; // 0 = no smoothing, 1 = full jump
+
     // Parse and compile function
     function updateFunction() {
       const input = document.getElementById('function-input').value.trim();
@@ -217,6 +221,16 @@
         // Update display
         document.getElementById('current-function').textContent = `f(x) = ${input}`;
         errorDiv.classList.add('hidden');
+
+        // Reset bounds based on new function
+        const x0 = parseFloat(document.getElementById('x0').value);
+        const initialRange = Math.max(Math.abs(x0) * 2, 10);
+        prevBounds = {
+          xMin: x0 - initialRange / 2,
+          xMax: x0 + initialRange / 2,
+          yMin: -10,
+          yMax: 10
+        };
 
         // Reset and redraw
         resetIterations();
@@ -293,6 +307,17 @@
       document.getElementById('current-x').textContent = '-';
       document.getElementById('current-fx').textContent = '-';
       document.getElementById('converged-message').classList.remove('show');
+
+      // Reset bounds for fresh start
+      const x0 = parseFloat(document.getElementById('x0').value);
+      const initialRange = Math.max(Math.abs(x0) * 2, 10);
+      prevBounds = {
+        xMin: x0 - initialRange / 2,
+        xMax: x0 + initialRange / 2,
+        yMin: -10,
+        yMax: 10
+      };
+
       drawPlot();
     }
 
@@ -327,33 +352,89 @@
       if (!compiledF) return;
 
       try {
-        // Auto-adjust bounds based on iterations
-        let xMin = -5, xMax = 5, yMin = -10, yMax = 10;
+        // Compute target bounds
+        let targetXMin, targetXMax, targetYMin, targetYMax;
 
-        if (iterations.length > 0) {
+        if (iterations.length === 0) {
+          // Initial bounds based on x0
+          const x0 = parseFloat(document.getElementById('x0').value);
+          const fx0 = evaluateF(x0);
+
+          // Set initial window around x0
+          const initialRange = Math.max(Math.abs(x0) * 2, 10);
+          targetXMin = x0 - initialRange / 2;
+          targetXMax = x0 + initialRange / 2;
+
+          // Sample function for y bounds
+          const samples = [];
+          for (let x = targetXMin; x <= targetXMax; x += (targetXMax - targetXMin) / 50) {
+            try {
+              const y = evaluateF(x);
+              if (isFinite(y)) samples.push(y);
+            } catch (e) {}
+          }
+
+          if (samples.length > 0) {
+            const minY = Math.min(...samples);
+            const maxY = Math.max(...samples);
+            const rangeY = Math.max(maxY - minY, 10);
+            targetYMin = minY - rangeY * 0.3;
+            targetYMax = maxY + rangeY * 0.3;
+          } else {
+            targetYMin = -10;
+            targetYMax = 10;
+          }
+        } else {
+          // Bounds based on iteration history
           const xValues = iterations.map(it => it.x);
           const allX = [...xValues, iterations[iterations.length - 1].xNext];
           const minX = Math.min(...allX);
           const maxX = Math.max(...allX);
-          const rangeX = Math.max(maxX - minX, 2);
-          xMin = minX - rangeX * 0.5;
-          xMax = maxX + rangeX * 0.5;
+
+          // Keep minimum range to prevent over-zooming
+          const minRange = 0.5;
+          const rangeX = Math.max(maxX - minX, minRange);
+
+          // Add padding proportional to range (more padding for larger ranges)
+          const padding = Math.max(rangeX * 0.8, 1);
+          targetXMin = minX - padding;
+          targetXMax = maxX + padding;
 
           // Sample function to get y range
           const samples = [];
-          for (let x = xMin; x <= xMax; x += (xMax - xMin) / 50) {
+          const yValues = iterations.map(it => it.fx);
+
+          for (let x = targetXMin; x <= targetXMax; x += (targetXMax - targetXMin) / 50) {
             try {
-              samples.push(evaluateF(x));
+              const y = evaluateF(x);
+              if (isFinite(y)) samples.push(y);
             } catch (e) {}
           }
+
+          // Include function values at iteration points
+          samples.push(...yValues.filter(y => isFinite(y)));
+
           if (samples.length > 0) {
-            const minY = Math.min(...samples);
-            const maxY = Math.max(...samples);
-            const rangeY = Math.max(maxY - minY, 2);
-            yMin = minY - rangeY * 0.3;
-            yMax = maxY + rangeY * 0.3;
+            const minY = Math.min(...samples, 0); // Always include y=0
+            const maxY = Math.max(...samples, 0);
+            const rangeY = Math.max(maxY - minY, minRange);
+            const yPadding = rangeY * 0.4;
+            targetYMin = minY - yPadding;
+            targetYMax = maxY + yPadding;
+          } else {
+            targetYMin = -10;
+            targetYMax = 10;
           }
         }
+
+        // Smooth transition from previous bounds
+        const xMin = prevBounds.xMin + SMOOTHING_FACTOR * (targetXMin - prevBounds.xMin);
+        const xMax = prevBounds.xMax + SMOOTHING_FACTOR * (targetXMax - prevBounds.xMax);
+        const yMin = prevBounds.yMin + SMOOTHING_FACTOR * (targetYMin - prevBounds.yMin);
+        const yMax = prevBounds.yMax + SMOOTHING_FACTOR * (targetYMax - prevBounds.yMax);
+
+        // Store for next iteration
+        prevBounds = { xMin, xMax, yMin, yMax };
 
         const data = [
           {
@@ -369,26 +450,47 @@
           const x0 = current.x;
           const fx0 = current.fx;
           const slope = evaluateDF(x0);
+          const xNext = current.xNext;
+
+          // Draw tangent line as a segment (extend beyond intercept for visibility)
+          const xRange = xMax - xMin;
+          const extension = xRange * 0.15; // Extend 15% beyond intercept
+          const tangentXMin = Math.max(xMin, Math.min(x0, xNext) - extension);
+          const tangentXMax = Math.min(xMax, Math.max(x0, xNext) + extension);
 
           data.push({
             fn: `${fx0} + ${slope} * (x - ${x0})`,
+            range: [tangentXMin, tangentXMax],
             color: '#dc2626',
             graphType: 'polyline'
           });
 
-          // Add points
+          // Add vertical line from (x0, 0) to (x0, f(x0)) to show the point
+          if (Math.abs(fx0) > (yMax - yMin) * 0.01) { // Only if visible
+            data.push({
+              points: [[x0, 0], [x0, fx0]],
+              fnType: 'points',
+              color: '#94a3b8',
+              graphType: 'polyline'
+            });
+          }
+
+          // Add current point (x0, f(x0))
           data.push({
             points: [[x0, fx0]],
             fnType: 'points',
             color: '#059669',
+            attr: { r: 5 },
             graphType: 'scatter'
           });
 
-          if (current.xNext !== undefined) {
+          // Add next iteration point at x-intercept
+          if (xNext !== undefined) {
             data.push({
-              points: [[current.xNext, 0]],
+              points: [[xNext, 0]],
               fnType: 'points',
               color: '#dc2626',
+              attr: { r: 5 },
               graphType: 'scatter'
             });
           }
