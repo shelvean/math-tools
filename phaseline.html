@@ -273,14 +273,68 @@
   }
 
   function classifyEquilibrium(f, y0) {
-    const eps = 0.001;
-    const left = f(y0 - eps);
-    const right = f(y0 + eps);
-    const signL = Math.sign(left);
-    const signR = Math.sign(right);
-    if (signL !== signR) return left > 0 ? 'stable' : 'unstable';
-    if (Math.abs(left) < 1e-10) return 'undefined';
-    return signL > 0 ? 'semistable-pos' : 'semistable-neg';
+    // Use adaptive epsilon based on the interval range
+    const range = yMax - yMin;
+    const baseEps = Math.min(0.001, range / 1000);
+
+    // Sample at multiple scales to be robust
+    const scales = [1, 2, 4];
+    const samples = scales.map(scale => {
+      const eps = baseEps * scale;
+      const left = f(y0 - eps);
+      const right = f(y0 + eps);
+      return { eps, left, right, signL: Math.sign(left), signR: Math.sign(right) };
+    });
+
+    // Check if signs change across equilibrium (regular equilibrium)
+    const hasSignChange = samples.some(s => s.signL !== s.signR);
+
+    if (hasSignChange) {
+      // Regular equilibrium: stable (sink) or unstable (source)
+      const sample = samples[0];
+      return sample.left > 0 ? 'stable' : 'unstable';
+    }
+
+    // No sign change - check if both sides approach zero (degenerate case)
+    const allNearZero = samples.every(s => Math.abs(s.left) < 1e-10 && Math.abs(s.right) < 1e-10);
+    if (allNearZero) return 'undefined';
+
+    // No sign change and not near zero - this is semistable
+    // Check derivative to distinguish semistable types
+    const eps = baseEps;
+    const derivative = (f(y0 + eps) - f(y0 - eps)) / (2 * eps);
+
+    // For semistable, derivative should be very small (tangent to axis)
+    // and second derivative determines the orientation
+    const secondDerivative = (f(y0 + eps) - 2 * f(y0) + f(y0 - eps)) / (eps * eps);
+
+    // Use the sign of the function values and second derivative to classify
+    const sample = samples[0];
+    const commonSign = sample.signL; // Both sides have same sign
+
+    // Check curvature to determine semistable type
+    // If f > 0 on both sides and curving down, it's semistable-pos (stable from left, unstable from right)
+    // If f < 0 on both sides and curving up, it's semistable-neg (unstable from left, stable from right)
+
+    if (Math.abs(derivative) < 0.1 * (Math.abs(sample.left) + Math.abs(sample.right)) / 2) {
+      // Derivative is small relative to function values - likely semistable
+      // Determine direction based on which way f approaches zero
+      const avgLeft = samples.map(s => s.left).reduce((a, b) => a + b) / samples.length;
+      const avgRight = samples.map(s => s.right).reduce((a, b) => a + b) / samples.length;
+
+      if (commonSign > 0) {
+        // f > 0 on both sides: arrows point right on both sides
+        // This is stable from left, unstable from right
+        return 'semistable-pos';
+      } else {
+        // f < 0 on both sides: arrows point left on both sides
+        // This is unstable from left, stable from right
+        return 'semistable-neg';
+      }
+    }
+
+    // Default to semistable based on common sign
+    return commonSign > 0 ? 'semistable-pos' : 'semistable-neg';
   }
 
   function isTrigFunction(input) {
