@@ -259,15 +259,66 @@
     const roots = [];
     let prevY = min;
     let prevF = func(min);
+    let prevPrevF = null;
+
     for (let i = 1; i <= steps; i++) {
       const y = min + i * dx;
       const currF = func(y);
-      if (isNaN(currF) || isNaN(prevF)) { prevY = y; prevF = currF; continue; }
+      if (isNaN(currF) || isNaN(prevF)) {
+        prevPrevF = prevF;
+        prevY = y;
+        prevF = currF;
+        continue;
+      }
+
+      // Method 1: Sign change (regular crossing)
       if (prevF * currF < 0) {
         const root = bisect(func, prevY, y, tol);
         if (root !== null && !roots.some(r => Math.abs(r - root) < tol)) roots.push(root);
-      } else if (currF === 0 && !roots.some(r => Math.abs(r - y) < tol)) roots.push(y);
-      prevY = y; prevF = currF;
+      }
+      // Method 2: Exact zero
+      else if (currF === 0 && !roots.some(r => Math.abs(r - y) < tol)) {
+        roots.push(y);
+      }
+      // Method 3: Local extremum near zero (tangent point - catches semistable equilibria)
+      else if (prevPrevF !== null && !isNaN(prevPrevF)) {
+        // Check if prevF is a local extremum (valley or peak)
+        const isExtremum = (prevPrevF - prevF) * (currF - prevF) > 0;
+        // Check if this extremum is very close to zero
+        const threshold = Math.max(1e-6, (max - min) * 1e-4);
+        if (isExtremum && Math.abs(prevF) < threshold) {
+          // Verify this is actually near zero by checking surrounding points
+          const testPoints = [-2*dx, -dx, 0, dx, 2*dx].map(offset => {
+            const testY = prevY + offset;
+            if (testY < min || testY > max) return null;
+            return func(testY);
+          }).filter(v => v !== null && !isNaN(v));
+
+          const allSmall = testPoints.every(v => Math.abs(v) < threshold * 5);
+          const avgAbs = testPoints.reduce((sum, v) => sum + Math.abs(v), 0) / testPoints.length;
+
+          if (allSmall && avgAbs < threshold * 3) {
+            // Refine the root location using a local minimum search
+            let bestY = prevY;
+            let bestF = Math.abs(prevF);
+            for (let offset = -2*dx; offset <= 2*dx; offset += dx/10) {
+              const testY = prevY + offset;
+              if (testY >= min && testY <= max) {
+                const testF = Math.abs(func(testY));
+                if (testF < bestF) {
+                  bestF = testF;
+                  bestY = testY;
+                }
+              }
+            }
+            if (!roots.some(r => Math.abs(r - bestY) < tol)) roots.push(bestY);
+          }
+        }
+      }
+
+      prevPrevF = prevF;
+      prevY = y;
+      prevF = currF;
     }
     return roots.sort((a, b) => a - b);
   }
