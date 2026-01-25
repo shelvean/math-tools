@@ -19,6 +19,7 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/13.1.1/math.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/decimal.js@10.4.3/decimal.min.js"></script>
   <style>
     body { background: linear-gradient(135deg, #f8f9fa, #e9ecef); min-height: 100vh; font-family: 'Inter', sans-serif; }
     .main-container { max-width: 1500px; margin: 120px auto 0; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
@@ -254,6 +255,37 @@
     return (a + b) / 2;
   }
 
+  // High-precision bisection using Decimal.js
+  function bisectPrecise(func, a, b, tol = 1e-12, maxIter = 200) {
+    Decimal.set({ precision: 50 });
+    let aD = new Decimal(a);
+    let bD = new Decimal(b);
+    const tolD = new Decimal(tol);
+
+    let fa = func(aD.toNumber());
+    let fb = func(bD.toNumber());
+
+    if (isNaN(fa) || isNaN(fb) || fa * fb > 0) return null;
+
+    while (bD.minus(aD).abs().greaterThan(tolD) && maxIter-- > 0) {
+      const mD = aD.plus(bD).dividedBy(2);
+      const m = mD.toNumber();
+      const fm = func(m);
+
+      if (isNaN(fm)) return null;
+
+      if (fm * fa < 0) {
+        bD = mD;
+        fb = fm;
+      } else {
+        aD = mD;
+        fa = fm;
+      }
+    }
+
+    return aD.plus(bD).dividedBy(2).toNumber();
+  }
+
   function findRoots(func, min, max, steps = 1000, tol = 1e-6) {
     const dx = (max - min) / steps;
     const roots = [];
@@ -271,13 +303,13 @@
         continue;
       }
 
-      // Method 1: Sign change (regular crossing)
+      // Method 1: Sign change (regular crossing) - use high precision bisection
       if (prevF * currF < 0) {
-        const root = bisect(func, prevY, y, tol);
-        if (root !== null && !roots.some(r => Math.abs(r - root) < tol)) roots.push(root);
+        const root = bisectPrecise(func, prevY, y, 1e-12);
+        if (root !== null && !roots.some(r => Math.abs(r - root) < 1e-10)) roots.push(root);
       }
       // Method 2: Exact zero
-      else if (currF === 0 && !roots.some(r => Math.abs(r - y) < tol)) {
+      else if (currF === 0 && !roots.some(r => Math.abs(r - y) < 1e-10)) {
         roots.push(y);
       }
       // Method 3: Local extremum near zero (tangent point - catches semistable equilibria)
@@ -298,20 +330,11 @@
           const avgAbs = testPoints.reduce((sum, v) => sum + Math.abs(v), 0) / testPoints.length;
 
           if (allSmall && avgAbs < threshold * 3) {
-            // Refine the root location using a local minimum search
-            let bestY = prevY;
-            let bestF = Math.abs(prevF);
-            for (let offset = -2*dx; offset <= 2*dx; offset += dx/10) {
-              const testY = prevY + offset;
-              if (testY >= min && testY <= max) {
-                const testF = Math.abs(func(testY));
-                if (testF < bestF) {
-                  bestF = testF;
-                  bestY = testY;
-                }
-              }
+            // Refine the root location using high-precision Newton's method
+            const root = refineRootNewton(func, prevY, 1e-12, 100);
+            if (root !== null && !roots.some(r => Math.abs(r - root) < 1e-10)) {
+              roots.push(root);
             }
-            if (!roots.some(r => Math.abs(r - bestY) < tol)) roots.push(bestY);
           }
         }
       }
@@ -321,6 +344,87 @@
       prevF = currF;
     }
     return roots.sort((a, b) => a - b);
+  }
+
+  // High-precision Newton's method for refining roots near extrema
+  function refineRootNewton(func, x0, tol = 1e-12, maxIter = 100) {
+    Decimal.set({ precision: 50 });
+    let xD = new Decimal(x0);
+    const tolD = new Decimal(tol);
+    const hD = new Decimal(1e-8); // For derivative approximation
+
+    for (let iter = 0; iter < maxIter; iter++) {
+      const x = xD.toNumber();
+      const fx = func(x);
+
+      if (isNaN(fx)) return null;
+      if (Math.abs(fx) < tol) return x; // Close enough to zero
+
+      // Compute derivative using central difference
+      const xPlusH = xD.plus(hD).toNumber();
+      const xMinusH = xD.minus(hD).toNumber();
+      const fxPlusH = func(xPlusH);
+      const fxMinusH = func(xMinusH);
+
+      if (isNaN(fxPlusH) || isNaN(fxMinusH)) return x;
+
+      const derivative = (fxPlusH - fxMinusH) / (2 * hD.toNumber());
+
+      if (Math.abs(derivative) < 1e-15) {
+        // Derivative too small, can't use Newton's method
+        // Fall back to minimizing |f(x)|
+        return minimizeAbsValue(func, x, tol);
+      }
+
+      // Newton step: x_new = x - f(x) / f'(x)
+      const stepD = new Decimal(fx).dividedBy(derivative);
+      const xNew = xD.minus(stepD);
+
+      if (xNew.minus(xD).abs().lessThan(tolD)) {
+        return xNew.toNumber();
+      }
+
+      xD = xNew;
+    }
+
+    return xD.toNumber();
+  }
+
+  // Minimize |f(x)| around x0 using golden section search
+  function minimizeAbsValue(func, x0, tol = 1e-12) {
+    Decimal.set({ precision: 50 });
+    const phi = (1 + Math.sqrt(5)) / 2;
+    const resphi = 2 - phi;
+
+    let aD = new Decimal(x0).minus(0.01);
+    let bD = new Decimal(x0).plus(0.01);
+    const tolD = new Decimal(tol);
+
+    let x1D = aD.plus(bD.minus(aD).times(resphi));
+    let x2D = bD.minus(bD.minus(aD).times(resphi));
+
+    let f1 = Math.abs(func(x1D.toNumber()));
+    let f2 = Math.abs(func(x2D.toNumber()));
+
+    for (let iter = 0; iter < 100; iter++) {
+      if (bD.minus(aD).abs().lessThan(tolD)) break;
+
+      if (f1 < f2) {
+        bD = x2D;
+        x2D = x1D;
+        f2 = f1;
+        x1D = aD.plus(bD.minus(aD).times(resphi));
+        f1 = Math.abs(func(x1D.toNumber()));
+      } else {
+        aD = x1D;
+        x1D = x2D;
+        f1 = f2;
+        x2D = bD.minus(bD.minus(aD).times(resphi));
+        f2 = Math.abs(func(x2D.toNumber()));
+      }
+    }
+
+    return f1 < f2 ? x1D.toNumber() : x2D.toNumber();
   }
 
   function classifyEquilibrium(f, y0) {
