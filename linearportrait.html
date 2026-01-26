@@ -359,6 +359,7 @@
         let animationInterval = null;
         let isAnimating = false;
         let currentParamValue = 0;
+        let isUpdating = false;
 
         // Toggle animation controls visibility
         function toggleAnimationControls() {
@@ -404,7 +405,11 @@
         }
 
         // Update parameter value and redraw
-        function updateParameterValue(value) {
+        async function updateParameterValue(value) {
+            // Skip if an update is already in progress during animation
+            if (isUpdating && isAnimating) return;
+
+            isUpdating = true;
             currentParamValue = value;
             const paramName = document.getElementById('param-name').value || 'mu';
 
@@ -418,11 +423,13 @@
             document.getElementById('param-slider').value = value;
 
             // Redraw phase portrait with new parameter value
-            drawPhasePortraitWithParam(paramName, value);
+            await drawPhasePortraitWithParam(paramName, value);
+
+            isUpdating = false;
         }
 
         // Draw phase portrait with parameter
-        function drawPhasePortraitWithParam(paramName, paramValue) {
+        async function drawPhasePortraitWithParam(paramName, paramValue) {
             const matrix = getMatrixValues(paramName, paramValue);
 
             // Temporarily store matrix values
@@ -437,23 +444,28 @@
             document.getElementById('c').setAttribute('data-computed', matrix.c);
             document.getElementById('d').setAttribute('data-computed', matrix.d);
 
-            // Save trajectories if keep-trajectories is checked
+            // Save initial points if keep-trajectories is checked
             const keepTrajectories = document.getElementById('keep-trajectories').checked;
-            let savedPoints = [], savedTrajectories = [];
+            let savedPoints = [];
             if (keepTrajectories && isAnimating) {
-                savedPoints = [...userPoints];
-                savedTrajectories = trajectories.map(t => ({...t}));
+                savedPoints = userPoints.map(p => ({x: p.x, y: p.y}));
             }
+
+            // Clear trajectories to recompute with new system
+            trajectories = [];
 
             // Draw phase portrait
             drawPhasePortrait();
 
-            // Restore trajectories if needed
-            if (keepTrajectories && isAnimating) {
-                userPoints = savedPoints;
-                trajectories = savedTrajectories;
-                // Redraw trajectories with new system
-                redrawTrajectories();
+            // Recompute trajectories with new system parameters if needed
+            if (keepTrajectories && isAnimating && savedPoints.length > 0) {
+                trajectories = [];
+                for (const point of savedPoints) {
+                    const trajPoints = await computeTrajectoryAsync(point.x, point.y);
+                    trajectories.push(trajPoints);
+                }
+                // Redraw to show new trajectories
+                drawPhasePortrait();
             }
 
             // Restore original expressions
@@ -493,36 +505,6 @@
 
             // Redraw with all trajectories
             drawPhasePortrait();
-        }
-
-        // Redraw existing trajectories with current system
-        function redrawTrajectories() {
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-
-            trajectories.forEach(traj => {
-                if (!traj.points || traj.points.length === 0) return;
-
-                ctx.strokeStyle = traj.color;
-                ctx.lineWidth = 2.5;
-                ctx.shadowColor = traj.color;
-                ctx.shadowBlur = 4;
-                ctx.beginPath();
-                ctx.moveTo(traj.points[0].x, traj.points[0].y);
-                for (let i = 1; i < traj.points.length; i++) {
-                    ctx.lineTo(traj.points[i].x, traj.points[i].y);
-                }
-                ctx.stroke();
-                ctx.shadowBlur = 0;
-
-                // Draw initial point if enabled
-                if (document.getElementById('showInitialPoint').checked && traj.startPoint) {
-                    ctx.fillStyle = traj.color;
-                    ctx.beginPath();
-                    ctx.arc(traj.startPoint.x, traj.startPoint.y, 5, 0, 2 * Math.PI);
-                    ctx.fill();
-                }
-            });
         }
 
         // Play animation
@@ -573,10 +555,10 @@
         }
 
         // Reset animation
-        function resetAnimation() {
+        async function resetAnimation() {
             pauseAnimation();
             const start = parseFloat(document.getElementById('param-start').value);
-            updateParameterValue(start);
+            await updateParameterValue(start);
         }
 
         // Load bifurcation example
