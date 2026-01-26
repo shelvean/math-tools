@@ -356,10 +356,8 @@
         let trajectories = [];
 
         // Animation variables
-        let animationInterval = null;
-        let isAnimating = false;
+        let animationRunning = false;
         let currentParamValue = 0;
-        let isUpdating = false;
 
         // Toggle animation controls visibility
         function toggleAnimationControls() {
@@ -406,10 +404,6 @@
 
         // Update parameter value and redraw
         async function updateParameterValue(value) {
-            // Skip if an update is already in progress during animation
-            if (isUpdating && isAnimating) return;
-
-            isUpdating = true;
             currentParamValue = value;
             const paramName = document.getElementById('param-name').value || 'mu';
 
@@ -424,8 +418,6 @@
 
             // Redraw phase portrait with new parameter value
             await drawPhasePortraitWithParam(paramName, value);
-
-            isUpdating = false;
         }
 
         // Draw phase portrait with parameter
@@ -447,14 +439,14 @@
             const keepTrajectories = document.getElementById('keep-trajectories').checked;
 
             // Recompute trajectories from FIXED initial points with NEW system parameters
-            if (keepTrajectories && isAnimating && userPoints.length > 0) {
+            if (keepTrajectories && animationRunning && userPoints.length > 0) {
                 trajectories = [];
                 // Compute new trajectories from the same fixed initial points
                 for (const point of userPoints) {
                     const trajPoints = await computeTrajectoryAsync(point.x, point.y);
                     trajectories.push(trajPoints);
                 }
-            } else {
+            } else if (!animationRunning) {
                 trajectories = [];
             }
 
@@ -502,12 +494,12 @@
 
         // Play animation
         async function playAnimation() {
-            if (isAnimating) return;
+            if (animationRunning) return;
 
             // Initialize strategic trajectories at the start
             await initializeStrategicTrajectories();
 
-            isAnimating = true;
+            animationRunning = true;
             document.getElementById('play-btn').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'inline-block';
 
@@ -528,21 +520,31 @@
                 current = start;
             }
 
-            animationInterval = setInterval(() => {
+            // Recursive animation loop that waits for each frame to complete
+            async function animateFrame() {
+                if (!animationRunning) return;
+
                 current += increment;
 
                 if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
                     current = start; // Loop back
                 }
 
-                updateParameterValue(current);
-            }, 1000 / speed);
+                await updateParameterValue(current);
+
+                // Schedule next frame after current one completes
+                if (animationRunning) {
+                    setTimeout(animateFrame, 1000 / speed);
+                }
+            }
+
+            // Start the animation loop
+            animateFrame();
         }
 
         // Pause animation
         function pauseAnimation() {
-            isAnimating = false;
-            clearInterval(animationInterval);
+            animationRunning = false;
             document.getElementById('play-btn').style.display = 'inline-block';
             document.getElementById('pause-btn').style.display = 'none';
         }
