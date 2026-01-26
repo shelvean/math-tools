@@ -158,6 +158,56 @@
                             <button class="clear" onclick="clearUserPoints()">Clear Trajectories</button>
                         </div>
                     </div>
+
+                    <!-- Parameter Animation Controls -->
+                    <div class="controls-section" style="margin-top: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer;" onclick="toggleAnimationControls()">
+                            <h3 style="margin: 0; color: #1e293b; font-size: 1.1rem; font-weight: 600;">🎬 Parameter Animation (Bifurcation)</h3>
+                            <span id="animation-toggle-icon" style="font-size: 1.5rem; transition: transform 0.3s;">▼</span>
+                        </div>
+                        <div id="animation-controls" style="display: none;">
+                            <div style="background: #f0f9ff; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; border: 1px solid #bae6fd;">
+                                <p style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: #0c4a6e; font-weight: 500;">
+                                    <strong>Tip:</strong> Enter expressions like <code style="background: white; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">-mu</code> or <code style="background: white; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">4-mu^2</code> in matrix fields.
+                                </p>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 1rem;">
+                                <div class="input-group" style="flex-direction: column; align-items: flex-start;">
+                                    <label for="param-name" style="margin-bottom: 4px;">Parameter Name:</label>
+                                    <input type="text" id="param-name" value="mu" style="width: 100%; padding: 0.5rem; border: 2px solid #d1d5db; border-radius: 6px; font-family: 'Courier New', monospace;">
+                                </div>
+                                <div class="input-group" style="flex-direction: column; align-items: flex-start;">
+                                    <label for="param-start" style="margin-bottom: 4px;">Start Value:</label>
+                                    <input type="number" id="param-start" value="-2" step="0.1" style="width: 100%; padding: 0.5rem; border: 2px solid #d1d5db; border-radius: 6px;">
+                                </div>
+                                <div class="input-group" style="flex-direction: column; align-items: flex-start;">
+                                    <label for="param-end" style="margin-bottom: 4px;">End Value:</label>
+                                    <input type="number" id="param-end" value="2" step="0.1" style="width: 100%; padding: 0.5rem; border: 2px solid #d1d5db; border-radius: 6px;">
+                                </div>
+                                <div class="input-group" style="flex-direction: column; align-items: flex-start;">
+                                    <label for="param-speed" style="margin-bottom: 4px;">Speed (steps/sec):</label>
+                                    <input type="number" id="param-speed" value="30" min="1" max="60" style="width: 100%; padding: 0.5rem; border: 2px solid #d1d5db; border-radius: 6px;">
+                                </div>
+                            </div>
+
+                            <!-- Slider -->
+                            <div style="margin: 1.5rem 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <label style="font-weight: 600; color: #1e293b;">Parameter Value:</label>
+                                    <span id="param-value-display" style="font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: 700; color: #3b82f6; min-width: 80px; text-align: right;">0.00</span>
+                                </div>
+                                <input type="range" id="param-slider" min="-2" max="2" step="0.01" value="0" style="width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #3b82f6, #8b5cf6); cursor: pointer;" oninput="updateParameterValue(parseFloat(this.value))">
+                            </div>
+
+                            <!-- Animation Controls -->
+                            <div class="button-container" style="margin-top: 1rem;">
+                                <button onclick="playAnimation()" id="play-btn" style="background: #10b981;">▶ Play</button>
+                                <button onclick="pauseAnimation()" id="pause-btn" style="background: #f59e0b; display: none;">⏸ Pause</button>
+                                <button onclick="resetAnimation()">↺ Reset</button>
+                                <button onclick="loadBifurcationExample()" style="background: #8b5cf6;">Load Example</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="canvas-wrapper">
                     <!-- Equation container above the canvas -->
@@ -298,6 +348,162 @@
 
         let userPoints = [];
         let trajectories = [];
+
+        // Animation variables
+        let animationInterval = null;
+        let isAnimating = false;
+        let currentParamValue = 0;
+
+        // Toggle animation controls visibility
+        function toggleAnimationControls() {
+            const controls = document.getElementById('animation-controls');
+            const icon = document.getElementById('animation-toggle-icon');
+            if (controls.style.display === 'none') {
+                controls.style.display = 'block';
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                controls.style.display = 'none';
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Evaluate expression with parameter
+        function evaluateExpression(expr, paramName, paramValue) {
+            try {
+                // Replace ^ with ** for power operator
+                expr = expr.replace(/\^/g, '**');
+                // Create a safe evaluation context
+                const func = new Function(paramName, `return ${expr}`);
+                return func(paramValue);
+            } catch (e) {
+                // If evaluation fails, try parsing as a number
+                const num = parseFloat(expr);
+                return isNaN(num) ? 0 : num;
+            }
+        }
+
+        // Get matrix values with parameter substitution
+        function getMatrixValues(paramName, paramValue) {
+            const aExpr = document.getElementById('a').value || '0';
+            const bExpr = document.getElementById('b').value || '0';
+            const cExpr = document.getElementById('c').value || '0';
+            const dExpr = document.getElementById('d').value || '0';
+
+            return {
+                a: evaluateExpression(aExpr, paramName, paramValue),
+                b: evaluateExpression(bExpr, paramName, paramValue),
+                c: evaluateExpression(cExpr, paramName, paramValue),
+                d: evaluateExpression(dExpr, paramName, paramValue)
+            };
+        }
+
+        // Update parameter value and redraw
+        function updateParameterValue(value) {
+            currentParamValue = value;
+            document.getElementById('param-value-display').textContent = value.toFixed(2);
+            document.getElementById('param-slider').value = value;
+
+            // Redraw phase portrait with new parameter value
+            const paramName = document.getElementById('param-name').value || 'mu';
+            drawPhasePortraitWithParam(paramName, value);
+        }
+
+        // Draw phase portrait with parameter
+        function drawPhasePortraitWithParam(paramName, paramValue) {
+            const matrix = getMatrixValues(paramName, paramValue);
+
+            // Temporarily store matrix values
+            const origA = document.getElementById('a').value;
+            const origB = document.getElementById('b').value;
+            const origC = document.getElementById('c').value;
+            const origD = document.getElementById('d').value;
+
+            // Set computed values
+            document.getElementById('a').setAttribute('data-computed', matrix.a);
+            document.getElementById('b').setAttribute('data-computed', matrix.b);
+            document.getElementById('c').setAttribute('data-computed', matrix.c);
+            document.getElementById('d').setAttribute('data-computed', matrix.d);
+
+            // Draw phase portrait
+            drawPhasePortrait();
+
+            // Restore original expressions
+            document.getElementById('a').value = origA;
+            document.getElementById('b').value = origB;
+            document.getElementById('c').value = origC;
+            document.getElementById('d').value = origD;
+        }
+
+        // Play animation
+        function playAnimation() {
+            if (isAnimating) return;
+
+            isAnimating = true;
+            document.getElementById('play-btn').style.display = 'none';
+            document.getElementById('pause-btn').style.display = 'inline-block';
+
+            const paramName = document.getElementById('param-name').value || 'mu';
+            const start = parseFloat(document.getElementById('param-start').value);
+            const end = parseFloat(document.getElementById('param-end').value);
+            const speed = parseInt(document.getElementById('param-speed').value) || 30;
+
+            // Update slider range
+            document.getElementById('param-slider').min = start;
+            document.getElementById('param-slider').max = end;
+
+            const steps = Math.abs(end - start) * speed;
+            const increment = (end - start) / steps;
+
+            let current = currentParamValue;
+            if (current < start || current > end) {
+                current = start;
+            }
+
+            animationInterval = setInterval(() => {
+                current += increment;
+
+                if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                    current = start; // Loop back
+                }
+
+                updateParameterValue(current);
+            }, 1000 / speed);
+        }
+
+        // Pause animation
+        function pauseAnimation() {
+            isAnimating = false;
+            clearInterval(animationInterval);
+            document.getElementById('play-btn').style.display = 'inline-block';
+            document.getElementById('pause-btn').style.display = 'none';
+        }
+
+        // Reset animation
+        function resetAnimation() {
+            pauseAnimation();
+            const start = parseFloat(document.getElementById('param-start').value);
+            updateParameterValue(start);
+        }
+
+        // Load bifurcation example
+        function loadBifurcationExample() {
+            // Set the example: A = [[0, 1], [-mu, 4-mu^2]]
+            document.getElementById('a').value = '0';
+            document.getElementById('b').value = '1';
+            document.getElementById('c').value = '-mu';
+            document.getElementById('d').value = '4-mu^2';
+
+            document.getElementById('param-name').value = 'mu';
+            document.getElementById('param-start').value = '-2';
+            document.getElementById('param-end').value = '2';
+            document.getElementById('param-speed').value = '30';
+
+            document.getElementById('param-slider').min = -2;
+            document.getElementById('param-slider').max = 2;
+            document.getElementById('param-slider').value = 0;
+
+            updateParameterValue(0);
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             // Render main equation (OPTIMIZATION: Render specific element only)
@@ -747,10 +953,16 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             // Get matrix coefficients and field color
-            const a = parseFloat(document.getElementById('a').value) || 0;
-            const b = parseFloat(document.getElementById('b').value) || 0;
-            const c = parseFloat(document.getElementById('c').value) || 0;
-            const d = parseFloat(document.getElementById('d').value) || 0;
+            // Check for computed values (from animation) first, then parse input values
+            const aElem = document.getElementById('a');
+            const bElem = document.getElementById('b');
+            const cElem = document.getElementById('c');
+            const dElem = document.getElementById('d');
+
+            const a = aElem.hasAttribute('data-computed') ? parseFloat(aElem.getAttribute('data-computed')) : (parseFloat(aElem.value) || 0);
+            const b = bElem.hasAttribute('data-computed') ? parseFloat(bElem.getAttribute('data-computed')) : (parseFloat(bElem.value) || 0);
+            const c = cElem.hasAttribute('data-computed') ? parseFloat(cElem.getAttribute('data-computed')) : (parseFloat(cElem.value) || 0);
+            const d = dElem.hasAttribute('data-computed') ? parseFloat(dElem.getAttribute('data-computed')) : (parseFloat(dElem.value) || 0);
             const arrowCount = parseInt(document.getElementById('arrow-count').value) || 18;
             const arrowScale = parseFloat(document.getElementById('arrow-scale').value) || 0.6;
             const fieldColor = document.getElementById('field-color').value || '#2563eb';
