@@ -209,6 +209,7 @@
                             <div class="button-container" style="margin-top: 1rem;">
                                 <button onclick="playAnimation()" id="play-btn" style="background: #10b981;">▶ Play</button>
                                 <button onclick="pauseAnimation()" id="pause-btn" style="background: #f59e0b; display: none;">⏸ Pause</button>
+                                <button onclick="nextFrame()" style="background: #06b6d4;">⏭ Next Frame</button>
                                 <button onclick="resetAnimation()">↺ Reset</button>
                                 <button onclick="loadBifurcationExample()" style="background: #8b5cf6;">Load Example</button>
                             </div>
@@ -359,6 +360,12 @@
         let animationRunning = false;
         let currentParamValue = 0;
 
+        // Bifurcation points and intermediate values
+        // For the bifurcation example A = [[0, 1], [-mu, 4-mu^2]]
+        // Key bifurcations occur at mu = -2, 0, 2
+        let bifurcationFrames = [];
+        let currentFrameIndex = 0;
+
         // Toggle animation controls visibility
         function toggleAnimationControls() {
             const controls = document.getElementById('animation-controls');
@@ -369,6 +376,62 @@
             } else {
                 controls.style.display = 'none';
                 icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Generate bifurcation frames with 3 intermediate values between each bifurcation point
+        function generateBifurcationFrames() {
+            const start = parseFloat(document.getElementById('param-start').value);
+            const end = parseFloat(document.getElementById('param-end').value);
+
+            // Key bifurcation points for the example system
+            // For A = [[0, 1], [-mu, 4-mu^2]]: bifurcations at mu = -2, 0, 2
+            const bifurcationPoints = [];
+
+            // Generate bifurcation points from start to end
+            const step = (end - start) / 4; // Divide range into 4 parts for key points
+            bifurcationPoints.push(start);
+            bifurcationPoints.push(start + step);
+            bifurcationPoints.push(start + 2 * step);
+            bifurcationPoints.push(start + 3 * step);
+            bifurcationPoints.push(end);
+
+            // Add 3 intermediate values between each bifurcation point
+            bifurcationFrames = [];
+            for (let i = 0; i < bifurcationPoints.length - 1; i++) {
+                const p1 = bifurcationPoints[i];
+                const p2 = bifurcationPoints[i + 1];
+                const delta = (p2 - p1) / 4;
+
+                bifurcationFrames.push(p1);
+                bifurcationFrames.push(p1 + delta);
+                bifurcationFrames.push(p1 + 2 * delta);
+                bifurcationFrames.push(p1 + 3 * delta);
+            }
+            bifurcationFrames.push(bifurcationPoints[bifurcationPoints.length - 1]);
+
+            currentFrameIndex = 0;
+        }
+
+        // Move to next frame manually
+        async function nextFrame() {
+            if (bifurcationFrames.length === 0) {
+                // Initialize if not already done
+                if (userPoints.length === 0) {
+                    await initializeStrategicTrajectories();
+                }
+                generateBifurcationFrames();
+            }
+
+            if (currentFrameIndex < bifurcationFrames.length) {
+                const paramValue = bifurcationFrames[currentFrameIndex];
+                await updateParameterValue(paramValue);
+                currentFrameIndex++;
+
+                // Loop back to start after reaching the end
+                if (currentFrameIndex >= bifurcationFrames.length) {
+                    currentFrameIndex = 0;
+                }
             }
         }
 
@@ -499,35 +562,39 @@
             // Initialize strategic trajectories at the start
             await initializeStrategicTrajectories();
 
+            // Generate bifurcation frames if not already done
+            if (bifurcationFrames.length === 0) {
+                generateBifurcationFrames();
+            }
+
             animationRunning = true;
             document.getElementById('play-btn').style.display = 'none';
             document.getElementById('pause-btn').style.display = 'inline-block';
 
             const paramName = document.getElementById('param-name').value || 'mu';
-            const start = parseFloat(document.getElementById('param-start').value);
-            const end = parseFloat(document.getElementById('param-end').value);
-            const speed = parseInt(document.getElementById('param-speed').value) || 30;
 
             // Update slider range
+            const start = parseFloat(document.getElementById('param-start').value);
+            const end = parseFloat(document.getElementById('param-end').value);
             document.getElementById('param-slider').min = start;
             document.getElementById('param-slider').max = end;
 
-            const steps = Math.abs(end - start) * speed;
-            const increment = (end - start) / steps;
-
-            let current = currentParamValue;
-            if (current < start || current > end) {
-                current = start;
+            // Reset to start if needed
+            if (currentFrameIndex >= bifurcationFrames.length) {
+                currentFrameIndex = 0;
             }
 
             // Recursive animation loop that waits for each frame to complete
             async function animateFrame() {
                 if (!animationRunning) return;
 
-                current += increment;
+                // Get current frame value
+                const current = bifurcationFrames[currentFrameIndex];
+                currentFrameIndex++;
 
-                if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
-                    current = start; // Loop back
+                // Loop back to start after reaching the end
+                if (currentFrameIndex >= bifurcationFrames.length) {
+                    currentFrameIndex = 0;
                 }
 
                 // Wait for trajectories to fully compute and display
@@ -560,12 +627,15 @@
         // Reset animation
         async function resetAnimation() {
             pauseAnimation();
+            currentFrameIndex = 0;
+            bifurcationFrames = [];
+            generateBifurcationFrames();
             const start = parseFloat(document.getElementById('param-start').value);
             await updateParameterValue(start);
         }
 
         // Load bifurcation example
-        function loadBifurcationExample() {
+        async function loadBifurcationExample() {
             // Set the example: A = [[0, 1], [-mu, 4-mu^2]]
             document.getElementById('a').value = '0';
             document.getElementById('b').value = '1';
@@ -579,9 +649,16 @@
 
             document.getElementById('param-slider').min = -2;
             document.getElementById('param-slider').max = 2;
-            document.getElementById('param-slider').value = 0;
+            document.getElementById('param-slider').value = -2;
 
-            updateParameterValue(0);
+            // Initialize trajectories and generate bifurcation frames
+            await initializeStrategicTrajectories();
+            currentFrameIndex = 0;
+            bifurcationFrames = [];
+            generateBifurcationFrames();
+
+            // Start at the first frame
+            await updateParameterValue(-2);
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -677,6 +754,15 @@
                     trajectories = [];
                     drawPhasePortrait();
                 }
+            });
+
+            // Parameter inputs - regenerate bifurcation frames when changed
+            ['param-start', 'param-end', 'param-name'].forEach(id => {
+                document.getElementById(id).addEventListener('change', () => {
+                    bifurcationFrames = [];
+                    currentFrameIndex = 0;
+                    generateBifurcationFrames();
+                });
             });
 
             // Initial draw
