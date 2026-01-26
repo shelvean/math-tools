@@ -194,7 +194,7 @@
                             <div style="margin: 1.5rem 0;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                     <label style="font-weight: 600; color: #1e293b;">Parameter Value:</label>
-                                    <span id="param-value-display" style="font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: 700; color: #3b82f6; min-width: 80px; text-align: right;">0.00</span>
+                                    <div id="param-value-display" style="font-size: 1.1rem; font-weight: 700; color: #3b82f6; min-width: 80px; text-align: right;"></div>
                                 </div>
                                 <input type="range" id="param-slider" min="-2" max="2" step="0.01" value="0" style="width: 100%; height: 8px; border-radius: 4px; background: linear-gradient(to right, #3b82f6, #8b5cf6); cursor: pointer;" oninput="updateParameterValue(parseFloat(this.value))">
                             </div>
@@ -202,7 +202,7 @@
                             <!-- Options -->
                             <div class="checkbox-group" style="margin: 1rem 0; justify-content: center;">
                                 <input type="checkbox" id="keep-trajectories" checked>
-                                <label for="keep-trajectories">Keep trajectories during animation</label>
+                                <label for="keep-trajectories">Show trajectories (uncheck to remove)</label>
                             </div>
 
                             <!-- Animation Controls -->
@@ -406,11 +406,18 @@
         // Update parameter value and redraw
         function updateParameterValue(value) {
             currentParamValue = value;
-            document.getElementById('param-value-display').textContent = value.toFixed(2);
+            const paramName = document.getElementById('param-name').value || 'mu';
+
+            // Render parameter value in LaTeX
+            const latexStr = `${paramName} = ${value.toFixed(2)}`;
+            katex.render(latexStr, document.getElementById('param-value-display'), {
+                throwOnError: false,
+                displayMode: false
+            });
+
             document.getElementById('param-slider').value = value;
 
             // Redraw phase portrait with new parameter value
-            const paramName = document.getElementById('param-name').value || 'mu';
             drawPhasePortraitWithParam(paramName, value);
         }
 
@@ -456,6 +463,38 @@
             document.getElementById('d').value = origD;
         }
 
+        // Initialize 10 strategic trajectories
+        async function initializeStrategicTrajectories() {
+            // Clear existing trajectories
+            userPoints = [];
+            trajectories = [];
+
+            // Define 10 strategic points in phase space
+            // Place them in a radial pattern at different distances and angles
+            const strategicPoints = [
+                { x: 0, y: 1.5 },     // Top
+                { x: 0, y: -1.5 },    // Bottom
+                { x: 1.5, y: 0 },     // Right
+                { x: -1.5, y: 0 },    // Left
+                { x: 1, y: 1 },       // Top-right
+                { x: -1, y: 1 },      // Top-left
+                { x: 1, y: -1 },      // Bottom-right
+                { x: -1, y: -1 },     // Bottom-left
+                { x: 0, y: 0.5 },     // Near origin top
+                { x: 0.5, y: 0 }      // Near origin right
+            ];
+
+            // Compute trajectories for each strategic point
+            for (const point of strategicPoints) {
+                userPoints.push(point);
+                const trajPoints = await computeTrajectoryAsync(point.x, point.y);
+                trajectories.push(trajPoints);
+            }
+
+            // Redraw with all trajectories
+            drawPhasePortrait();
+        }
+
         // Redraw existing trajectories with current system
         function redrawTrajectories() {
             const canvas = document.getElementById('canvas');
@@ -487,8 +526,11 @@
         }
 
         // Play animation
-        function playAnimation() {
+        async function playAnimation() {
             if (isAnimating) return;
+
+            // Initialize strategic trajectories at the start
+            await initializeStrategicTrajectories();
 
             isAnimating = true;
             document.getElementById('play-btn').style.display = 'none';
@@ -642,6 +684,15 @@
             // Checkboxes - immediate redraw (no debounce needed)
             document.getElementById('showInitialPoint').addEventListener('change', drawPhasePortrait);
             document.getElementById('showGrid').addEventListener('change', drawPhasePortrait);
+
+            // Keep trajectories checkbox - clear trajectories when unchecked
+            document.getElementById('keep-trajectories').addEventListener('change', (e) => {
+                if (!e.target.checked) {
+                    userPoints = [];
+                    trajectories = [];
+                    drawPhasePortrait();
+                }
+            });
 
             // Initial draw
             drawPhasePortrait();
