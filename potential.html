@@ -308,13 +308,6 @@
         const ballRadius = 18;
         const bottomMargin = 50;
 
-        // Coordinate transformations for potential curve
-        const xToCurve = x => ((x + 2.5) / 5) * curveCanvas.width;
-        const yToCurve = y => {
-            const drawingHeight = curveCanvas.height - bottomMargin;
-            return drawingHeight - ((y + 2) / 4) * drawingHeight;
-        };
-
         // Phase plot transformations with dynamic scaling
         let phaseBounds = { xMin: -2.5, xMax: 2.5, vMin: -2, vMax: 2 };
 
@@ -329,7 +322,31 @@
             if (phaseBounds.vMax - phaseBounds.vMin < 0.5) {
                 phaseBounds.vMax = phaseBounds.vMin + 0.5;
             }
+            // Force redraw of backgrounds when bounds change
+            needsRedrawCurveBackground = true;
+            needsRedrawPhaseBackground = true;
         }
+
+        // Coordinate transformations for potential curve - dynamic based on phaseBounds
+        const xToCurve = x => {
+            const xRange = phaseBounds.xMax - phaseBounds.xMin;
+            const padding = 0.2; // Add 20% padding on each side
+            const effectiveMin = phaseBounds.xMin - xRange * padding;
+            const effectiveMax = phaseBounds.xMax + xRange * padding;
+            return ((x - effectiveMin) / (effectiveMax - effectiveMin)) * curveCanvas.width;
+        };
+        
+        const yToCurve = y => {
+            const drawingHeight = curveCanvas.height - bottomMargin;
+            // Calculate appropriate y-range based on potential values within x-range
+            const potentialAtBounds = Math.max(
+                Math.abs(potential(phaseBounds.xMin)), 
+                Math.abs(potential(phaseBounds.xMax))
+            );
+            const yMin = -potentialAtBounds * 1.5;
+            const yMax = potentialAtBounds * 1.5;
+            return drawingHeight - ((y - yMin) / (yMax - yMin)) * drawingHeight;
+        };
 
         const plotPadding = 60;
         const plotSize = 380;
@@ -376,13 +393,20 @@
                 ctx.stroke();
             }
 
+            // Calculate dynamic plot range with padding
+            const xRange = phaseBounds.xMax - phaseBounds.xMin;
+            const padding = 0.2;
+            const plotMin = phaseBounds.xMin - xRange * padding;
+            const plotMax = phaseBounds.xMax + xRange * padding;
+            const step = (plotMax - plotMin) / 100;
+
             // Draw the potential curve with 3D effect
             ctx.beginPath();
-            ctx.moveTo(0, curveBackgroundCanvas.height - bottomMargin);
-            for (let x = -2.5; x <= 2.5; x += 0.05) {
-                ctx.lineTo(xToCurve(x), yToCurve(potential(x)));
+            ctx.moveTo(xToCurve(plotMin), curveBackgroundCanvas.height - bottomMargin);
+            for (let xVal = plotMin; xVal <= plotMax; xVal += step) {
+                ctx.lineTo(xToCurve(xVal), yToCurve(potential(xVal)));
             }
-            ctx.lineTo(curveBackgroundCanvas.width, curveBackgroundCanvas.height - bottomMargin);
+            ctx.lineTo(xToCurve(plotMax), curveBackgroundCanvas.height - bottomMargin);
             ctx.closePath();
 
             // Create gradient for the curve area
@@ -396,11 +420,11 @@
             ctx.strokeStyle = '#1e3a8a';
             ctx.lineWidth = 3;
             ctx.beginPath();
-            for (let x = -2.5; x <= 2.5; x += 0.05) {
-                if (x === -2.5) {
-                    ctx.moveTo(xToCurve(x), yToCurve(potential(x)));
+            for (let xVal = plotMin; xVal <= plotMax; xVal += step) {
+                if (xVal === plotMin) {
+                    ctx.moveTo(xToCurve(xVal), yToCurve(potential(xVal)));
                 } else {
-                    ctx.lineTo(xToCurve(x), yToCurve(potential(x)));
+                    ctx.lineTo(xToCurve(xVal), yToCurve(potential(xVal)));
                 }
             }
             ctx.stroke();
@@ -437,16 +461,20 @@
             ctx.textAlign = 'left';
             ctx.fillText('U(x)', 30, 20);
 
-            // Scale markings
+            // Scale markings based on dynamic bounds
             ctx.strokeStyle = '#4a5568';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            for (let x = -2.5; x <= 2.5; x += 0.5) {
-                const px = xToCurve(x);
+            // Calculate proper x values for the grid lines
+            const xStep = (phaseBounds.xMax - phaseBounds.xMin) / 4;
+            for (let i = 0; i <= 4; i++) {
+                const xValue = phaseBounds.xMin + i * xStep;
+                const px = xToCurve(xValue);
                 ctx.moveTo(px, curveBackgroundCanvas.height - bottomMargin - 5);
                 ctx.lineTo(px, curveBackgroundCanvas.height - bottomMargin);
                 ctx.fillStyle = '#4a5568';
-                ctx.fillText(x.toFixed(1), px, curveBackgroundCanvas.height - bottomMargin + 20);
+                ctx.textAlign = 'center';
+                ctx.fillText(xValue.toFixed(1), px, curveBackgroundCanvas.height - bottomMargin + 20);
             }
             ctx.stroke();
 
@@ -614,8 +642,13 @@
 
             // Compute normal to curve for ball positioning
             const du_dx = 1 - x * x;
-            const scale_x = curveCanvas.width / 5;
-            const scale_y = (curveCanvas.height - bottomMargin) / 4;
+            const scale_x = curveCanvas.width / (phaseBounds.xMax - phaseBounds.xMin + (phaseBounds.xMax - phaseBounds.xMin) * 0.4); // Account for padding
+            const potentialAtBounds = Math.max(
+                Math.abs(potential(phaseBounds.xMin)), 
+                Math.abs(potential(phaseBounds.xMax))
+            );
+            const yRange = potentialAtBounds * 3; // yMin to yMax range
+            const scale_y = (curveCanvas.height - bottomMargin) / yRange;
             const m = -du_dx * scale_y / scale_x;
             const norm_len = Math.sqrt(m * m + 1);
             const n_x = m / norm_len;
@@ -671,7 +704,8 @@
             yHistory = [[x, v]];
             phaseData = [];
             phaseBounds = { xMin: x, xMax: x, vMin: v, vMax: v };
-            needsRedrawPhaseBackground = true; // Redraw phase background with new bounds
+            needsRedrawCurveBackground = true; // Force redraw of curve background
+            needsRedrawPhaseBackground = true; // Force redraw of phase background
             totalTime = 0;
             // Simulate up to t=0.05 without plotting
             const tTarget = 0.05;
