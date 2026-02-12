@@ -160,7 +160,7 @@
         const sign = this.numerator < 0 ? "-" : "";
         const absNum = Math.abs(this.numerator);
         if (this.denominator === 1) return sign + absNum.toString();
-        return sign + absNum + "/" + this.denominator;
+        return sign + "\\dfrac{" + absNum + "}{" + this.denominator + "}";
       }
     }
 
@@ -426,92 +426,125 @@
       return numbers.reduce((a, b) => lcm(a, b));
     }
 
-    // Pre-computed square roots for performance (reduced from 100 to 50)
-    const SQRT_CACHE = Array.from({length: 51}, (_, i) => Math.sqrt(i));
+    const SQRT_CACHE = Array.from({length: 101}, (_, i) => Math.sqrt(i));
+
+    function simplifyRadicand(coeff, radicand) {
+      let c = coeff, r = radicand;
+      for (let p = 2; p * p <= r; p++) {
+        while (r % (p * p) === 0) { r /= (p * p); c *= p; }
+      }
+      return { coeff: c, radicand: r };
+    }
+
+    function gcdInt(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+
+    function formatSurdLatex(sign, coeff, radicand, rden) {
+      let { coeff: c, radicand: r } = simplifyRadicand(coeff, radicand);
+      if (r === 1) {
+        let g = gcdInt(c, rden); c /= g; rden /= g;
+        if (rden === 1) return sign + c;
+        return sign + "\\dfrac{" + c + "}{" + rden + "}";
+      }
+      let sqrtPart = (c === 1 ? "" : c) + "\\sqrt{" + r + "}";
+      if (rden === 1) return sign + sqrtPart;
+      return sign + "\\dfrac{" + (c === 1 ? "" : c) + "\\sqrt{" + r + "}}{" + rden + "}";
+    }
+
+    function formatCompoundSurdLatex(isNeg, intPart, surdCoeff, radicand, rden) {
+      let { radicand: r } = simplifyRadicand(1, radicand);
+      let dispInt = isNeg ? -intPart : intPart;
+      let dispSC = isNeg ? -surdCoeff : surdCoeff;
+      let sc = simplifyRadicand(Math.abs(dispSC), radicand).coeff;
+      let sqrtPart = (sc === 1 ? "" : sc) + "\\sqrt{" + r + "}";
+      let numStr;
+      if (dispInt < 0 && dispSC < 0) {
+        numStr = Math.abs(dispInt) + " + " + sqrtPart;
+        if (rden === 1) return "-(" + numStr + ")";
+        return "-\\dfrac{" + numStr + "}{" + rden + "}";
+      } else if (dispInt > 0 && dispSC > 0) {
+        numStr = dispInt + " + " + sqrtPart;
+      } else if (dispInt > 0 && dispSC < 0) {
+        numStr = dispInt + " - " + sqrtPart;
+      } else {
+        numStr = sqrtPart + " - " + Math.abs(dispInt);
+      }
+      if (rden === 1) return numStr;
+      return "\\dfrac{" + numStr + "}{" + rden + "}";
+    }
 
     function toSurd(val) {
       if (Math.abs(val) < 1e-7) return "0";
-      let sign = val < 0 ? "-" : "";
-      val = Math.abs(val);
-      let tol = 1e-8;
-      // Reduced search space: max denominator 12 (was 20), max sqrt 50 (was 100)
+      let isNeg = val < 0;
+      let sign = isNeg ? "-" : "";
+      let absVal = Math.abs(val);
+      let tol = 1e-6;
+
+      // Try simple surd form: coeff * √a / rden
       for (let rden = 1; rden <= 12; rden++) {
-        let scaled = val * rden;
-        for (let a = 1; a <= 50; a++) {
-          let sq = SQRT_CACHE[a];  // Use pre-computed sqrt
-          if (Math.abs(scaled - Math.round(scaled / sq) * sq) < tol) {
-            let coeff = Math.round(scaled / sq);
-            if (Math.abs(coeff) <= 500 && rden <= 500) {
-              if (a === 1) return sign + (coeff / rden).toString();
-              return sign + (coeff === 1 ? "" : coeff.toString()) + "\\sqrt{" + a + "}" + (rden === 1 ? "" : "/" + rden);
+        let scaled = absVal * rden;
+        for (let a = 2; a <= 100; a++) {
+          let sq = SQRT_CACHE[a];
+          let coeff = Math.round(scaled / sq);
+          if (coeff >= 1 && Math.abs(scaled - coeff * sq) < tol) {
+            return formatSurdLatex(sign, coeff, a, rden);
+          }
+        }
+      }
+
+      // Try compound surd form: (intPart ± coeff * √a) / rden
+      for (let rden = 1; rden <= 12; rden++) {
+        let scaled = absVal * rden;
+        for (let a = 2; a <= 50; a++) {
+          let sq = SQRT_CACHE[a];
+          for (let coeff = 1; coeff <= 5; coeff++) {
+            let csq = coeff * sq;
+            // Try intPart + coeff*√a
+            let intP = Math.round(scaled - csq);
+            if (intP !== 0 && Math.abs(scaled - intP - csq) < tol) {
+              return formatCompoundSurdLatex(isNeg, intP, coeff, a, rden);
+            }
+            // Try intPart - coeff*√a
+            intP = Math.round(scaled + csq);
+            if (intP !== 0 && Math.abs(scaled - intP + csq) < tol) {
+              return formatCompoundSurdLatex(isNeg, intP, -coeff, a, rden);
             }
           }
         }
       }
+
       return null;
     }
 
     function isRepeatingOrShortDecimal(val) {
       if (Math.abs(val) < 1e-7) return false;
-      const s = Math.abs(val).toFixed(10);
-      const decimalPart = s.split('.')[1] || '';
       const frac = Fraction.fromDecimal(val, 100);
       const decimalVal = frac.numerator / frac.denominator;
-      if (Math.abs(decimalVal - val) < 1e-8 && Math.abs(frac.numerator) <= 500 && frac.denominator <= 500) {
+      if (Math.abs(decimalVal - val) < 1e-6 && Math.abs(frac.numerator) <= 500 && frac.denominator <= 500) {
         return frac;
       }
       return false;
     }
 
-    function canRepresentAsSurdOrFraction(val) {
-      if (Math.abs(val) < 1e-7) return true; // Zero is always representable
-      const frac = isRepeatingOrShortDecimal(val);
-      if (frac) return true;
-      const surd = toSurd(val);
-      if (surd) return true;
-      return false;
-    }
-
-    function determineDisplayMode(matrices) {
-      // Check if all values in all matrices can be represented as surds or fractions
-      for (const matrix of matrices) {
-        for (const row of matrix) {
-          for (const val of row) {
-            if (!canRepresentAsSurdOrFraction(val)) {
-              return "decimals";
-            }
-          }
-        }
-      }
-      return "surds";
-    }
-
-    function formatForLatex(val, mode) {
+    function formatForLatex(val) {
       if (Math.abs(val) < 1e-7) return "0";
-      if (mode === "decimals") {
-        return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
-      }
       const frac = isRepeatingOrShortDecimal(val);
-      if (frac) {
-        return frac.toLatex();
-      }
+      if (frac) return frac.toLatex();
       let surd = toSurd(val);
       if (surd) return surd;
       return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
     }
 
-    function matrixToLatex(M, mode) {
+    function matrixToLatex(M) {
       const r = M.length, c = M[0].length;
-      const separator = mode === "decimals" ? " \\\\ " : " \\\\[0.5em] ";
       const rows = [];
       for (let i = 0; i < r; i++) {
         const cells = [];
         for (let j = 0; j < c; j++) {
-          cells.push(formatForLatex(M[i][j], mode));
+          cells.push(formatForLatex(M[i][j]));
         }
         rows.push(cells.join(" & "));
       }
-      return "\\begin{bmatrix}" + rows.join(separator) + "\\end{bmatrix}";
+      return "\\begin{bmatrix}" + rows.join(" \\\\[0.5em] ") + "\\end{bmatrix}";
     }
 
     function computeSVD(A) {
@@ -596,11 +629,8 @@
           Vt_disp = Vt;
         }
 
-        // Automatically determine display mode: surds if possible, otherwise decimals
-        const displayMode = determineDisplayMode([A, U_disp, S_disp, Vt_disp]);
-
         let A_label = "\\mathbf{A}", U_label = "\\mathbf{U}", S_label = "\\boldsymbol{\\Sigma}", Vt_label = "\\mathbf{V}^T";
-        let resultLatex = `${A_label} = ${U_label} ${S_label} ${Vt_label} \\\\${matrixToLatex(A, displayMode)} = ${matrixToLatex(U_disp, displayMode)} \\; ${matrixToLatex(S_disp, displayMode)} \\; ${matrixToLatex(Vt_disp, displayMode)}`;
+        let resultLatex = `${A_label} = ${U_label} ${S_label} ${Vt_label} \\\\${matrixToLatex(A)} = ${matrixToLatex(U_disp)} \\; ${matrixToLatex(S_disp)} \\; ${matrixToLatex(Vt_disp)}`;
         resultDiv.innerHTML = `<div class="latex">$$${resultLatex}$$</div>`;
         renderMathInElement(resultDiv, {
           delimiters: [{ left: "$$", right: "$$", display: true }],
@@ -642,4 +672,3 @@
   </script>
 </body>
 </html>
-
