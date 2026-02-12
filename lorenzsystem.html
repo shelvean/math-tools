@@ -588,7 +588,9 @@
       frameIdx: 0,
       traj1: null,
       traj2: null,
-      firstLaunch: true
+      firstLaunch: true,
+      mode: null,    // 'particles' or 'transient'
+      renderFn: null
     };
 
     function stopParticles() {
@@ -597,10 +599,16 @@
         particleAnim.rafId = null;
       }
       particleAnim.running = false;
-      const btn = document.getElementById('launchBtn');
-      if (btn) {
-        btn.textContent = 'Launch Particles';
-        btn.classList.remove('particle-running');
+      particleAnim.mode = null;
+      const launchBtn = document.getElementById('launchBtn');
+      if (launchBtn) {
+        launchBtn.textContent = 'Launch Particles';
+        launchBtn.classList.remove('particle-running');
+      }
+      const chaosBtn = document.querySelector('.transient-chaos-btn');
+      if (chaosBtn) {
+        chaosBtn.textContent = 'Transient Chaos';
+        chaosBtn.classList.remove('particle-running');
       }
     }
 
@@ -615,8 +623,29 @@
       }
     }
 
+    // Shared animation tick loop
+    function startAnimationLoop() {
+      const totalSteps = particleAnim.traj1.x.length;
+      function tick() {
+        if (!particleAnim.running) return;
+
+        const stepsPerFrame = getSpeedSteps();
+        particleAnim.frameIdx += stepsPerFrame;
+
+        if (particleAnim.frameIdx >= totalSteps) {
+          particleAnim.frameIdx = totalSteps - 1;
+          particleAnim.renderFn(particleAnim.frameIdx);
+          stopParticles();
+          return;
+        }
+
+        particleAnim.renderFn(particleAnim.frameIdx);
+        particleAnim.rafId = requestAnimationFrame(tick);
+      }
+      particleAnim.rafId = requestAnimationFrame(tick);
+    }
+
     function launchParticles() {
-      // Stop any existing animation
       stopParticles();
 
       // On first launch, set rho to 20
@@ -630,7 +659,6 @@
         }
       }
 
-      // Read current parameters
       const sigma = parseFloat(document.getElementById('sigma').value);
       const rho = parseFloat(document.getElementById('rho').value);
       const beta = parseFloat(document.getElementById('beta').value);
@@ -640,37 +668,50 @@
       const epsInput = document.getElementById('epsilonInput');
       const epsilon = epsInput ? parseFloat(epsInput.value) || 1e-6 : 1e-6;
 
-      // Pre-compute both trajectories
       particleAnim.traj1 = solveLorenz(sigma, rho, beta, x0, y0, z0);
       particleAnim.traj2 = solveLorenz(sigma, rho, beta, x0 + epsilon, y0, z0);
       particleAnim.frameIdx = 0;
       particleAnim.running = true;
+      particleAnim.mode = 'particles';
+      particleAnim.renderFn = renderParticleFrame;
 
       const btn = document.getElementById('launchBtn');
       btn.textContent = 'Stop';
       btn.classList.add('particle-running');
 
-      const totalSteps = particleAnim.traj1.x.length;
+      startAnimationLoop();
+    }
 
-      function tick() {
-        if (!particleAnim.running) return;
+    function launchTransientChaos() {
+      stopParticles();
 
-        const stepsPerFrame = getSpeedSteps();
-        particleAnim.frameIdx += stepsPerFrame;
-
-        if (particleAnim.frameIdx >= totalSteps) {
-          particleAnim.frameIdx = totalSteps - 1;
-          // Show the final full state then stop
-          renderParticleFrame(particleAnim.frameIdx);
-          stopParticles();
-          return;
-        }
-
-        renderParticleFrame(particleAnim.frameIdx);
-        particleAnim.rafId = requestAnimationFrame(tick);
+      // Set rho to 22
+      const rhoSlider = document.getElementById('rho');
+      const rhoInput = document.getElementById('rhoValue');
+      if (rhoSlider && rhoInput) {
+        rhoSlider.value = 22;
+        rhoInput.value = '22';
       }
 
-      particleAnim.rafId = requestAnimationFrame(tick);
+      const sigma = parseFloat(document.getElementById('sigma').value);
+      const rho = parseFloat(document.getElementById('rho').value);
+      const beta = parseFloat(document.getElementById('beta').value);
+      const x0 = parseFloat(document.getElementById('x0').value);
+      const y0 = parseFloat(document.getElementById('y0').value);
+      const z0 = parseFloat(document.getElementById('z0').value);
+
+      particleAnim.traj1 = solveLorenz(sigma, rho, beta, x0, y0, z0);
+      particleAnim.traj2 = null;
+      particleAnim.frameIdx = 0;
+      particleAnim.running = true;
+      particleAnim.mode = 'transient';
+      particleAnim.renderFn = renderTransientFrame;
+
+      const chaosBtn = document.querySelector('.transient-chaos-btn');
+      chaosBtn.textContent = 'Stop';
+      chaosBtn.classList.add('particle-running');
+
+      startAnimationLoop();
     }
 
     function renderParticleFrame(idx) {
@@ -730,6 +771,49 @@
       Plotly.react('plot', [trail1, trail2, marker1, marker2], layout);
     }
 
+    function renderTransientFrame(idx) {
+      const t1 = particleAnim.traj1;
+
+      const trail = {
+        x: t1.x.slice(0, idx + 1),
+        y: t1.y.slice(0, idx + 1),
+        z: t1.z.slice(0, idx + 1),
+        type: 'scatter3d',
+        mode: 'lines',
+        line: {
+          color: t1.t.slice(0, idx + 1),
+          colorscale: 'Jet',
+          width: 3,
+          cmin: 0,
+          cmax: 1,
+          showscale: true,
+          colorbar: {
+            title: 'Time Progression',
+            thickness: 15,
+            tickvals: [0, 0.5, 1],
+            ticktext: ['Start', 'Mid', 'End']
+          }
+        },
+        showlegend: false
+      };
+
+      const marker = {
+        x: [t1.x[idx]],
+        y: [t1.y[idx]],
+        z: [t1.z[idx]],
+        type: 'scatter3d',
+        mode: 'markers',
+        marker: { size: 6, color: '#000000', symbol: 'circle' },
+        showlegend: false
+      };
+
+      const rhoVal = parseFloat(document.getElementById('rho').value);
+      const t = (idx * 0.005).toFixed(1);
+      Plotly.react('plot', [trail, marker],
+        make3DLayout(`Transient Chaos (\u03C1 = ${formatSignificant(rhoVal)}, t = ${t})`)
+      );
+    }
+
     // --- UI Creation Function ---
     function createSliders() {
       const container = document.querySelector('.controls');
@@ -773,7 +857,7 @@
           <div class="input-row">
             <div class="slider-label">
               <span>\\(\\varepsilon\\)</span>
-              <input type="text" id="epsilonInput" class="slider-value" value="1e-11">
+              <input type="text" id="epsilonInput" class="slider-value" value="1e-9">
             </div>
           </div>
           <div class="speed-selector">
@@ -954,15 +1038,17 @@
       // Transient chaos button event listener
       const transientChaosBtn = document.querySelector('.transient-chaos-btn');
       transientChaosBtn.addEventListener('click', () => {
-        stopParticles();
-        // Stop any ongoing animation
+        // Stop rho animation if running
         if (animationId) {
           clearTimeout(animationId);
           animationId = null;
           animateBtn.textContent = 'Animate Rho';
         }
-        // Update plot with rho = 22.0
-        updatePlot(22.0);
+        if (particleAnim.running && particleAnim.mode === 'transient') {
+          stopParticles();
+        } else {
+          launchTransientChaos();
+        }
       });
 
       // Launch particles button
@@ -987,4 +1073,3 @@
 </body>
 
 </html>
-
