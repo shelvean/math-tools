@@ -152,14 +152,30 @@
     input[type="range"]:focus {
       outline: none;
     }
+    /* Plots container for stacking 3D and divergence plots */
+    .plots-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
     /* Simulation canvas with flexible width and reduced height */
     #plot {
-      flex: 1;
+      width: 100%;
       height: 500px;
       background: white;
       padding: 1rem;
       border-radius: 10px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    #divergence-plot {
+      width: 100%;
+      height: 300px;
+      background: white;
+      padding: 1rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      display: none;
     }
     .footer {
       background-color: white;
@@ -233,6 +249,37 @@
     button:hover {
       background: #32cd32;
     }
+    /* Sensitivity controls */
+    .sensitivity-controls {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 2px solid #eee;
+    }
+    .sensitivity-controls .section-label {
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 0.95rem;
+    }
+    .sensitivity-controls .input-row {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      gap: 1rem;
+    }
+    .sensitivity-controls .slider-value {
+      width: 80px;
+    }
+    button.sensitivity-active {
+      background: #e74c3c;
+    }
+    button.sensitivity-active:hover {
+      background: #c0392b;
+    }
     /* Responsive design for smaller screens */
     @media (max-width: 768px) {
       .main-content {
@@ -251,6 +298,9 @@
       #plot {
         width: 100%;
         height: 400px; /* Further reduced for small screens */
+      }
+      #divergence-plot {
+        height: 250px;
       }
       .button-row {
         flex-direction: column;
@@ -334,7 +384,10 @@
   <!-- Wrapper for side-by-side layout -->
   <div class="main-content">
     <div class="controls"></div>
-    <div id="plot"></div>
+    <div class="plots-container">
+      <div id="plot"></div>
+      <div id="divergence-plot"></div>
+    </div>
   </div>
   <div class="footer">
     <p>
@@ -353,6 +406,9 @@
       {id: 'y0', label: 'y₀', min: -20, max: 20, step: 0.0000000001, value: 1},
       {id: 'z0', label: 'z₀', min: -20, max: 50, step: 0.0000000001, value: 20}
     ];
+
+    // Track sensitivity mode state
+    let sensitivityMode = false;
 
     // --- Lorenz Simulation Functions ---
     function lorenz(x, y, z, sigma, rho, beta) {
@@ -387,6 +443,181 @@
       return {x: x_arr, y: y_arr, z: z_arr, t: t_arr};
     }
 
+    // --- Dormand-Prince 5(4) Adaptive Solver ---
+    // Butcher tableau coefficients
+    const DP5_A = [
+      [],
+      [1/5],
+      [3/40, 9/40],
+      [44/45, -56/15, 32/9],
+      [19372/6561, -25360/2187, 64448/6561, -212/729],
+      [9017/3168, -355/33, 46732/5247, 49/176, -5103/18656],
+      [35/384, 0, 500/1113, 125/192, -2187/6784, 11/84]
+    ];
+    const DP5_B  = [35/384, 0, 500/1113, 125/192, -2187/6784, 11/84, 0];
+    const DP5_BS = [5179/57600, 0, 7571/16695, 393/640, -92097/339200, 187/2100, 1/40];
+    const DP5_C  = [0, 1/5, 3/10, 4/5, 8/9, 1, 1];
+
+    // Solve coupled Lorenz system: two trajectories as a 6D system
+    // State: [x1, y1, z1, x2, y2, z2]
+    function solveCoupledDP54(sigma, rho, beta, x0, y0, z0, epsilon, T, atol, rtol) {
+      const n = 6;
+      const y = [x0, y0, z0, x0 + epsilon, y0, z0];
+      let t = 0;
+      let h = 0.01;
+      const maxSteps = 500000;
+
+      const tNodes = [0];
+      const yNodes = [y.slice()];
+
+      function f(state) {
+        const [dx1, dy1, dz1] = lorenz(state[0], state[1], state[2], sigma, rho, beta);
+        const [dx2, dy2, dz2] = lorenz(state[3], state[4], state[5], sigma, rho, beta);
+        return [dx1, dy1, dz1, dx2, dy2, dz2];
+      }
+
+      let fsal = f(y);
+      let steps = 0;
+
+      while (t < T && steps < maxSteps) {
+        if (t + h > T) h = T - t;
+        if (h < 1e-12) break;
+
+        // Current state
+        const yc = yNodes[yNodes.length - 1];
+
+        // Stage 1 (FSAL)
+        const k = [fsal];
+
+        // Stages 2-7
+        for (let s = 1; s < 7; s++) {
+          const yi = new Array(n);
+          for (let j = 0; j < n; j++) {
+            yi[j] = yc[j];
+            for (let l = 0; l < s; l++) {
+              yi[j] += h * DP5_A[s][l] * k[l][j];
+            }
+          }
+          k.push(f(yi));
+        }
+
+        // 5th order solution
+        const yNew = new Array(n);
+        for (let j = 0; j < n; j++) {
+          yNew[j] = yc[j];
+          for (let s = 0; s < 7; s++) {
+            yNew[j] += h * DP5_B[s] * k[s][j];
+          }
+        }
+
+        // Error estimation (difference between 5th and 4th order)
+        let errMax = 0;
+        for (let j = 0; j < n; j++) {
+          let ej = 0;
+          for (let s = 0; s < 7; s++) {
+            ej += (DP5_B[s] - DP5_BS[s]) * k[s][j];
+          }
+          ej *= h;
+          const scale = atol + rtol * Math.max(Math.abs(yc[j]), Math.abs(yNew[j]));
+          errMax = Math.max(errMax, Math.abs(ej) / scale);
+        }
+
+        if (errMax <= 1.0) {
+          // Accept step
+          t += h;
+          tNodes.push(t);
+          yNodes.push(yNew);
+          fsal = k[6]; // FSAL: k7 becomes k1 of next step
+        }
+
+        // Adjust step size (PI controller)
+        const factor = Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(errMax, -0.2)));
+        h = Math.min(h * factor, 2.0);
+        h = Math.max(h, 1e-12);
+        steps++;
+      }
+
+      return { t: tNodes, y: yNodes };
+    }
+
+    // Interpolate adaptive solver output onto uniform time grid
+    function interpolateUniform(tNodes, yNodes, N) {
+      const n = yNodes[0].length;
+      const tMax = tNodes[tNodes.length - 1];
+      const dt = tMax / (N - 1);
+      const tOut = new Array(N);
+      const yOut = new Array(N);
+
+      let j = 0;
+      for (let i = 0; i < N; i++) {
+        const ti = i * dt;
+        tOut[i] = ti;
+
+        // Advance to the right interval
+        while (j < tNodes.length - 2 && tNodes[j + 1] < ti) j++;
+
+        const span = tNodes[j + 1] - tNodes[j];
+        const alpha = span > 0 ? (ti - tNodes[j]) / span : 0;
+        const yi = new Array(n);
+        for (let k = 0; k < n; k++) {
+          yi[k] = yNodes[j][k] + alpha * (yNodes[j + 1][k] - yNodes[j][k]);
+        }
+        yOut[i] = yi;
+      }
+
+      return { t: tOut, y: yOut };
+    }
+
+    // Compute divergence and estimate Lyapunov exponent
+    function computeDivergence(tArr, yArr) {
+      const N = tArr.length;
+      const dist = new Array(N);
+      const logDist = new Array(N);
+
+      for (let i = 0; i < N; i++) {
+        const dx = yArr[i][0] - yArr[i][3];
+        const dy = yArr[i][1] - yArr[i][4];
+        const dz = yArr[i][2] - yArr[i][5];
+        dist[i] = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        logDist[i] = Math.log10(Math.max(dist[i], 1e-20));
+      }
+
+      return { dist, logDist };
+    }
+
+    function estimateLyapunov(tArr, logDist) {
+      // Fit a line through the exponential growth phase
+      // Growth phase: from start until log10(distance) reaches ~1.0 (distance ~10, attractor diameter ~30)
+      let endIdx = tArr.length - 1;
+      for (let i = 1; i < tArr.length; i++) {
+        if (logDist[i] > 1.0) {
+          endIdx = i;
+          break;
+        }
+      }
+      // Need at least some points for a meaningful fit
+      if (endIdx < 5) endIdx = Math.min(tArr.length - 1, 50);
+
+      // Linear regression on [0, endIdx]
+      let sumT = 0, sumL = 0, sumTL = 0, sumT2 = 0;
+      const count = endIdx + 1;
+      for (let i = 0; i <= endIdx; i++) {
+        sumT += tArr[i];
+        sumL += logDist[i];
+        sumTL += tArr[i] * logDist[i];
+        sumT2 += tArr[i] * tArr[i];
+      }
+
+      const denom = count * sumT2 - sumT * sumT;
+      if (Math.abs(denom) < 1e-20) return { lambda1: NaN, slope: 0, intercept: 0, endTime: tArr[endIdx] };
+
+      const slope = (count * sumTL - sumT * sumL) / denom;
+      const intercept = (sumL - slope * sumT) / count;
+      const lambda1 = slope * Math.LN10; // Convert log10 slope to natural log rate
+
+      return { lambda1, slope, intercept, endTime: tArr[endIdx] };
+    }
+
     // --- Utility Functions ---
     function debounce(func, wait) {
       let timeout;
@@ -396,19 +627,45 @@
       };
     }
 
-    // --- Plotting Function ---
+    // --- Shared Plot Layout ---
+    function make3DLayout(title) {
+      return {
+        title: title,
+        scene: {
+          xaxis: {title: 'X Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
+          yaxis: {title: 'Y Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
+          zaxis: {title: 'Z Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
+          camera: { eye: {x: 2.18, y: 0, z: 0} },
+          bgcolor: '#ffffff'
+        },
+        margin: {t: 40, b: 20, l: 0, r: 0},
+        paper_bgcolor: '#ffffff',
+        font: {color: '#000000'},
+        hovermode: false,
+        uirevision: 'true',
+        renderer: 'webgl',
+        antialias: false
+      };
+    }
+
+    // --- Plotting Functions ---
     const updatePlot = debounce(function (rhoOverride = null) {
+      if (sensitivityMode) {
+        updateSensitivityPlot(rhoOverride);
+        return;
+      }
+
       const values = params.reduce((acc, param) => {
         const element = document.getElementById(param.id);
         if (element) {
           acc[param.id] = parseFloat(element.value);
         } else {
           console.warn(`Element not found for param ID: ${param.id} during plot update.`);
-          acc[param.id] = param.value; // Use default value
+          acc[param.id] = param.value;
         }
         return acc;
       }, {});
-      
+
       if (rhoOverride !== null) {
         values.rho = rhoOverride;
         const rhoSlider = document.getElementById('rho');
@@ -439,7 +696,7 @@
         line: {
           color: trajectory.t,
           colorscale: 'Jet',
-          width: 2, // Increased line width for sharper appearance
+          width: 2,
           opacity: 1,
           showscale: true,
           cmin: 0,
@@ -451,24 +708,132 @@
             ticktext: ['Start', 'Mid', 'End']
           }
         }
-      }], {
-        title: `Lorenz Attractor (ρ = ${formatSignificant(values.rho)})`,
-        scene: {
-          xaxis: {title: 'X Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
-          yaxis: {title: 'Y Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
-          zaxis: {title: 'Z Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
-          camera: { eye: {x: 2.18, y: 0, z: 0} },
-          bgcolor: '#ffffff'
+      }], make3DLayout(`Lorenz Attractor (\u03C1 = ${formatSignificant(values.rho)})`));
+    }, 100);
+
+    // --- Sensitivity Mode Plotting ---
+    function updateSensitivityPlot(rhoOverride = null) {
+      const values = params.reduce((acc, param) => {
+        const element = document.getElementById(param.id);
+        if (element) {
+          acc[param.id] = parseFloat(element.value);
+        } else {
+          acc[param.id] = param.value;
+        }
+        return acc;
+      }, {});
+
+      if (rhoOverride !== null) {
+        values.rho = rhoOverride;
+        const rhoSlider = document.getElementById('rho');
+        const rhoInput = document.getElementById('rhoValue');
+        if (rhoSlider && rhoInput) {
+          rhoSlider.value = rhoOverride;
+          rhoInput.value = formatSignificant(rhoOverride);
+        }
+      }
+
+      const epsInput = document.getElementById('epsilonInput');
+      const tInput = document.getElementById('intTimeInput');
+      const epsilon = epsInput ? parseFloat(epsInput.value) || 1e-6 : 1e-6;
+      const T = tInput ? parseFloat(tInput.value) || 50 : 50;
+
+      // Solve coupled system with DP5(4)
+      const result = solveCoupledDP54(
+        values.sigma, values.rho, values.beta,
+        values.x0, values.y0, values.z0,
+        epsilon, T, 1e-10, 1e-8
+      );
+
+      // Interpolate onto uniform grid for plotting
+      const N = 5000;
+      const interp = interpolateUniform(result.t, result.y, N);
+
+      // Extract trajectories
+      const x1 = new Array(N), y1 = new Array(N), z1 = new Array(N);
+      const x2 = new Array(N), y2 = new Array(N), z2 = new Array(N);
+      for (let i = 0; i < N; i++) {
+        x1[i] = interp.y[i][0]; y1[i] = interp.y[i][1]; z1[i] = interp.y[i][2];
+        x2[i] = interp.y[i][3]; y2[i] = interp.y[i][4]; z2[i] = interp.y[i][5];
+      }
+
+      // Compute divergence
+      const { logDist } = computeDivergence(interp.t, interp.y);
+      const lyap = estimateLyapunov(interp.t, logDist);
+
+      // Update solver stats
+      const statsEl = document.getElementById('solverStats');
+      if (statsEl) {
+        statsEl.textContent = `DP5(4): ${result.t.length} steps | \u03BB\u2081 \u2248 ${isNaN(lyap.lambda1) ? '---' : lyap.lambda1.toFixed(4)}`;
+      }
+
+      // 3D plot with two trajectories
+      const tNorm = interp.t.map(v => v / T);
+      Plotly.react('plot', [
+        {
+          x: x1, y: y1, z: z1,
+          type: 'scatter3d', mode: 'lines',
+          name: 'Primary',
+          line: {
+            color: tNorm, colorscale: 'Blues', width: 2, opacity: 1,
+            showscale: false
+          }
         },
-        margin: {t: 40, b: 20, l: 0, r: 0},
+        {
+          x: x2, y: y2, z: z2,
+          type: 'scatter3d', mode: 'lines',
+          name: `Perturbed (\u03B5 = ${epsilon.toExponential(1)})`,
+          line: {
+            color: tNorm, colorscale: 'Reds', width: 2, opacity: 1,
+            showscale: true, cmin: 0, cmax: 1,
+            colorbar: {
+              title: 'Time (t)', thickness: 15,
+              tickvals: [0, 0.5, 1],
+              ticktext: [formatSignificant(0), formatSignificant(T / 2), formatSignificant(T)]
+            }
+          }
+        }
+      ], make3DLayout(
+        `Sensitive Dependence (\u03C1 = ${formatSignificant(values.rho)}, \u03BB\u2081 \u2248 ${isNaN(lyap.lambda1) ? '---' : lyap.lambda1.toFixed(3)})`
+      ));
+
+      // Divergence plot
+      const divPlot = document.getElementById('divergence-plot');
+      divPlot.style.display = 'block';
+
+      // Build fit line over the growth phase
+      const fitT = [interp.t[0], lyap.endTime];
+      const fitLog = [lyap.intercept + lyap.slope * fitT[0], lyap.intercept + lyap.slope * fitT[1]];
+
+      Plotly.react('divergence-plot', [
+        {
+          x: interp.t,
+          y: logDist,
+          type: 'scatter',
+          mode: 'lines',
+          name: 'log\u2081\u2080 ||\u03B4(t)||',
+          line: { color: '#2ecc71', width: 2 }
+        },
+        {
+          x: fitT,
+          y: fitLog,
+          type: 'scatter',
+          mode: 'lines',
+          name: `Fit: \u03BB\u2081 \u2248 ${isNaN(lyap.lambda1) ? '---' : lyap.lambda1.toFixed(4)}`,
+          line: { color: '#e74c3c', width: 2, dash: 'dash' }
+        }
+      ], {
+        title: 'Trajectory Divergence',
+        xaxis: { title: 'Time (t)', gridcolor: '#e0e0e0', zeroline: false },
+        yaxis: { title: 'log\u2081\u2080 ||\u03B4(t)||', gridcolor: '#e0e0e0', zeroline: false },
+        margin: { t: 40, b: 50, l: 60, r: 20 },
         paper_bgcolor: '#ffffff',
-        font: {color: '#000000'},
-        hovermode: false, // Disable hover for performance
-        uirevision: 'true', // Preserve UI state
-        renderer: 'webgl', // Ensure WebGL for performance
-        antialias: false // Disable antialiasing for crisper lines
+        plot_bgcolor: '#ffffff',
+        font: { color: '#000000' },
+        legend: { x: 0.02, y: 0.98, bgcolor: 'rgba(255,255,255,0.8)' },
+        hovermode: 'x unified'
       });
-    }, 100); // Debounce time
+    }
 
     // --- UI Creation Function ---
     function createSliders() {
@@ -507,6 +872,23 @@
             <button id="animateBtn">Animate Rho</button>
             <button class="transient-chaos-btn">Transient Chaos</button>
           </div>
+        </div>
+        <div class="sensitivity-controls">
+          <span class="section-label">Sensitivity Analysis (DP5(4))</span>
+          <div class="input-row">
+            <div class="slider-label">
+              <span>\\(\\varepsilon\\)</span>
+              <input type="text" id="epsilonInput" class="slider-value" value="1e-6">
+            </div>
+            <div class="slider-label">
+              <span>\\(T\\)</span>
+              <input type="number" id="intTimeInput" class="slider-value" value="50" min="1" max="200" step="1">
+            </div>
+          </div>
+          <div class="button-row">
+            <button id="sensitivityBtn">Sensitivity Mode</button>
+          </div>
+          <span id="solverStats" style="font-size:0.8rem; color:#888;"></span>
         </div>
       `;
       renderKatexInElement(container); // Render KaTeX for slider labels
@@ -616,46 +998,37 @@
           // Update rho slider and input
           rhoSlider.value = currentRho;
           rhoInput.value = formatSignificant(currentRho);
-          // Compute and plot
-          const trajectory = solveLorenz(sigma, currentRho, beta, x0, y0, z0);
-          Plotly.react('plot', [{
-            x: trajectory.x,
-            y: trajectory.y,
-            z: trajectory.z,
-            type: 'scatter3d',
-            mode: 'lines',
-            line: {
-              color: trajectory.t,
-              colorscale: 'Jet',
-              width: 4, // Increased line width for sharper appearance
-              opacity: 1,
-              showscale: true,
-              cmin: 0,
-              cmax: 1,
-              colorbar: {
-                title: 'Time Progression',
-                thickness: 15,
-                tickvals: [0, 0.5, 1],
-                ticktext: ['Start', 'Mid', 'End']
+
+          if (sensitivityMode) {
+            // In sensitivity mode, use DP5(4) coupled solver
+            updateSensitivityPlot(currentRho);
+          } else {
+            // Original single-trajectory animation
+            const trajectory = solveLorenz(sigma, currentRho, beta, x0, y0, z0);
+            Plotly.react('plot', [{
+              x: trajectory.x,
+              y: trajectory.y,
+              z: trajectory.z,
+              type: 'scatter3d',
+              mode: 'lines',
+              line: {
+                color: trajectory.t,
+                colorscale: 'Jet',
+                width: 4,
+                opacity: 1,
+                showscale: true,
+                cmin: 0,
+                cmax: 1,
+                colorbar: {
+                  title: 'Time Progression',
+                  thickness: 15,
+                  tickvals: [0, 0.5, 1],
+                  ticktext: ['Start', 'Mid', 'End']
+                }
               }
-            }
-          }], {
-            title: `Lorenz Attractor (ρ = ${formatSignificant(currentRho)})`,
-            scene: {
-              xaxis: {title: 'X Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
-              yaxis: {title: 'Y Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
-              zaxis: {title: 'Z Axis', gridcolor: '#a0a0a0', linecolor: '#000000'},
-              camera: { eye: {x: 2.18, y: 0, z: 0} },
-              bgcolor: '#ffffff'
-            },
-            margin: {t: 40, b: 20, l: 0, r: 0},
-            paper_bgcolor: '#ffffff',
-            font: {color: '#000000'},
-            hovermode: false, // Disable hover for performance
-            uirevision: 'true', // Preserve UI state
-            renderer: 'webgl', // Ensure WebGL for performance
-            antialias: false // Disable antialiasing for crisper lines
-          });
+            }], make3DLayout(`Lorenz Attractor (\u03C1 = ${formatSignificant(currentRho)})`));
+          }
+
           currentRho += rhoStep;
           currentRho = Math.round(currentRho * 10) / 10;
           animationId = setTimeout(animate, delay);
@@ -700,10 +1073,36 @@
         updatePlot(22.0);
       });
 
+      // Sensitivity mode toggle
+      const sensitivityBtn = document.getElementById('sensitivityBtn');
+      sensitivityBtn.addEventListener('click', () => {
+        sensitivityMode = !sensitivityMode;
+        if (sensitivityMode) {
+          sensitivityBtn.textContent = 'Standard Mode';
+          sensitivityBtn.classList.add('sensitivity-active');
+          updatePlot();
+        } else {
+          sensitivityBtn.textContent = 'Sensitivity Mode';
+          sensitivityBtn.classList.remove('sensitivity-active');
+          document.getElementById('divergence-plot').style.display = 'none';
+          const statsEl = document.getElementById('solverStats');
+          if (statsEl) statsEl.textContent = '';
+          updatePlot();
+        }
+      });
+
+      // Sensitivity parameter change listeners
+      const epsilonInput = document.getElementById('epsilonInput');
+      const intTimeInput = document.getElementById('intTimeInput');
+      [epsilonInput, intTimeInput].forEach(input => {
+        input.addEventListener('change', () => {
+          if (sensitivityMode) updatePlot();
+        });
+      });
+
       updatePlot(); // Initial plot render
     });
   </script>
 </body>
 
 </html>
-
