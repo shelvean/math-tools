@@ -394,35 +394,91 @@
             return Math.abs(root * root - n) < 1e-12;
         }
 
-        function formatSurdOrFraction(val) {
-            const MAX_DEN = 500;
-            const MAX_NUM = 500;
-            for (let b = 2; b <= MAX_DEN; ++b) {
-                if (!isPerfectSquare(b)) {
-                    const sqrtb = Math.sqrt(b);
-                    for (let c = 1; c <= MAX_DEN; ++c) {
-                        const a_approx = (val * c) / sqrtb;
-                        if (Math.abs(a_approx - Math.round(a_approx)) < 1e-9 && Math.abs(Math.round(a_approx)) <= MAX_NUM) {
-                            const a = Math.round(a_approx);
-                            const sign = a < 0 ? "-" : "";
-                            const a_abs = Math.abs(a);
-                            const sqrtPart = `\\sqrt{${b}}`;
-                            if (a_abs === 1) {
-                                return c === 1 ? `${sign}${sqrtPart}` : `${sign}${sqrtPart}/${c}`;
-                            } else {
-                                return c === 1 ? `${sign}${a_abs}${sqrtPart}` : `${sign}${a_abs}${sqrtPart}/${c}`;
-                            }
+        const SQRT_CACHE = Array.from({length: 101}, (_, i) => Math.sqrt(i));
+
+        function simplifyRadicand(coeff, radicand) {
+            let c = coeff, r = radicand;
+            for (let p = 2; p * p <= r; p++) {
+                while (r % (p * p) === 0) { r /= (p * p); c *= p; }
+            }
+            return { coeff: c, radicand: r };
+        }
+
+        function gcdInt(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+
+        function formatSurdLatex(sign, coeff, radicand, rden) {
+            let { coeff: c, radicand: r } = simplifyRadicand(coeff, radicand);
+            if (r === 1) {
+                let g = gcdInt(c, rden); c /= g; rden /= g;
+                if (rden === 1) return sign + c;
+                return sign + "\\dfrac{" + c + "}{" + rden + "}";
+            }
+            let sqrtPart = (c === 1 ? "" : c) + "\\sqrt{" + r + "}";
+            if (rden === 1) return sign + sqrtPart;
+            return sign + "\\dfrac{" + (c === 1 ? "" : c) + "\\sqrt{" + r + "}}{" + rden + "}";
+        }
+
+        function formatCompoundSurdLatex(isNeg, intPart, surdCoeff, radicand, rden) {
+            let { radicand: r } = simplifyRadicand(1, radicand);
+            let dispInt = isNeg ? -intPart : intPart;
+            let dispSC = isNeg ? -surdCoeff : surdCoeff;
+            let sc = simplifyRadicand(Math.abs(dispSC), radicand).coeff;
+            let sqrtPart = (sc === 1 ? "" : sc) + "\\sqrt{" + r + "}";
+            let numStr;
+            if (dispInt < 0 && dispSC < 0) {
+                numStr = Math.abs(dispInt) + " + " + sqrtPart;
+                if (rden === 1) return "-(" + numStr + ")";
+                return "-\\dfrac{" + numStr + "}{" + rden + "}";
+            } else if (dispInt > 0 && dispSC > 0) {
+                numStr = dispInt + " + " + sqrtPart;
+            } else if (dispInt > 0 && dispSC < 0) {
+                numStr = dispInt + " - " + sqrtPart;
+            } else {
+                numStr = sqrtPart + " - " + Math.abs(dispInt);
+            }
+            if (rden === 1) return numStr;
+            return "\\dfrac{" + numStr + "}{" + rden + "}";
+        }
+
+        function toSurd(val) {
+            if (Math.abs(val) < 1e-7) return "0";
+            let isNeg = val < 0;
+            let sign = isNeg ? "-" : "";
+            let absVal = Math.abs(val);
+            let tol = 1e-6;
+
+            // Try simple surd form: coeff * √a / rden
+            for (let rden = 1; rden <= 12; rden++) {
+                let scaled = absVal * rden;
+                for (let a = 2; a <= 100; a++) {
+                    let sq = SQRT_CACHE[a];
+                    let coeff = Math.round(scaled / sq);
+                    if (coeff >= 1 && Math.abs(scaled - coeff * sq) < tol) {
+                        return formatSurdLatex(sign, coeff, a, rden);
+                    }
+                }
+            }
+
+            // Try compound surd form: (intPart ± coeff * √a) / rden
+            for (let rden = 1; rden <= 12; rden++) {
+                let scaled = absVal * rden;
+                for (let a = 2; a <= 50; a++) {
+                    let sq = SQRT_CACHE[a];
+                    for (let coeff = 1; coeff <= 5; coeff++) {
+                        let csq = coeff * sq;
+                        let intP = Math.round(scaled - csq);
+                        if (intP !== 0 && Math.abs(scaled - intP - csq) < tol) {
+                            return formatCompoundSurdLatex(isNeg, intP, coeff, a, rden);
+                        }
+                        intP = Math.round(scaled + csq);
+                        if (intP !== 0 && Math.abs(scaled - intP + csq) < tol) {
+                            return formatCompoundSurdLatex(isNeg, intP, -coeff, a, rden);
                         }
                     }
                 }
             }
-            // Fallback to fraction
-            const frac = floatToFraction(val);
-            if (Math.abs(frac.numer) < 500 && frac.denom < 500) {
-                if (frac.denom === 1) return `${frac.numer}`;
-                return frac.numer < 0 ? `-${-frac.numer}/${frac.denom}` : `${frac.numer}/${frac.denom}`;
-            }
-            return val.toFixed(4).replace(/\.?0+$/, '');
+
+            return null;
         }
 
         function formatForLatex(val, outputForm) {
@@ -431,26 +487,32 @@
             if (outputForm === "decimal") {
                 return val.toFixed(4).replace(/\.?0+$/, '');
             }
+            // Try fraction
             let fraction = floatToFraction(val);
             let isFraction = Math.abs(val - fraction.numer / fraction.denom) < 1e-6;
             if ((isShortDecimal(val) || isFraction) && Math.abs(fraction.numer) < 500 && fraction.denom < 500) {
                 if (fraction.denom === 1) return fraction.numer.toString();
-                return fraction.numer < 0 ? `-${-fraction.numer}/${fraction.denom}` : `${fraction.numer}/${fraction.denom}`;
+                let sign = fraction.numer < 0 ? "-" : "";
+                return sign + "\\dfrac{" + Math.abs(fraction.numer) + "}{" + fraction.denom + "}";
             }
-            return formatSurdOrFraction(val);
+            // Try surd
+            let surd = toSurd(val);
+            if (surd) return surd;
+            return val.toFixed(4).replace(/\.?0+$/, '');
         }
 
         function matrixToLatex(M, outputForm) {
             const rows = M.length;
             const cols = M[0].length;
             if (rows === 1 && cols === 1) return formatForLatex(M[0][0], outputForm);
+            let separator = outputForm === "surd" ? " \\\\[0.5em] " : " \\\\ ";
             let latex = "\\begin{bmatrix}";
             for (let i = 0; i < rows; i++) {
                 for (let j = 0; j < cols; j++) {
                     latex += formatForLatex(M[i][j], outputForm);
                     if (j < cols - 1) latex += " & ";
                 }
-                if (i < rows - 1) latex += " \\\\ ";
+                if (i < rows - 1) latex += separator;
             }
             latex += "\\end{bmatrix}";
             return latex;
