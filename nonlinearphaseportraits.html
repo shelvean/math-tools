@@ -641,82 +641,126 @@
     function computeTrajectorySDIRK2(f, g, x0, y0, xMin, xMax, yMin, yMax) {
       const gamma = SDIRK_GAMMA;
       const scope = { x: 0, y: 0 };
-      const domainScale = Math.max(xMax - xMin, yMax - yMin);
-      const atol = 1e-6, rtol = 1e-3;
-      const hMin = 1e-10, hMax = domainScale * 0.1;
-      const maxSteps = 200000;
-      const maxPts = 3000;
+      const domainW = xMax - xMin, domainH = yMax - yMin;
+      const domainScale = Math.max(domainW, domainH);
+      const domainMargin = domainScale * 0.05;
+      const atol = 1e-5, rtol = 1e-3;
+      const hMin = 1e-14, hMax = domainScale * 0.05;
+      const maxSteps = 500000;
+      const maxPts = 5000;
+      const newtonTol = 1e-8;
+
+      function estimateInitialH(x, y) {
+        scope.x = x; scope.y = y;
+        const fx = f.evaluate(scope), fy = g.evaluate(scope);
+        const eps = Math.max(1e-8, 1e-6 * (1 + Math.abs(x) + Math.abs(y)));
+        const J = numericalJacobian(f, g, x, y, scope, eps);
+        // Frobenius norm as spectral radius upper bound
+        const spectral = Math.sqrt(J.dfdx ** 2 + J.dfdy ** 2 + J.dgdx ** 2 + J.dgdy ** 2);
+        const f0norm = Math.sqrt(fx * fx + fy * fy);
+        const hJ = spectral > 0 ? 1.0 / spectral : hMax;
+        const hF = f0norm > 1e-10 ? 0.01 * (1 + Math.abs(x) + Math.abs(y)) / f0norm : hMax;
+        return Math.max(hMin, Math.min(hMax, Math.min(hJ, hF)));
+      }
+
+      function solveStage(f, g, x, y, h, gammaH, J, baseX, baseY, guess_kx, guess_ky) {
+        let kx = guess_kx, ky = guess_ky;
+        for (let it = 0; it < 15; it++) {
+          scope.x = baseX + gammaH * kx; scope.y = baseY + gammaH * ky;
+          let Fx, Fy;
+          try { Fx = f.evaluate(scope); Fy = g.evaluate(scope); } catch (e) { return null; }
+          if (!isFinite(Fx) || !isFinite(Fy)) return null;
+          const rx = kx - Fx, ry = ky - Fy;
+          const kNorm = 1 + Math.abs(kx) + Math.abs(ky);
+          if (Math.abs(rx) + Math.abs(ry) < newtonTol * kNorm) return { kx, ky };
+          const sol = solveLinear2x2(J, gammaH, rx, ry);
+          if (!sol) return null;
+          kx -= sol.dx; ky -= sol.dy;
+        }
+        // Check if we're close enough even after max iterations
+        scope.x = baseX + gammaH * kx; scope.y = baseY + gammaH * ky;
+        try {
+          const Fx = f.evaluate(scope), Fy = g.evaluate(scope);
+          const rx = kx - Fx, ry = ky - Fy;
+          const kNorm = 1 + Math.abs(kx) + Math.abs(ky);
+          if (Math.abs(rx) + Math.abs(ry) < 1e-4 * kNorm) return { kx, ky };
+        } catch (e) {}
+        return null;
+      }
 
       function integrate(xStart, yStart, sign, maxPoints) {
-        let x = xStart, y = yStart, h = 0.01 * sign;
+        let x = xStart, y = yStart;
+        let h = estimateInitialH(x, y) * sign;
         const pts = [];
+        let rejects = 0;
+
         for (let step = 0; step < maxSteps && pts.length < maxPoints; step++) {
-          // Clamp step size
           if (Math.abs(h) < hMin) h = hMin * sign;
           if (Math.abs(h) > hMax) h = hMax * sign;
 
           scope.x = x; scope.y = y;
-          const f0 = f.evaluate(scope), g0 = g.evaluate(scope);
-          const eps = Math.max(1e-8, 1e-6 * Math.max(Math.abs(x), Math.abs(y)));
+          let f0, g0;
+          try { f0 = f.evaluate(scope); g0 = g.evaluate(scope); } catch (e) { break; }
+          if (!isFinite(f0) || !isFinite(g0)) break;
+
+          const eps = Math.max(1e-8, 1e-6 * (1 + Math.abs(x) + Math.abs(y)));
           const J = numericalJacobian(f, g, x, y, scope, eps);
           const gammaH = gamma * h;
 
-          // Stage 1: solve k1 - F(x + gammaH*k1x, y + gammaH*k1y) = 0
-          // Initial guess: k1 = F(x,y)
-          let k1x = f0, k1y = g0;
-          for (let it = 0; it < 8; it++) {
-            scope.x = x + gammaH * k1x; scope.y = y + gammaH * k1y;
-            const F1x = f.evaluate(scope), F1y = g.evaluate(scope);
-            const rx = k1x - F1x, ry = k1y - F1y;
-            if (Math.abs(rx) + Math.abs(ry) < 1e-12) break;
-            const sol = solveLinear2x2(J, gammaH, rx, ry);
-            if (!sol) break;
-            k1x -= sol.dx; k1y -= sol.dy;
+          // Stage 1: k1 = F(x + gammaH*k1)
+          const s1 = solveStage(f, g, x, y, h, gammaH, J, x, y, f0, g0);
+          if (!s1) {
+            h *= 0.25; rejects++;
+            if (rejects > 40) break;
+            continue;
           }
 
-          // Stage 2: solve k2 - F(x + (1-gamma)*h*k1 + gammaH*k2) = 0
-          const c2h = (1 - gamma) * h;
-          let k2x = k1x, k2y = k1y;
-          for (let it = 0; it < 8; it++) {
-            scope.x = x + c2h * k1x + gammaH * k2x;
-            scope.y = y + c2h * k1y + gammaH * k2y;
-            const F2x = f.evaluate(scope), F2y = g.evaluate(scope);
-            const rx = k2x - F2x, ry = k2y - F2y;
-            if (Math.abs(rx) + Math.abs(ry) < 1e-12) break;
-            const sol = solveLinear2x2(J, gammaH, rx, ry);
-            if (!sol) break;
-            k2x -= sol.dx; k2y -= sol.dy;
+          // Stage 2: k2 = F(x + (1-gamma)*h*k1 + gammaH*k2)
+          const bx = x + (1 - gamma) * h * s1.kx;
+          const by = y + (1 - gamma) * h * s1.ky;
+          const s2 = solveStage(f, g, x, y, h, gammaH, J, bx, by, s1.kx, s1.ky);
+          if (!s2) {
+            h *= 0.25; rejects++;
+            if (rejects > 40) break;
+            continue;
           }
 
           // 2nd order solution
-          const xNew = x + h * ((1 - gamma) * k1x + gamma * k2x);
-          const yNew = y + h * ((1 - gamma) * k1y + gamma * k2y);
+          const xNew = x + h * ((1 - gamma) * s1.kx + gamma * s2.kx);
+          const yNew = y + h * ((1 - gamma) * s1.ky + gamma * s2.ky);
+          if (!isFinite(xNew) || !isFinite(yNew)) {
+            h *= 0.25; rejects++;
+            if (rejects > 40) break;
+            continue;
+          }
 
-          // Embedded 1st order for error estimation
-          const errX = h * gamma * (k2x - k1x);
-          const errY = h * gamma * (k2y - k1y);
+          // Error estimate (difference between 2nd and 1st order)
+          const errX = h * gamma * (s2.kx - s1.kx);
+          const errY = h * gamma * (s2.ky - s1.ky);
           const scaleX = atol + rtol * Math.max(Math.abs(x), Math.abs(xNew));
           const scaleY = atol + rtol * Math.max(Math.abs(y), Math.abs(yNew));
           const errNorm = Math.sqrt(0.5 * ((errX / scaleX) ** 2 + (errY / scaleY) ** 2));
 
           if (errNorm > 1.0) {
-            // Reject step, reduce h
-            h *= Math.max(0.2, 0.9 / Math.sqrt(errNorm));
+            h *= Math.max(0.1, 0.9 / Math.sqrt(errNorm));
+            rejects++;
+            if (rejects > 50) break;
             continue;
           }
 
-          // Accept step
+          // Accept
+          rejects = 0;
           x = xNew; y = yNew;
           pts.push({ x, y });
 
-          if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
-          if (!isFinite(x) || !isFinite(y)) break;
+          if (x < xMin - domainMargin || x > xMax + domainMargin ||
+              y < yMin - domainMargin || y > yMax + domainMargin) break;
 
           const speed = Math.sqrt(f0 * f0 + g0 * g0);
-          if (pts.length > 10 && speed < 1e-6) break;
+          if (pts.length > 20 && speed < 1e-8) break;
 
-          // Grow h for next step
-          const factor = errNorm > 1e-10 ? Math.min(5.0, 0.9 / Math.sqrt(errNorm)) : 5.0;
+          // Grow step conservatively
+          const factor = errNorm > 1e-10 ? Math.min(2.0, 0.9 / Math.sqrt(errNorm)) : 2.0;
           h *= factor;
         }
         return pts;
