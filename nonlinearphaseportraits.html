@@ -231,14 +231,10 @@
 
         <div id="time-plot-section" style="display: none; width: 100%; max-width: 700px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
               <label style="font-size: 0.85rem; font-weight: 600; color: #374151;">Plot:</label>
-              <label style="font-size: 0.85rem; color: #4b5563; cursor: pointer;">
-                <input type="radio" name="timeVar" value="x" checked style="margin-right: 4px;">x(t)
-              </label>
-              <label style="font-size: 0.85rem; color: #4b5563; cursor: pointer;">
-                <input type="radio" name="timeVar" value="y" style="margin-right: 4px;">y(t)
-              </label>
+              <button type="button" id="toggleX" class="time-var-btn time-var-active-x" onclick="toggleTimeVar('x')" style="padding: 3px 12px; font-size: 0.85rem; border-radius: 6px; font-weight: 600; border: 2px solid #dc2626; background: #dc2626; color: white; cursor: pointer;">x(t)</button>
+              <button type="button" id="toggleY" class="time-var-btn" onclick="toggleTimeVar('y')" style="padding: 3px 12px; font-size: 0.85rem; border-radius: 6px; font-weight: 600; border: 2px solid #16a34a; background: white; color: #16a34a; cursor: pointer;">y(t)</button>
             </div>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <label style="font-size: 0.8rem; color: #6b7280;">t:</label>
@@ -506,12 +502,7 @@
         if (el) el.addEventListener('change', throttledRedraw);
       });
 
-      // Time plot listeners
-      document.querySelectorAll('input[name="timeVar"]').forEach(r => {
-        r.addEventListener('change', () => {
-          if (document.getElementById('time-plot-section').style.display !== 'none') autoFitTimePlot();
-        });
-      });
+      // Time plot range inputs
       const debouncedTimeDraw = debounce(() => {
         if (document.getElementById('time-plot-section').style.display !== 'none') drawTimePlot();
       }, 200);
@@ -1004,15 +995,41 @@
     // Time Series Plot
     // ========================================
 
+    let timeVarSelection = { x: true, y: false };
+
+    function toggleTimeVar(v) {
+      timeVarSelection[v] = !timeVarSelection[v];
+      updateTimeVarButtons();
+      if (document.getElementById('time-plot-section').style.display !== 'none') autoFitTimePlot();
+    }
+
+    function updateTimeVarButtons() {
+      const bx = document.getElementById('toggleX');
+      const by = document.getElementById('toggleY');
+      if (timeVarSelection.x) {
+        bx.style.background = '#dc2626'; bx.style.color = 'white';
+      } else {
+        bx.style.background = 'white'; bx.style.color = '#dc2626';
+      }
+      if (timeVarSelection.y) {
+        by.style.background = '#16a34a'; by.style.color = 'white';
+      } else {
+        by.style.background = 'white'; by.style.color = '#16a34a';
+      }
+      const label = document.getElementById('time-y-axis-label');
+      if (timeVarSelection.x && timeVarSelection.y) label.textContent = 'x, y';
+      else if (timeVarSelection.x) label.textContent = 'x';
+      else if (timeVarSelection.y) label.textContent = 'y';
+      else label.textContent = '';
+    }
+
     function toggleTimePlot() {
       const section = document.getElementById('time-plot-section');
       const btn = document.getElementById('showTimePlotBtn');
       if (section.style.display === 'none') {
         section.style.display = 'block';
         btn.textContent = 'Hide Time Series';
-        if (trajectories.length > 0) {
-          autoFitTimePlot();
-        }
+        if (trajectories.length > 0) autoFitTimePlot();
       } else {
         section.style.display = 'none';
         btn.textContent = 'Show Time Series';
@@ -1021,7 +1038,6 @@
 
     function autoFitTimePlot() {
       if (trajectories.length === 0) return;
-      const varName = document.querySelector('input[name="timeVar"]:checked').value;
       let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
       trajectories.forEach(traj => {
         traj.forEach(p => {
@@ -1029,10 +1045,13 @@
             if (p.t < tMin) tMin = p.t;
             if (p.t > tMax) tMax = p.t;
           }
-          const v = varName === 'x' ? p.x : p.y;
-          if (isFinite(v)) {
-            if (v < vMin) vMin = v;
-            if (v > vMax) vMax = v;
+          if (timeVarSelection.x && isFinite(p.x)) {
+            if (p.x < vMin) vMin = p.x;
+            if (p.x > vMax) vMax = p.x;
+          }
+          if (timeVarSelection.y && isFinite(p.y)) {
+            if (p.y < vMin) vMin = p.y;
+            if (p.y > vMax) vMax = p.y;
           }
         });
       });
@@ -1049,6 +1068,25 @@
       drawTimePlot();
     }
 
+    function drawTimeCurve(ctx, traj, varName, color, tMin, tMax, vMin, vMax, W, H) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.8;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      let started = false;
+      traj.forEach(p => {
+        if (p.t === undefined || !isFinite(p.t)) return;
+        const v = varName === 'x' ? p.x : p.y;
+        if (!isFinite(v)) return;
+        const px = ((p.t - tMin) / (tMax - tMin)) * W;
+        const py = ((vMax - v) / (vMax - vMin)) * H;
+        if (!started) { ctx.moveTo(px, py); started = true; }
+        else ctx.lineTo(px, py);
+      });
+      ctx.stroke();
+    }
+
     function drawTimePlot() {
       const canvas = document.getElementById('time-canvas');
       const ctx = canvas.getContext('2d');
@@ -1061,11 +1099,11 @@
       const tMax = +document.getElementById('tPlotMax').value;
       const vMin = +document.getElementById('vPlotMin').value;
       const vMax = +document.getElementById('vPlotMax').value;
-      const varName = document.querySelector('input[name="timeVar"]:checked').value;
 
-      document.getElementById('time-y-axis-label').textContent = varName;
+      updateTimeVarButtons();
 
       if (tMax <= tMin || vMax <= vMin) return;
+      if (!timeVarSelection.x && !timeVarSelection.y) return;
 
       // Grid
       ctx.strokeStyle = 'rgba(200,200,200,0.5)';
@@ -1093,29 +1131,20 @@
         ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.stroke();
       }
 
-      // Trajectories
-      const colors = ['#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#7c3aed', '#db2777', '#4b5563'];
-      const trajColor = document.getElementById("trajColor").value;
-
-      trajectories.forEach((traj, idx) => {
-        const color = trajColor === "multicolor" ? colors[idx % colors.length] : trajColor;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.8;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        let started = false;
-        traj.forEach(p => {
-          if (p.t === undefined || !isFinite(p.t)) return;
-          const v = varName === 'x' ? p.x : p.y;
-          if (!isFinite(v)) return;
-          const px = ((p.t - tMin) / (tMax - tMin)) * W;
-          const py = ((vMax - v) / (vMax - vMin)) * H;
-          if (!started) { ctx.moveTo(px, py); started = true; }
-          else ctx.lineTo(px, py);
-        });
-        ctx.stroke();
+      // Draw curves: red for x(t), green for y(t)
+      trajectories.forEach(traj => {
+        if (timeVarSelection.x) drawTimeCurve(ctx, traj, 'x', '#dc2626', tMin, tMax, vMin, vMax, W, H);
+        if (timeVarSelection.y) drawTimeCurve(ctx, traj, 'y', '#16a34a', tMin, tMax, vMin, vMax, W, H);
       });
+
+      // Legend when both active
+      if (timeVarSelection.x && timeVarSelection.y) {
+        ctx.font = 'bold 13px Arial';
+        ctx.fillStyle = '#dc2626';
+        ctx.fillText('x(t)', W - 70, 18);
+        ctx.fillStyle = '#16a34a';
+        ctx.fillText('y(t)', W - 70, 34);
+      }
 
       // Axis labels
       const txLabels = document.getElementById('time-x-labels');
