@@ -222,6 +222,45 @@
           <div style="text-align: center; margin-top: 15px; font-weight: bold; color: #111;">x</div>
           <div style="position: absolute; left: -80px; top: 250px; width: 70px; writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; color: #111;">y</div>
         </div>
+        <button id="showTimePlotBtn" class="download-btn" style="background: #6366f1; max-width: 700px;" onclick="toggleTimePlot()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          Show Time Series
+        </button>
+
+        <div id="time-plot-section" style="display: none; width: 100%; max-width: 700px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <label style="font-size: 0.85rem; font-weight: 600; color: #374151;">Plot:</label>
+              <label style="font-size: 0.85rem; color: #4b5563; cursor: pointer;">
+                <input type="radio" name="timeVar" value="x" checked style="margin-right: 4px;">x(t)
+              </label>
+              <label style="font-size: 0.85rem; color: #4b5563; cursor: pointer;">
+                <input type="radio" name="timeVar" value="y" style="margin-right: 4px;">y(t)
+              </label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <label style="font-size: 0.8rem; color: #6b7280;">t:</label>
+              <input type="number" id="tPlotMin" value="0" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+              <span style="font-size: 0.8rem; color: #6b7280;">to</span>
+              <input type="number" id="tPlotMax" value="30" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+              <label style="font-size: 0.8rem; color: #6b7280; margin-left: 8px;">val:</label>
+              <input type="number" id="vPlotMin" value="-3" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+              <span style="font-size: 0.8rem; color: #6b7280;">to</span>
+              <input type="number" id="vPlotMax" value="3" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+              <button onclick="autoFitTimePlot()" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px;">Auto</button>
+            </div>
+          </div>
+          <div id="time-plot-wrapper" style="position: relative; width: 700px;">
+            <div id="time-y-labels" style="position: absolute; left: -55px; top: 0; width: 50px; height: 300px;"></div>
+            <canvas id="time-canvas" width="700" height="300" style="border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; display: block;"></canvas>
+            <div id="time-x-labels" style="height: 30px; position: relative; margin-top: 5px;"></div>
+            <div style="text-align: center; font-weight: bold; color: #111; font-size: 0.9rem; margin-top: 2px;">t</div>
+            <div style="position: absolute; left: -70px; top: 150px; writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; color: #111; font-size: 0.9rem;" id="time-y-axis-label">x</div>
+          </div>
+        </div>
+
         <div class="graph-footer">
           <p>© 2025 Shelvean Kapita • kapita@tamu.edu • All code released under the <a href="https://opensource.org/licenses/MIT" target="_blank" class="text-blue-600 hover:underline">MIT License</a>. Last modified December 21, 2025</p>
         </div>
@@ -418,6 +457,10 @@
         trajectories.push(trajPoints);
         drawTrajectoryOnTrajCanvas(trajPoints, xMin, xMax, yMin, yMax);
         instruction.style.display = "none";
+        if (document.getElementById('time-plot-section').style.display !== 'none') {
+          if (trajectories.length === 1) autoFitTimePlot();
+          else drawTimePlot();
+        }
       });
 
       // OPTIMIZATION: Debounced redraw function for equation and domain inputs
@@ -463,6 +506,20 @@
         if (el) el.addEventListener('change', throttledRedraw);
       });
 
+      // Time plot listeners
+      document.querySelectorAll('input[name="timeVar"]').forEach(r => {
+        r.addEventListener('change', () => {
+          if (document.getElementById('time-plot-section').style.display !== 'none') autoFitTimePlot();
+        });
+      });
+      const debouncedTimeDraw = debounce(() => {
+        if (document.getElementById('time-plot-section').style.display !== 'none') drawTimePlot();
+      }, 200);
+      ['tPlotMin', 'tPlotMax', 'vPlotMin', 'vPlotMax'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', debouncedTimeDraw);
+      });
+
       drawPhasePlane(true);
     });
 
@@ -471,6 +528,8 @@
       trajectories = [];
       trajCtx.clearRect(0, 0, trajCanvas.width, trajCanvas.height);
       instruction.style.display = "block";
+      const tc = document.getElementById('time-canvas');
+      if (tc) { const ctx = tc.getContext('2d'); ctx.clearRect(0, 0, tc.width, tc.height); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, tc.width, tc.height); }
     }
 
     function drawPhasePlane(clearTrajectoriesOnGenerate) {
@@ -641,82 +700,127 @@
     function computeTrajectorySDIRK2(f, g, x0, y0, xMin, xMax, yMin, yMax) {
       const gamma = SDIRK_GAMMA;
       const scope = { x: 0, y: 0 };
-      const domainScale = Math.max(xMax - xMin, yMax - yMin);
-      const atol = 1e-6, rtol = 1e-3;
-      const hMin = 1e-10, hMax = domainScale * 0.1;
-      const maxSteps = 200000;
-      const maxPts = 3000;
+      const domainW = xMax - xMin, domainH = yMax - yMin;
+      const domainScale = Math.max(domainW, domainH);
+      const domainMargin = domainScale * 0.05;
+      const atol = 1e-5, rtol = 1e-3;
+      const hMin = 1e-14, hMax = domainScale * 0.05;
+      const maxSteps = 500000;
+      const maxPts = 5000;
+      const newtonTol = 1e-8;
+
+      function estimateInitialH(x, y) {
+        scope.x = x; scope.y = y;
+        const fx = f.evaluate(scope), fy = g.evaluate(scope);
+        const eps = Math.max(1e-8, 1e-6 * (1 + Math.abs(x) + Math.abs(y)));
+        const J = numericalJacobian(f, g, x, y, scope, eps);
+        // Frobenius norm as spectral radius upper bound
+        const spectral = Math.sqrt(J.dfdx ** 2 + J.dfdy ** 2 + J.dgdx ** 2 + J.dgdy ** 2);
+        const f0norm = Math.sqrt(fx * fx + fy * fy);
+        const hJ = spectral > 0 ? 1.0 / spectral : hMax;
+        const hF = f0norm > 1e-10 ? 0.01 * (1 + Math.abs(x) + Math.abs(y)) / f0norm : hMax;
+        return Math.max(hMin, Math.min(hMax, Math.min(hJ, hF)));
+      }
+
+      function solveStage(f, g, x, y, h, gammaH, J, baseX, baseY, guess_kx, guess_ky) {
+        let kx = guess_kx, ky = guess_ky;
+        for (let it = 0; it < 15; it++) {
+          scope.x = baseX + gammaH * kx; scope.y = baseY + gammaH * ky;
+          let Fx, Fy;
+          try { Fx = f.evaluate(scope); Fy = g.evaluate(scope); } catch (e) { return null; }
+          if (!isFinite(Fx) || !isFinite(Fy)) return null;
+          const rx = kx - Fx, ry = ky - Fy;
+          const kNorm = 1 + Math.abs(kx) + Math.abs(ky);
+          if (Math.abs(rx) + Math.abs(ry) < newtonTol * kNorm) return { kx, ky };
+          const sol = solveLinear2x2(J, gammaH, rx, ry);
+          if (!sol) return null;
+          kx -= sol.dx; ky -= sol.dy;
+        }
+        // Check if we're close enough even after max iterations
+        scope.x = baseX + gammaH * kx; scope.y = baseY + gammaH * ky;
+        try {
+          const Fx = f.evaluate(scope), Fy = g.evaluate(scope);
+          const rx = kx - Fx, ry = ky - Fy;
+          const kNorm = 1 + Math.abs(kx) + Math.abs(ky);
+          if (Math.abs(rx) + Math.abs(ry) < 1e-4 * kNorm) return { kx, ky };
+        } catch (e) {}
+        return null;
+      }
 
       function integrate(xStart, yStart, sign, maxPoints) {
-        let x = xStart, y = yStart, h = 0.01 * sign;
+        let x = xStart, y = yStart, t = 0;
+        let h = estimateInitialH(x, y) * sign;
         const pts = [];
+        let rejects = 0;
+
         for (let step = 0; step < maxSteps && pts.length < maxPoints; step++) {
-          // Clamp step size
           if (Math.abs(h) < hMin) h = hMin * sign;
           if (Math.abs(h) > hMax) h = hMax * sign;
 
           scope.x = x; scope.y = y;
-          const f0 = f.evaluate(scope), g0 = g.evaluate(scope);
-          const eps = Math.max(1e-8, 1e-6 * Math.max(Math.abs(x), Math.abs(y)));
+          let f0, g0;
+          try { f0 = f.evaluate(scope); g0 = g.evaluate(scope); } catch (e) { break; }
+          if (!isFinite(f0) || !isFinite(g0)) break;
+
+          const eps = Math.max(1e-8, 1e-6 * (1 + Math.abs(x) + Math.abs(y)));
           const J = numericalJacobian(f, g, x, y, scope, eps);
           const gammaH = gamma * h;
 
-          // Stage 1: solve k1 - F(x + gammaH*k1x, y + gammaH*k1y) = 0
-          // Initial guess: k1 = F(x,y)
-          let k1x = f0, k1y = g0;
-          for (let it = 0; it < 8; it++) {
-            scope.x = x + gammaH * k1x; scope.y = y + gammaH * k1y;
-            const F1x = f.evaluate(scope), F1y = g.evaluate(scope);
-            const rx = k1x - F1x, ry = k1y - F1y;
-            if (Math.abs(rx) + Math.abs(ry) < 1e-12) break;
-            const sol = solveLinear2x2(J, gammaH, rx, ry);
-            if (!sol) break;
-            k1x -= sol.dx; k1y -= sol.dy;
+          // Stage 1: k1 = F(x + gammaH*k1)
+          const s1 = solveStage(f, g, x, y, h, gammaH, J, x, y, f0, g0);
+          if (!s1) {
+            h *= 0.25; rejects++;
+            if (rejects > 40) break;
+            continue;
           }
 
-          // Stage 2: solve k2 - F(x + (1-gamma)*h*k1 + gammaH*k2) = 0
-          const c2h = (1 - gamma) * h;
-          let k2x = k1x, k2y = k1y;
-          for (let it = 0; it < 8; it++) {
-            scope.x = x + c2h * k1x + gammaH * k2x;
-            scope.y = y + c2h * k1y + gammaH * k2y;
-            const F2x = f.evaluate(scope), F2y = g.evaluate(scope);
-            const rx = k2x - F2x, ry = k2y - F2y;
-            if (Math.abs(rx) + Math.abs(ry) < 1e-12) break;
-            const sol = solveLinear2x2(J, gammaH, rx, ry);
-            if (!sol) break;
-            k2x -= sol.dx; k2y -= sol.dy;
+          // Stage 2: k2 = F(x + (1-gamma)*h*k1 + gammaH*k2)
+          const bx = x + (1 - gamma) * h * s1.kx;
+          const by = y + (1 - gamma) * h * s1.ky;
+          const s2 = solveStage(f, g, x, y, h, gammaH, J, bx, by, s1.kx, s1.ky);
+          if (!s2) {
+            h *= 0.25; rejects++;
+            if (rejects > 40) break;
+            continue;
           }
 
           // 2nd order solution
-          const xNew = x + h * ((1 - gamma) * k1x + gamma * k2x);
-          const yNew = y + h * ((1 - gamma) * k1y + gamma * k2y);
+          const xNew = x + h * ((1 - gamma) * s1.kx + gamma * s2.kx);
+          const yNew = y + h * ((1 - gamma) * s1.ky + gamma * s2.ky);
+          if (!isFinite(xNew) || !isFinite(yNew)) {
+            h *= 0.25; rejects++;
+            if (rejects > 40) break;
+            continue;
+          }
 
-          // Embedded 1st order for error estimation
-          const errX = h * gamma * (k2x - k1x);
-          const errY = h * gamma * (k2y - k1y);
+          // Error estimate (difference between 2nd and 1st order)
+          const errX = h * gamma * (s2.kx - s1.kx);
+          const errY = h * gamma * (s2.ky - s1.ky);
           const scaleX = atol + rtol * Math.max(Math.abs(x), Math.abs(xNew));
           const scaleY = atol + rtol * Math.max(Math.abs(y), Math.abs(yNew));
           const errNorm = Math.sqrt(0.5 * ((errX / scaleX) ** 2 + (errY / scaleY) ** 2));
 
           if (errNorm > 1.0) {
-            // Reject step, reduce h
-            h *= Math.max(0.2, 0.9 / Math.sqrt(errNorm));
+            h *= Math.max(0.1, 0.9 / Math.sqrt(errNorm));
+            rejects++;
+            if (rejects > 50) break;
             continue;
           }
 
-          // Accept step
+          // Accept
+          rejects = 0;
+          t += h;
           x = xNew; y = yNew;
-          pts.push({ x, y });
+          pts.push({ x, y, t });
 
-          if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
-          if (!isFinite(x) || !isFinite(y)) break;
+          if (x < xMin - domainMargin || x > xMax + domainMargin ||
+              y < yMin - domainMargin || y > yMax + domainMargin) break;
 
           const speed = Math.sqrt(f0 * f0 + g0 * g0);
-          if (pts.length > 10 && speed < 1e-6) break;
+          if (pts.length > 20 && speed < 1e-8) break;
 
-          // Grow h for next step
-          const factor = errNorm > 1e-10 ? Math.min(5.0, 0.9 / Math.sqrt(errNorm)) : 5.0;
+          // Grow step conservatively
+          const factor = errNorm > 1e-10 ? Math.min(2.0, 0.9 / Math.sqrt(errNorm)) : 2.0;
           h *= factor;
         }
         return pts;
@@ -725,18 +829,17 @@
       const fwdPts = integrate(x0, y0, 1, maxPts);
       const bwdPts = integrate(x0, y0, -1, Math.floor(maxPts / 2));
       bwdPts.reverse();
-      return [...bwdPts, { x: x0, y: y0 }, ...fwdPts];
+      return [...bwdPts, { x: x0, y: y0, t: 0 }, ...fwdPts];
     }
 
     function computeTrajectory(f, g, x0, y0, xMin, xMax, yMin, yMax) {
       const dt = 0.03;
-      // OPTIMIZATION: Reduced from 15000 to 5000
       const maxSteps = 35000;
-      const points = [{ x: x0, y: y0 }];
+      const points = [{ x: x0, y: y0, t: 0 }];
       const scope = { x: 0, y: 0 };
 
       // Forward integration
-      let x = x0, y = y0;
+      let x = x0, y = y0, t = 0;
       scope.x = x; scope.y = y;
       for (let i = 0; i < maxSteps; i++) {
         try {
@@ -750,23 +853,22 @@
 
           x += (k1x + 2*k2x + 2*k3x + k4x)/6 * dt;
           y += (k1y + 2*k2y + 2*k3y + k4y)/6 * dt;
+          t += dt;
 
           if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
 
-          // OPTIMIZATION: Early termination for near-equilibrium
           const speed = Math.sqrt(k1x * k1x + k1y * k1y);
           if (points.length > 10 && speed < 1e-4) break;
 
-          points.push({ x, y });
+          points.push({ x, y, t });
           scope.x = x; scope.y = y;
 
-          // OPTIMIZATION: Stop if we have enough points
           if (points.length > 2000) break;
         } catch(e) { break; }
       }
 
       // Backward integration
-      x = x0; y = y0;
+      x = x0; y = y0; t = 0;
       scope.x = x; scope.y = y;
       const backwardPoints = [];
       for (let i = 0; i < maxSteps; i++) {
@@ -781,17 +883,16 @@
 
           x -= (k1x + 2*k2x + 2*k3x + k4x)/6 * dt;
           y -= (k1y + 2*k2y + 2*k3y + k4y)/6 * dt;
+          t -= dt;
 
           if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
 
-          // OPTIMIZATION: Early termination for near-equilibrium
           const speed = Math.sqrt(k1x * k1x + k1y * k1y);
           if (backwardPoints.length > 10 && speed < 1e-4) break;
 
-          backwardPoints.unshift({ x, y });
+          backwardPoints.unshift({ x, y, t });
           scope.x = x; scope.y = y;
 
-          // OPTIMIZATION: Stop if we have enough points
           if (backwardPoints.length > 1000) break;
         } catch(e) { break; }
       }
@@ -896,6 +997,145 @@
         div.style.font = 'bold 14px Arial';
         div.style.color = '#111';
         yLabels.appendChild(div);
+      }
+    }
+
+    // ========================================
+    // Time Series Plot
+    // ========================================
+
+    function toggleTimePlot() {
+      const section = document.getElementById('time-plot-section');
+      const btn = document.getElementById('showTimePlotBtn');
+      if (section.style.display === 'none') {
+        section.style.display = 'block';
+        btn.textContent = 'Hide Time Series';
+        if (trajectories.length > 0) {
+          autoFitTimePlot();
+        }
+      } else {
+        section.style.display = 'none';
+        btn.textContent = 'Show Time Series';
+      }
+    }
+
+    function autoFitTimePlot() {
+      if (trajectories.length === 0) return;
+      const varName = document.querySelector('input[name="timeVar"]:checked').value;
+      let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+      trajectories.forEach(traj => {
+        traj.forEach(p => {
+          if (p.t !== undefined && isFinite(p.t)) {
+            if (p.t < tMin) tMin = p.t;
+            if (p.t > tMax) tMax = p.t;
+          }
+          const v = varName === 'x' ? p.x : p.y;
+          if (isFinite(v)) {
+            if (v < vMin) vMin = v;
+            if (v > vMax) vMax = v;
+          }
+        });
+      });
+      if (!isFinite(tMin)) tMin = 0;
+      if (!isFinite(tMax)) tMax = 30;
+      if (!isFinite(vMin)) vMin = -3;
+      if (!isFinite(vMax)) vMax = 3;
+      const vPad = (vMax - vMin) * 0.08 || 1;
+      const tPad = (tMax - tMin) * 0.02 || 1;
+      document.getElementById('tPlotMin').value = +(tMin - tPad).toPrecision(4);
+      document.getElementById('tPlotMax').value = +(tMax + tPad).toPrecision(4);
+      document.getElementById('vPlotMin').value = +(vMin - vPad).toPrecision(4);
+      document.getElementById('vPlotMax').value = +(vMax + vPad).toPrecision(4);
+      drawTimePlot();
+    }
+
+    function drawTimePlot() {
+      const canvas = document.getElementById('time-canvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#fafafa';
+      ctx.fillRect(0, 0, W, H);
+
+      const tMin = +document.getElementById('tPlotMin').value;
+      const tMax = +document.getElementById('tPlotMax').value;
+      const vMin = +document.getElementById('vPlotMin').value;
+      const vMax = +document.getElementById('vPlotMax').value;
+      const varName = document.querySelector('input[name="timeVar"]:checked').value;
+
+      document.getElementById('time-y-axis-label').textContent = varName;
+
+      if (tMax <= tMin || vMax <= vMin) return;
+
+      // Grid
+      ctx.strokeStyle = 'rgba(200,200,200,0.5)';
+      ctx.lineWidth = 0.5;
+      const tStep = getNiceStep(tMax - tMin);
+      for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax + 1e-9; v += tStep) {
+        const px = ((v - tMin) / (tMax - tMin)) * W;
+        ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+      }
+      const vStep = getNiceStep(vMax - vMin);
+      for (let v = Math.ceil(vMin / vStep) * vStep; v <= vMax + 1e-9; v += vStep) {
+        const py = ((vMax - v) / (vMax - vMin)) * H;
+        ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
+      }
+
+      // Axes
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      if (vMin <= 0 && vMax >= 0) {
+        const y0 = ((vMax - 0) / (vMax - vMin)) * H;
+        ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(W, y0); ctx.stroke();
+      }
+      if (tMin <= 0 && tMax >= 0) {
+        const x0 = ((0 - tMin) / (tMax - tMin)) * W;
+        ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.stroke();
+      }
+
+      // Trajectories
+      const colors = ['#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#7c3aed', '#db2777', '#4b5563'];
+      const trajColor = document.getElementById("trajColor").value;
+
+      trajectories.forEach((traj, idx) => {
+        const color = trajColor === "multicolor" ? colors[idx % colors.length] : trajColor;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.8;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        let started = false;
+        traj.forEach(p => {
+          if (p.t === undefined || !isFinite(p.t)) return;
+          const v = varName === 'x' ? p.x : p.y;
+          if (!isFinite(v)) return;
+          const px = ((p.t - tMin) / (tMax - tMin)) * W;
+          const py = ((vMax - v) / (vMax - vMin)) * H;
+          if (!started) { ctx.moveTo(px, py); started = true; }
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      });
+
+      // Axis labels
+      const txLabels = document.getElementById('time-x-labels');
+      const tyLabels = document.getElementById('time-y-labels');
+      txLabels.innerHTML = '';
+      tyLabels.innerHTML = '';
+
+      for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax + 1e-9; v += tStep) {
+        const pos = ((v - tMin) / (tMax - tMin)) * W;
+        const div = document.createElement('div');
+        div.textContent = +v.toPrecision(4);
+        div.style.cssText = `position:absolute;left:${pos}px;transform:translateX(-50%);font:bold 12px Arial;color:#111;`;
+        txLabels.appendChild(div);
+      }
+      for (let v = Math.ceil(vMin / vStep) * vStep; v <= vMax + 1e-9; v += vStep) {
+        const posY = ((vMax - v) / (vMax - vMin)) * H;
+        const div = document.createElement('div');
+        div.textContent = +v.toPrecision(4);
+        div.style.cssText = `position:absolute;right:4px;top:${posY}px;transform:translateY(-50%);font:bold 12px Arial;color:#111;`;
+        tyLabels.appendChild(div);
       }
     }
 
