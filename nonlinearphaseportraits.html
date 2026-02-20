@@ -454,9 +454,6 @@
         const solver = document.getElementById("solverMethod").value;
         const trajFunc = solver === "sdirk2" ? computeTrajectorySDIRK2 : computeTrajectory;
         const trajPoints = trajFunc(fCompiled, gCompiled, sysX, sysY, xMin, xMax, yMin, yMax);
-        // Shift time so t=0 is at the start of the trajectory
-        const t0 = trajPoints.length > 0 ? trajPoints[0].t : 0;
-        if (t0 !== 0) trajPoints.forEach(p => p.t -= t0);
         trajectories.push(trajPoints);
         drawTrajectoryOnTrajCanvas(trajPoints, xMin, xMax, yMin, yMax);
         instruction.style.display = "none";
@@ -1055,10 +1052,8 @@
       let tMin = Infinity, tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
       trajectories.forEach(traj => {
         traj.forEach(p => {
-          if (p.t !== undefined && isFinite(p.t)) {
-            if (p.t < tMin) tMin = p.t;
-            if (p.t > tMax) tMax = p.t;
-          }
+          if (p.t === undefined || !isFinite(p.t) || p.t < 0) return;
+          if (p.t > tMax) tMax = p.t;
           if (timeVarSelection.x && isFinite(p.x)) {
             if (p.x < vMin) vMin = p.x;
             if (p.x > vMax) vMax = p.x;
@@ -1069,6 +1064,7 @@
           }
         });
       });
+      tMin = 0;
       if (!isFinite(tMin)) tMin = 0;
       if (!isFinite(tMax)) tMax = 30;
       if (!isFinite(vMin)) vMin = -3;
@@ -1090,7 +1086,7 @@
       ctx.beginPath();
       let started = false;
       traj.forEach(p => {
-        if (p.t === undefined || !isFinite(p.t)) return;
+        if (p.t === undefined || !isFinite(p.t) || p.t < 0) return;
         const v = varName === 'x' ? p.x : p.y;
         if (!isFinite(v)) return;
         const px = ((p.t - tMin) / (tMax - tMin)) * W;
