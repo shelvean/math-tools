@@ -161,6 +161,13 @@
         <h2>Trajectory Settings</h2>
         <div class="input-section">
           <div class="color-selector">
+            <label for="solverMethod">Solver:</label>
+            <select id="solverMethod">
+              <option value="rk4">RK4 (explicit)</option>
+              <option value="sdirk2">SDIRK2 (implicit, for stiff systems)</option>
+            </select>
+          </div>
+          <div class="color-selector" style="margin-top: 8px;">
             <label for="trajColor">Trajectory Color:</label>
             <select id="trajColor">
               <option value="multicolor">Multicolor</option>
@@ -232,6 +239,11 @@
             <h3>Van der Pol Oscillator</h3>
             <div class="example-equations">\begin{cases} \dot{x} = y \\ \dot{y} = (1 - x^2) y - x \end{cases}</div>
             <div class="domain">Domain: [-3.75, 3.75] × [-3, 3]</div>
+          </div>
+          <div class="example" data-f="y" data-g="1000*(1 - x^2)*y - x" data-xmin="-3" data-xmax="3" data-ymin="-3000" data-ymax="3000" data-solver="sdirk2">
+            <h3>Van der Pol (Stiff, &mu;=1000)</h3>
+            <div class="example-equations">\begin{cases} \dot{x} = y \\ \dot{y} = 1000(1 - x^2) y - x \end{cases}</div>
+            <div class="domain">Domain: [-3, 3] × [-3000, 3000] • Uses SDIRK2</div>
           </div>
           <div class="example" data-f="1*x - 0.1*x*y" data-g="0.075*x*y - 1.5*y" data-xmin="0" data-xmax="50" data-ymin="0" data-ymax="30">
             <h3>Lotka-Volterra (Predator-Prey)</h3>
@@ -375,6 +387,7 @@
           document.getElementById('xMax').value = example.dataset.xmax;
           document.getElementById('yMin').value = example.dataset.ymin;
           document.getElementById('yMax').value = example.dataset.ymax;
+          document.getElementById('solverMethod').value = example.dataset.solver || 'rk4';
           instruction.style.display = 'block';
           drawPhasePlane(true);
         });
@@ -399,7 +412,9 @@
         const sysY = yMax - normY * (yMax - yMin);
 
         userPoints.push({ x: sysX, y: sysY });
-        const trajPoints = computeTrajectory(fCompiled, gCompiled, sysX, sysY, xMin, xMax, yMin, yMax);
+        const solver = document.getElementById("solverMethod").value;
+        const trajFunc = solver === "sdirk2" ? computeTrajectorySDIRK2 : computeTrajectory;
+        const trajPoints = trajFunc(fCompiled, gCompiled, sysX, sysY, xMin, xMax, yMin, yMax);
         trajectories.push(trajPoints);
         drawTrajectoryOnTrajCanvas(trajPoints, xMin, xMax, yMin, yMax);
         instruction.style.display = "none";
@@ -588,6 +603,129 @@
         fieldCtx.closePath();
         fieldCtx.fill();
       });
+    }
+
+    // ========================================
+    // SDIRK2: L-stable implicit solver for stiff systems
+    // Uses 2-stage Singly Diagonally Implicit Runge-Kutta
+    // with adaptive step size via embedded error estimation
+    // ========================================
+
+    const SDIRK_GAMMA = 1 - Math.SQRT2 / 2; // ~0.2929, gives L-stability
+
+    function numericalJacobian(f, g, x, y, scope, eps) {
+      scope.x = x + eps; scope.y = y;
+      const fx1 = f.evaluate(scope), gx1 = g.evaluate(scope);
+      scope.x = x - eps; scope.y = y;
+      const fx0 = f.evaluate(scope), gx0 = g.evaluate(scope);
+      scope.x = x; scope.y = y + eps;
+      const fy1 = f.evaluate(scope), gy1 = g.evaluate(scope);
+      scope.x = x; scope.y = y - eps;
+      const fy0 = f.evaluate(scope), gy0 = g.evaluate(scope);
+      const inv2eps = 0.5 / eps;
+      return {
+        dfdx: (fx1 - fx0) * inv2eps, dfdy: (fy1 - fy0) * inv2eps,
+        dgdx: (gx1 - gx0) * inv2eps, dgdy: (gy1 - gy0) * inv2eps
+      };
+    }
+
+    // Solve (I - gamma*h*J) * [dx, dy] = [rx, ry]
+    function solveLinear2x2(J, gammaH, rx, ry) {
+      const a = 1 - gammaH * J.dfdx, b = -gammaH * J.dfdy;
+      const c = -gammaH * J.dgdx, d = 1 - gammaH * J.dgdy;
+      const det = a * d - b * c;
+      if (Math.abs(det) < 1e-30) return null;
+      return { dx: (d * rx - b * ry) / det, dy: (a * ry - c * rx) / det };
+    }
+
+    function computeTrajectorySDIRK2(f, g, x0, y0, xMin, xMax, yMin, yMax) {
+      const gamma = SDIRK_GAMMA;
+      const scope = { x: 0, y: 0 };
+      const domainScale = Math.max(xMax - xMin, yMax - yMin);
+      const atol = 1e-6, rtol = 1e-3;
+      const hMin = 1e-10, hMax = domainScale * 0.1;
+      const maxSteps = 200000;
+      const maxPts = 3000;
+
+      function integrate(xStart, yStart, sign, maxPoints) {
+        let x = xStart, y = yStart, h = 0.01 * sign;
+        const pts = [];
+        for (let step = 0; step < maxSteps && pts.length < maxPoints; step++) {
+          // Clamp step size
+          if (Math.abs(h) < hMin) h = hMin * sign;
+          if (Math.abs(h) > hMax) h = hMax * sign;
+
+          scope.x = x; scope.y = y;
+          const f0 = f.evaluate(scope), g0 = g.evaluate(scope);
+          const eps = Math.max(1e-8, 1e-6 * Math.max(Math.abs(x), Math.abs(y)));
+          const J = numericalJacobian(f, g, x, y, scope, eps);
+          const gammaH = gamma * h;
+
+          // Stage 1: solve k1 - F(x + gammaH*k1x, y + gammaH*k1y) = 0
+          // Initial guess: k1 = F(x,y)
+          let k1x = f0, k1y = g0;
+          for (let it = 0; it < 8; it++) {
+            scope.x = x + gammaH * k1x; scope.y = y + gammaH * k1y;
+            const F1x = f.evaluate(scope), F1y = g.evaluate(scope);
+            const rx = k1x - F1x, ry = k1y - F1y;
+            if (Math.abs(rx) + Math.abs(ry) < 1e-12) break;
+            const sol = solveLinear2x2(J, gammaH, rx, ry);
+            if (!sol) break;
+            k1x -= sol.dx; k1y -= sol.dy;
+          }
+
+          // Stage 2: solve k2 - F(x + (1-gamma)*h*k1 + gammaH*k2) = 0
+          const c2h = (1 - gamma) * h;
+          let k2x = k1x, k2y = k1y;
+          for (let it = 0; it < 8; it++) {
+            scope.x = x + c2h * k1x + gammaH * k2x;
+            scope.y = y + c2h * k1y + gammaH * k2y;
+            const F2x = f.evaluate(scope), F2y = g.evaluate(scope);
+            const rx = k2x - F2x, ry = k2y - F2y;
+            if (Math.abs(rx) + Math.abs(ry) < 1e-12) break;
+            const sol = solveLinear2x2(J, gammaH, rx, ry);
+            if (!sol) break;
+            k2x -= sol.dx; k2y -= sol.dy;
+          }
+
+          // 2nd order solution
+          const xNew = x + h * ((1 - gamma) * k1x + gamma * k2x);
+          const yNew = y + h * ((1 - gamma) * k1y + gamma * k2y);
+
+          // Embedded 1st order for error estimation
+          const errX = h * gamma * (k2x - k1x);
+          const errY = h * gamma * (k2y - k1y);
+          const scaleX = atol + rtol * Math.max(Math.abs(x), Math.abs(xNew));
+          const scaleY = atol + rtol * Math.max(Math.abs(y), Math.abs(yNew));
+          const errNorm = Math.sqrt(0.5 * ((errX / scaleX) ** 2 + (errY / scaleY) ** 2));
+
+          if (errNorm > 1.0) {
+            // Reject step, reduce h
+            h *= Math.max(0.2, 0.9 / Math.sqrt(errNorm));
+            continue;
+          }
+
+          // Accept step
+          x = xNew; y = yNew;
+          pts.push({ x, y });
+
+          if (x < xMin - 1 || x > xMax + 1 || y < yMin - 1 || y > yMax + 1) break;
+          if (!isFinite(x) || !isFinite(y)) break;
+
+          const speed = Math.sqrt(f0 * f0 + g0 * g0);
+          if (pts.length > 10 && speed < 1e-6) break;
+
+          // Grow h for next step
+          const factor = errNorm > 1e-10 ? Math.min(5.0, 0.9 / Math.sqrt(errNorm)) : 5.0;
+          h *= factor;
+        }
+        return pts;
+      }
+
+      const fwdPts = integrate(x0, y0, 1, maxPts);
+      const bwdPts = integrate(x0, y0, -1, Math.floor(maxPts / 2));
+      bwdPts.reverse();
+      return [...bwdPts, { x: x0, y: y0 }, ...fwdPts];
     }
 
     function computeTrajectory(f, g, x0, y0, xMin, xMax, yMin, yMax) {
@@ -815,5 +953,4 @@
   </script>
 </body>
 </html>
-
 
