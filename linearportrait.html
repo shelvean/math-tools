@@ -184,6 +184,41 @@
                 <button class="btn-download" onclick="downloadImage()">Download Image</button>
                 <p style="margin-top: 10px;">© 2025 Shelvean Kapita &bull; kapita@tamu.edu &bull; All code released under the MIT License</p>
             </div>
+
+            <button id="showTimePlotBtn" style="background: #6366f1; width: 100%; max-width: 700px; margin-top: 10px;" onclick="toggleTimePlot()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:6px;">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Show Time Series
+            </button>
+
+            <div id="time-plot-section" style="display: none; width: 100%; max-width: 700px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 0.85rem; font-weight: 600; color: #374151;">Plot:</label>
+                  <button type="button" id="toggleX" onclick="toggleTimeVar('x')" style="padding: 3px 12px; font-size: 0.85rem; border-radius: 6px; font-weight: 600; border: 2px solid #dc2626; background: #dc2626; color: white; cursor: pointer;">x(t)</button>
+                  <button type="button" id="toggleY" onclick="toggleTimeVar('y')" style="padding: 3px 12px; font-size: 0.85rem; border-radius: 6px; font-weight: 600; border: 2px solid #16a34a; background: white; color: #16a34a; cursor: pointer;">y(t)</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <label style="font-size: 0.8rem; color: #6b7280;">t:</label>
+                  <input type="number" id="tPlotMin" value="0" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+                  <span style="font-size: 0.8rem; color: #6b7280;">to</span>
+                  <input type="number" id="tPlotMax" value="30" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+                  <label style="font-size: 0.8rem; color: #6b7280; margin-left: 8px;">val:</label>
+                  <input type="number" id="vPlotMin" value="-3" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+                  <span style="font-size: 0.8rem; color: #6b7280;">to</span>
+                  <input type="number" id="vPlotMax" value="3" step="any" style="width: 60px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8rem;">
+                  <button onclick="autoFitTimePlot()" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px;">Auto</button>
+                </div>
+              </div>
+              <div id="time-plot-wrapper" style="position: relative; width: 700px;">
+                <div id="time-y-labels" style="position: absolute; left: -55px; top: 0; width: 50px; height: 300px;"></div>
+                <canvas id="time-canvas" width="700" height="300" style="border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; display: block;"></canvas>
+                <div id="time-x-labels" style="height: 30px; position: relative; margin-top: 5px;"></div>
+                <div style="text-align: center; font-weight: bold; color: #111; font-size: 0.9rem; margin-top: 2px;">t</div>
+                <div style="position: absolute; left: -70px; top: 150px; writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; color: #111; font-size: 0.9rem;" id="time-y-axis-label">x</div>
+              </div>
+            </div>
         </div>
 
         <!-- Right Panel - Examples -->
@@ -487,6 +522,10 @@
                 computeTrajectoryAsync(t, yVal).then(trajPoints => {
                     trajectories.push(trajPoints);
                     drawPhasePortrait();
+                    if (document.getElementById('time-plot-section').style.display !== 'none') {
+                      if (trajectories.length === 1) autoFitTimePlot();
+                      else drawTimePlot();
+                    }
                 });
                 document.getElementById('instruction').style.display = 'none';
             });
@@ -500,6 +539,8 @@
                 userPoints = [];
                 trajectories = [];
                 drawPhasePortrait();
+                const tc = document.getElementById('time-canvas');
+                if (tc) { const ctx = tc.getContext('2d'); ctx.clearRect(0, 0, tc.width, tc.height); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, tc.width, tc.height); }
             }, 300);
 
             // Add debounced listeners to matrix inputs
@@ -532,6 +573,15 @@
             document.getElementById('showInitialPoint').addEventListener('change', drawPhasePortrait);
             document.getElementById('showGrid').addEventListener('change', drawPhasePortrait);
 
+            // Time plot range inputs
+            const debouncedTimeDraw = debounce(() => {
+              if (document.getElementById('time-plot-section').style.display !== 'none') drawTimePlot();
+            }, 200);
+            ['tPlotMin', 'tPlotMax', 'vPlotMin', 'vPlotMax'].forEach(id => {
+              const el = document.getElementById(id);
+              if (el) el.addEventListener('input', debouncedTimeDraw);
+            });
+
             // Initial draw
             drawPhasePortrait();
         });
@@ -542,6 +592,8 @@
             trajectories = [];
             drawPhasePortrait();
             document.getElementById('instruction').style.display = 'block';
+            const tc = document.getElementById('time-canvas');
+            if (tc) { const ctx = tc.getContext('2d'); ctx.clearRect(0, 0, tc.width, tc.height); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, tc.width, tc.height); }
         }
 
         // New function to clear trajectories and redraw phase portrait
@@ -551,6 +603,8 @@
             trajectories = [];
             document.getElementById('instruction').style.display = 'block';
             drawPhasePortrait();
+            const tc = document.getElementById('time-canvas');
+            if (tc) { const ctx = tc.getContext('2d'); ctx.clearRect(0, 0, tc.width, tc.height); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, tc.width, tc.height); }
         }
 
         // Function to classify the equilibrium
@@ -679,30 +733,34 @@
             if (Math.abs(eigenvalues.real) < 1e-10 && eigenvalues.imag > 0) {
                 let x = x0, y = y0;
                 const h = 0.01; // Very small step for accuracy
+                let t = 0;
                 // Forward integration
                 for (let i = 0; i < points; i++) {
                     if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
                     const canvasX = xOffset + (x - tMin) * xScale;
                     const canvasY = 700 - xOffset - (y - yMin) * yScale;
                     if (canvasX >= 70 && canvasX <= 700 - 70 && canvasY >= 70 && canvasY <= 700 - 70) {
-                        trajPoints.push({ x: canvasX, y: canvasY });
+                        trajPoints.push({ x: canvasX, y: canvasY, sysX: x, sysY: y, t: t });
                     } else break;
                     const next = rk4Step(x, y, a, b, c, d, h);
                     x = next.x;
                     y = next.y;
+                    t += h;
                 }
                 // Backward integration
                 x = x0; y = y0;
+                t = 0;
                 const backwardPoints = [];
                 for (let i = 0; i < points; i++) {
                     const next = rk4Step(x, y, a, b, c, d, -h);
                     x = next.x;
                     y = next.y;
+                    t -= h;
                     if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
                     const canvasX = xOffset + (x - tMin) * xScale;
                     const canvasY = 700 - xOffset - (y - yMin) * yScale;
                     if (canvasX >= 70 && canvasX <= 700 - 70 && canvasY >= 70 && canvasY <= 700 - 70) {
-                        backwardPoints.unshift({ x: canvasX, y: canvasY });
+                        backwardPoints.unshift({ x: canvasX, y: canvasY, sysX: x, sysY: y, t: t });
                     } else break;
                 }
                 return [...backwardPoints, ...trajPoints];
@@ -751,11 +809,12 @@
             // Forward integration
             let x = x0, y = y0;
             let h = isSpiral ? 0.015 : 0.05;
+            let t = 0;
 
             if (isInBounds(x, y, tMin, tMax, yMin, yMax)) {
                 const canvasX = xOffset + (x - tMin) * xScale;
                 const canvasY = 700 - xOffset - (y - yMin) * yScale;
-                trajPoints.push({ x: canvasX, y: canvasY });
+                trajPoints.push({ x: canvasX, y: canvasY, sysX: x, sysY: y, t: 0 });
             }
 
             for (let i = 0; i < MAX_STEPS; i++) {
@@ -776,6 +835,7 @@
                 const next = rk4Step(x, y, a, b, c, d, h);
                 x = next.x;
                 y = next.y;
+                t += h;
 
                 // Stop if trajectory goes to infinity
                 if (Math.abs(x) > 100 || Math.abs(y) > 100) break;
@@ -787,7 +847,7 @@
                 const canvasY = 700 - xOffset - (y - yMin) * yScale;
 
                 if (canvasX >= PADDING && canvasX <= 700 - PADDING && canvasY >= PADDING && canvasY <= 700 - PADDING) {
-                    trajPoints.push({ x: canvasX, y: canvasY });
+                    trajPoints.push({ x: canvasX, y: canvasY, sysX: x, sysY: y, t: t });
                 } else break;
 
                 // Stop if we have enough points
@@ -799,6 +859,7 @@
 
             // Backward integration
             x = x0; y = y0;
+            t = 0;
             const backwardPoints = [];
             h = isSpiral ? -0.015 : -0.05;
 
@@ -818,6 +879,7 @@
                 const next = rk4Step(x, y, a, b, c, d, h);
                 x = next.x;
                 y = next.y;
+                t += h;
 
                 if (Math.abs(x) > 100 || Math.abs(y) > 100) break;
                 if (!isInBounds(x, y, tMin, tMax, yMin, yMax)) break;
@@ -826,7 +888,7 @@
                 const canvasY = 700 - xOffset - (y - yMin) * yScale;
 
                 if (canvasX >= PADDING && canvasX <= 700 - PADDING && canvasY >= PADDING && canvasY <= 700 - PADDING) {
-                    backwardPoints.unshift({ x: canvasX, y: canvasY });
+                    backwardPoints.unshift({ x: canvasX, y: canvasY, sysX: x, sysY: y, t: t });
                 } else break;
 
                 if (backwardPoints.length > 750) break;
@@ -1110,6 +1172,180 @@
                     ctx.stroke();
                 });
             }
+        }
+
+        // ========================================
+        // TIME SERIES PLOT
+        // ========================================
+        let timeVarSelection = { x: true, y: false };
+
+        function toggleTimeVar(v) {
+          timeVarSelection[v] = !timeVarSelection[v];
+          updateTimeVarButtons();
+          if (document.getElementById('time-plot-section').style.display !== 'none') autoFitTimePlot();
+        }
+
+        function updateTimeVarButtons() {
+          const bx = document.getElementById('toggleX');
+          const by = document.getElementById('toggleY');
+          if (timeVarSelection.x) {
+            bx.style.background = '#dc2626'; bx.style.color = 'white';
+          } else {
+            bx.style.background = 'white'; bx.style.color = '#dc2626';
+          }
+          if (timeVarSelection.y) {
+            by.style.background = '#16a34a'; by.style.color = 'white';
+          } else {
+            by.style.background = 'white'; by.style.color = '#16a34a';
+          }
+          const label = document.getElementById('time-y-axis-label');
+          if (timeVarSelection.x && timeVarSelection.y) label.textContent = 'x, y';
+          else if (timeVarSelection.x) label.textContent = 'x';
+          else if (timeVarSelection.y) label.textContent = 'y';
+          else label.textContent = '';
+        }
+
+        function toggleTimePlot() {
+          const section = document.getElementById('time-plot-section');
+          const btn = document.getElementById('showTimePlotBtn');
+          if (section.style.display === 'none') {
+            section.style.display = 'block';
+            btn.textContent = 'Hide Time Series';
+            if (trajectories.length > 0) autoFitTimePlot();
+          } else {
+            section.style.display = 'none';
+            btn.textContent = 'Show Time Series';
+          }
+        }
+
+        function autoFitTimePlot() {
+          if (trajectories.length === 0) return;
+          let tMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+          trajectories.forEach(traj => {
+            traj.forEach(p => {
+              if (p.t === undefined || !isFinite(p.t) || p.t < 0) return;
+              if (p.t > tMax) tMax = p.t;
+              if (timeVarSelection.x && isFinite(p.sysX)) {
+                if (p.sysX < vMin) vMin = p.sysX;
+                if (p.sysX > vMax) vMax = p.sysX;
+              }
+              if (timeVarSelection.y && isFinite(p.sysY)) {
+                if (p.sysY < vMin) vMin = p.sysY;
+                if (p.sysY > vMax) vMax = p.sysY;
+              }
+            });
+          });
+          const tMin = 0;
+          if (!isFinite(tMax)) tMax = 30;
+          if (!isFinite(vMin)) vMin = -3;
+          if (!isFinite(vMax)) vMax = 3;
+          const vPad = (vMax - vMin) * 0.08 || 1;
+          const tPad = (tMax - tMin) * 0.02 || 1;
+          document.getElementById('tPlotMin').value = +(tMin - tPad).toPrecision(4);
+          document.getElementById('tPlotMax').value = +(tMax + tPad).toPrecision(4);
+          document.getElementById('vPlotMin').value = +(vMin - vPad).toPrecision(4);
+          document.getElementById('vPlotMax').value = +(vMax + vPad).toPrecision(4);
+          drawTimePlot();
+        }
+
+        function drawTimeCurve(ctx, traj, varName, color, tMin, tMax, vMin, vMax, W, H) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.8;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          let started = false;
+          traj.forEach(p => {
+            if (p.t === undefined || !isFinite(p.t) || p.t < 0) return;
+            const v = varName === 'x' ? p.sysX : p.sysY;
+            if (!isFinite(v)) return;
+            const px = ((p.t - tMin) / (tMax - tMin)) * W;
+            const py = ((vMax - v) / (vMax - vMin)) * H;
+            if (!started) { ctx.moveTo(px, py); started = true; }
+            else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+        }
+
+        function drawTimePlot() {
+          const canvas = document.getElementById('time-canvas');
+          const ctx = canvas.getContext('2d');
+          const W = canvas.width, H = canvas.height;
+          ctx.clearRect(0, 0, W, H);
+          ctx.fillStyle = '#fafafa';
+          ctx.fillRect(0, 0, W, H);
+
+          const tMin = +document.getElementById('tPlotMin').value;
+          const tMax = +document.getElementById('tPlotMax').value;
+          const vMin = +document.getElementById('vPlotMin').value;
+          const vMax = +document.getElementById('vPlotMax').value;
+
+          updateTimeVarButtons();
+
+          if (tMax <= tMin || vMax <= vMin) return;
+          if (!timeVarSelection.x && !timeVarSelection.y) return;
+
+          // Grid
+          ctx.strokeStyle = 'rgba(200,200,200,0.5)';
+          ctx.lineWidth = 0.5;
+          const tStep = getNiceStep(tMax - tMin);
+          for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax + 1e-9; v += tStep) {
+            const px = ((v - tMin) / (tMax - tMin)) * W;
+            ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+          }
+          const vStep = getNiceStep(vMax - vMin);
+          for (let v = Math.ceil(vMin / vStep) * vStep; v <= vMax + 1e-9; v += vStep) {
+            const py = ((vMax - v) / (vMax - vMin)) * H;
+            ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
+          }
+
+          // Axes
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1.5;
+          if (vMin <= 0 && vMax >= 0) {
+            const y0 = ((vMax - 0) / (vMax - vMin)) * H;
+            ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(W, y0); ctx.stroke();
+          }
+          if (tMin <= 0 && tMax >= 0) {
+            const x0 = ((0 - tMin) / (tMax - tMin)) * W;
+            ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0, H); ctx.stroke();
+          }
+
+          // Draw curves
+          trajectories.forEach(traj => {
+            if (timeVarSelection.x) drawTimeCurve(ctx, traj, 'x', '#dc2626', tMin, tMax, vMin, vMax, W, H);
+            if (timeVarSelection.y) drawTimeCurve(ctx, traj, 'y', '#16a34a', tMin, tMax, vMin, vMax, W, H);
+          });
+
+          // Legend when both active
+          if (timeVarSelection.x && timeVarSelection.y) {
+            ctx.font = 'bold 13px Arial';
+            ctx.fillStyle = '#dc2626';
+            ctx.fillText('x(t)', W - 70, 18);
+            ctx.fillStyle = '#16a34a';
+            ctx.fillText('y(t)', W - 70, 34);
+          }
+
+          // Axis labels
+          const txLabels = document.getElementById('time-x-labels');
+          const tyLabels = document.getElementById('time-y-labels');
+          txLabels.innerHTML = '';
+          tyLabels.innerHTML = '';
+
+          for (let v = Math.ceil(tMin / tStep) * tStep; v <= tMax + 1e-9; v += tStep) {
+            const pos = ((v - tMin) / (tMax - tMin)) * W;
+            const div = document.createElement('div');
+            div.textContent = +v.toPrecision(4);
+            div.style.cssText = `position:absolute;left:${pos}px;transform:translateX(-50%);font:bold 12px Arial;color:#111;`;
+            txLabels.appendChild(div);
+          }
+          for (let v = Math.ceil(vMin / vStep) * vStep; v <= vMax + 1e-9; v += vStep) {
+            const posY = ((vMax - v) / (vMax - vMin)) * H;
+            const div = document.createElement('div');
+            div.textContent = +v.toPrecision(4);
+            div.style.cssText = `position:absolute;right:4px;top:${posY}px;transform:translateY(-50%);font:bold 12px Arial;color:#111;`;
+            tyLabels.appendChild(div);
+          }
         }
 
         function downloadImage() {
