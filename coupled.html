@@ -478,8 +478,8 @@
     const PIVOT1_X = 175;
     const PIVOT2_X = 425;
     const BOB_RADIUS = 14;
-    const SPRING_COILS = 12;
-    const SPRING_AMP = 10;
+    const SPRING_COILS = 10;
+    const SPRING_RADIUS = 12;
     const maxPhasePoints = 4000;
 
     // ─── Offscreen canvases ─────────────────────────────────────────
@@ -640,45 +640,59 @@
       needsRedrawSimBg = false;
     }
 
-    // ─── Drawing: zigzag spring between two points ──────────────────
-    function drawZigzagSpring(x1, y1, x2, y2, coils, amp) {
+    // ─── Drawing: helical spring between two points (matches massspring/forcing style) ──
+    function drawHelicalSpring(x1, y1, x2, y2, coils, radius) {
       const dx = x2 - x1, dy = y2 - y1;
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len < 5) {
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
         return;
       }
-      const nx = dx / len, ny = dy / len;
-      const px = -ny, py = nx;
-      const lead = Math.min(12, len * 0.08);
+      const nx = dx / len, ny = dy / len;   // along spring direction
+      const px = -ny, py = nx;               // perpendicular
 
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
+      const segmentsPerCoil = 20;
+      const totalSegments = coils * segmentsPerCoil;
+      const points = [];
 
-      // Start lead
-      const sx = x1 + nx * lead;
-      const sy = y1 + ny * lead;
-      ctx.lineTo(sx, sy);
-
-      // Coils
-      const springLen = len - 2 * lead;
-      const numSeg = coils * 2;
-      for (let i = 0; i < numSeg; i++) {
-        const frac = (i + 0.5) / numSeg;
-        const bx = sx + nx * springLen * frac;
-        const by = sy + ny * springLen * frac;
-        const sign = (i % 2 === 0) ? 1 : -1;
-        ctx.lineTo(bx + px * amp * sign, by + py * amp * sign);
+      for (let i = 0; i <= totalSegments; i++) {
+        const progress = i / totalSegments;
+        const baseX = x1 + progress * dx;
+        const baseY = y1 + progress * dy;
+        const angle = progress * Math.PI * 2 * coils;
+        const offset = radius * Math.cos(angle);
+        points.push({
+          x: baseX + px * offset,
+          y: baseY + py * offset,
+          angle: angle
+        });
       }
 
-      // End lead
-      const ex = x2 - nx * lead;
-      const ey = y2 - ny * lead;
-      ctx.lineTo(ex, ey);
-      ctx.lineTo(x2, y2);
+      // Main spring body — dark navy like forcing.html
+      ctx.beginPath();
+      ctx.strokeStyle = '#181b59';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < points.length; i++) {
+        if (i === 0) ctx.moveTo(points[i].x, points[i].y);
+        else ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.stroke();
+
+      // Highlights on the "front" side of the coil
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < points.length; i++) {
+        if (Math.cos(points[i].angle) > 0) {
+          const prev = i > 0 ? points[i - 1] : null;
+          if (!prev || Math.cos(prev.angle) <= 0) {
+            ctx.moveTo(points[i].x - px, points[i].y - py);
+          } else {
+            ctx.lineTo(points[i].x - px, points[i].y - py);
+          }
+        }
+      }
       ctx.stroke();
     }
 
@@ -750,11 +764,8 @@
       ctx.lineTo(bob2x, bob2y);
       ctx.stroke();
 
-      // Spring between bobs
-      ctx.strokeStyle = '#2d8659';
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      drawZigzagSpring(bob1x, bob1y, bob2x, bob2y, SPRING_COILS, SPRING_AMP);
+      // Spring between bobs (helical style matching massspring/forcing)
+      drawHelicalSpring(bob1x, bob1y, bob2x, bob2y, SPRING_COILS, SPRING_RADIUS);
 
       // Bobs
       drawBob(bob1x, bob1y, '#3867d6', '1');
