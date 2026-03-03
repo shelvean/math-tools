@@ -492,6 +492,7 @@
             const joints = getJointPositions(state);
             pendCtx.globalAlpha = alpha;
 
+            // --- Draw rods with tapered width and subtle shadow ---
             for (let i = 0; i < N; i++) {
                 const from = joints[i];
                 const to = joints[i + 1];
@@ -500,29 +501,103 @@
                 const ex = cx + to.x * scale;
                 const ey = cy + to.y * scale;
 
-                pendCtx.strokeStyle = rodColor;
-                pendCtx.lineWidth = 3;
+                // Rod shadow
+                pendCtx.save();
+                pendCtx.strokeStyle = 'rgba(0,0,0,0.35)';
+                pendCtx.lineWidth = 6;
+                pendCtx.lineCap = 'round';
                 pendCtx.beginPath();
-                pendCtx.moveTo(sx, sy);
-                pendCtx.lineTo(ex, ey);
+                pendCtx.moveTo(sx + 2, sy + 2);
+                pendCtx.lineTo(ex + 2, ey + 2);
                 pendCtx.stroke();
+                pendCtx.restore();
 
-                const radius = (i === N - 1) ? 10 : 7;
-                pendCtx.fillStyle = bobColor;
+                // Rod body — tapered trapezoid
+                const dx = ex - sx, dy = ey - sy;
+                const len = Math.sqrt(dx*dx + dy*dy) || 1;
+                const nx = -dy/len, ny = dx/len; // perpendicular
+                const w1 = 3.5, w2 = 2.2; // top wider, bottom narrower
+                pendCtx.fillStyle = rodColor;
                 pendCtx.beginPath();
-                pendCtx.arc(ex, ey, radius, 0, Math.PI * 2);
+                pendCtx.moveTo(sx + nx*w1, sy + ny*w1);
+                pendCtx.lineTo(sx - nx*w1, sy - ny*w1);
+                pendCtx.lineTo(ex - nx*w2, ey - ny*w2);
+                pendCtx.lineTo(ex + nx*w2, ey + ny*w2);
+                pendCtx.closePath();
                 pendCtx.fill();
-                pendCtx.strokeStyle = '#fff';
+                // Thin highlight along one edge
+                pendCtx.strokeStyle = 'rgba(255,255,255,0.25)';
                 pendCtx.lineWidth = 1;
+                pendCtx.beginPath();
+                pendCtx.moveTo(sx + nx*w1, sy + ny*w1);
+                pendCtx.lineTo(ex + nx*w2, ey + ny*w2);
                 pendCtx.stroke();
             }
+
+            // --- Draw hinge pins at intermediate joints ---
+            for (let i = 1; i < N; i++) {
+                const jt = joints[i];
+                const jx = cx + jt.x * scale;
+                const jy = cy + jt.y * scale;
+                // Outer ring
+                pendCtx.beginPath();
+                pendCtx.arc(jx, jy, 5, 0, Math.PI * 2);
+                pendCtx.fillStyle = '#555';
+                pendCtx.fill();
+                pendCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+                pendCtx.lineWidth = 1.2;
+                pendCtx.stroke();
+                // Inner pin dot
+                pendCtx.beginPath();
+                pendCtx.arc(jx, jy, 2, 0, Math.PI * 2);
+                pendCtx.fillStyle = '#ccc';
+                pendCtx.fill();
+            }
+
+            // --- Draw bobs with radial gradient and mass-proportional size ---
+            for (let i = 0; i < N; i++) {
+                const pt = joints[i + 1];
+                const bx = cx + pt.x * scale;
+                const by = cy + pt.y * scale;
+                const massRatio = masses[i] / Math.max(...masses.slice(0, N));
+                const radius = 6 + 7 * massRatio; // 6..13 px
+
+                // Shadow
+                pendCtx.beginPath();
+                pendCtx.arc(bx + 2, by + 2, radius, 0, Math.PI * 2);
+                pendCtx.fillStyle = 'rgba(0,0,0,0.3)';
+                pendCtx.fill();
+
+                // Radial gradient for 3-D look
+                const grad = pendCtx.createRadialGradient(
+                    bx - radius*0.3, by - radius*0.3, radius*0.1,
+                    bx, by, radius
+                );
+                grad.addColorStop(0, '#fff');
+                grad.addColorStop(0.35, bobColor);
+                grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+                pendCtx.beginPath();
+                pendCtx.arc(bx, by, radius, 0, Math.PI * 2);
+                pendCtx.fillStyle = grad;
+                pendCtx.fill();
+            }
+
             pendCtx.globalAlpha = 1;
         }
 
-        // Pivot
-        pendCtx.fillStyle = '#fff';
+        // Pivot mount
+        pendCtx.fillStyle = '#444';
+        pendCtx.fillRect(cx - 18, cy - 8, 36, 8);
+        pendCtx.strokeStyle = 'rgba(255,255,255,0.3)';
+        pendCtx.lineWidth = 1;
+        pendCtx.strokeRect(cx - 18, cy - 8, 36, 8);
+        // Pivot pin
+        const pivGrad = pendCtx.createRadialGradient(cx - 1, cy - 1, 1, cx, cy, 5);
+        pivGrad.addColorStop(0, '#eee');
+        pivGrad.addColorStop(1, '#555');
         pendCtx.beginPath();
         pendCtx.arc(cx, cy, 5, 0, Math.PI * 2);
+        pendCtx.fillStyle = pivGrad;
         pendCtx.fill();
 
         if (showPendulum === 'both' || showPendulum === 'A') {
