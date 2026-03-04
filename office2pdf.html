@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Convert Word (.docx) and Excel (.xlsx) files to PDF format. Each Excel sheet becomes a separate PDF page." />
+  <title>Office to PDF Converter</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f5f7fa; color: #1f2937; min-height: 100vh;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 1.75rem; font-weight: 700; text-align: center; color: #111827; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #6b7280; font-size: 0.95rem; margin-bottom: 36px; }
+
+    .drop-zone {
+      border: 2px dashed #cbd5e1; border-radius: 12px; padding: 48px 24px;
+      text-align: center; background: #ffffff; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s; margin-bottom: 24px;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: #3b82f6; background: #eff6ff; }
+    .drop-zone-icon { font-size: 2.5rem; margin-bottom: 12px; color: #94a3b8; }
+    .drop-zone-text { font-size: 1rem; color: #64748b; margin-bottom: 8px; }
+    .drop-zone-hint { font-size: 0.82rem; color: #94a3b8; }
+    input[type="file"] { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+    .file-info {
+      display: none; align-items: center; gap: 12px; background: #ffffff;
+      border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 20px; margin-bottom: 24px;
+    }
+    .file-info.visible { display: flex; }
+    .file-icon {
+      width: 40px; height: 40px; border-radius: 8px; display: flex;
+      align-items: center; justify-content: center; font-weight: 700;
+      font-size: 0.7rem; color: #fff; flex-shrink: 0;
+    }
+    .file-icon.docx { background: #2563eb; }
+    .file-icon.xlsx { background: #16a34a; }
+    .file-meta { flex: 1; min-width: 0; }
+    .file-name { font-weight: 600; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-size { font-size: 0.8rem; color: #9ca3af; }
+    .btn-remove { background: none; border: none; color: #9ca3af; font-size: 1.25rem; cursor: pointer; padding: 4px; line-height: 1; }
+    .btn-remove:hover { color: #ef4444; }
+
+    .btn-convert {
+      display: none; padding: 10px 28px; font-size: 0.95rem; font-weight: 600;
+      color: #fff; background: #2563eb; border: none; border-radius: 8px;
+      cursor: pointer; transition: background 0.2s; margin-bottom: 24px;
+    }
+    .btn-convert.visible { display: inline-block; }
+    .btn-convert:hover { background: #1d4ed8; }
+    .btn-convert:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .progress-wrap { display: none; margin-bottom: 20px; }
+    .progress-wrap.visible { display: block; }
+    .progress-bar { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
+    .progress-fill { height: 100%; width: 0%; background: #2563eb; border-radius: 3px; transition: width 0.2s ease; }
+    .progress-label { font-size: 0.78rem; color: #6b7280; text-align: right; }
+
+    .preview {
+      display: none; background: #ffffff; border: 1px solid #e5e7eb;
+      border-radius: 12px; overflow: hidden; margin-bottom: 24px;
+    }
+    .preview.visible { display: block; }
+    .preview-header {
+      padding: 14px 20px; border-bottom: 1px solid #e5e7eb; font-weight: 600;
+      font-size: 0.9rem; color: #374151; display: flex;
+      align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    }
+    .row-badge {
+      font-size: 0.75rem; font-weight: 500; background: #f0fdf4; color: #15803d;
+      border: 1px solid #bbf7d0; border-radius: 20px; padding: 2px 10px;
+    }
+    .row-badge.warn { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+
+    .sheet-tabs {
+      display: flex; gap: 2px; padding: 0 20px; background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb; overflow-x: auto; scrollbar-width: thin;
+    }
+    .sheet-tab {
+      padding: 10px 18px; font-size: 0.85rem; font-weight: 500; color: #6b7280;
+      background: transparent; border: none; border-bottom: 2px solid transparent;
+      cursor: pointer; white-space: nowrap; transition: color 0.15s, border-color 0.15s;
+    }
+    .sheet-tab:hover { color: #374151; }
+    .sheet-tab.active { color: #2563eb; border-bottom-color: #2563eb; font-weight: 600; }
+
+    .preview-body { padding: 0; max-height: 480px; overflow: auto; position: relative; }
+
+    .sheet-loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 48px 24px; color: #9ca3af; font-size: 0.9rem; gap: 10px;
+    }
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid #e5e7eb;
+      border-top-color: #3b82f6; border-radius: 50%;
+      animation: spin 0.6s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .xlsx-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; table-layout: auto; }
+    .xlsx-table th, .xlsx-table td {
+      border: 1px solid #e5e7eb; padding: 7px 12px; text-align: left;
+      white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .xlsx-table th {
+      background: #f8fafc; font-weight: 600; color: #374151;
+      position: sticky; top: 0; z-index: 2; border-top: none;
+    }
+    .xlsx-table tr:nth-child(even) td { background: #fafbfc; }
+    .xlsx-table tr:hover td { background: #eff6ff; }
+
+    .truncation-notice {
+      padding: 10px 20px; background: #fffbeb; border-top: 1px solid #fde68a;
+      font-size: 0.82rem; color: #92400e; display: flex; align-items: center; gap: 6px;
+    }
+
+    .status { display: none; text-align: center; padding: 14px; border-radius: 10px; font-size: 0.9rem; margin-bottom: 16px; }
+    .status.visible { display: block; }
+    .status.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .status.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+    .back-link { display: inline-block; margin-bottom: 24px; color: #6b7280; text-decoration: none; font-size: 0.9rem; }
+    .back-link:hover { color: #2563eb; }
+
+    .docx-preview { padding: 24px; font-family: 'Times New Roman', Georgia, serif; font-size: 12pt; line-height: 1.6; color: #1f2937; }
+    .docx-preview h1 { font-size: 1.6em; margin: 0.6em 0 0.3em; }
+    .docx-preview h2 { font-size: 1.35em; margin: 0.5em 0 0.25em; }
+    .docx-preview h3 { font-size: 1.15em; margin: 0.4em 0 0.2em; }
+    .docx-preview p { margin: 0.4em 0; }
+    .docx-preview ul, .docx-preview ol { margin: 0.4em 0; padding-left: 1.8em; }
+    .docx-preview table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
+    .docx-preview th, .docx-preview td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; font-size: 0.92em; }
+    .docx-preview th { background: #f3f4f6; font-weight: 600; }
+    .docx-preview img { max-width: 100%; height: auto; }
+
+    @media (max-width: 600px) {
+      .container { padding: 24px 16px; }
+      h1 { font-size: 1.4rem; }
+      .drop-zone { padding: 32px 16px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <a href="index.html" class="back-link">&larr; Back to home</a>
+  <h1>Office to PDF Converter</h1>
+  <p class="subtitle">Convert Word and Excel files to PDF &mdash; entirely in your browser</p>
+
+  <label class="drop-zone" id="dropZone" for="fileInput">
+    <div class="drop-zone-icon">&#128196;</div>
+    <div class="drop-zone-text">Drop a file here or click to browse</div>
+    <div class="drop-zone-hint">Supports .docx and .xlsx files</div>
+    <input type="file" id="fileInput" accept=".docx,.xlsx" />
+  </label>
+
+  <div class="file-info" id="fileInfo">
+    <div class="file-icon" id="fileIcon">—</div>
+    <div class="file-meta">
+      <div class="file-name" id="fileName"></div>
+      <div class="file-size" id="fileSize"></div>
+    </div>
+    <button class="btn-remove" id="btnRemove" title="Remove file">&times;</button>
+  </div>
+
+  <button class="btn-convert" id="btnConvert">Convert to PDF</button>
+
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label" id="progressLabel">0%</div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="preview" id="preview">
+    <div class="preview-header">
+      <span id="previewTitle">Preview</span>
+      <span class="row-badge" id="rowBadge" style="display:none"></span>
+    </div>
+    <div id="sheetTabs" class="sheet-tabs" style="display:none;"></div>
+    <div class="preview-body" id="previewBody"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  'use strict';
+
+  // ─── Config ──────────────────────────────────────────
+  const PREVIEW_ROW_LIMIT = 200;   // rows shown in preview table
+  const PDF_CHUNK_SIZE    = 500;   // rows per autoTable pass (keeps browser alive)
+
+  // ─── State ───────────────────────────────────────────
+  let currentFile    = null;
+  let parsedData     = null;
+  let activeSheetIdx = 0;
+  let sheetRendered  = {};
+
+  // ─── DOM ─────────────────────────────────────────────
+  const dropZone     = document.getElementById('dropZone');
+  const fileInput    = document.getElementById('fileInput');
+  const fileInfo     = document.getElementById('fileInfo');
+  const fileIcon     = document.getElementById('fileIcon');
+  const fileName     = document.getElementById('fileName');
+  const fileSize     = document.getElementById('fileSize');
+  const btnRemove    = document.getElementById('btnRemove');
+  const btnConvert   = document.getElementById('btnConvert');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel= document.getElementById('progressLabel');
+  const statusEl     = document.getElementById('status');
+  const preview      = document.getElementById('preview');
+  const previewTitle = document.getElementById('previewTitle');
+  const rowBadge     = document.getElementById('rowBadge');
+  const sheetTabs    = document.getElementById('sheetTabs');
+  const previewBody  = document.getElementById('previewBody');
+
+  // ─── Utilities ───────────────────────────────────────
+  const formatBytes = b => b < 1024 ? b+' B' : b < 1048576 ? (b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
+  const formatCell  = v => (v === null || v === undefined) ? '' : v instanceof Date ? v.toLocaleDateString() : String(v);
+  const tick        = () => new Promise(r => setTimeout(r, 0));
+
+  function setProgress(pct, label) {
+    progressFill.style.width = pct + '%';
+    progressLabel.textContent = (label !== undefined ? label : Math.round(pct)) + '%';
+  }
+
+  function showStatus(msg, type) { statusEl.textContent = msg; statusEl.className = 'status visible ' + type; }
+  function clearStatus()         { statusEl.className = 'status'; }
+
+  function resetUI() {
+    currentFile = null; parsedData = null; activeSheetIdx = 0; sheetRendered = {};
+    fileInfo.classList.remove('visible');
+    btnConvert.classList.remove('visible');
+    progressWrap.classList.remove('visible');
+    preview.classList.remove('visible');
+    clearStatus();
+    previewBody.innerHTML = '';
+    sheetTabs.innerHTML   = '';
+    sheetTabs.style.display = 'none';
+    rowBadge.style.display  = 'none';
+    setProgress(0, '0');
+  }
+
+  // ─── Drop / input ────────────────────────────────────
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop',      e  => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+  btnRemove.addEventListener('click',  () => { resetUI(); fileInput.value = ''; });
+
+  // ─── Handle file ─────────────────────────────────────
+  async function handleFile(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'docx' && ext !== 'xlsx') {
+      showStatus('Unsupported file type. Please use .docx or .xlsx files.', 'error');
+      return;
+    }
+    resetUI();
+    currentFile = file;
+    fileName.textContent  = file.name;
+    fileSize.textContent  = formatBytes(file.size);
+    fileIcon.textContent  = ext.toUpperCase();
+    fileIcon.className    = 'file-icon ' + ext;
+    fileInfo.classList.add('visible');
+    btnConvert.classList.add('visible');
+
+    try {
+      if (ext === 'docx') await parseDocx(file);
+      else                await parseXlsx(file);
+    } catch (err) {
+      showStatus('Error reading file: ' + err.message, 'error');
+    }
+  }
+
+  // ─── DOCX parse ──────────────────────────────────────
+  async function parseDocx(file) {
+    const ab     = await file.arrayBuffer();
+    const result = await mammoth.convertToHtml({ arrayBuffer: ab });
+    parsedData   = { type: 'docx', html: result.value };
+    previewTitle.textContent = 'Document Preview';
+    previewBody.innerHTML    = '<div class="docx-preview">' + result.value + '</div>';
+    preview.classList.add('visible');
+  }
+
+  // ─── XLSX parse — lean options, lazy render ───────────
+  async function parseXlsx(file) {
+    const ab = await file.arrayBuffer();
+
+    // Skip style/formula parsing — major speed gain on large files
+    const wb = XLSX.read(ab, {
+      type: 'array', cellDates: true,
+      cellNF: false, cellStyles: false, cellFormula: false, sheetStubs: false,
+    });
+
+    await tick(); // yield after heavy parse
+
+    const sheets = wb.SheetNames.map(name => {
+      const ws   = wb.Sheets[name];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
+      return { name, data };
+    });
+
+    parsedData = { type: 'xlsx', sheets };
+    previewTitle.textContent = 'Spreadsheet Preview';
+    preview.classList.add('visible');
+
+    // Build tab buttons only — no table DOM yet
+    if (sheets.length > 1) {
+      sheetTabs.style.display = 'flex';
+      sheets.forEach((s, i) => {
+        const btn = document.createElement('button');
+        btn.className    = 'sheet-tab' + (i === 0 ? ' active' : '');
+        btn.textContent  = s.name;
+        btn.dataset.idx  = i;
+        btn.addEventListener('click', () => switchTab(i));
+        sheetTabs.appendChild(btn);
+      });
+    }
+
+    await renderSheet(0);
+  }
+
+  // ─── Lazy sheet render ───────────────────────────────
+  async function renderSheet(idx) {
+    if (sheetRendered[idx]) { showSheetDiv(idx); updateBadge(idx); return; }
+    sheetRendered[idx] = true;
+
+    const sheet     = parsedData.sheets[idx];
+    const allRows   = sheet.data;
+    const totalRows = Math.max(0, allRows.length - 1);
+
+    // Spinner while building DOM
+    const loader = document.createElement('div');
+    loader.className       = 'sheet-loading';
+    loader.dataset.loadIdx = idx;
+    loader.innerHTML       = '<div class="spinner"></div><span>Loading…</span>';
+    previewBody.appendChild(loader);
+    await tick();
+
+    const div = document.createElement('div');
+    div.dataset.sheetDiv = idx;
+
+    if (!allRows.length) {
+      div.innerHTML = '<p style="padding:24px;color:#9ca3af;">Empty sheet</p>';
+    } else {
+      const previewRows = allRows.slice(0, PREVIEW_ROW_LIMIT + 1); // header + up to 200 data rows
+      const truncated   = totalRows > PREVIEW_ROW_LIMIT;
+
+      const wrapper = document.createElement('div');
+      wrapper.style.overflowX = 'auto';
+      wrapper.appendChild(buildTable(previewRows));
+      div.appendChild(wrapper);
+
+      if (truncated) {
+        const notice = document.createElement('div');
+        notice.className = 'truncation-notice';
+        notice.innerHTML = `⚠ Preview capped at <strong>${PREVIEW_ROW_LIMIT.toLocaleString()}</strong> of <strong>${totalRows.toLocaleString()}</strong> rows &mdash; all rows included in PDF export.`;
+        div.appendChild(notice);
+      }
+    }
+
+    loader.remove();
+    previewBody.appendChild(div);
+    showSheetDiv(idx);
+    updateBadge(idx);
+  }
+
+  function showSheetDiv(idx) {
+    previewBody.querySelectorAll('[data-sheet-div]').forEach(d => {
+      d.style.display = (d.dataset.sheetDiv == idx) ? '' : 'none';
+    });
+  }
+
+  function updateBadge(idx) {
+    if (!parsedData || parsedData.type !== 'xlsx') return;
+    const totalRows = Math.max(0, parsedData.sheets[idx].data.length - 1);
+    const truncated = totalRows > PREVIEW_ROW_LIMIT;
+    rowBadge.textContent = `${totalRows.toLocaleString()} row${totalRows !== 1 ? 's' : ''}`;
+    rowBadge.className   = 'row-badge' + (truncated ? ' warn' : '');
+    rowBadge.style.display = '';
+  }
+
+  // DocumentFragment for bulk DOM insert — avoids reflow per row
+  function buildTable(rows) {
+    const table    = document.createElement('table');
+    table.className = 'xlsx-table';
+    if (!rows.length) return table;
+
+    const colCount = rows[0].length;
+    const thead    = document.createElement('thead');
+    const headTr   = document.createElement('tr');
+    rows[0].forEach(c => {
+      const th = document.createElement('th');
+      th.textContent = formatCell(c);
+      headTr.appendChild(th);
+    });
+    thead.appendChild(headTr);
+    table.appendChild(thead);
+
+    const frag  = document.createDocumentFragment();
+    for (let r = 1; r < rows.length; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < colCount; c++) {
+        const td = document.createElement('td');
+        td.textContent = formatCell(rows[r][c]);
+        tr.appendChild(td);
+      }
+      frag.appendChild(tr);
+    }
+    const tbody = document.createElement('tbody');
+    tbody.appendChild(frag);
+    table.appendChild(tbody);
+    return table;
+  }
+
+  async function switchTab(idx) {
+    activeSheetIdx = idx;
+    sheetTabs.querySelectorAll('.sheet-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+    rowBadge.style.display = 'none';
+    await renderSheet(idx);
+  }
+
+  // ─── Convert button ──────────────────────────────────
+  btnConvert.addEventListener('click', async () => {
+    if (!parsedData) return;
+    if (!window.jspdf) { showStatus('PDF library failed to load. Reload and try again.', 'error'); return; }
+    clearStatus();
+    btnConvert.disabled      = true;
+    btnConvert.textContent   = 'Converting…';
+    progressWrap.classList.add('visible');
+    setProgress(5, '5');
+
+    try {
+      if (parsedData.type === 'docx') await convertDocxToPdf();
+      else                            await convertXlsxToPdf();
+      showStatus('✓ PDF downloaded successfully!', 'success');
+    } catch (err) {
+      showStatus('Conversion error: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      btnConvert.disabled    = false;
+      btnConvert.textContent = 'Convert to PDF';
+      setProgress(100, '100');
+      setTimeout(() => progressWrap.classList.remove('visible'), 900);
+    }
+  });
+
+  // ─── DOCX → PDF ──────────────────────────────────────
+  async function convertDocxToPdf() {
+    const { jsPDF } = window.jspdf;
+    const doc       = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margin    = 20;
+    const usableW   = doc.internal.pageSize.getWidth() - margin * 2;
+    const pageH     = doc.internal.pageSize.getHeight();
+    let y = margin;
+
+    const tmp    = document.createElement('div');
+    tmp.innerHTML = parsedData.html;
+    const blocks  = extractBlocks(tmp);
+    setProgress(30, '30');
+
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+
+      if (b.type === 'heading') {
+        const fs = b.level === 1 ? 18 : b.level === 2 ? 15 : 13;
+        doc.setFontSize(fs); doc.setFont('helvetica', 'bold');
+        const lines = doc.splitTextToSize(b.text, usableW);
+        const bh    = lines.length * fs * 0.45;
+        if (y + bh > pageH - margin) { doc.addPage(); y = margin; }
+        doc.text(lines, margin, y); y += bh + 4;
+
+      } else if (b.type === 'paragraph') {
+        doc.setFontSize(11); doc.setFont('helvetica', 'normal');
+        const lines = doc.splitTextToSize(b.text, usableW);
+        const bh    = lines.length * 11 * 0.45;
+        if (y + bh > pageH - margin) { doc.addPage(); y = margin; }
+        doc.text(lines, margin, y); y += bh + 3;
+
+      } else if (b.type === 'list-item') {
+        doc.setFontSize(11); doc.setFont('helvetica', 'normal');
+        const bullet = b.ordered ? (b.index + 1) + '. ' : '\u2022  ';
+        const lines  = doc.splitTextToSize(bullet + b.text, usableW - 6);
+        const bh     = lines.length * 11 * 0.45;
+        if (y + bh > pageH - margin) { doc.addPage(); y = margin; }
+        doc.text(lines, margin + 4, y); y += bh + 2;
+
+      } else if (b.type === 'table' && b.rows.length) {
+        if (y > pageH - 60) { doc.addPage(); y = margin; }
+        doc.autoTable({
+          startY: y, head: [b.rows[0]], body: b.rows.slice(1),
+          margin: { left: margin, right: margin },
+          styles: { fontSize: 9, cellPadding: 3, lineColor: [209,213,219], lineWidth: 0.3 },
+          headStyles: { fillColor: [243,244,246], textColor: [55,65,81], fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [249,250,251] }, theme: 'grid',
+        });
+        y = doc.lastAutoTable.finalY + 6;
+      }
+
+      if (i % 20 === 0) { setProgress(30 + Math.floor((i / blocks.length) * 65)); await tick(); }
+    }
+
+    doc.save(currentFile.name.replace(/\.docx$/i, '') + '.pdf');
+  }
+
+  function extractBlocks(container) {
+    const blocks = [];
+    container.childNodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const t = node.textContent.trim();
+        if (t) blocks.push({ type: 'paragraph', text: t });
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(tag)) {
+        blocks.push({ type: 'heading', level: parseInt(tag[1]), text: node.textContent.trim() });
+      } else if (tag === 'table') {
+        const rows = [];
+        node.querySelectorAll('tr').forEach(tr => {
+          const cells = []; tr.querySelectorAll('th,td').forEach(c => cells.push(c.textContent.trim()));
+          if (cells.length) rows.push(cells);
+        });
+        if (rows.length) blocks.push({ type: 'table', rows });
+      } else if (tag === 'ul' || tag === 'ol') {
+        node.querySelectorAll(':scope > li').forEach((li, idx) => {
+          blocks.push({ type: 'list-item', text: li.textContent.trim(), ordered: tag === 'ol', index: idx });
+        });
+      } else {
+        const t = node.textContent.trim();
+        if (t) blocks.push({ type: 'paragraph', text: t });
+      }
+    });
+    return blocks;
+  }
+
+  // ─── XLSX → PDF (chunked, non-blocking) ──────────────
+  async function convertXlsxToPdf() {
+    const { jsPDF } = window.jspdf;
+    const sheets    = parsedData.sheets;
+    const doc       = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const margin    = 14;
+
+    for (let s = 0; s < sheets.length; s++) {
+      const sheet = sheets[s];
+      if (s > 0) doc.addPage();
+
+      const baseP = Math.round(5 + (s / sheets.length) * 90);
+      setProgress(baseP, baseP);
+      await tick();
+
+      doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(31, 41, 55);
+      doc.text(sheet.name, margin, margin + 4);
+
+      const allRows = sheet.data;
+      if (!allRows.length || (allRows.length === 1 && allRows[0].every(c => c === ''))) {
+        doc.setFontSize(10); doc.setFont('helvetica', 'italic');
+        doc.setTextColor(156, 163, 175);
+        doc.text('Empty sheet', margin, margin + 14);
+        continue;
+      }
+
+      const headerRow = allRows[0].map(formatCell);
+      const bodyRows  = allRows.slice(1);
+      const colCount  = headerRow.length;
+      const fontSize  = colCount > 12 ? 7 : colCount > 8 ? 8 : 9;
+
+      // Process in chunks — prevents autoTable from locking up on large sheets
+      let startY       = margin + 8;
+      let isFirstChunk = true;
+
+      for (let rowStart = 0; rowStart < bodyRows.length; rowStart += PDF_CHUNK_SIZE) {
+        const chunk = bodyRows
+          .slice(rowStart, rowStart + PDF_CHUNK_SIZE)
+          .map(row => row.map(formatCell));
+
+        doc.autoTable({
+          startY,
+          head: isFirstChunk ? [headerRow] : undefined,
+          body: chunk,
+          margin: { left: margin, right: margin },
+          styles: { fontSize, cellPadding: 2.5, lineColor: [226,232,240], lineWidth: 0.25, textColor: [31,41,55], overflow: 'linebreak' },
+          headStyles: { fillColor: [241,245,249], textColor: [55,65,81], fontStyle: 'bold', lineWidth: 0.25 },
+          alternateRowStyles: { fillColor: [248,250,252] },
+          theme: 'grid', tableWidth: 'auto', pageBreak: 'auto',
+          showHead: isFirstChunk ? 'firstPage' : 'never',
+        });
+
+        startY       = doc.lastAutoTable.finalY + 2;
+        isFirstChunk = false;
+
+        const p = Math.min(baseP + Math.round(((rowStart + PDF_CHUNK_SIZE) / bodyRows.length) * (90 / sheets.length)), 95);
+        setProgress(p, p);
+        await tick(); // yield between chunks — keeps browser alive
+      }
+    }
+
+    doc.save(currentFile.name.replace(/\.xlsx$/i, '') + '.pdf');
+  }
+});
+</script>
+</body>
+</html>
