@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Convert Word (.docx) and Excel (.xlsx) files to PDF format. Each Excel sheet becomes a separate PDF page." />
+  <meta name="keywords" content="DOCX, XLSX, PDF, Convert, Word, Excel" />
+  <title>Office to PDF Converter</title>
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+
+  <!-- Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.4/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f5f7fa;
+      color: #1f2937;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      text-align: center;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #6b7280;
+      font-size: 0.95rem;
+      margin-bottom: 36px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      background: #ffffff;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 24px;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .drop-zone-icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+      color: #94a3b8;
+    }
+
+    .drop-zone-text {
+      font-size: 1rem;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+
+    .drop-zone-hint {
+      font-size: 0.82rem;
+      color: #94a3b8;
+    }
+
+    input[type="file"] { display: none; }
+
+    /* File info bar */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px 20px;
+      margin-bottom: 24px;
+    }
+
+    .file-info.visible { display: flex; }
+
+    .file-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.7rem;
+      color: #fff;
+      flex-shrink: 0;
+      text-transform: uppercase;
+    }
+
+    .file-icon.docx { background: #2563eb; }
+    .file-icon.xlsx { background: #16a34a; }
+
+    .file-meta { flex: 1; min-width: 0; }
+
+    .file-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-size {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    .btn-remove {
+      background: none;
+      border: none;
+      color: #9ca3af;
+      font-size: 1.25rem;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+    }
+
+    .btn-remove:hover { color: #ef4444; }
+
+    /* Convert button */
+    .btn-convert {
+      display: none;
+      width: 100%;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: #2563eb;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 24px;
+    }
+
+    .btn-convert.visible { display: block; }
+    .btn-convert:hover { background: #1d4ed8; }
+    .btn-convert:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* Progress */
+    .progress-bar {
+      display: none;
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 2px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .progress-bar.visible { display: block; }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #2563eb;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    /* Preview area */
+    .preview {
+      display: none;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .preview.visible { display: block; }
+
+    .preview-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #374151;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .preview-body {
+      padding: 24px;
+      max-height: 600px;
+      overflow: auto;
+    }
+
+    /* DOCX preview */
+    .docx-preview {
+      font-family: 'Times New Roman', Georgia, serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #1f2937;
+    }
+
+    .docx-preview h1 { font-size: 1.6em; margin: 0.6em 0 0.3em; }
+    .docx-preview h2 { font-size: 1.35em; margin: 0.5em 0 0.25em; }
+    .docx-preview h3 { font-size: 1.15em; margin: 0.4em 0 0.2em; }
+    .docx-preview p { margin: 0.4em 0; }
+    .docx-preview ul, .docx-preview ol { margin: 0.4em 0; padding-left: 1.8em; }
+    .docx-preview table { border-collapse: collapse; width: 100%; margin: 0.6em 0; }
+    .docx-preview th, .docx-preview td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; font-size: 0.92em; }
+    .docx-preview th { background: #f3f4f6; font-weight: 600; }
+    .docx-preview img { max-width: 100%; height: auto; }
+
+    /* XLSX tabs + table */
+    .sheet-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 0 20px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      overflow-x: auto;
+    }
+
+    .sheet-tab {
+      padding: 10px 18px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #6b7280;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .sheet-tab:hover { color: #374151; }
+    .sheet-tab.active { color: #2563eb; border-bottom-color: #2563eb; font-weight: 600; }
+
+    .sheet-content { display: none; }
+    .sheet-content.active { display: block; }
+
+    .xlsx-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .xlsx-table th, .xlsx-table td {
+      border: 1px solid #e5e7eb;
+      padding: 7px 12px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .xlsx-table th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #374151;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .xlsx-table tr:nth-child(even) td { background: #fafbfc; }
+    .xlsx-table tr:hover td { background: #eff6ff; }
+
+    /* Status messages */
+    .status {
+      display: none;
+      text-align: center;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+    }
+
+    .status.visible { display: block; }
+    .status.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .status.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* Back link */
+    .back-link {
+      display: inline-block;
+      margin-bottom: 24px;
+      color: #6b7280;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    .back-link:hover { color: #2563eb; }
+
+    @media (max-width: 600px) {
+      .container { padding: 24px 16px; }
+      h1 { font-size: 1.4rem; }
+      .drop-zone { padding: 32px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">&larr; Back to home</a>
+
+    <h1>Office to PDF Converter</h1>
+    <p class="subtitle">Convert Word and Excel files to PDF &mdash; entirely in your browser</p>
+
+    <!-- Drop zone -->
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-zone-icon">&#128196;</div>
+      <div class="drop-zone-text">Drop a file here or click to browse</div>
+      <div class="drop-zone-hint">Supports .docx and .xlsx files</div>
+    </div>
+    <input type="file" id="fileInput" accept=".docx,.xlsx" />
+
+    <!-- File info -->
+    <div class="file-info" id="fileInfo">
+      <div class="file-icon" id="fileIcon">—</div>
+      <div class="file-meta">
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+      <button class="btn-remove" id="btnRemove" title="Remove file">&times;</button>
+    </div>
+
+    <!-- Convert button -->
+    <button class="btn-convert" id="btnConvert">Convert to PDF</button>
+
+    <!-- Progress -->
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <!-- Status -->
+    <div class="status" id="status"></div>
+
+    <!-- Preview -->
+    <div class="preview" id="preview">
+      <div class="preview-header">
+        <span id="previewTitle">Preview</span>
+      </div>
+      <div id="sheetTabs" class="sheet-tabs" style="display:none;"></div>
+      <div class="preview-body" id="previewBody"></div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    const { jsPDF } = window.jspdf;
+
+    // DOM references
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileIcon = document.getElementById('fileIcon');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const btnRemove = document.getElementById('btnRemove');
+    const btnConvert = document.getElementById('btnConvert');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const statusEl = document.getElementById('status');
+    const preview = document.getElementById('preview');
+    const previewTitle = document.getElementById('previewTitle');
+    const sheetTabs = document.getElementById('sheetTabs');
+    const previewBody = document.getElementById('previewBody');
+
+    let currentFile = null;
+    let parsedData = null; // { type: 'docx'|'xlsx', html?, sheets? }
+
+    // ─── Helpers ──────────────────────────────────────────
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function show(el, cls) { el.classList.add(cls || 'visible'); }
+    function hide(el, cls) { el.classList.remove(cls || 'visible'); }
+
+    function setProgress(pct) {
+      progressFill.style.width = pct + '%';
+    }
+
+    function showStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = 'status visible ' + type;
+    }
+
+    function resetUI() {
+      currentFile = null;
+      parsedData = null;
+      hide(fileInfo);
+      hide(btnConvert);
+      hide(progressBar);
+      hide(preview);
+      statusEl.className = 'status';
+      previewBody.innerHTML = '';
+      sheetTabs.innerHTML = '';
+      sheetTabs.style.display = 'none';
+      setProgress(0);
+    }
+
+    // ─── File handling ────────────────────────────────────
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) handleFile(fileInput.files[0]);
+    });
+
+    btnRemove.addEventListener('click', () => {
+      resetUI();
+      fileInput.value = '';
+    });
+
+    async function handleFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext !== 'docx' && ext !== 'xlsx') {
+        showStatus('Unsupported file type. Please use .docx or .xlsx files.', 'error');
+        return;
+      }
+
+      resetUI();
+      currentFile = file;
+
+      // Show file info
+      fileName.textContent = file.name;
+      fileSize.textContent = formatBytes(file.size);
+      fileIcon.textContent = ext.toUpperCase();
+      fileIcon.className = 'file-icon ' + ext;
+      show(fileInfo);
+      show(btnConvert);
+
+      // Parse and preview
+      try {
+        if (ext === 'docx') {
+          await parseDocx(file);
+        } else {
+          await parseXlsx(file);
+        }
+      } catch (err) {
+        showStatus('Error reading file: ' + err.message, 'error');
+      }
+    }
+
+    // ─── DOCX parsing ────────────────────────────────────
+    async function parseDocx(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      parsedData = { type: 'docx', html: result.value };
+
+      previewTitle.textContent = 'Document Preview';
+      previewBody.innerHTML = '<div class="docx-preview">' + result.value + '</div>';
+      show(preview);
+    }
+
+    // ─── XLSX parsing ─────────────────────────────────────
+    async function parseXlsx(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+      const sheets = [];
+
+      workbook.SheetNames.forEach((name) => {
+        const ws = workbook.Sheets[name];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        sheets.push({ name, data: json });
+      });
+
+      parsedData = { type: 'xlsx', sheets };
+
+      previewTitle.textContent = 'Spreadsheet Preview';
+
+      // Build tabs
+      if (sheets.length > 1) {
+        sheetTabs.style.display = 'flex';
+        sheets.forEach((s, i) => {
+          const tab = document.createElement('button');
+          tab.className = 'sheet-tab' + (i === 0 ? ' active' : '');
+          tab.textContent = s.name;
+          tab.addEventListener('click', () => switchTab(i));
+          sheetTabs.appendChild(tab);
+        });
+      }
+
+      // Build sheet tables
+      previewBody.innerHTML = '';
+      sheets.forEach((s, i) => {
+        const div = document.createElement('div');
+        div.className = 'sheet-content' + (i === 0 ? ' active' : '');
+        div.id = 'sheet-' + i;
+        div.appendChild(buildTable(s.data));
+        previewBody.appendChild(div);
+      });
+
+      show(preview);
+    }
+
+    function buildTable(data) {
+      if (!data.length) {
+        const p = document.createElement('p');
+        p.textContent = 'Empty sheet';
+        p.style.color = '#9ca3af';
+        return p;
+      }
+
+      const table = document.createElement('table');
+      table.className = 'xlsx-table';
+      const headerRow = data[0];
+
+      const thead = document.createElement('thead');
+      const headTr = document.createElement('tr');
+      headerRow.forEach((cell) => {
+        const th = document.createElement('th');
+        th.textContent = formatCell(cell);
+        headTr.appendChild(th);
+      });
+      thead.appendChild(headTr);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      for (let r = 1; r < data.length; r++) {
+        const tr = document.createElement('tr');
+        for (let c = 0; c < headerRow.length; c++) {
+          const td = document.createElement('td');
+          td.textContent = formatCell(data[r][c]);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      return table;
+    }
+
+    function formatCell(val) {
+      if (val === undefined || val === null) return '';
+      if (val instanceof Date) {
+        return val.toLocaleDateString();
+      }
+      return String(val);
+    }
+
+    function switchTab(index) {
+      document.querySelectorAll('.sheet-tab').forEach((t, i) => {
+        t.classList.toggle('active', i === index);
+      });
+      document.querySelectorAll('.sheet-content').forEach((c, i) => {
+        c.classList.toggle('active', i === index);
+      });
+    }
+
+    // ─── PDF conversion ──────────────────────────────────
+    btnConvert.addEventListener('click', async () => {
+      if (!parsedData) return;
+      btnConvert.disabled = true;
+      btnConvert.textContent = 'Converting…';
+      show(progressBar);
+      setProgress(10);
+
+      try {
+        if (parsedData.type === 'docx') {
+          await convertDocxToPdf();
+        } else {
+          await convertXlsxToPdf();
+        }
+        showStatus('PDF created successfully!', 'success');
+      } catch (err) {
+        showStatus('Conversion error: ' + err.message, 'error');
+      } finally {
+        btnConvert.disabled = false;
+        btnConvert.textContent = 'Convert to PDF';
+        setProgress(100);
+        setTimeout(() => hide(progressBar), 800);
+      }
+    });
+
+    // ─── DOCX → PDF ──────────────────────────────────────
+    async function convertDocxToPdf() {
+      setProgress(30);
+
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const usableWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      // Parse the HTML into structured blocks
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = parsedData.html;
+
+      const blocks = extractBlocks(tempDiv);
+      setProgress(50);
+
+      for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i];
+
+        if (block.type === 'heading') {
+          const fontSize = block.level === 1 ? 18 : block.level === 2 ? 15 : 13;
+          doc.setFontSize(fontSize);
+          doc.setFont('helvetica', 'bold');
+          const lines = doc.splitTextToSize(block.text, usableWidth);
+          const blockHeight = lines.length * fontSize * 0.45;
+
+          if (y + blockHeight > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(lines, margin, y);
+          y += blockHeight + 4;
+
+        } else if (block.type === 'paragraph') {
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          const lines = doc.splitTextToSize(block.text, usableWidth);
+          const blockHeight = lines.length * 11 * 0.45;
+
+          if (y + blockHeight > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(lines, margin, y);
+          y += blockHeight + 3;
+
+        } else if (block.type === 'list-item') {
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          const bullet = block.ordered ? (block.index + 1) + '. ' : '\u2022  ';
+          const itemText = bullet + block.text;
+          const lines = doc.splitTextToSize(itemText, usableWidth - 6);
+          const blockHeight = lines.length * 11 * 0.45;
+
+          if (y + blockHeight > pageHeight - margin) {
+            doc.addPage();
+            y = margin;
+          }
+          doc.text(lines, margin + 4, y);
+          y += blockHeight + 2;
+
+        } else if (block.type === 'table') {
+          if (block.rows.length > 0) {
+            if (y > pageHeight - 60) {
+              doc.addPage();
+              y = margin;
+            }
+            doc.autoTable({
+              startY: y,
+              head: [block.rows[0]],
+              body: block.rows.slice(1),
+              margin: { left: margin, right: margin },
+              styles: { fontSize: 9, cellPadding: 3, lineColor: [209, 213, 219], lineWidth: 0.3 },
+              headStyles: { fillColor: [243, 244, 246], textColor: [55, 65, 81], fontStyle: 'bold' },
+              alternateRowStyles: { fillColor: [249, 250, 251] },
+              theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 6;
+          }
+        }
+
+        setProgress(50 + Math.floor((i / blocks.length) * 40));
+      }
+
+      const pdfName = currentFile.name.replace(/\.docx$/i, '') + '.pdf';
+      doc.save(pdfName);
+      setProgress(100);
+    }
+
+    function extractBlocks(container) {
+      const blocks = [];
+      const children = container.childNodes;
+
+      for (let i = 0; i < children.length; i++) {
+        const node = children[i];
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent.trim();
+          if (text) blocks.push({ type: 'paragraph', text });
+          continue;
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+
+        const tag = node.tagName.toLowerCase();
+
+        if (/^h[1-6]$/.test(tag)) {
+          blocks.push({ type: 'heading', level: parseInt(tag[1]), text: node.textContent.trim() });
+        } else if (tag === 'table') {
+          const rows = [];
+          node.querySelectorAll('tr').forEach((tr) => {
+            const cells = [];
+            tr.querySelectorAll('th, td').forEach((cell) => {
+              cells.push(cell.textContent.trim());
+            });
+            if (cells.length) rows.push(cells);
+          });
+          if (rows.length) blocks.push({ type: 'table', rows });
+        } else if (tag === 'ul' || tag === 'ol') {
+          const items = node.querySelectorAll(':scope > li');
+          items.forEach((li, idx) => {
+            blocks.push({ type: 'list-item', text: li.textContent.trim(), ordered: tag === 'ol', index: idx });
+          });
+        } else {
+          const text = node.textContent.trim();
+          if (text) blocks.push({ type: 'paragraph', text });
+        }
+      }
+      return blocks;
+    }
+
+    // ─── XLSX → PDF ──────────────────────────────────────
+    async function convertXlsxToPdf() {
+      const sheets = parsedData.sheets;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const margin = 14;
+
+      for (let s = 0; s < sheets.length; s++) {
+        const sheet = sheets[s];
+        if (s > 0) doc.addPage();
+
+        setProgress(20 + Math.floor((s / sheets.length) * 70));
+
+        // Sheet title
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(31, 41, 55);
+        doc.text(sheet.name, margin, margin + 4);
+
+        if (!sheet.data.length || (sheet.data.length === 1 && sheet.data[0].every(c => c === ''))) {
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'italic');
+          doc.setTextColor(156, 163, 175);
+          doc.text('Empty sheet', margin, margin + 14);
+          continue;
+        }
+
+        const head = [sheet.data[0].map((c) => formatCell(c))];
+        const body = sheet.data.slice(1).map((row) =>
+          row.map((c) => formatCell(c))
+        );
+
+        // Compute column count to decide font size
+        const colCount = head[0].length;
+        let fontSize = 9;
+        if (colCount > 12) fontSize = 7;
+        else if (colCount > 8) fontSize = 8;
+
+        doc.autoTable({
+          startY: margin + 8,
+          head: head,
+          body: body,
+          margin: { left: margin, right: margin },
+          styles: {
+            fontSize: fontSize,
+            cellPadding: 2.5,
+            lineColor: [226, 232, 240],
+            lineWidth: 0.25,
+            textColor: [31, 41, 55],
+            overflow: 'linebreak',
+          },
+          headStyles: {
+            fillColor: [241, 245, 249],
+            textColor: [55, 65, 81],
+            fontStyle: 'bold',
+            lineWidth: 0.25,
+          },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          theme: 'grid',
+          tableWidth: 'auto',
+        });
+      }
+
+      const pdfName = currentFile.name.replace(/\.xlsx$/i, '') + '.pdf';
+      doc.save(pdfName);
+      setProgress(100);
+    }
+  })();
+  </script>
+</body>
+</html>
