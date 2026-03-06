@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Interactive 2D Matrix Transformation Visualizer: rotation, reflection, scaling, shear, projection, translation. Animated objects, SVD decomposition, composition of transformations.">
+  <meta name="keywords" content="Linear Algebra, Matrix Transformations, 2D, Rotation, Reflection, Scaling, Shear, Translation, SVD, Decomposition, Visualization">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+  <title>2D Matrix Transformation Visualizer</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-light: #6366f1;
+      --surface: #ffffff;
+      --bg: #f0f4f8;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh;
+    }
+    .main-container {
+      max-width: 1800px; margin: 70px auto 20px; padding: 20px;
+      display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap;
+    }
+
+    /* Left Panel */
+    .left-panel { flex: 0 0 310px; display: flex; flex-direction: column; gap: 14px; }
+    .panel-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 16px; box-shadow: var(--shadow); border: 1px solid var(--border);
+    }
+    .panel-card h3 {
+      font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1.1px;
+      color: var(--text-muted); margin-bottom: 12px; font-weight: 700;
+    }
+
+    /* Center */
+    .center-panel {
+      flex: 1 1 650px; display: flex; flex-direction: column; align-items: center; gap: 14px;
+    }
+    .equation-bar {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 20px; box-shadow: var(--shadow);
+      text-align: center; width: 100%;
+    }
+    .equation-bar .katex { font-size: 1.1rem; }
+    .canvas-wrap {
+      background: var(--surface); border-radius: var(--radius); padding: 12px;
+      box-shadow: var(--shadow); border: 1px solid var(--border); position: relative;
+    }
+    canvas {
+      border: 1px solid #e5e7eb; border-radius: 8px;
+      background: #fafbfc; display: block; cursor: crosshair;
+    }
+
+    /* Right Panel */
+    .right-panel { flex: 0 0 330px; display: flex; flex-direction: column; gap: 14px; }
+    .examples-header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      color: white; padding: 10px 16px; border-radius: var(--radius) var(--radius) 0 0;
+      font-size: 1rem; font-weight: 700; text-align: center; margin: -16px -16px 12px;
+    }
+    .example-item {
+      padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid #e5e7eb;
+      background: #f8fafc; margin-bottom: 8px; transition: all 0.2s;
+    }
+    .example-item:hover {
+      background: #f0f9ff; border-color: #3b82f6;
+      transform: translateY(-1px); box-shadow: 0 3px 10px rgba(59,130,246,0.15);
+    }
+    .example-item h4 { font-size: 0.85rem; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+    .example-item .katex { font-size: 0.8rem; }
+
+    /* Controls */
+    .ctrl-group { margin-bottom: 12px; }
+    .ctrl-group label {
+      display: block; font-size: 0.8rem; font-weight: 600;
+      color: #334155; margin-bottom: 4px;
+    }
+    .ctrl-group label .unit { font-weight: 400; color: var(--text-muted); }
+    select, input[type="number"] {
+      width: 100%; padding: 8px 10px; border: 1.5px solid var(--border);
+      border-radius: 8px; font-size: 0.88rem; color: var(--text);
+      background: #f8fafc; outline: none; transition: border-color 0.2s;
+    }
+    select:focus, input[type="number"]:focus { border-color: var(--primary); }
+    input[type="range"] { width: 100%; accent-color: var(--primary); }
+    .range-row { display: flex; align-items: center; gap: 8px; }
+    .range-row input[type="range"] { flex: 1; }
+    .range-val {
+      font-size: 0.82rem; font-weight: 600; color: var(--primary);
+      min-width: 42px; text-align: right;
+    }
+
+    /* Matrix input */
+    .matrix-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+      max-width: 200px; margin: 6px auto;
+    }
+    .matrix-grid input {
+      width: 100%; text-align: center; padding: 8px 4px;
+      border: 2px solid var(--border); border-radius: 8px;
+      font-size: 0.95rem; font-weight: 600;
+    }
+    .matrix-grid input:focus { border-color: var(--primary); outline: none; }
+    .matrix-brackets {
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .bracket {
+      font-size: 3rem; font-weight: 200; color: #94a3b8; line-height: 1;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 8px; font-weight: 600;
+      font-size: 0.82rem; color: white; cursor: pointer;
+      transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: linear-gradient(135deg, #4f46e5, #6366f1); }
+    .btn-success { background: linear-gradient(135deg, #10b981, #34d399); }
+    .btn-danger { background: linear-gradient(135deg, #ef4444, #f87171); }
+    .btn-info { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+    .btn-amber { background: linear-gradient(135deg, #f59e0b, #fbbf24); color: #1e293b; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* Checkbox */
+    .chk-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+    .chk-row input { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+    .chk-row label { font-size: 0.82rem; color: #334155; cursor: pointer; font-weight: 500; }
+
+    /* Info boxes */
+    .info-box {
+      background: #f1f5f9; border-radius: 8px; padding: 10px 14px;
+      border: 1px solid var(--border); margin-bottom: 10px;
+    }
+    .info-box h4 {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); margin-bottom: 6px; font-weight: 700;
+    }
+    .info-box .katex { font-size: 0.9rem; }
+    .info-val { font-size: 0.88rem; font-weight: 600; color: var(--text); }
+    .det-positive { color: #059669; }
+    .det-negative { color: #dc2626; }
+    .det-zero { color: #d97706; }
+
+    /* Composition queue */
+    .queue-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px; background: #f8fafc; border-radius: 6px;
+      border: 1px solid var(--border); margin-bottom: 4px; font-size: 0.8rem;
+    }
+    .queue-item .remove-btn {
+      background: none; border: none; color: #ef4444; cursor: pointer;
+      font-size: 1rem; padding: 0 4px; font-weight: 700;
+    }
+    .queue-item .remove-btn:hover { color: #dc2626; }
+
+    /* Decomposition display */
+    .decomp-step {
+      padding: 8px; border-radius: 6px; margin-bottom: 6px;
+      border: 1px solid var(--border); transition: all 0.3s;
+    }
+    .decomp-step.active { border-color: var(--primary); background: #eef2ff; }
+    .decomp-step .step-label {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.8px;
+      color: var(--text-muted); font-weight: 700; margin-bottom: 4px;
+    }
+
+    /* Legend */
+    .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 0.75rem; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-swatch { width: 14px; height: 3px; border-radius: 2px; }
+
+    /* Responsive */
+    @media (max-width: 1400px) {
+      .main-container { gap: 14px; }
+      .left-panel { flex: 0 0 280px; }
+      .right-panel { flex: 0 0 300px; }
+    }
+    @media (max-width: 1100px) {
+      .main-container { flex-direction: column; align-items: center; }
+      .left-panel, .right-panel { flex: 1 1 100%; max-width: 700px; }
+      .center-panel { order: -1; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Nav -->
+  <div class="w-full bg-white shadow-md fixed top-0 left-0 z-50">
+    <nav class="max-w-5xl mx-auto px-4 py-3">
+      <ul class="flex justify-center space-x-4 sm:space-x-6">
+        <li><a href="index.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Numerical Methods</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div style="max-width:1800px; margin:70px auto 0; padding:20px 20px 0; text-align:center;">
+    <h1 style="font-size:2.2rem; font-weight:800; color:#1e293b; margin-bottom:4px;">2D Matrix Transformation Visualizer</h1>
+    <p style="font-size:1.05rem; color:#64748b; max-width:750px; margin:0 auto;">
+      Explore how linear and affine transformations act on objects in the plane. Animate rotations, reflections, scaling, shear, and projections. Decompose any matrix via SVD and compose sequences of transformations.
+    </p>
+  </div>
+
+  <div class="main-container" style="margin-top:10px;">
+    <!-- ===== LEFT PANEL ===== -->
+    <div class="left-panel">
+      <!-- Transformation Type -->
+      <div class="panel-card">
+        <h3>Transformation</h3>
+        <div class="ctrl-group">
+          <label>Type</label>
+          <select id="transform-type" onchange="onTransformTypeChange()">
+            <option value="rotation">Rotation</option>
+            <option value="reflection">Reflection</option>
+            <option value="scaling">Scaling</option>
+            <option value="shear">Shear</option>
+            <option value="projection">Projection</option>
+            <option value="custom">Custom Matrix</option>
+          </select>
+        </div>
+
+        <!-- Rotation params -->
+        <div id="params-rotation" class="param-section">
+          <div class="ctrl-group">
+            <label>Angle <span class="unit">(degrees)</span></label>
+            <div class="range-row">
+              <input type="range" id="rot-angle" min="-360" max="360" value="45" step="1" oninput="onParamChange()">
+              <span class="range-val" id="rot-angle-val">45°</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reflection params -->
+        <div id="params-reflection" class="param-section" style="display:none">
+          <div class="ctrl-group">
+            <label>Reflect across</label>
+            <select id="reflect-axis" onchange="onParamChange()">
+              <option value="x">x-axis</option>
+              <option value="y">y-axis</option>
+              <option value="yx">Line y = x</option>
+              <option value="ynx">Line y = &minus;x</option>
+              <option value="custom">Custom angle</option>
+            </select>
+          </div>
+          <div class="ctrl-group" id="reflect-angle-group" style="display:none">
+            <label>Line angle <span class="unit">(degrees)</span></label>
+            <div class="range-row">
+              <input type="range" id="reflect-angle" min="0" max="180" value="30" step="1" oninput="onParamChange()">
+              <span class="range-val" id="reflect-angle-val">30°</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scaling params -->
+        <div id="params-scaling" class="param-section" style="display:none">
+          <div class="ctrl-group">
+            <label>Scale x <span class="unit">(s<sub>x</sub>)</span></label>
+            <div class="range-row">
+              <input type="range" id="scale-x" min="-3" max="3" value="2" step="0.1" oninput="onParamChange()">
+              <span class="range-val" id="scale-x-val">2.0</span>
+            </div>
+          </div>
+          <div class="ctrl-group">
+            <label>Scale y <span class="unit">(s<sub>y</sub>)</span></label>
+            <div class="range-row">
+              <input type="range" id="scale-y" min="-3" max="3" value="1" step="0.1" oninput="onParamChange()">
+              <span class="range-val" id="scale-y-val">1.0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shear params -->
+        <div id="params-shear" class="param-section" style="display:none">
+          <div class="ctrl-group">
+            <label>Direction</label>
+            <select id="shear-dir" onchange="onParamChange()">
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+          </div>
+          <div class="ctrl-group">
+            <label>Shear factor <span class="unit">(k)</span></label>
+            <div class="range-row">
+              <input type="range" id="shear-k" min="-3" max="3" value="1" step="0.1" oninput="onParamChange()">
+              <span class="range-val" id="shear-k-val">1.0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Projection params -->
+        <div id="params-projection" class="param-section" style="display:none">
+          <div class="ctrl-group">
+            <label>Project onto</label>
+            <select id="proj-target" onchange="onParamChange()">
+              <option value="x">x-axis</option>
+              <option value="y">y-axis</option>
+              <option value="custom">Line at angle</option>
+            </select>
+          </div>
+          <div class="ctrl-group" id="proj-angle-group" style="display:none">
+            <label>Line angle <span class="unit">(degrees)</span></label>
+            <div class="range-row">
+              <input type="range" id="proj-angle" min="0" max="180" value="45" step="1" oninput="onParamChange()">
+              <span class="range-val" id="proj-angle-val">45°</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom matrix -->
+        <div id="params-custom" class="param-section" style="display:none">
+          <div class="ctrl-group">
+            <label>Enter 2&times;2 matrix</label>
+            <div class="matrix-brackets">
+              <span class="bracket">[</span>
+              <div class="matrix-grid">
+                <input type="number" id="m00" value="1" step="0.1" oninput="onParamChange()">
+                <input type="number" id="m01" value="0" step="0.1" oninput="onParamChange()">
+                <input type="number" id="m10" value="0" step="0.1" oninput="onParamChange()">
+                <input type="number" id="m11" value="1" step="0.1" oninput="onParamChange()">
+              </div>
+              <span class="bracket">]</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Translation (always visible) -->
+        <div class="ctrl-group" style="margin-top:8px; padding-top:10px; border-top:1px solid var(--border);">
+          <label>Translation <span class="unit">(affine shift)</span></label>
+          <div style="display:flex; gap:8px;">
+            <div style="flex:1">
+              <label style="font-size:0.72rem; color:var(--text-muted)">t<sub>x</sub></label>
+              <input type="number" id="tx" value="0" step="0.1" style="padding:6px 8px" oninput="onParamChange()">
+            </div>
+            <div style="flex:1">
+              <label style="font-size:0.72rem; color:var(--text-muted)">t<sub>y</sub></label>
+              <input type="number" id="ty" value="0" step="0.1" style="padding:6px 8px" oninput="onParamChange()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Object & Display -->
+      <div class="panel-card">
+        <h3>Object &amp; Display</h3>
+        <div class="ctrl-group">
+          <label>Object shape</label>
+          <select id="object-type" onchange="onObjectChange()">
+            <option value="house">House</option>
+            <option value="letterF">Letter F</option>
+            <option value="arrow">Arrow</option>
+            <option value="star">Star</option>
+            <option value="boat">Sailboat</option>
+          </select>
+        </div>
+        <div class="chk-row">
+          <input type="checkbox" id="show-grid" checked onchange="requestDraw()">
+          <label for="show-grid">Show transformed grid</label>
+        </div>
+        <div class="chk-row">
+          <input type="checkbox" id="show-ghost" checked onchange="requestDraw()">
+          <label for="show-ghost">Show original (ghost)</label>
+        </div>
+        <div class="chk-row">
+          <input type="checkbox" id="show-basis" checked onchange="requestDraw()">
+          <label for="show-basis">Show basis vectors</label>
+        </div>
+        <div class="chk-row">
+          <input type="checkbox" id="show-circle" checked onchange="requestDraw()">
+          <label for="show-circle">Show unit circle &rarr; ellipse</label>
+        </div>
+        <div class="chk-row">
+          <input type="checkbox" id="show-eigen" onchange="requestDraw()">
+          <label for="show-eigen">Show eigenvectors</label>
+        </div>
+      </div>
+
+      <!-- Animation -->
+      <div class="panel-card">
+        <h3>Animation</h3>
+        <div class="btn-row" style="margin-bottom:10px">
+          <button class="btn btn-primary" id="btn-animate" onclick="startAnimation()">&#9654; Animate</button>
+          <button class="btn btn-danger" onclick="resetAnimation()">&#8634; Reset</button>
+        </div>
+        <div class="ctrl-group">
+          <label>Speed</label>
+          <div class="range-row">
+            <input type="range" id="anim-speed" min="0.2" max="3" value="1" step="0.1">
+            <span class="range-val" id="anim-speed-val">1.0&times;</span>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-amber" onclick="startDecomposition()" title="Animate the SVD decomposition: Rotate → Scale → Rotate">&#9881; Decompose (SVD)</button>
+        </div>
+      </div>
+
+      <!-- Composition Queue -->
+      <div class="panel-card">
+        <h3>Composition Queue</h3>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">
+          Build a sequence of transformations. The product matrix is applied right-to-left.
+        </p>
+        <div class="btn-row" style="margin-bottom:8px">
+          <button class="btn btn-success" onclick="addToQueue()">+ Add Current</button>
+          <button class="btn btn-danger" onclick="clearQueue()" style="font-size:0.75rem; padding:6px 10px">Clear</button>
+        </div>
+        <div id="queue-list"></div>
+        <div id="queue-product" style="margin-top:6px"></div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-info" onclick="animateQueue()" id="btn-queue-play">&#9654; Play Sequence</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== CENTER PANEL ===== -->
+    <div class="center-panel">
+      <div class="equation-bar" id="equation-bar"></div>
+      <div class="canvas-wrap">
+        <canvas id="mainCanvas" width="650" height="650"></canvas>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> e₁ → Ae₁</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div> e₂ → Ae₂</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#a855f7; height:2px; border:1px dashed #a855f7"></div> Unit circle</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,0,0,0.12)"></div> Ghost (original)</div>
+      </div>
+    </div>
+
+    <!-- ===== RIGHT PANEL ===== -->
+    <div class="right-panel">
+      <!-- Math Info -->
+      <div class="panel-card">
+        <h3>Matrix Properties</h3>
+        <div class="info-box">
+          <h4>Determinant</h4>
+          <div id="det-display" class="info-val">1</div>
+        </div>
+        <div class="info-box">
+          <h4>Eigenvalues</h4>
+          <div id="eigen-display" class="info-val"></div>
+        </div>
+        <div class="info-box" id="svd-box">
+          <h4>SVD Decomposition</h4>
+          <div id="svd-display"></div>
+        </div>
+      </div>
+
+      <!-- Examples -->
+      <div class="panel-card" style="padding:0; overflow:hidden;">
+        <div class="examples-header">Preset Examples</div>
+        <div style="padding:12px; max-height:520px; overflow-y:auto;" id="examples-list"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const CX = W / 2, CY = H / 2;
+const GRID_RANGE = 4;
+const SCALE = W / (2 * GRID_RANGE);
+
+const state = {
+  matrix: [[1,0],[0,1]],
+  translation: [0,0],
+  objectType: 'house',
+  animT: 1,
+  animating: false,
+  animStartTime: 0,
+  animDuration: 1500,
+  decompMode: false,
+  decompPhase: 0,
+  decompSVD: null,
+  queueMode: false,
+  queueStep: 0,
+  queue: [],
+  drawRequested: false,
+};
+
+// ============================================================
+//  OBJECT DEFINITIONS
+// ============================================================
+const objectDefs = {
+  house: {
+    name: 'House',
+    parts: [
+      { verts: [[-0.50,-0.45],[0.50,-0.45],[0.50,0.15],[-0.50,0.15]], fill:'#F4A460', stroke:'#8B4513' },
+      { verts: [[-0.60,0.15],[0,0.60],[0.60,0.15]], fill:'#DC143C', stroke:'#8B0000' },
+      { verts: [[-0.10,-0.45],[0.10,-0.45],[0.10,-0.15],[-0.10,-0.15]], fill:'#654321', stroke:'#3E2723' },
+      { verts: [[0.18,-0.10],[0.40,-0.10],[0.40,0.08],[0.18,0.08]], fill:'#87CEEB', stroke:'#4682B4' },
+      { verts: [[-0.40,-0.10],[-0.18,-0.10],[-0.18,0.08],[-0.40,0.08]], fill:'#87CEEB', stroke:'#4682B4' },
+      { verts: [[0.22,0.30],[0.22,0.55],[0.37,0.55],[0.37,0.30]], fill:'#696969', stroke:'#444' },
+    ]
+  },
+  letterF: {
+    name: 'Letter F',
+    parts: [{
+      verts: [
+        [-0.30,-0.50],[-0.10,-0.50],[-0.10,-0.08],
+        [0.22,-0.08],[0.22,0.08],[-0.10,0.08],
+        [-0.10,0.28],[0.30,0.28],[0.30,0.50],
+        [-0.30,0.50]
+      ],
+      fill:'#3B82F6', stroke:'#1E40AF'
+    }]
+  },
+  arrow: {
+    name: 'Arrow',
+    parts: [{
+      verts: [
+        [-0.50,-0.10],[0.10,-0.10],[0.10,-0.28],
+        [0.55,0.00],
+        [0.10,0.28],[0.10,0.10],[-0.50,0.10]
+      ],
+      fill:'#10B981', stroke:'#065F46'
+    }]
+  },
+  star: {
+    name: 'Star',
+    parts: [{
+      verts: (function(){
+        const pts = [];
+        for(let i=0;i<10;i++){
+          const a = Math.PI/2 + i*Math.PI/5;
+          const r = i%2===0 ? 0.50 : 0.20;
+          pts.push([r*Math.cos(a), r*Math.sin(a)]);
+        }
+        return pts;
+      })(),
+      fill:'#F59E0B', stroke:'#B45309'
+    }]
+  },
+  boat: {
+    name: 'Sailboat',
+    parts: [
+      { verts: [[-0.50,-0.30],[-0.35,-0.50],[0.35,-0.50],[0.50,-0.30]], fill:'#8B4513', stroke:'#5D2E0C' },
+      { verts: [[-0.03,-0.30],[0.03,-0.30],[0.03,0.45],[-0.03,0.45]], fill:'#666', stroke:'#333' },
+      { verts: [[0.05,0.40],[0.05,-0.10],[0.42,0.08]], fill:'#FFFFFF', stroke:'#999' },
+      { verts: [[-0.05,0.40],[-0.05,0.00],[-0.30,0.12]], fill:'#EF4444', stroke:'#B91C1C' },
+    ]
+  }
+};
+
+// ============================================================
+//  EXAMPLES
+// ============================================================
+const examples = [
+  { name:'Rotation 45°', type:'rotation', params:{angle:45}, tx:0, ty:0 },
+  { name:'Rotation 90°', type:'rotation', params:{angle:90}, tx:0, ty:0 },
+  { name:'Rotation 180°', type:'rotation', params:{angle:180}, tx:0, ty:0 },
+  { name:'Reflect across x-axis', type:'reflection', params:{axis:'x'}, tx:0, ty:0 },
+  { name:'Reflect across y-axis', type:'reflection', params:{axis:'y'}, tx:0, ty:0 },
+  { name:'Reflect across y = x', type:'reflection', params:{axis:'yx'}, tx:0, ty:0 },
+  { name:'Reflect across y = −x', type:'reflection', params:{axis:'ynx'}, tx:0, ty:0 },
+  { name:'Horizontal stretch (2×)', type:'scaling', params:{sx:2, sy:1}, tx:0, ty:0 },
+  { name:'Vertical compression (0.5×)', type:'scaling', params:{sx:1, sy:0.5}, tx:0, ty:0 },
+  { name:'Uniform dilation (1.5×)', type:'scaling', params:{sx:1.5, sy:1.5}, tx:0, ty:0 },
+  { name:'Shrink (0.4×)', type:'scaling', params:{sx:0.4, sy:0.4}, tx:0, ty:0 },
+  { name:'Horizontal shear', type:'shear', params:{dir:'horizontal', k:1}, tx:0, ty:0 },
+  { name:'Vertical shear', type:'shear', params:{dir:'vertical', k:0.8}, tx:0, ty:0 },
+  { name:'Project onto x-axis', type:'projection', params:{target:'x'}, tx:0, ty:0 },
+  { name:'Project onto y = x', type:'projection', params:{target:'custom', angle:45}, tx:0, ty:0 },
+  { name:'Squeeze (area-preserving)', type:'custom', params:{m:[[2,0],[0,0.5]]}, tx:0, ty:0 },
+  { name:'Rotation 30° + translate', type:'rotation', params:{angle:30}, tx:1.5, ty:0.5 },
+  { name:'Shear + translate', type:'shear', params:{dir:'horizontal', k:0.7}, tx:0, ty:1 },
+];
+
+// ============================================================
+//  MATH UTILITIES
+// ============================================================
+function matMul(A,B){
+  return [
+    [A[0][0]*B[0][0]+A[0][1]*B[1][0], A[0][0]*B[0][1]+A[0][1]*B[1][1]],
+    [A[1][0]*B[0][0]+A[1][1]*B[1][0], A[1][0]*B[0][1]+A[1][1]*B[1][1]]
+  ];
+}
+function matVec(M,v){
+  return [M[0][0]*v[0]+M[0][1]*v[1], M[1][0]*v[0]+M[1][1]*v[1]];
+}
+function det2(M){ return M[0][0]*M[1][1]-M[0][1]*M[1][0]; }
+function transpose2(M){ return [[M[0][0],M[1][0]],[M[0][1],M[1][1]]]; }
+function lerpMatrix(A,B,t){
+  return [
+    [A[0][0]+(B[0][0]-A[0][0])*t, A[0][1]+(B[0][1]-A[0][1])*t],
+    [A[1][0]+(B[1][0]-A[1][0])*t, A[1][1]+(B[1][1]-A[1][1])*t]
+  ];
+}
+function lerpVec(a,b,t){ return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]; }
+function identity(){ return [[1,0],[0,1]]; }
+
+function rotMatrix(deg){
+  const r = deg*Math.PI/180;
+  return [[Math.cos(r),-Math.sin(r)],[Math.sin(r),Math.cos(r)]];
+}
+function scaleMatrix(sx,sy){ return [[sx,0],[0,sy]]; }
+function shearMatrix(dir,k){
+  return dir==='horizontal' ? [[1,k],[0,1]] : [[1,0],[k,1]];
+}
+function reflectMatrix(axis, angleDeg){
+  switch(axis){
+    case 'x': return [[1,0],[0,-1]];
+    case 'y': return [[-1,0],[0,1]];
+    case 'yx': return [[0,1],[1,0]];
+    case 'ynx': return [[0,-1],[-1,0]];
+    case 'custom': {
+      const a = angleDeg*Math.PI/180;
+      const c = Math.cos(2*a), s = Math.sin(2*a);
+      return [[c,s],[s,-c]];
+    }
+  }
+}
+function projMatrix(target, angleDeg){
+  switch(target){
+    case 'x': return [[1,0],[0,0]];
+    case 'y': return [[0,0],[0,1]];
+    case 'custom': {
+      const a = angleDeg*Math.PI/180;
+      const c = Math.cos(a), s = Math.sin(a);
+      return [[c*c, c*s],[c*s, s*s]];
+    }
+  }
+}
+
+function eigenvalues2(M){
+  const tr = M[0][0]+M[1][1];
+  const d = det2(M);
+  const disc = tr*tr - 4*d;
+  if(disc >= -1e-12){
+    const sqrtDisc = Math.sqrt(Math.max(0,disc));
+    return { real:true, l1:(tr+sqrtDisc)/2, l2:(tr-sqrtDisc)/2 };
+  } else {
+    const sqrtDisc = Math.sqrt(-disc);
+    return { real:false, re:tr/2, im:sqrtDisc/2 };
+  }
+}
+
+function eigenvectors2(M, eig){
+  if(!eig.real) return null;
+  const vecs = [];
+  for(const lam of [eig.l1, eig.l2]){
+    const a = M[0][0]-lam, b = M[0][1], c = M[1][0], d = M[1][1]-lam;
+    let v;
+    if(Math.abs(b) > 1e-10) v = [b, lam-M[0][0]];
+    else if(Math.abs(c) > 1e-10) v = [lam-M[1][1], c];
+    else v = [1, 0];
+    const n = Math.sqrt(v[0]*v[0]+v[1]*v[1]);
+    if(n > 1e-14) v = [v[0]/n, v[1]/n];
+    vecs.push(v);
+  }
+  return vecs;
+}
+
+function svd2(M){
+  const a=M[0][0], b=M[0][1], c=M[1][0], d=M[1][1];
+  const E=(a+d)/2, F=(a-d)/2, G=(c+b)/2, H=(c-b)/2;
+  const Q = Math.sqrt(E*E+H*H);
+  const R = Math.sqrt(F*F+G*G);
+  const sx = Q+R, sy = Q-R;
+  const a1 = Math.atan2(G,F), a2 = Math.atan2(H,E);
+  const theta = (a2-a1)/2, phi = (a2+a1)/2;
+
+  const U = [[Math.cos(phi),-Math.sin(phi)],[Math.sin(phi),Math.cos(phi)]];
+  let S, V;
+  if(sy >= 0){
+    S = [[sx,0],[0,sy]];
+    V = [[Math.cos(theta),-Math.sin(theta)],[Math.sin(theta),Math.cos(theta)]];
+  } else {
+    S = [[sx,0],[0,-sy]];
+    V = [[Math.cos(theta),Math.sin(theta)],[Math.sin(theta),-Math.cos(theta)]];
+  }
+  const phiDeg = phi*180/Math.PI;
+  const thetaDeg = theta*180/Math.PI;
+  return { U, S, V, sx, sy:Math.abs(sy), phiDeg, thetaDeg, hasReflection: sy<0 };
+}
+
+// ============================================================
+//  COORDINATE HELPERS
+// ============================================================
+function toCanvas(x,y){ return [CX + x*SCALE, CY - y*SCALE]; }
+function toMath(cx,cy){ return [(cx-CX)/SCALE, (CY-cy)/SCALE]; }
+
+function easeInOut(t){
+  return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+}
+
+// ============================================================
+//  DRAWING FUNCTIONS
+// ============================================================
+function drawAxes(){
+  ctx.save();
+  ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5;
+  // x-axis
+  ctx.beginPath();
+  ctx.moveTo(0, CY); ctx.lineTo(W, CY); ctx.stroke();
+  // y-axis
+  ctx.beginPath();
+  ctx.moveTo(CX, 0); ctx.lineTo(CX, H); ctx.stroke();
+
+  // Tick marks and labels
+  ctx.fillStyle = '#94a3b8'; ctx.font = '11px system-ui';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for(let i=-GRID_RANGE; i<=GRID_RANGE; i++){
+    if(i===0) continue;
+    const [px] = toCanvas(i, 0);
+    ctx.beginPath(); ctx.moveTo(px, CY-4); ctx.lineTo(px, CY+4); ctx.stroke();
+    ctx.fillText(i, px, CY+7);
+  }
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for(let i=-GRID_RANGE; i<=GRID_RANGE; i++){
+    if(i===0) continue;
+    const [,py] = toCanvas(0, i);
+    ctx.beginPath(); ctx.moveTo(CX-4, py); ctx.lineTo(CX+4, py); ctx.stroke();
+    ctx.fillText(i, CX-8, py);
+  }
+  ctx.restore();
+}
+
+function drawGrid(M, t){
+  if(!document.getElementById('show-grid').checked) return;
+  const Mt = lerpMatrix(identity(), M, t);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(99,102,241,0.12)'; ctx.lineWidth = 1;
+  const R = GRID_RANGE + 1;
+  // Vertical lines
+  for(let i=-R; i<=R; i++){
+    ctx.beginPath();
+    const p1 = matVec(Mt, [i, -R]);
+    const p2 = matVec(Mt, [i, R]);
+    const [x1,y1] = toCanvas(p1[0], p1[1]);
+    const [x2,y2] = toCanvas(p2[0], p2[1]);
+    ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+  // Horizontal lines
+  for(let i=-R; i<=R; i++){
+    ctx.beginPath();
+    const p1 = matVec(Mt, [-R, i]);
+    const p2 = matVec(Mt, [R, i]);
+    const [x1,y1] = toCanvas(p1[0], p1[1]);
+    const [x2,y2] = toCanvas(p2[0], p2[1]);
+    ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawUnitCircle(M, t){
+  if(!document.getElementById('show-circle').checked) return;
+  const Mt = lerpMatrix(identity(), M, t);
+  const N = 80;
+  ctx.save();
+  // Original circle (ghost)
+  ctx.strokeStyle = 'rgba(168,85,247,0.25)'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const a = 2*Math.PI*i/N;
+    const [px,py] = toCanvas(Math.cos(a), Math.sin(a));
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  // Transformed ellipse
+  ctx.strokeStyle = 'rgba(168,85,247,0.6)'; ctx.lineWidth = 2;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const a = 2*Math.PI*i/N;
+    const p = matVec(Mt, [Math.cos(a), Math.sin(a)]);
+    const [px,py] = toCanvas(p[0], p[1]);
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawArrow(x1,y1,x2,y2,color,lw,dashed){
+  const [cx1,cy1] = toCanvas(x1,y1);
+  const [cx2,cy2] = toCanvas(x2,y2);
+  const dx=cx2-cx1, dy=cy2-cy1;
+  const len = Math.sqrt(dx*dx+dy*dy);
+  if(len<2) return;
+  const ux=dx/len, uy=dy/len;
+  const headLen = Math.min(12, len*0.3);
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = lw;
+  if(dashed) ctx.setLineDash([5,4]);
+  ctx.beginPath();
+  ctx.moveTo(cx1,cy1); ctx.lineTo(cx2,cy2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(cx2,cy2);
+  ctx.lineTo(cx2-ux*headLen-uy*headLen*0.4, cy2-uy*headLen+ux*headLen*0.4);
+  ctx.lineTo(cx2-ux*headLen+uy*headLen*0.4, cy2-uy*headLen-ux*headLen*0.4);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawBasisVectors(M, t, trans){
+  if(!document.getElementById('show-basis').checked) return;
+  const Mt = lerpMatrix(identity(), M, t);
+  const tt = lerpVec([0,0], trans, t);
+  // Original e1, e2 (ghost)
+  drawArrow(0,0,1,0,'rgba(239,68,68,0.3)',2,true);
+  drawArrow(0,0,0,1,'rgba(59,130,246,0.3)',2,true);
+  // Transformed
+  const e1t = matVec(Mt,[1,0]);
+  const e2t = matVec(Mt,[0,1]);
+  drawArrow(tt[0],tt[1],e1t[0]+tt[0],e1t[1]+tt[1],'#ef4444',2.5,false);
+  drawArrow(tt[0],tt[1],e2t[0]+tt[0],e2t[1]+tt[1],'#3b82f6',2.5,false);
+
+  // Labels
+  ctx.save(); ctx.font = 'bold 12px system-ui';
+  const [lx1,ly1] = toCanvas(e1t[0]+tt[0], e1t[1]+tt[1]);
+  ctx.fillStyle='#ef4444'; ctx.fillText('Ae₁', lx1+6, ly1-6);
+  const [lx2,ly2] = toCanvas(e2t[0]+tt[0], e2t[1]+tt[1]);
+  ctx.fillStyle='#3b82f6'; ctx.fillText('Ae₂', lx2+6, ly2-6);
+  ctx.restore();
+}
+
+function drawEigenvectors(M, t){
+  if(!document.getElementById('show-eigen').checked) return;
+  const eig = eigenvalues2(M);
+  if(!eig.real) return;
+  const vecs = eigenvectors2(M, eig);
+  if(!vecs) return;
+  const Mt = lerpMatrix(identity(), M, t);
+  const colors = ['#059669','#d97706'];
+  const lambdas = [eig.l1, eig.l2];
+  ctx.save();
+  for(let i=0;i<2;i++){
+    const v = vecs[i];
+    const ext = 4;
+    // Draw eigenvector line (extended)
+    ctx.strokeStyle = colors[i]; ctx.lineWidth = 1.5;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath();
+    const [x1,y1] = toCanvas(-v[0]*ext, -v[1]*ext);
+    const [x2,y2] = toCanvas(v[0]*ext, v[1]*ext);
+    ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Draw where eigenvector maps (should be along same line)
+    const mv = matVec(Mt, v);
+    drawArrow(0,0,mv[0],mv[1], colors[i], 2, false);
+    // Label
+    const [lx,ly] = toCanvas(v[0]*1.8, v[1]*1.8);
+    ctx.font = 'bold 11px system-ui'; ctx.fillStyle = colors[i];
+    ctx.fillText('λ'+(i+1)+'='+lambdas[i].toFixed(2), lx+8, ly);
+  }
+  ctx.restore();
+}
+
+function drawObjectShape(objDef, M, t, trans, alpha){
+  const Mt = lerpMatrix(identity(), M, t);
+  const tt = lerpVec([0,0], trans, t);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  for(const part of objDef.parts){
+    ctx.beginPath();
+    for(let i=0;i<part.verts.length;i++){
+      let p = matVec(Mt, part.verts[i]);
+      p = [p[0]+tt[0], p[1]+tt[1]];
+      const [px,py] = toCanvas(p[0],p[1]);
+      i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = part.fill; ctx.fill();
+    ctx.strokeStyle = part.stroke; ctx.lineWidth = 2; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAngleArc(M, t){
+  // Show the rotation angle if applicable
+  const Mt = lerpMatrix(identity(), M, t);
+  const e1t = matVec(Mt, [1,0]);
+  const ang = Math.atan2(e1t[1], e1t[0]);
+  if(Math.abs(ang) < 0.02) return;
+
+  ctx.save();
+  const [ox,oy] = toCanvas(0,0);
+  const r = 30;
+  ctx.strokeStyle = 'rgba(239,68,68,0.5)'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if(ang > 0){
+    ctx.arc(ox, oy, r, 0, -ang, true);
+  } else {
+    ctx.arc(ox, oy, r, 0, -ang, false);
+  }
+  ctx.stroke();
+  // Label
+  const mid = ang/2;
+  const lx = ox + (r+14)*Math.cos(-mid);
+  const ly = oy + (r+14)*Math.sin(-mid);
+  ctx.font = '11px system-ui'; ctx.fillStyle = '#ef4444';
+  ctx.fillText((ang*180/Math.PI).toFixed(1)+'°', lx, ly);
+  ctx.restore();
+}
+
+function drawDistanceMarker(M, t){
+  // Show length of Me1 to illustrate scaling
+  const Mt = lerpMatrix(identity(), M, t);
+  const e1t = matVec(Mt,[1,0]);
+  const len = Math.sqrt(e1t[0]*e1t[0]+e1t[1]*e1t[1]);
+  if(Math.abs(len-1) < 0.05) return;
+  const [ox,oy] = toCanvas(0,0);
+  const [ex,ey] = toCanvas(e1t[0], e1t[1]);
+  ctx.save();
+  ctx.font = '11px system-ui'; ctx.fillStyle = '#6366f1';
+  const mx = (ox+ex)/2, my = (oy+ey)/2;
+  ctx.fillText('|Ae₁|='+len.toFixed(2), mx+8, my-10);
+  ctx.restore();
+}
+
+function draw(){
+  state.drawRequested = false;
+  ctx.clearRect(0,0,W,H);
+
+  let M, trans, t;
+  if(state.queueMode){
+    // Queue animation: step through queue items
+    const qi = state.queueStep;
+    const queueSoFar = state.queue.slice(0, qi);
+    const baseMat = queueSoFar.reduce((acc, q) => matMul(q.matrix, acc), identity());
+    const baseTrans = [0,0]; // simplified: no translation composition in queue
+    if(qi < state.queue.length){
+      const current = state.queue[qi];
+      M = matMul(current.matrix, baseMat);
+      trans = baseTrans;
+      t = state.animT;
+      // Draw the base state (all previous transforms applied)
+      drawGrid(baseMat, 1);
+      drawAxes();
+      drawUnitCircle(baseMat, 1);
+      // Draw ghost at base state
+      if(document.getElementById('show-ghost').checked){
+        const objDef = objectDefs[state.objectType];
+        drawObjectShape(objDef, baseMat, 1, baseTrans, 0.2);
+      }
+      // Draw animating to current step
+      const Mt = lerpMatrix(baseMat, M, easeInOut(t));
+      const objDef = objectDefs[state.objectType];
+      drawObjectShape(objDef, Mt, 1, trans, 0.9);
+      drawBasisVectors(Mt, 1, trans);
+    } else {
+      M = baseMat; trans = baseTrans; t = 1;
+      drawGrid(M, 1); drawAxes(); drawUnitCircle(M, 1);
+      const objDef = objectDefs[state.objectType];
+      drawObjectShape(objDef, M, 1, trans, 0.9);
+      drawBasisVectors(M, 1, trans);
+    }
+    return;
+  }
+
+  if(state.decompMode && state.decompSVD){
+    drawDecomposition();
+    return;
+  }
+
+  M = state.matrix;
+  trans = state.translation;
+  t = state.animT;
+  const et = easeInOut(t);
+
+  drawGrid(M, et);
+  drawAxes();
+  drawUnitCircle(M, et);
+
+  // Ghost
+  if(document.getElementById('show-ghost').checked && t < 0.99){
+    const objDef = objectDefs[state.objectType];
+    drawObjectShape(objDef, identity(), 0, [0,0], 0.2);
+  }
+
+  // Transformed object
+  const objDef = objectDefs[state.objectType];
+  drawObjectShape(objDef, M, et, trans, 0.92);
+
+  drawBasisVectors(M, et, trans);
+  drawEigenvectors(M, et);
+  drawAngleArc(M, et);
+  drawDistanceMarker(M, et);
+}
+
+function drawDecomposition(){
+  const svd = state.decompSVD;
+  const phase = state.decompPhase;
+  const t = easeInOut(state.animT);
+
+  // Phase 0: identity → V^T (first rotation)
+  // Phase 1: V^T → Σ V^T (scaling)
+  // Phase 2: Σ V^T → U Σ V^T (second rotation)
+  const VT = transpose2(svd.V);
+  const SVT = matMul(svd.S, VT);
+  const USVT = matMul(svd.U, SVT);
+
+  let currentM;
+  if(phase === 0){
+    currentM = lerpMatrix(identity(), VT, t);
+  } else if(phase === 1){
+    currentM = lerpMatrix(VT, SVT, t);
+  } else {
+    currentM = lerpMatrix(SVT, USVT, t);
+  }
+
+  drawGrid(currentM, 1);
+  drawAxes();
+  drawUnitCircle(currentM, 1);
+
+  // Ghost of original
+  if(document.getElementById('show-ghost').checked){
+    const objDef = objectDefs[state.objectType];
+    drawObjectShape(objDef, identity(), 0, [0,0], 0.15);
+  }
+
+  const objDef = objectDefs[state.objectType];
+  drawObjectShape(objDef, currentM, 1, [0,0], 0.9);
+  drawBasisVectors(currentM, 1, [0,0]);
+
+  // Phase indicator on canvas
+  ctx.save();
+  ctx.fillStyle = 'rgba(79,70,229,0.9)'; ctx.font = 'bold 14px system-ui';
+  const labels = ['Step 1: Rotate by V^T', 'Step 2: Scale by Σ', 'Step 3: Rotate by U'];
+  ctx.fillText(labels[phase], 15, 25);
+  ctx.restore();
+
+  // Highlight active decomposition step in the right panel
+  document.querySelectorAll('.decomp-step').forEach((el,i) => {
+    el.classList.toggle('active', i === phase);
+  });
+}
+
+function requestDraw(){
+  if(!state.drawRequested){
+    state.drawRequested = true;
+    requestAnimationFrame(draw);
+  }
+}
+
+// ============================================================
+//  ANIMATION
+// ============================================================
+function startAnimation(){
+  if(state.animating) return;
+  state.decompMode = false;
+  state.queueMode = false;
+  state.animT = 0;
+  state.animating = true;
+  state.animStartTime = performance.now();
+  const speed = parseFloat(document.getElementById('anim-speed').value);
+  state.animDuration = 1500 / speed;
+  document.getElementById('btn-animate').textContent = '⏸ Playing';
+  animLoop();
+}
+
+function animLoop(){
+  if(!state.animating) return;
+  const elapsed = performance.now() - state.animStartTime;
+  state.animT = Math.min(1, elapsed / state.animDuration);
+  draw();
+  if(state.animT < 1){
+    requestAnimationFrame(animLoop);
+  } else {
+    state.animating = false;
+    state.animT = 1;
+    document.getElementById('btn-animate').textContent = '▶ Animate';
+  }
+}
+
+function resetAnimation(){
+  state.animating = false;
+  state.decompMode = false;
+  state.queueMode = false;
+  state.animT = 1;
+  document.getElementById('btn-animate').textContent = '▶ Animate';
+  draw();
+}
+
+function startDecomposition(){
+  if(state.animating) return;
+  const M = state.matrix;
+  state.decompSVD = svd2(M);
+  state.decompMode = true;
+  state.queueMode = false;
+  state.decompPhase = 0;
+  state.animT = 0;
+  state.animating = true;
+  state.animStartTime = performance.now();
+  const speed = parseFloat(document.getElementById('anim-speed').value);
+  state.animDuration = 1500 / speed;
+  updateSVDDisplay();
+  decompLoop();
+}
+
+function decompLoop(){
+  if(!state.animating || !state.decompMode) return;
+  const elapsed = performance.now() - state.animStartTime;
+  state.animT = Math.min(1, elapsed / state.animDuration);
+  draw();
+  if(state.animT >= 1){
+    // Move to next phase
+    if(state.decompPhase < 2){
+      state.decompPhase++;
+      state.animT = 0;
+      state.animStartTime = performance.now();
+      requestAnimationFrame(decompLoop);
+    } else {
+      state.animating = false;
+      state.animT = 1;
+      draw();
+    }
+  } else {
+    requestAnimationFrame(decompLoop);
+  }
+}
+
+// ============================================================
+//  COMPOSITION QUEUE
+// ============================================================
+function addToQueue(){
+  const M = state.matrix;
+  const typeName = document.getElementById('transform-type').value;
+  const label = getTransformLabel();
+  state.queue.push({ matrix: [[M[0][0],M[0][1]],[M[1][0],M[1][1]]], label });
+  updateQueueDisplay();
+}
+
+function removeFromQueue(idx){
+  state.queue.splice(idx, 1);
+  updateQueueDisplay();
+}
+
+function clearQueue(){
+  state.queue = [];
+  state.queueMode = false;
+  updateQueueDisplay();
+  draw();
+}
+
+function getTransformLabel(){
+  const type = document.getElementById('transform-type').value;
+  switch(type){
+    case 'rotation': return 'Rot('+document.getElementById('rot-angle').value+'°)';
+    case 'reflection': return 'Reflect('+document.getElementById('reflect-axis').value+')';
+    case 'scaling': return 'Scale('+document.getElementById('scale-x').value+','+document.getElementById('scale-y').value+')';
+    case 'shear': return 'Shear('+document.getElementById('shear-k').value+')';
+    case 'projection': return 'Proj('+document.getElementById('proj-target').value+')';
+    default: return 'Custom';
+  }
+}
+
+function updateQueueDisplay(){
+  const list = document.getElementById('queue-list');
+  const prod = document.getElementById('queue-product');
+  if(state.queue.length === 0){
+    list.innerHTML = '<p style="font-size:0.75rem;color:var(--text-muted);text-align:center;">No transforms in queue</p>';
+    prod.innerHTML = '';
+    return;
+  }
+  let html = '';
+  state.queue.forEach((q,i) => {
+    html += `<div class="queue-item">
+      <span>${i+1}. ${q.label}</span>
+      <button class="remove-btn" onclick="removeFromQueue(${i})" title="Remove">&times;</button>
+    </div>`;
+  });
+  list.innerHTML = html;
+
+  // Compute product (right to left)
+  let product = identity();
+  for(let i=state.queue.length-1; i>=0; i--){
+    product = matMul(state.queue[i].matrix, product);
+  }
+  try {
+    const latex = `\\text{Product: }${matToLatex(product)}`;
+    katex.render(latex, prod, {throwOnError:false});
+  } catch(e){ prod.textContent = 'Product computed'; }
+}
+
+function animateQueue(){
+  if(state.queue.length === 0) return;
+  state.queueMode = true;
+  state.decompMode = false;
+  state.queueStep = 0;
+  state.animT = 0;
+  state.animating = true;
+  state.animStartTime = performance.now();
+  const speed = parseFloat(document.getElementById('anim-speed').value);
+  state.animDuration = 1500 / speed;
+  queueLoop();
+}
+
+function queueLoop(){
+  if(!state.animating || !state.queueMode) return;
+  const elapsed = performance.now() - state.animStartTime;
+  state.animT = Math.min(1, elapsed / state.animDuration);
+  draw();
+  if(state.animT >= 1){
+    if(state.queueStep < state.queue.length - 1){
+      state.queueStep++;
+      state.animT = 0;
+      state.animStartTime = performance.now();
+      requestAnimationFrame(queueLoop);
+    } else {
+      state.queueStep = state.queue.length;
+      state.animating = false;
+      state.animT = 1;
+      draw();
+    }
+  } else {
+    requestAnimationFrame(queueLoop);
+  }
+}
+
+// ============================================================
+//  KATEX / DISPLAY
+// ============================================================
+// --- Surd / fraction formatting (matching svdcompute.html & eigenvalues-eigenvectors.html) ---
+const SQRT_CACHE = Array.from({length: 101}, (_, i) => Math.sqrt(i));
+
+function gcdInt(a, b){ a=Math.abs(a); b=Math.abs(b); while(b){[a,b]=[b,a%b];} return a; }
+
+function simplifyRadicand(coeff, radicand){
+  let c = coeff, r = radicand;
+  for(let p=2; p*p<=r; p++){ while(r%(p*p)===0){ r/=(p*p); c*=p; } }
+  return { coeff:c, radicand:r };
+}
+
+function floatToFraction(num, tolerance=1e-6, maxIter=30){
+  if(Math.abs(num)<1e-12) return {numer:0, denom:1};
+  let sign=Math.sign(num); num=Math.abs(num);
+  let a=Math.floor(num), h=a, k=1, hP=1, kP=0, x=num-a, iter=0;
+  while(x>tolerance && iter<maxIter){
+    x=1/x; a=Math.floor(x);
+    let hT=a*h+hP, kT=a*k+kP;
+    hP=h; kP=k; h=hT; k=kT;
+    x-=a; iter++;
+    if(Math.abs(num-h/k)<tolerance) break;
+  }
+  return {numer:sign*h, denom:k};
+}
+
+function formatSurdLatex(sign, coeff, radicand, rden){
+  let {coeff:c, radicand:r} = simplifyRadicand(coeff, radicand);
+  if(r===1){
+    let g=gcdInt(c, rden); c/=g; rden/=g;
+    if(rden===1) return sign+c;
+    return sign+"\\dfrac{"+c+"}{"+rden+"}";
+  }
+  let sqrtPart = (c===1?"":""+c)+"\\sqrt{"+r+"}";
+  if(rden===1) return sign+sqrtPart;
+  return sign+"\\dfrac{"+(c===1?"":""+c)+"\\sqrt{"+r+"}}{"+rden+"}";
+}
+
+function toSurd(val){
+  if(Math.abs(val)<1e-7) return "0";
+  let isNeg = val<0, sign = isNeg?"-":"", absVal = Math.abs(val), tol = 1e-6;
+  // Try simple surd: coeff * sqrt(a) / rden
+  for(let rden=1; rden<=12; rden++){
+    let scaled = absVal*rden;
+    for(let a=2; a<=100; a++){
+      let sq = SQRT_CACHE[a];
+      let coeff = Math.round(scaled/sq);
+      if(coeff>=1 && Math.abs(scaled - coeff*sq)<tol){
+        return formatSurdLatex(sign, coeff, a, rden);
+      }
+    }
+  }
+  return null;
+}
+
+function fmt(x){
+  if(Math.abs(x)<1e-9) return "0";
+  // Integer check
+  if(Math.abs(x-Math.round(x))<1e-9) return Math.round(x).toString();
+  // Try surd form (covers sqrt(2)/2, sqrt(3)/2, etc.)
+  let surd = toSurd(x);
+  if(surd) return surd;
+  // Try simple fraction (numer/denom < 500)
+  let frac = floatToFraction(x);
+  if(Math.abs(x - frac.numer/frac.denom)<1e-6 && Math.abs(frac.numer)<500 && frac.denom<500){
+    if(frac.denom===1) return frac.numer.toString();
+    return "\\dfrac{"+frac.numer+"}{"+frac.denom+"}";
+  }
+  return x.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+}
+
+function matToLatex(M){
+  return `\\begin{bmatrix} ${fmt(M[0][0])} & ${fmt(M[0][1])} \\\\ ${fmt(M[1][0])} & ${fmt(M[1][1])} \\end{bmatrix}`;
+}
+
+function updateEquationBar(){
+  const M = state.matrix;
+  const tx = state.translation[0], ty = state.translation[1];
+  const bar = document.getElementById('equation-bar');
+  let latex;
+  if(Math.abs(tx) < 1e-10 && Math.abs(ty) < 1e-10){
+    latex = `\\mathbf{y} = A\\mathbf{x}, \\quad A = ${matToLatex(M)}`;
+  } else {
+    latex = `\\mathbf{y} = A\\mathbf{x} + \\mathbf{t}, \\quad A = ${matToLatex(M)}, \\quad \\mathbf{t} = \\begin{bmatrix}${fmt(tx)}\\\\${fmt(ty)}\\end{bmatrix}`;
+  }
+  try { katex.render(latex, bar, {throwOnError:false, displayMode:true}); }
+  catch(e){ bar.textContent = 'y = Ax'; }
+}
+
+function updateDetDisplay(){
+  const d = det2(state.matrix);
+  const el = document.getElementById('det-display');
+  const cls = d > 0.001 ? 'det-positive' : d < -0.001 ? 'det-negative' : 'det-zero';
+  let meaning = '';
+  if(Math.abs(d) < 0.001) meaning = '\\;\\text{(singular — collapses area)}';
+  else if(d < 0) meaning = '\\;\\text{(orientation-reversing)}';
+  else meaning = '\\;\\text{(orientation-preserving)}';
+  el.className = 'info-val ' + cls;
+  try {
+    katex.render(`\\det(A) = ${fmt(d)}${meaning}`, el, {throwOnError:false});
+  } catch(e){ el.textContent = 'det(A) = ' + d.toFixed(4); }
+}
+
+function updateEigenDisplay(){
+  const el = document.getElementById('eigen-display');
+  const eig = eigenvalues2(state.matrix);
+  if(eig.real){
+    try {
+      const latex = `\\lambda_1 = ${fmt(eig.l1)}, \\quad \\lambda_2 = ${fmt(eig.l2)}`;
+      katex.render(latex, el, {throwOnError:false});
+    } catch(e){ el.textContent = `λ₁ = ${fmt(eig.l1)}, λ₂ = ${fmt(eig.l2)}`; }
+  } else {
+    try {
+      const latex = `\\lambda = ${fmt(eig.re)} \\pm ${fmt(eig.im)}\\,i`;
+      katex.render(latex, el, {throwOnError:false});
+    } catch(e){ el.textContent = `λ = ${fmt(eig.re)} ± ${fmt(eig.im)}i`; }
+  }
+}
+
+function updateSVDDisplay(){
+  const el = document.getElementById('svd-display');
+  const s = svd2(state.matrix);
+  try {
+    const latex = `A = U\\Sigma V^T` +
+      `\\\\[4pt] U = ${matToLatex(s.U)}` +
+      `\\\\[4pt] \\Sigma = ${matToLatex(s.S)}` +
+      `\\\\[4pt] V = ${matToLatex(s.V)}` +
+      `\\\\[4pt] \\sigma_1 = ${fmt(s.sx)},\\;\\sigma_2 = ${fmt(s.sy)}`;
+    katex.render(latex, el, {throwOnError:false, displayMode:false});
+  } catch(e){
+    el.textContent = `σ₁=${fmt(s.sx)}, σ₂=${fmt(s.sy)}`;
+  }
+}
+
+function updateAllDisplays(){
+  updateEquationBar();
+  updateDetDisplay();
+  updateEigenDisplay();
+  updateSVDDisplay();
+}
+
+// ============================================================
+//  UI EVENT HANDLERS
+// ============================================================
+function computeCurrentMatrix(){
+  const type = document.getElementById('transform-type').value;
+  let M;
+  switch(type){
+    case 'rotation':
+      M = rotMatrix(parseFloat(document.getElementById('rot-angle').value));
+      break;
+    case 'reflection': {
+      const axis = document.getElementById('reflect-axis').value;
+      const angle = parseFloat(document.getElementById('reflect-angle').value);
+      M = reflectMatrix(axis, angle);
+      break;
+    }
+    case 'scaling':
+      M = scaleMatrix(
+        parseFloat(document.getElementById('scale-x').value),
+        parseFloat(document.getElementById('scale-y').value)
+      );
+      break;
+    case 'shear':
+      M = shearMatrix(
+        document.getElementById('shear-dir').value,
+        parseFloat(document.getElementById('shear-k').value)
+      );
+      break;
+    case 'projection': {
+      const target = document.getElementById('proj-target').value;
+      const angle = parseFloat(document.getElementById('proj-angle').value);
+      M = projMatrix(target, angle);
+      break;
+    }
+    case 'custom':
+      M = [
+        [parseFloat(document.getElementById('m00').value)||0, parseFloat(document.getElementById('m01').value)||0],
+        [parseFloat(document.getElementById('m10').value)||0, parseFloat(document.getElementById('m11').value)||0]
+      ];
+      break;
+  }
+  return M;
+}
+
+function onParamChange(){
+  // Update range display values
+  const ra = document.getElementById('rot-angle');
+  if(ra) document.getElementById('rot-angle-val').textContent = ra.value+'°';
+  const rfa = document.getElementById('reflect-angle');
+  if(rfa) document.getElementById('reflect-angle-val').textContent = rfa.value+'°';
+  const sx = document.getElementById('scale-x');
+  if(sx) document.getElementById('scale-x-val').textContent = parseFloat(sx.value).toFixed(1);
+  const sy = document.getElementById('scale-y');
+  if(sy) document.getElementById('scale-y-val').textContent = parseFloat(sy.value).toFixed(1);
+  const sk = document.getElementById('shear-k');
+  if(sk) document.getElementById('shear-k-val').textContent = parseFloat(sk.value).toFixed(1);
+  const pa = document.getElementById('proj-angle');
+  if(pa) document.getElementById('proj-angle-val').textContent = pa.value+'°';
+
+  // Show/hide conditional inputs
+  const reflectAxis = document.getElementById('reflect-axis').value;
+  document.getElementById('reflect-angle-group').style.display = reflectAxis==='custom' ? '' : 'none';
+  const projTarget = document.getElementById('proj-target').value;
+  document.getElementById('proj-angle-group').style.display = projTarget==='custom' ? '' : 'none';
+
+  // Compute matrix
+  state.matrix = computeCurrentMatrix();
+  state.translation = [
+    parseFloat(document.getElementById('tx').value)||0,
+    parseFloat(document.getElementById('ty').value)||0
+  ];
+
+  // If not animating, show the full transform
+  if(!state.animating){
+    state.animT = 1;
+    state.decompMode = false;
+    state.queueMode = false;
+  }
+
+  updateAllDisplays();
+  requestDraw();
+}
+
+function onTransformTypeChange(){
+  const type = document.getElementById('transform-type').value;
+  document.querySelectorAll('.param-section').forEach(el => el.style.display='none');
+  const section = document.getElementById('params-'+type);
+  if(section) section.style.display = '';
+  onParamChange();
+}
+
+function onObjectChange(){
+  state.objectType = document.getElementById('object-type').value;
+  requestDraw();
+}
+
+document.getElementById('anim-speed').addEventListener('input', function(){
+  document.getElementById('anim-speed-val').textContent = parseFloat(this.value).toFixed(1)+'×';
+});
+
+// ============================================================
+//  EXAMPLE LOADING
+// ============================================================
+function loadExample(idx){
+  const ex = examples[idx];
+  document.getElementById('transform-type').value = ex.type;
+  onTransformTypeChange();
+
+  switch(ex.type){
+    case 'rotation':
+      document.getElementById('rot-angle').value = ex.params.angle;
+      break;
+    case 'reflection':
+      document.getElementById('reflect-axis').value = ex.params.axis;
+      if(ex.params.angle !== undefined){
+        document.getElementById('reflect-angle').value = ex.params.angle;
+      }
+      break;
+    case 'scaling':
+      document.getElementById('scale-x').value = ex.params.sx;
+      document.getElementById('scale-y').value = ex.params.sy;
+      break;
+    case 'shear':
+      document.getElementById('shear-dir').value = ex.params.dir;
+      document.getElementById('shear-k').value = ex.params.k;
+      break;
+    case 'projection':
+      document.getElementById('proj-target').value = ex.params.target;
+      if(ex.params.angle !== undefined){
+        document.getElementById('proj-angle').value = ex.params.angle;
+      }
+      break;
+    case 'custom':
+      document.getElementById('m00').value = ex.params.m[0][0];
+      document.getElementById('m01').value = ex.params.m[0][1];
+      document.getElementById('m10').value = ex.params.m[1][0];
+      document.getElementById('m11').value = ex.params.m[1][1];
+      break;
+  }
+
+  document.getElementById('tx').value = ex.tx||0;
+  document.getElementById('ty').value = ex.ty||0;
+
+  onParamChange();
+  // Auto-animate
+  startAnimation();
+}
+
+function buildExamplesPanel(){
+  const list = document.getElementById('examples-list');
+  let html = '';
+  examples.forEach((ex, i) => {
+    // Compute matrix for display
+    let M;
+    switch(ex.type){
+      case 'rotation': M = rotMatrix(ex.params.angle); break;
+      case 'reflection': M = reflectMatrix(ex.params.axis, ex.params.angle); break;
+      case 'scaling': M = scaleMatrix(ex.params.sx, ex.params.sy); break;
+      case 'shear': M = shearMatrix(ex.params.dir, ex.params.k); break;
+      case 'projection': M = projMatrix(ex.params.target, ex.params.angle); break;
+      case 'custom': M = ex.params.m; break;
+    }
+    html += `<div class="example-item" onclick="loadExample(${i})">
+      <h4>${ex.name}</h4>
+      <div class="ex-matrix" id="ex-mat-${i}"></div>
+    </div>`;
+  });
+  list.innerHTML = html;
+
+  // Render KaTeX for each example
+  examples.forEach((ex, i) => {
+    let M;
+    switch(ex.type){
+      case 'rotation': M = rotMatrix(ex.params.angle); break;
+      case 'reflection': M = reflectMatrix(ex.params.axis, ex.params.angle); break;
+      case 'scaling': M = scaleMatrix(ex.params.sx, ex.params.sy); break;
+      case 'shear': M = shearMatrix(ex.params.dir, ex.params.k); break;
+      case 'projection': M = projMatrix(ex.params.target, ex.params.angle); break;
+      case 'custom': M = ex.params.m; break;
+    }
+    const el = document.getElementById('ex-mat-'+i);
+    try {
+      katex.render(matToLatex(M), el, {throwOnError:false});
+    } catch(e){ el.textContent = JSON.stringify(M); }
+  });
+}
+
+// ============================================================
+//  INITIALIZATION
+// ============================================================
+function init(){
+  onParamChange();
+  buildExamplesPanel();
+  updateQueueDisplay();
+  draw();
+}
+
+// Wait for KaTeX to load
+if(document.readyState === 'complete'){
+  init();
+} else {
+  window.addEventListener('load', init);
+}
+</script>
+</body>
+</html>
