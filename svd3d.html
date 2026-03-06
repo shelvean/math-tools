@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Interactive 3D SVD Visualization: See how the Singular Value Decomposition decomposes any 3×3 matrix. Animate rotation, scaling, and rotation on a unit sphere with smiley face texture.">
+  <meta name="keywords" content="SVD, Singular Value Decomposition, 3D, Linear Algebra, Matrix Visualization, Three.js, Unit Sphere, Rank Deficiency">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+  <title>3D SVD Visualization</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"}}</script>
+  <style>
+    :root{--primary:#4f46e5;--primary-light:#6366f1;--surface:#fff;--bg:#f0f4f8;--text:#1e293b;--text-muted:#64748b;--border:#e2e8f0;--radius:12px;--shadow:0 4px 24px rgba(0,0,0,0.08);}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+    .main-container{max-width:1800px;margin:70px auto 20px;padding:20px;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;}
+    .left-panel{flex:0 0 320px;display:flex;flex-direction:column;gap:14px;}
+    .center-panel{flex:1 1 650px;display:flex;flex-direction:column;align-items:center;gap:14px;}
+    .right-panel{flex:0 0 350px;display:flex;flex-direction:column;gap:14px;}
+    .panel-card{background:var(--surface);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);border:1px solid var(--border);}
+    .panel-card h3{font-size:0.78rem;text-transform:uppercase;letter-spacing:1.1px;color:var(--text-muted);margin-bottom:12px;font-weight:700;}
+    .equation-bar{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 20px;box-shadow:var(--shadow);text-align:center;width:100%;}
+    .equation-bar .katex{font-size:1rem;}
+    .canvas-wrap{background:var(--surface);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);border:1px solid var(--border);position:relative;}
+    #threeCanvas{border:1px solid #e5e7eb;border-radius:8px;display:block;cursor:grab;}
+    #threeCanvas:active{cursor:grabbing;}
+    .ctrl-group{margin-bottom:12px;}
+    .ctrl-group label{display:block;font-size:0.8rem;font-weight:600;color:#334155;margin-bottom:4px;}
+    input[type="number"]{width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;font-size:0.88rem;color:var(--text);background:#f8fafc;outline:none;}
+    input[type="number"]:focus{border-color:var(--primary);}
+    input[type="range"]{width:100%;accent-color:var(--primary);}
+    .range-row{display:flex;align-items:center;gap:8px;}
+    .range-row input[type="range"]{flex:1;}
+    .range-val{font-size:0.82rem;font-weight:600;color:var(--primary);min-width:42px;text-align:right;}
+    select{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:0.88rem;color:var(--text);background:#f8fafc;outline:none;}
+    .mat3-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;max-width:240px;margin:6px auto;}
+    .mat3-grid input{width:100%;text-align:center;padding:6px 2px;border:2px solid var(--border);border-radius:6px;font-size:0.88rem;font-weight:600;}
+    .mat3-grid input:focus{border-color:var(--primary);outline:none;}
+    .matrix-brackets{display:flex;align-items:center;justify-content:center;gap:4px;}
+    .bracket{font-size:4rem;font-weight:200;color:#94a3b8;line-height:1;}
+    .btn{padding:8px 16px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;color:white;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.15);}
+    .btn:active{transform:translateY(0);}
+    .btn-primary{background:linear-gradient(135deg,#4f46e5,#6366f1);}
+    .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);}
+    .btn-amber{background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#1e293b;}
+    .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
+    .chk-row{display:flex;align-items:center;gap:6px;margin:4px 0;}
+    .chk-row input{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;}
+    .chk-row label{font-size:0.82rem;color:#334155;cursor:pointer;font-weight:500;}
+    .info-box{background:#f1f5f9;border-radius:8px;padding:10px 14px;border:1px solid var(--border);margin-bottom:10px;}
+    .info-box h4{font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;font-weight:700;}
+    .info-box .katex{font-size:0.85rem;}
+    .decomp-step{padding:10px;border-radius:8px;margin-bottom:8px;border:2px solid var(--border);transition:all 0.3s;background:#f8fafc;}
+    .decomp-step.active{border-color:var(--primary);background:#eef2ff;box-shadow:0 2px 12px rgba(79,70,229,0.15);}
+    .decomp-step.completed{border-color:#10b981;background:#f0fdf4;}
+    .decomp-step .step-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);font-weight:700;margin-bottom:4px;}
+    .decomp-step .step-desc{font-size:0.8rem;color:#334155;margin-bottom:4px;}
+    .examples-header{background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;padding:10px 16px;border-radius:var(--radius) var(--radius) 0 0;font-size:1rem;font-weight:700;text-align:center;margin:-16px -16px 12px;}
+    .example-item{padding:10px;border-radius:8px;cursor:pointer;border:1px solid #e5e7eb;background:#f8fafc;margin-bottom:8px;transition:all 0.2s;}
+    .example-item:hover{background:#f0f9ff;border-color:#3b82f6;transform:translateY(-1px);box-shadow:0 3px 10px rgba(59,130,246,0.15);}
+    .example-item h4{font-size:0.85rem;font-weight:600;color:#1e293b;margin-bottom:4px;}
+    .rank-alert{background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#92400e;font-weight:600;text-align:center;}
+    @media(max-width:1400px){.left-panel{flex:0 0 290px;}.right-panel{flex:0 0 320px;}}
+    @media(max-width:1100px){.main-container{flex-direction:column;align-items:center;}.left-panel,.right-panel{flex:1 1 100%;max-width:700px;}.center-panel{order:-1;}}
+  </style>
+</head>
+<body>
+  <!-- Nav -->
+  <div class="w-full bg-white shadow-md fixed top-0 left-0 z-50">
+    <nav class="max-w-5xl mx-auto px-4 py-3">
+      <ul class="flex justify-center space-x-4 sm:space-x-6">
+        <li><a href="index.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Numerical Methods</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div style="max-width:1800px;margin:70px auto 0;padding:20px 20px 0;text-align:center;">
+    <h1 style="font-size:2.2rem;font-weight:800;color:#1e293b;margin-bottom:4px;">3D SVD Visualization</h1>
+    <p style="font-size:1.05rem;color:#64748b;max-width:800px;margin:0 auto;">
+      Visualize the Singular Value Decomposition of a 3&times;3 matrix on a unit sphere.
+      Watch <strong>V<sup>T</sup></strong> rotate, <strong>&Sigma;</strong> stretch into an ellipsoid, and <strong>U</strong> rotate to the final orientation.
+      Rank deficiency collapses the sphere to a disk (rank 2) or a line (rank 1).
+    </p>
+  </div>
+
+  <div class="main-container" style="margin-top:10px;">
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <div class="panel-card">
+        <h3>Matrix A (3&times;3)</h3>
+        <div class="ctrl-group">
+          <label>Enter matrix entries</label>
+          <div class="matrix-brackets">
+            <span class="bracket">[</span>
+            <div class="mat3-grid" id="mat-grid"></div>
+            <span class="bracket">]</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <h3>Display Options</h3>
+        <div class="ctrl-group">
+          <label>Surface style</label>
+          <select id="surface-style" onchange="updateScene()">
+            <option value="smiley" selected>Smiley Sphere</option>
+            <option value="wireframe">Wireframe only</option>
+            <option value="solid">Solid (transparent)</option>
+          </select>
+        </div>
+        <div class="chk-row"><input type="checkbox" id="show-axes" checked onchange="updateScene()"><label for="show-axes">Show coordinate axes</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-ghost" checked onchange="updateScene()"><label for="show-ghost">Show original (ghost)</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-sigma-axes" checked onchange="updateScene()"><label for="show-sigma-axes">Show &sigma; principal axes</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-wireframe" checked onchange="updateScene()"><label for="show-wireframe">Show wireframe overlay</label></div>
+      </div>
+      <div class="panel-card">
+        <h3>Animation</h3>
+        <div class="btn-row" style="margin-bottom:10px">
+          <button class="btn btn-amber" id="btn-decompose" onclick="startDecomposition()">&#9881; Decompose SVD</button>
+          <button class="btn btn-danger" onclick="resetAnimation()">&#8634; Reset</button>
+        </div>
+        <div class="btn-row" style="margin-bottom:10px">
+          <button class="btn btn-primary" id="btn-full" onclick="startFullAnimation()">&#9654; Full Transform</button>
+        </div>
+        <div class="ctrl-group">
+          <label>Speed</label>
+          <div class="range-row">
+            <input type="range" id="anim-speed" min="0.2" max="3" value="1" step="0.1" oninput="document.getElementById('anim-speed-val').textContent=parseFloat(this.value).toFixed(1)+'×'">
+            <span class="range-val" id="anim-speed-val">1.0&times;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER PANEL -->
+    <div class="center-panel">
+      <div class="equation-bar" id="equation-bar"></div>
+      <div class="canvas-wrap">
+        <canvas id="threeCanvas" width="650" height="600"></canvas>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Click and drag to rotate view. Scroll to zoom.</div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+      <div class="panel-card">
+        <h3>SVD Decomposition</h3>
+        <div id="rank-alert" class="rank-alert" style="display:none"></div>
+        <div class="info-box"><h4>A = U &Sigma; V<sup>T</sup></h4><div id="svd-display"></div></div>
+        <div class="info-box"><h4>Singular Values &amp; Rank</h4><div id="sigma-display"></div></div>
+      </div>
+      <div class="panel-card">
+        <h3>Decomposition Steps</h3>
+        <div class="decomp-step" id="step-0"><div class="step-label">Step 1: First Rotation</div><div class="step-desc">Apply V<sup>T</sup> &mdash; align input with singular directions</div><div id="step-0-mat"></div></div>
+        <div class="decomp-step" id="step-1"><div class="step-label">Step 2: Scaling</div><div class="step-desc">Apply &Sigma; &mdash; stretch along axes by &sigma;&#8321;, &sigma;&#8322;, &sigma;&#8323;</div><div id="step-1-mat"></div></div>
+        <div class="decomp-step" id="step-2"><div class="step-label">Step 3: Second Rotation</div><div class="step-desc">Apply U &mdash; rotate to final output orientation</div><div id="step-2-mat"></div></div>
+      </div>
+      <div class="panel-card" style="padding:0;overflow:hidden;">
+        <div class="examples-header">Preset Examples</div>
+        <div style="padding:12px;max-height:400px;overflow-y:auto;" id="examples-list"></div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+//  STATE
+// ============================================================
+const state = {
+  matrix: [[2,1,0],[0,3,1],[1,0,2]],
+  animT: 1,
+  animating: false,
+  animStartTime: 0,
+  animDuration: 1500,
+  decompMode: false,
+  decompPhase: 0,
+  svdResult: null,
+  fullMode: false,
+};
+
+// ============================================================
+//  3×3 SVD (Jacobi eigendecomposition from svdcompute.html)
+// ============================================================
+function identityMatrix(n){ const I=Array.from({length:n},()=>new Array(n).fill(0)); for(let i=0;i<n;i++)I[i][i]=1; return I; }
+function multiplyMatrices(A,B){ const m=A.length,n=B[0].length,p=A[0].length; const C=Array.from({length:m},()=>new Array(n).fill(0)); for(let i=0;i<m;i++)for(let j=0;j<n;j++)for(let k=0;k<p;k++)C[i][j]+=A[i][k]*B[k][j]; return C; }
+function transposeMatrix(A){ const m=A.length,n=A[0].length; const At=Array.from({length:n},()=>new Array(m)); for(let i=0;i<m;i++)for(let j=0;j<n;j++)At[j][i]=A[i][j]; return At; }
+function multiplyATA(A){ const m=A.length,n=A[0].length; const R=Array.from({length:n},()=>new Array(n).fill(0)); for(let i=0;i<n;i++)for(let j=i;j<n;j++){let s=0;for(let k=0;k<m;k++)s+=A[k][i]*A[k][j];R[i][j]=s;R[j][i]=s;} return R; }
+function dot(a,b){ return a.reduce((s,v,i)=>s+v*b[i],0); }
+function norm2(v){ return Math.sqrt(dot(v,v)); }
+function scalarMult(v,s){ return v.map(e=>e*s); }
+function addVecs(a,b){ return a.map((e,i)=>e+b[i]); }
+
+function gramSchmidtColumns(vecs,outCount){
+  let m=vecs[0]?vecs[0].length:outCount, Q=[];
+  for(let v of vecs){
+    let u=v.slice(); for(let q of Q){let proj=dot(u,q);u=addVecs(u,scalarMult(q,-proj));}
+    let nu=norm2(u); if(nu>1e-7) Q.push(scalarMult(u,1/nu));
+  }
+  for(let i=0;Q.length<outCount&&i<m;i++){
+    let e=Array(m).fill(0);e[i]=1; for(let q of Q){let proj=dot(e,q);e=addVecs(e,scalarMult(q,-proj));}
+    let ne=norm2(e); if(ne>1e-7) Q.push(scalarMult(e,1/ne));
+  }
+  return Q;
+}
+
+function jacobiEigenDecomposition(A,maxIter=200,tol=1e-10){
+  const n=A.length; let V=identityMatrix(n), B=A.map(r=>r.slice());
+  for(let iter=0;iter<maxIter;iter++){
+    let maxVal=0,p=0,q=1;
+    for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(Math.abs(B[i][j])>maxVal){maxVal=Math.abs(B[i][j]);p=i;q=j;}
+    if(maxVal<tol) break;
+    const theta=0.5*Math.atan2(2*B[p][q],B[q][q]-B[p][p]);
+    const c=Math.cos(theta),s=Math.sin(theta);
+    const Bpp=B[p][p],Bqq=B[q][q],Bpq=B[p][q];
+    B[p][p]=c*c*Bpp+s*s*Bqq-2*s*c*Bpq;
+    B[q][q]=s*s*Bpp+c*c*Bqq+2*s*c*Bpq;
+    B[p][q]=B[q][p]=0;
+    for(let i=0;i<n;i++){if(i!==p&&i!==q){const Bip=B[i][p],Biq=B[i][q];B[i][p]=B[p][i]=c*Bip-s*Biq;B[i][q]=B[q][i]=s*Bip+c*Biq;}}
+    for(let i=0;i<n;i++){const Vip=V[i][p],Viq=V[i][q];V[i][p]=c*Vip-s*Viq;V[i][q]=s*Vip+c*Viq;}
+  }
+  let evals=B.map((r,i)=>r[i]);
+  const idx=evals.map((_,i)=>i).sort((a,b)=>evals[b]-evals[a]);
+  return {eigenvalues:idx.map(i=>evals[i]),eigenvectors:Array.from({length:n},(_,r)=>idx.map(j=>V[r][j]))};
+}
+
+function computeSVD3(A){
+  const m=A.length,n=A[0].length;
+  const AtA=multiplyATA(A);
+  const {eigenvalues,eigenvectors:Vmat}=jacobiEigenDecomposition(AtA);
+  const sigmas=eigenvalues.map(x=>Math.sqrt(Math.max(x,0)));
+  const k=Math.min(m,n);
+  let Ucols=[];
+  for(let i=0;i<k;i++){
+    if(sigmas[i]>1e-7){
+      let v=Vmat.map(r=>r[i]);
+      let Av=new Array(m).fill(0);
+      for(let r=0;r<m;r++)for(let c=0;c<n;c++)Av[r]+=A[r][c]*v[c];
+      let u=scalarMult(Av,1/sigmas[i]);
+      let nu=norm2(u); if(nu>1e-7){u=scalarMult(u,1/nu);Ucols.push(u);}
+    }
+  }
+  Ucols=gramSchmidtColumns(Ucols,m);
+  let U=Array.from({length:m},(_,r)=>Ucols.map(c=>c[r]));
+  let Sigma=Array.from({length:m},()=>new Array(n).fill(0));
+  for(let i=0;i<k;i++) Sigma[i][i]=sigmas[i];
+  let Vt=transposeMatrix(Vmat);
+  // Sign convention: make largest element in each U column positive
+  for(let j=0;j<Math.min(U[0].length,k);j++){
+    let col=U.map(r=>r[j]),maxIdx=0;
+    for(let i=1;i<col.length;i++)if(Math.abs(col[i])>Math.abs(col[maxIdx]))maxIdx=i;
+    if(col[maxIdx]<0){for(let i=0;i<U.length;i++)U[i][j]*=-1;for(let i=0;i<Vt[j].length;i++)Vt[j][i]*=-1;}
+  }
+  return {U,Sigma,Vt,sigmas:sigmas.slice(0,k)};
+}
+
+// ============================================================
+//  FORMATTING
+// ============================================================
+const SQRT_CACHE=Array.from({length:101},(_,i)=>Math.sqrt(i));
+function gcdInt(a,b){a=Math.abs(a);b=Math.abs(b);while(b){[a,b]=[b,a%b];}return a;}
+function simplifyRadicand(c,r){for(let p=2;p*p<=r;p++){while(r%(p*p)===0){r/=(p*p);c*=p;}}return{coeff:c,radicand:r};}
+function floatToFraction(num,tol=1e-6,maxI=30){
+  if(Math.abs(num)<1e-12)return{numer:0,denom:1};
+  let s=Math.sign(num);num=Math.abs(num);
+  let a=Math.floor(num),h=a,k=1,hP=1,kP=0,x=num-a,it=0;
+  while(x>tol&&it<maxI){x=1/x;a=Math.floor(x);let hT=a*h+hP,kT=a*k+kP;hP=h;kP=k;h=hT;k=kT;x-=a;it++;if(Math.abs(num-h/k)<tol)break;}
+  return{numer:s*h,denom:k};
+}
+function formatSurdLatex(sign,coeff,rad,rden){
+  let{coeff:c,radicand:r}=simplifyRadicand(coeff,rad);
+  if(r===1){let g=gcdInt(c,rden);c/=g;rden/=g;if(rden===1)return sign+c;return sign+"\\dfrac{"+c+"}{"+rden+"}";}
+  let sq=(c===1?"":""+c)+"\\sqrt{"+r+"}";if(rden===1)return sign+sq;
+  return sign+"\\dfrac{"+(c===1?"":""+c)+"\\sqrt{"+r+"}}{"+rden+"}";
+}
+function toSurd(val){
+  if(Math.abs(val)<1e-7)return"0";
+  let neg=val<0,sign=neg?"-":"",av=Math.abs(val),tol=1e-6;
+  for(let d=1;d<=12;d++){let sc=av*d;for(let a=2;a<=100;a++){let sq=SQRT_CACHE[a],c=Math.round(sc/sq);if(c>=1&&Math.abs(sc-c*sq)<tol)return formatSurdLatex(sign,c,a,d);}}
+  return null;
+}
+function fmt(x){
+  if(Math.abs(x)<1e-9)return"0";
+  if(Math.abs(x-Math.round(x))<1e-9)return Math.round(x).toString();
+  let s=toSurd(x);if(s)return s;
+  let f=floatToFraction(x);
+  if(Math.abs(x-f.numer/f.denom)<1e-6&&Math.abs(f.numer)<500&&f.denom<500){if(f.denom===1)return f.numer.toString();return"\\dfrac{"+f.numer+"}{"+f.denom+"}";}
+  return x.toFixed(3).replace(/0+$/,'').replace(/\.$/,'');
+}
+function mat3ToLatex(M){
+  const rows=M.map(r=>r.map(v=>fmt(v)).join(' & '));
+  return '\\begin{bmatrix}'+rows.join(' \\\\ ')+'\\end{bmatrix}';
+}
+
+// ============================================================
+//  BUILD MATRIX INPUT
+// ============================================================
+const defaultMatrix=[[2,1,0],[0,3,1],[1,0,2]];
+(function buildMatrixInputs(){
+  const grid=document.getElementById('mat-grid');
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++){
+    const inp=document.createElement('input');
+    inp.type='number'; inp.step='0.1'; inp.id=`m${i}${j}`; inp.value=defaultMatrix[i][j];
+    inp.addEventListener('input',onMatrixChange);
+    grid.appendChild(inp);
+  }
+})();
+
+function readMatrix(){
+  const M=[];
+  for(let i=0;i<3;i++){const row=[];for(let j=0;j<3;j++)row.push(parseFloat(document.getElementById(`m${i}${j}`).value)||0);M.push(row);}
+  return M;
+}
+
+// ============================================================
+//  EXAMPLES
+// ============================================================
+const examples=[
+  {name:'Rotation about z-axis (45\u00B0)',m:[[0.7071,-0.7071,0],[0.7071,0.7071,0],[0,0,1]],desc:'Pure rotation, all \u03C3=1'},
+  {name:'Non-uniform stretch',m:[[3,0,0],[0,1,0],[0,0,0.5]],desc:'\u03C3: 3, 1, 0.5'},
+  {name:'General matrix',m:[[2,1,0],[0,3,1],[1,0,2]],desc:'Mixed rotation + scaling'},
+  {name:'Rank 2 (\u2192 flat disk)',m:[[1,0,1],[0,2,0],[1,0,1]],desc:'\u03C3\u2083=0, collapses to a plane'},
+  {name:'Rank 1 (\u2192 line)',m:[[1,2,3],[0.5,1,1.5],[2,4,6]],desc:'Only \u03C3\u2081\u22600, collapses to a line'},
+  {name:'Rank 0 (zero)',m:[[0,0,0],[0,0,0],[0,0,0]],desc:'Total collapse to origin'},
+  {name:'Shear in xy-plane',m:[[1,1,0],[0,1,0],[0,0,1]],desc:'Shear reveals hidden rotation+scaling'},
+  {name:'Uniform dilation (2\u00D7)',m:[[2,0,0],[0,2,0],[0,0,2]],desc:'All \u03C3=2, pure scaling'},
+  {name:'Reflection + stretch',m:[[-2,0,0],[0,1,0],[0,0,3]],desc:'det < 0, orientation-reversing'},
+  {name:'Rotation about (1,1,1)',m:[[0.6667,-0.3333,0.6667],[0.6667,0.6667,-0.3333],[-0.3333,0.6667,0.6667]],desc:'120\u00B0 rotation about diagonal'},
+  {name:'Projection onto xy-plane',m:[[1,0,0],[0,1,0],[0,0,0]],desc:'\u03C3\u2083=0, flattens z'},
+];
+
+// ============================================================
+//  THREE.JS SETUP
+// ============================================================
+const threeCanvas=document.getElementById('threeCanvas');
+const renderer=new THREE.WebGLRenderer({canvas:threeCanvas,antialias:true,alpha:true});
+renderer.setSize(650,600);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0xfafbfc,1);
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(45,650/600,0.1,100);
+camera.position.set(4,3,5);
+camera.lookAt(0,0,0);
+
+const controls=new OrbitControls(camera,threeCanvas);
+controls.enableDamping=true;
+controls.dampingFactor=0.08;
+controls.minDistance=2;
+controls.maxDistance=20;
+
+// Lighting
+const ambientLight=new THREE.AmbientLight(0xffffff,0.5);
+scene.add(ambientLight);
+const dirLight=new THREE.DirectionalLight(0xffffff,0.8);
+dirLight.position.set(5,8,5);
+scene.add(dirLight);
+const dirLight2=new THREE.DirectionalLight(0xffffff,0.3);
+dirLight2.position.set(-3,-2,-4);
+scene.add(dirLight2);
+
+// Smiley texture
+function createSmileyTexture(){
+  const sz=512,c=document.createElement('canvas');c.width=c.height=sz;
+  const g=c.getContext('2d');
+  g.fillStyle='#FFD93D';g.fillRect(0,0,sz,sz);
+  // Eyes
+  g.fillStyle='#333';g.beginPath();g.arc(sz*0.35,sz*0.38,sz*0.06,0,2*Math.PI);g.fill();
+  g.beginPath();g.arc(sz*0.65,sz*0.38,sz*0.06,0,2*Math.PI);g.fill();
+  // Smile
+  g.strokeStyle='#333';g.lineWidth=sz*0.025;g.beginPath();g.arc(sz*0.5,sz*0.48,sz*0.2,0.15*Math.PI,0.85*Math.PI);g.stroke();
+  const tex=new THREE.CanvasTexture(c);
+  tex.colorSpace=THREE.SRGBColorSpace;
+  return tex;
+}
+const smileyTex=createSmileyTexture();
+
+// Geometry
+const sphereGeo=new THREE.SphereGeometry(1,48,32);
+const sphereGeoLow=new THREE.SphereGeometry(1,24,16);
+
+// Groups
+const mainGroup=new THREE.Group();
+const ghostGroup=new THREE.Group();
+scene.add(mainGroup);
+scene.add(ghostGroup);
+
+// Coordinate axes
+const axesGroup=new THREE.Group();
+scene.add(axesGroup);
+
+function buildAxes(){
+  axesGroup.clear();
+  const colors=[0xef4444,0x3b82f6,0x10b981]; // x=red, y=blue, z=green
+  const labels=['x','y','z'];
+  for(let i=0;i<3;i++){
+    const dir=new THREE.Vector3(0,0,0);dir.setComponent(i,1);
+    const arrow=new THREE.ArrowHelper(dir,new THREE.Vector3(0,0,0),2.5,colors[i],0.15,0.08);
+    axesGroup.add(arrow);
+    // Negative
+    const neg=dir.clone().negate();
+    const arrowN=new THREE.ArrowHelper(neg,new THREE.Vector3(0,0,0),2.5,colors[i],0,0);
+    arrowN.line.material.opacity=0.2; arrowN.line.material.transparent=true;
+    axesGroup.add(arrowN);
+  }
+}
+buildAxes();
+
+// Sigma axes group
+const sigmaGroup=new THREE.Group();
+scene.add(sigmaGroup);
+
+// ============================================================
+//  SCENE UPDATE
+// ============================================================
+let currentSpheres={main:null,mainWire:null,ghost:null,ghostWire:null};
+
+function clearGroup(g){while(g.children.length>0){const c=g.children[0];if(c.geometry)c.geometry.dispose();if(c.material){if(Array.isArray(c.material))c.material.forEach(m=>m.dispose());else c.material.dispose();}g.remove(c);}}
+
+function buildSphere(group,matrix4,alpha,isGhost){
+  clearGroup(group);
+  const style=document.getElementById('surface-style').value;
+  const showWire=document.getElementById('show-wireframe').checked;
+
+  if(style==='smiley'){
+    const mat=new THREE.MeshPhongMaterial({map:smileyTex,transparent:true,opacity:alpha,side:THREE.DoubleSide,depthWrite:alpha>0.5});
+    const mesh=new THREE.Mesh(sphereGeo,mat);
+    mesh.applyMatrix4(matrix4);
+    group.add(mesh);
+  } else if(style==='solid'){
+    const mat=new THREE.MeshPhongMaterial({color:isGhost?0x94a3b8:0x6366f1,transparent:true,opacity:alpha*0.4,side:THREE.DoubleSide,depthWrite:false});
+    const mesh=new THREE.Mesh(sphereGeo,mat);
+    mesh.applyMatrix4(matrix4);
+    group.add(mesh);
+  }
+  // Wireframe overlay
+  if(showWire||style==='wireframe'){
+    const wireMat=new THREE.MeshBasicMaterial({color:isGhost?0x94a3b8:0x4f46e5,wireframe:true,transparent:true,opacity:isGhost?alpha*0.3:alpha*0.5});
+    const wireMesh=new THREE.Mesh(sphereGeoLow,wireMat);
+    wireMesh.applyMatrix4(matrix4);
+    group.add(wireMesh);
+  }
+}
+
+function buildSigmaAxes(svdResult){
+  clearGroup(sigmaGroup);
+  if(!document.getElementById('show-sigma-axes').checked||!svdResult)return;
+  const colors=[0x059669,0xd97706,0xef4444];
+  const{U,sigmas}=svdResult;
+  for(let i=0;i<3;i++){
+    if(sigmas[i]<1e-7)continue;
+    const dir=new THREE.Vector3(U[0][i],U[1][i],U[2][i]).normalize();
+    const len=sigmas[i];
+    const arrow=new THREE.ArrowHelper(dir,new THREE.Vector3(0,0,0),len,colors[i],0.12,0.06);
+    sigmaGroup.add(arrow);
+  }
+}
+
+function matToThreeMatrix4(M){
+  // M is 3x3, we need a THREE.Matrix4 (column-major)
+  const m=new THREE.Matrix4();
+  m.set(
+    M[0][0],M[0][1],M[0][2],0,
+    M[1][0],M[1][1],M[1][2],0,
+    M[2][0],M[2][1],M[2][2],0,
+    0,0,0,1
+  );
+  return m;
+}
+
+function lerpMatrix3(A,B,t){
+  const R=[];
+  for(let i=0;i<3;i++){const row=[];for(let j=0;j<3;j++)row.push(A[i][j]+(B[i][j]-A[i][j])*t);R.push(row);}
+  return R;
+}
+function identity3(){return [[1,0,0],[0,1,0],[0,0,1]];}
+function easeInOut(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+
+function updateScene(){
+  const M=state.matrix;
+  const svd=state.svdResult||computeSVD3(M);
+
+  // Compute current transformation matrix
+  let currentM;
+  if(state.decompMode&&svd){
+    const phase=state.decompPhase;
+    const t=easeInOut(state.animT);
+    const Vt=transposeMatrix(svd.Vt); // V
+    const VT=svd.Vt; // V^T
+    const SVT=multiplyMatrices(svd.Sigma,VT);
+    const USVT=multiplyMatrices(svd.U,SVT);
+    if(phase===0) currentM=lerpMatrix3(identity3(),VT,t);
+    else if(phase===1) currentM=lerpMatrix3(VT,SVT,t);
+    else currentM=lerpMatrix3(SVT,USVT,t);
+  } else if(state.fullMode){
+    currentM=lerpMatrix3(identity3(),M,easeInOut(state.animT));
+  } else {
+    currentM=M;
+  }
+
+  const mat4=matToThreeMatrix4(currentM);
+
+  // Main sphere
+  buildSphere(mainGroup,mat4,0.9,false);
+
+  // Ghost
+  if(document.getElementById('show-ghost').checked&&(state.decompMode||state.fullMode)){
+    buildSphere(ghostGroup,new THREE.Matrix4(),0.15,true);
+  } else { clearGroup(ghostGroup); }
+
+  // Axes
+  axesGroup.visible=document.getElementById('show-axes').checked;
+
+  // Sigma axes
+  buildSigmaAxes(svd);
+}
+
+// ============================================================
+//  KaTeX DISPLAYS
+// ============================================================
+function updateDisplays(){
+  const M=state.matrix;
+  const svd=computeSVD3(M);
+  state.svdResult=svd;
+  const{U,Sigma,Vt,sigmas}=svd;
+
+  // SVD display
+  try{
+    const latex=`U=${mat3ToLatex(U)}\\\\[4pt]\\Sigma=${mat3ToLatex(Sigma)}\\\\[4pt]V^T=${mat3ToLatex(Vt)}`;
+    katex.render(latex,document.getElementById('svd-display'),{throwOnError:false});
+  }catch(e){}
+
+  // Sigma and rank
+  try{
+    const rank=sigmas.filter(s=>s>1e-7).length;
+    const det=sigmas.reduce((a,b)=>a*b,1)*(detSign(U)*detSign(transposeMatrix(Vt)));
+    const latex=`\\sigma_1=${fmt(sigmas[0])},\\;\\sigma_2=${fmt(sigmas[1])},\\;\\sigma_3=${fmt(sigmas[2])}\\\\[4pt]\\text{rank}(A)=${rank}`;
+    katex.render(latex,document.getElementById('sigma-display'),{throwOnError:false});
+  }catch(e){}
+
+  // Rank alert
+  const rank=sigmas.filter(s=>s>1e-7).length;
+  const al=document.getElementById('rank-alert');
+  if(rank<3){
+    if(rank===0) al.textContent='Rank 0: Zero matrix \u2014 sphere collapses to the origin!';
+    else if(rank===1) al.textContent='Rank 1: Sphere collapses to a line!';
+    else al.textContent='Rank 2: Sphere collapses to a flat elliptical disk!';
+    al.style.display='';
+  } else al.style.display='none';
+
+  // Step matrices
+  try{
+    katex.render(`V^T=${mat3ToLatex(Vt)}`,document.getElementById('step-0-mat'),{throwOnError:false});
+    katex.render(`\\Sigma=${mat3ToLatex(Sigma)}`,document.getElementById('step-1-mat'),{throwOnError:false});
+    katex.render(`U=${mat3ToLatex(U)}`,document.getElementById('step-2-mat'),{throwOnError:false});
+  }catch(e){}
+
+  // Equation bar
+  try{katex.render(`A=${mat3ToLatex(M)}=U\\Sigma V^T`,document.getElementById('equation-bar'),{throwOnError:false,displayMode:true});}catch(e){}
+}
+
+function detSign(M){
+  // 3x3 determinant sign
+  const d=M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])-M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])+M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);
+  return d>=0?1:-1;
+}
+
+// ============================================================
+//  EVENT HANDLERS
+// ============================================================
+function onMatrixChange(){
+  state.matrix=readMatrix();
+  if(!state.animating){state.animT=1;state.decompMode=false;state.fullMode=false;}
+  updateDisplays(); updateScene();
+}
+window.onMatrixChange=onMatrixChange;
+
+// ============================================================
+//  ANIMATION
+// ============================================================
+function startFullAnimation(){
+  if(state.animating)return;
+  state.decompMode=false;state.fullMode=true;state.animT=0;state.animating=true;
+  state.animStartTime=performance.now();
+  state.animDuration=1500/parseFloat(document.getElementById('anim-speed').value);
+  state.svdResult=computeSVD3(state.matrix);
+  document.getElementById('btn-full').textContent='\u23F8 Playing';
+}
+window.startFullAnimation=startFullAnimation;
+
+function startDecomposition(){
+  if(state.animating)return;
+  state.svdResult=computeSVD3(state.matrix);
+  state.decompMode=true;state.fullMode=false;state.decompPhase=0;state.animT=0;state.animating=true;
+  state.animStartTime=performance.now();
+  state.animDuration=1500/parseFloat(document.getElementById('anim-speed').value);
+  updateDisplays();
+  document.getElementById('btn-decompose').textContent='\u23F8 Playing';
+}
+window.startDecomposition=startDecomposition;
+
+function resetAnimation(){
+  state.animating=false;state.decompMode=false;state.fullMode=false;state.animT=1;
+  document.getElementById('btn-decompose').textContent='\u2699 Decompose SVD';
+  document.getElementById('btn-full').textContent='\u25B6 Full Transform';
+  for(let i=0;i<3;i++)document.getElementById('step-'+i).classList.remove('active','completed');
+  updateScene();
+}
+window.resetAnimation=resetAnimation;
+
+window.updateScene=updateScene;
+
+function loadExample(idx){
+  const ex=examples[idx];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++)document.getElementById(`m${i}${j}`).value=ex.m[i][j];
+  onMatrixChange();
+  startDecomposition();
+}
+window.loadExample=loadExample;
+
+// ============================================================
+//  EXAMPLES PANEL
+// ============================================================
+function buildExamplesPanel(){
+  const list=document.getElementById('examples-list');
+  let html='';
+  examples.forEach((ex,i)=>{
+    html+=`<div class="example-item" onclick="loadExample(${i})"><h4>${ex.name}</h4><div style="font-size:0.75rem;color:#64748b;">${ex.desc}</div></div>`;
+  });
+  list.innerHTML=html;
+}
+
+// ============================================================
+//  RENDER LOOP
+// ============================================================
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+
+  if(state.animating){
+    const elapsed=performance.now()-state.animStartTime;
+    state.animT=Math.min(1,elapsed/state.animDuration);
+
+    if(state.decompMode){
+      // Update step highlights
+      for(let i=0;i<3;i++){
+        const el=document.getElementById('step-'+i);
+        el.classList.remove('active','completed');
+        if(i<state.decompPhase)el.classList.add('completed');
+        else if(i===state.decompPhase)el.classList.add('active');
+      }
+      if(state.animT>=1){
+        if(state.decompPhase<2){
+          state.decompPhase++;state.animT=0;state.animStartTime=performance.now();
+        } else {
+          state.animating=false;state.animT=1;
+          document.getElementById('btn-decompose').textContent='\u2699 Decompose SVD';
+        }
+      }
+    } else if(state.fullMode){
+      if(state.animT>=1){
+        state.animating=false;state.animT=1;state.fullMode=false;
+        document.getElementById('btn-full').textContent='\u25B6 Full Transform';
+      }
+    }
+    updateScene();
+  }
+
+  renderer.render(scene,camera);
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+function init(){
+  buildExamplesPanel();
+  onMatrixChange();
+  updateScene();
+  animate();
+}
+
+if(document.readyState==='complete') init();
+else window.addEventListener('load',init);
+
+</script>
+</body>
+</html>
