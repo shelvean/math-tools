@@ -35,7 +35,6 @@
     .info-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; text-align: center; }
     .info-card .label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
     .info-card .value { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 0.25rem; }
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
@@ -78,16 +77,9 @@
         <button onclick="document.getElementById('file-input').click()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">Choose Image</button>
         <input type="file" id="file-input" accept="image/*" class="hidden" />
         <div class="mt-4">
-          <span class="text-gray-400 text-sm">or try a sample image:</span><br/>
-          <div class="flex flex-wrap gap-2 mt-2 justify-center">
-            <button onclick="loadSample('dog')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Dog</button>
-            <button onclick="loadSample('cat')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Cat</button>
-            <button onclick="loadSample('cameraman')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Cameraman</button>
-            <button onclick="loadSample('landscape')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Landscape</button>
-            <button onclick="loadSample('mandrill')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Mandrill</button>
-            <button onclick="loadSample('gradient')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Gradient</button>
-            <button onclick="loadSample('shapes')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Shapes</button>
-          </div>
+          <span class="text-gray-400 text-sm">or try a sample:</span>
+          <button onclick="loadSample(64)" class="ml-2 text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">64&times;64 gradient</button>
+          <button onclick="loadSample(128)" class="ml-2 text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">128&times;128 pattern</button>
         </div>
       </div>
     </div>
@@ -205,119 +197,93 @@ const state = {
 };
 
 // ============================================================
-//  SVD via eigendecomposition of A^T A (fast for image matrices)
-//  Computes all singular values/vectors needed for rank-k reconstruction.
-//  Uses Jacobi eigenvalue algorithm on the smaller n×n matrix A^T A.
+//  SVD IMPLEMENTATION (one-sided Jacobi for thin SVD)
 // ============================================================
 
-// Multiply: C = A^T * A  where A is m×n row-major → C is n×n
-function computeAtA(A, m, n) {
-  const C = new Float64Array(n * n);
-  // Process in blocks for cache efficiency
-  for (let i = 0; i < n; i++) {
-    for (let j = i; j < n; j++) {
-      let s = 0;
-      for (let r = 0; r < m; r++) s += A[r * n + i] * A[r * n + j];
-      C[i * n + j] = s;
-      C[j * n + i] = s;
-    }
-  }
-  return C;
-}
+// Compute thin SVD of an m x n matrix A (m >= n) stored as flat Float64Array row-major
+// Returns {U: Float64Array[m*n], S: Float64Array[n], V: Float64Array[n*n]}
+function thinSVD(A, m, n) {
+  // Work on A^T A for right singular vectors, then recover left
+  // For images we use one-sided Jacobi on A directly
 
-// Jacobi eigenvalue decomposition for symmetric n×n matrix
-// Returns {eigenvalues: Float64Array[n], eigenvectors: Float64Array[n*n]}
-// eigenvectors stored column-major in row-major array (V[i*n+j] = j-th component of i-th row)
-function jacobiEigen(S, n) {
-  const A = new Float64Array(S); // work copy
+  // Copy A into working matrix
+  const W = new Float64Array(A);
   const V = new Float64Array(n * n);
+  // V = I
   for (let i = 0; i < n; i++) V[i * n + i] = 1;
 
-  const maxIter = 100;
+  const maxIter = 50;
   const tol = 1e-10;
 
   for (let iter = 0; iter < maxIter; iter++) {
-    // Find largest off-diagonal element
-    let maxVal = 0, p = 0, q = 1;
-    for (let i = 0; i < n - 1; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const v = Math.abs(A[i * n + j]);
-        if (v > maxVal) { maxVal = v; p = i; q = j; }
+    let converged = true;
+
+    for (let p = 0; p < n - 1; p++) {
+      for (let q = p + 1; q < n; q++) {
+        // Compute dot products of columns p and q of W
+        let app = 0, aqq = 0, apq = 0;
+        for (let i = 0; i < m; i++) {
+          const wp = W[i * n + p], wq = W[i * n + q];
+          app += wp * wp;
+          aqq += wq * wq;
+          apq += wp * wq;
+        }
+
+        if (Math.abs(apq) < tol * Math.sqrt(app * aqq)) continue;
+        converged = false;
+
+        // Compute Jacobi rotation
+        const tau = (aqq - app) / (2 * apq);
+        const t = Math.sign(tau) / (Math.abs(tau) + Math.sqrt(1 + tau * tau));
+        const c = 1 / Math.sqrt(1 + t * t);
+        const s = t * c;
+
+        // Apply rotation to W columns p, q
+        for (let i = 0; i < m; i++) {
+          const wp = W[i * n + p], wq = W[i * n + q];
+          W[i * n + p] = c * wp - s * wq;
+          W[i * n + q] = s * wp + c * wq;
+        }
+
+        // Apply rotation to V columns p, q
+        for (let i = 0; i < n; i++) {
+          const vp = V[i * n + p], vq = V[i * n + q];
+          V[i * n + p] = c * vp - s * vq;
+          V[i * n + q] = s * vp + c * vq;
+        }
       }
     }
-    if (maxVal < tol) break;
-
-    // Compute rotation
-    const app = A[p * n + p], aqq = A[q * n + q], apq = A[p * n + q];
-    let c, s;
-    if (Math.abs(app - aqq) < 1e-15) {
-      c = s = Math.SQRT1_2;
-    } else {
-      const tau = (aqq - app) / (2 * apq);
-      const t = Math.sign(tau) / (Math.abs(tau) + Math.sqrt(1 + tau * tau));
-      c = 1 / Math.sqrt(1 + t * t);
-      s = t * c;
-    }
-
-    // Apply rotation to A (symmetric, so update rows and cols p,q)
-    for (let i = 0; i < n; i++) {
-      if (i === p || i === q) continue;
-      const aip = A[i * n + p], aiq = A[i * n + q];
-      A[i * n + p] = A[p * n + i] = c * aip - s * aiq;
-      A[i * n + q] = A[q * n + i] = s * aip + c * aiq;
-    }
-    const newpp = c*c*app - 2*s*c*apq + s*s*aqq;
-    const newqq = s*s*app + 2*s*c*apq + c*c*aqq;
-    A[p * n + p] = newpp;
-    A[q * n + q] = newqq;
-    A[p * n + q] = A[q * n + p] = 0;
-
-    // Update eigenvectors
-    for (let i = 0; i < n; i++) {
-      const vp = V[i * n + p], vq = V[i * n + q];
-      V[i * n + p] = c * vp - s * vq;
-      V[i * n + q] = s * vp + c * vq;
-    }
+    if (converged) break;
   }
 
-  const eigenvalues = new Float64Array(n);
-  for (let i = 0; i < n; i++) eigenvalues[i] = A[i * n + i];
-  return { eigenvalues, eigenvectors: V };
-}
-
-// Full thin SVD: A (m×n, m>=n) = U * diag(S) * V^T
-// Strategy: eigen-decompose A^T A = V * diag(λ) * V^T, then S = sqrt(λ), U = A*V*diag(1/S)
-function thinSVD(A, m, n) {
-  const AtA = computeAtA(A, m, n);
-  const { eigenvalues, eigenvectors: V } = jacobiEigen(AtA, n);
-
-  // Sort by descending eigenvalue
-  const idx = Array.from({ length: n }, (_, i) => i);
-  idx.sort((a, b) => eigenvalues[b] - eigenvalues[a]);
-
+  // Extract singular values (column norms of W) and normalize to get U
   const S = new Float64Array(n);
-  const Vs = new Float64Array(n * n);
   const U = new Float64Array(m * n);
 
   for (let j = 0; j < n; j++) {
-    const eigVal = Math.max(0, eigenvalues[idx[j]]);
-    S[j] = Math.sqrt(eigVal);
-
-    // Copy sorted eigenvector column
-    for (let i = 0; i < n; i++) Vs[i * n + j] = V[i * n + idx[j]];
-
-    // Compute U column: u_j = (1/s_j) * A * v_j
+    let norm = 0;
+    for (let i = 0; i < m; i++) norm += W[i * n + j] * W[i * n + j];
+    S[j] = Math.sqrt(norm);
     if (S[j] > 1e-12) {
-      const invS = 1 / S[j];
-      for (let r = 0; r < m; r++) {
-        let sum = 0;
-        for (let c = 0; c < n; c++) sum += A[r * n + c] * Vs[c * n + j];
-        U[r * n + j] = sum * invS;
-      }
+      for (let i = 0; i < m; i++) U[i * n + j] = W[i * n + j] / S[j];
     }
   }
 
-  return { U, S, V: Vs };
+  // Sort by descending singular value
+  const idx = Array.from({ length: n }, (_, i) => i);
+  idx.sort((a, b) => S[b] - S[a]);
+
+  const Ss = new Float64Array(n);
+  const Us = new Float64Array(m * n);
+  const Vs = new Float64Array(n * n);
+
+  for (let j = 0; j < n; j++) {
+    Ss[j] = S[idx[j]];
+    for (let i = 0; i < m; i++) Us[i * n + j] = U[i * n + idx[j]];
+    for (let i = 0; i < n; i++) Vs[i * n + j] = V[i * n + idx[j]];
+  }
+
+  return { U: Us, S: Ss, V: Vs };
 }
 
 // ============================================================
@@ -350,222 +316,42 @@ function handleFile(file) {
   reader.readAsDataURL(file);
 }
 
-function loadSample(name) {
-  // Image-file based samples (cat, dog)
-  if (name === 'cat' || name === 'dog') {
-    const src = name === 'cat' ? 'cat_image.png' : 'dog_image.png';
-    const img = new Image();
-    img.onload = function() {
-      // Resize to manageable size for SVD (max 192px on longest side)
-      const maxDim = 192;
-      const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const cvs = document.createElement('canvas');
-      cvs.width = w; cvs.height = h;
-      const ctx = cvs.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const imgData = ctx.getImageData(0, 0, w, h);
-      processImage(imgData, w, h);
-    };
-    img.onerror = function() {
-      alert('Could not load ' + src + '. Make sure the file is in the same directory.');
-    };
-    img.src = src;
-    return;
-  }
-
-  const S = 128; // all procedural samples are 128x128
+function loadSample(size) {
   const cvs = document.createElement('canvas');
-  cvs.width = S; cvs.height = S;
+  cvs.width = size; cvs.height = size;
   const ctx = cvs.getContext('2d');
+  const imgData = ctx.createImageData(size, size);
+  const d = imgData.data;
 
-  if (name === 'cameraman') {
-    // Classic "cameraman"-style: silhouette figure on graduated sky background
-    const imgData = ctx.createImageData(S, S);
-    const d = imgData.data;
-    // Seeded pseudo-random for reproducibility
-    let seed = 12345;
-    function rand(){ seed = (seed * 16807 + 0) % 2147483647; return seed / 2147483647; }
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4;
-        // Sky gradient (top=light blue, bottom=darker)
-        const sky = Math.round(200 - 120 * (y / S));
-        // Ground (bottom third)
-        const isGround = y > S * 0.7;
-        // Figure silhouette (centered person shape)
-        const cx = x - S * 0.45, cy = y - S * 0.35;
-        const headR = S * 0.07;
-        const isHead = (cx * cx + cy * cy) < headR * headR;
-        const bodyTop = S * 0.35 + headR, bodyBot = S * 0.72;
-        const bodyHalfW = S * 0.06;
-        const isBody = y > bodyTop && y < bodyBot && Math.abs(x - S * 0.45) < bodyHalfW;
-        // Tripod: three lines from body bottom
-        const tripodY = y > bodyBot && y < S * 0.88;
-        const tx = x - S * 0.45;
-        const legSlope = (y - bodyBot) / (S * 0.16);
-        const isLeftLeg = tripodY && Math.abs(tx + legSlope * S * 0.12) < 2;
-        const isRightLeg = tripodY && Math.abs(tx - legSlope * S * 0.12) < 2;
-        const isCenterLeg = tripodY && Math.abs(tx) < 1.5;
-        // Camera box
-        const camCx = S * 0.45 + S * 0.08, camCy = S * 0.38;
-        const isCam = Math.abs(x - camCx) < S * 0.05 && Math.abs(y - camCy) < S * 0.035;
-        const isFigure = isHead || isBody || isLeftLeg || isRightLeg || isCenterLeg || isCam;
-
-        let gray;
-        if (isFigure) {
-          gray = 30 + Math.round(rand() * 15);
-        } else if (isGround) {
-          gray = Math.round(80 + 40 * rand() + 20 * Math.sin(x * 0.3));
-        } else {
-          gray = Math.round(sky + 10 * rand());
-        }
-        d[i] = d[i+1] = d[i+2] = Math.max(0, Math.min(255, gray));
-        d[i+3] = 255;
-      }
-    }
-    processImage(imgData, S, S);
-    return;
-  }
-
-  if (name === 'landscape') {
-    // Scenic landscape: sky, mountains, lake, trees
-    const imgData = ctx.createImageData(S, S);
-    const d = imgData.data;
-    let seed = 42;
-    function rand(){ seed = (seed * 16807 + 0) % 2147483647; return seed / 2147483647; }
-    // Mountain profile (two overlapping peaks)
-    function mountainY(x) {
-      const p1 = S * 0.35 - S * 0.18 * Math.exp(-((x - S * 0.35) / (S * 0.2)) ** 2);
-      const p2 = S * 0.38 - S * 0.22 * Math.exp(-((x - S * 0.65) / (S * 0.25)) ** 2);
-      return Math.min(p1, p2);
-    }
-    const lakeTop = S * 0.6, lakeBot = S * 0.75;
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4;
-        const my = mountainY(x);
-        let r, g, b;
-        if (y < my) {
-          // Sky
-          const t = y / (S * 0.4);
-          r = Math.round(135 + 100 * (1 - t));
-          g = Math.round(170 + 70 * (1 - t));
-          b = Math.round(220 + 35 * (1 - t));
-        } else if (y < S * 0.5) {
-          // Mountain
-          const shade = 0.5 + 0.5 * ((x / S) * 0.6 + 0.4);
-          const snow = y < my + S * 0.05 ? 1.4 : 1.0;
-          r = Math.round(90 * shade * snow + rand() * 10);
-          g = Math.round(85 * shade * snow + rand() * 10);
-          b = Math.round(100 * shade * snow + rand() * 8);
-        } else if (y >= lakeTop && y <= lakeBot) {
-          // Lake (reflects sky)
-          const ry = lakeTop - (y - lakeTop) * 0.5;
-          const t = ry / (S * 0.4);
-          r = Math.round(80 + 60 * (1 - t) + rand() * 8);
-          g = Math.round(120 + 40 * (1 - t) + rand() * 8);
-          b = Math.round(160 + 50 * (1 - t) + rand() * 5);
-        } else if (y >= S * 0.5 && y < lakeTop) {
-          // Forest band
-          const treeFreq = Math.sin(x * 0.4) * Math.sin(x * 1.1);
-          r = Math.round(35 + 25 * rand() + 10 * treeFreq);
-          g = Math.round(80 + 40 * rand() + 20 * treeFreq);
-          b = Math.round(25 + 15 * rand());
-        } else {
-          // Foreground grass
-          r = Math.round(60 + 30 * rand());
-          g = Math.round(100 + 50 * rand() + 20 * Math.sin(x * 0.2));
-          b = Math.round(30 + 20 * rand());
-        }
-        d[i] = Math.max(0, Math.min(255, r));
-        d[i+1] = Math.max(0, Math.min(255, g));
-        d[i+2] = Math.max(0, Math.min(255, b));
-        d[i+3] = 255;
-      }
-    }
-    processImage(imgData, S, S);
-    return;
-  }
-
-  if (name === 'mandrill') {
-    // Colorful face-like pattern (concentric features with rich color variation)
-    const imgData = ctx.createImageData(S, S);
-    const d = imgData.data;
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4;
-        const cx = (x - S/2) / (S/2), cy = (y - S/2) / (S/2);
-        const r2 = cx*cx + cy*cy;
-        const angle = Math.atan2(cy, cx);
-        // Rich color bands mimicking mandrill facial features
-        const rVal = 128 + 127 * Math.sin(5 * angle + 3 * r2 * Math.PI);
-        const gVal = 128 + 127 * Math.sin(3 * angle - 2 * r2 * Math.PI + 1);
-        const bVal = 128 + 127 * Math.cos(4 * angle + 4 * r2 * Math.PI + 2);
-        // Nose ridge (bright red/blue vertical stripe)
-        const nose = Math.exp(-((cx) / 0.08) ** 2) * (cy > -0.1 && cy < 0.5 ? 1 : 0);
-        d[i]   = Math.max(0, Math.min(255, Math.round(rVal + nose * 80)));
-        d[i+1] = Math.max(0, Math.min(255, Math.round(gVal * (1 - nose * 0.5))));
-        d[i+2] = Math.max(0, Math.min(255, Math.round(bVal + nose * 60)));
-        d[i+3] = 255;
-      }
-    }
-    processImage(imgData, S, S);
-    return;
-  }
-
-  if (name === 'gradient') {
-    // Smooth gradient — low rank structure (great for demonstrating fast convergence)
-    const imgData = ctx.createImageData(S, S);
-    const d = imgData.data;
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4;
-        d[i]     = Math.round(255 * x / S);
-        d[i + 1] = Math.round(255 * y / S);
-        d[i + 2] = Math.round(128 + 127 * Math.sin(2 * Math.PI * (x + y) / S));
+  if (size === 64) {
+    // Smooth gradient with diagonal bands
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        d[i]     = Math.round(255 * x / size);                                   // R
+        d[i + 1] = Math.round(255 * y / size);                                   // G
+        d[i + 2] = Math.round(128 + 127 * Math.sin(2 * Math.PI * (x + y) / size)); // B
         d[i + 3] = 255;
       }
     }
-    processImage(imgData, S, S);
-    return;
-  }
-
-  if (name === 'shapes') {
-    // Geometric shapes — edges test how many singular values are needed for sharp features
-    const imgData = ctx.createImageData(S, S);
-    const d = imgData.data;
-    for (let y = 0; y < S; y++) {
-      for (let x = 0; x < S; x++) {
-        const i = (y * S + x) * 4;
-        const cx = x - S/2, cy = y - S/2;
-        const r = Math.sqrt(cx*cx + cy*cy);
-        // Background
-        let rv = 240, gv = 240, bv = 235;
-        // Red circle
-        if (Math.abs(r - S * 0.35) < S * 0.03) { rv = 220; gv = 50; bv = 50; }
-        // Blue filled rectangle
-        if (Math.abs(x - S*0.25) < S*0.12 && Math.abs(y - S*0.25) < S*0.08) { rv = 50; gv = 80; bv = 200; }
-        // Green triangle
-        const tx = x - S*0.7, ty = y - S*0.7;
-        if (ty > 0 && ty < S*0.2 && Math.abs(tx) < ty * 0.8) { rv = 40; gv = 180; bv = 60; }
-        // Yellow ellipse
-        const ex = (x - S*0.7) / (S*0.12), ey = (y - S*0.3) / (S*0.07);
-        if (ex*ex + ey*ey < 1) { rv = 230; gv = 200; bv = 40; }
-        // Diagonal black line
-        if (Math.abs((x - 10) - (y - 10)) < 2 && x > 5 && x < S*0.3) { rv = 30; gv = 30; bv = 30; }
-        // Checkerboard patch
-        if (x > S*0.1 && x < S*0.4 && y > S*0.55 && y < S*0.85) {
-          const cx2 = Math.floor((x - S*0.1) / 6), cy2 = Math.floor((y - S*0.55) / 6);
-          if ((cx2 + cy2) % 2 === 0) { rv = 60; gv = 60; bv = 60; } else { rv = 220; gv = 220; bv = 220; }
-        }
-        d[i] = rv; d[i+1] = gv; d[i+2] = bv; d[i+3] = 255;
+  } else {
+    // Checkerboard + circles pattern
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        const cx = x - size / 2, cy = y - size / 2;
+        const r = Math.sqrt(cx * cx + cy * cy);
+        const checker = ((Math.floor(x / 16) + Math.floor(y / 16)) % 2 === 0) ? 200 : 80;
+        const ring = 128 + 127 * Math.cos(r * 0.3);
+        d[i]     = Math.round(0.6 * checker + 0.4 * ring);
+        d[i + 1] = Math.round(0.3 * checker + 0.7 * (128 + 127 * Math.sin(r * 0.2)));
+        d[i + 2] = Math.round(0.5 * checker + 0.5 * (128 + 127 * Math.sin(x * 0.15)));
+        d[i + 3] = 255;
       }
     }
-    processImage(imgData, S, S);
-    return;
   }
+
+  processImage(imgData, size, size);
 }
 
 // ============================================================
@@ -586,79 +372,71 @@ function processImage(imgData, w, h) {
   // Draw original
   drawOriginal();
 
-  // Show loading state
-  const eqEl = document.getElementById('equation-display');
-  eqEl.innerHTML = '<div class="text-center text-gray-500"><span class="inline-block animate-spin mr-2" style="animation:spin 1s linear infinite">&#9881;</span>Computing SVD for ' + w + '&times;' + h + ' image (3 channels)...</div>';
+  // Compute SVD for each channel
+  computeAllSVDs();
+
+  // Set slider range
+  state.maxRank = Math.min(w, h);
+  const slider = document.getElementById('k-slider');
+  slider.max = state.maxRank;
+  slider.value = 1;
+  document.getElementById('k-input').max = state.maxRank;
+  document.getElementById('k-input').value = 1;
+  document.getElementById('max-rank-label').textContent = state.maxRank;
+
+  state.k = 1;
+  updateApproximation();
+  drawSpectrum();
+  updateEquation();
+
   document.getElementById('info-size').textContent = w + ' x ' + h;
-
-  // Compute SVD asynchronously (one channel per frame to keep UI responsive)
-  state.channels = [];
-  const channelNames = ['Red', 'Green', 'Blue'];
-
-  function computeNextChannel(ch) {
-    if (ch >= 3) {
-      // All done — finalize
-      state.maxRank = Math.min(w, h);
-      const slider = document.getElementById('k-slider');
-      slider.max = state.maxRank;
-      slider.value = 1;
-      document.getElementById('k-input').max = state.maxRank;
-      document.getElementById('k-input').value = 1;
-      document.getElementById('max-rank-label').textContent = state.maxRank;
-      state.k = 1;
-      updateApproximation();
-      drawSpectrum();
-      updateEquation();
-      return;
-    }
-
-    eqEl.innerHTML = '<div class="text-center text-gray-500"><span class="inline-block" style="animation:spin 1s linear infinite">&#9881;</span> Computing SVD &mdash; ' + channelNames[ch] + ' channel (' + (ch+1) + '/3)...</div>';
-
-    setTimeout(function() {
-      computeOneChannel(ch);
-      computeNextChannel(ch + 1);
-    }, 20);
-  }
-
-  setTimeout(function() { computeNextChannel(0); }, 50);
 }
 
-function computeOneChannel(ch) {
+function computeAllSVDs() {
   const { imgData, width: w, height: h } = state;
   const d = imgData.data;
   const m = h, n = w;
 
-  // Extract channel as m x n matrix (row-major)
-  const A = new Float64Array(m * n);
-  for (let y = 0; y < m; y++) {
-    for (let x = 0; x < n; x++) {
-      A[y * n + x] = d[(y * w + x) * 4 + ch];
+  state.channels = [];
+
+  for (let ch = 0; ch < 3; ch++) {
+    // Extract channel as m x n matrix (row-major)
+    const A = new Float64Array(m * n);
+    for (let y = 0; y < m; y++) {
+      for (let x = 0; x < n; x++) {
+        A[y * n + x] = d[(y * w + x) * 4 + ch];
+      }
     }
+
+    let svd;
+    if (m >= n) {
+      svd = thinSVD(A, m, n);
+    } else {
+      // Transpose, compute SVD, then swap U and V
+      const At = new Float64Array(n * m);
+      for (let y = 0; y < m; y++)
+        for (let x = 0; x < n; x++)
+          At[x * m + y] = A[y * n + x];
+      const svdT = thinSVD(At, n, m);
+      svd = { U: svdT.V, S: svdT.S, V: svdT.U };
+      // Fix dimensions: U is m x m, V is n x m
+      // Actually for thin SVD of At (n x m): U is n x m, S is m, V is m x m
+      // So swapped: U = V_t (m x m), V = U_t (n x m) -- this is correct for A = U S V^T
+    }
+
+    let totalEnergy = 0;
+    for (let i = 0; i < svd.S.length; i++) totalEnergy += svd.S[i] * svd.S[i];
+
+    state.channels.push({
+      U: svd.U,
+      S: svd.S,
+      V: svd.V,
+      totalEnergy,
+      m: m >= n ? m : m,
+      n: m >= n ? n : n,
+      rank: svd.S.length
+    });
   }
-
-  let svd;
-  if (m >= n) {
-    svd = thinSVD(A, m, n);
-  } else {
-    // Transpose so tall matrix goes to thinSVD, then swap U and V
-    const At = new Float64Array(n * m);
-    for (let y = 0; y < m; y++)
-      for (let x = 0; x < n; x++)
-        At[x * m + y] = A[y * n + x];
-    const svdT = thinSVD(At, n, m);
-    svd = { U: svdT.V, S: svdT.S, V: svdT.U };
-  }
-
-  let totalEnergy = 0;
-  for (let i = 0; i < svd.S.length; i++) totalEnergy += svd.S[i] * svd.S[i];
-
-  state.channels.push({
-    U: svd.U,
-    S: svd.S,
-    V: svd.V,
-    totalEnergy,
-    rank: svd.S.length
-  });
 }
 
 // ============================================================
@@ -1015,9 +793,6 @@ document.addEventListener('DOMContentLoaded', function() {
     updateApproximation();
     updateEquation();
   });
-
-  // Auto-load dog as default image
-  loadSample('dog');
 });
 
 function resetImage() {
