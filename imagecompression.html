@@ -77,9 +77,14 @@
         <button onclick="document.getElementById('file-input').click()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">Choose Image</button>
         <input type="file" id="file-input" accept="image/*" class="hidden" />
         <div class="mt-4">
-          <span class="text-gray-400 text-sm">or try a sample:</span>
-          <button onclick="loadSample(64)" class="ml-2 text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">64&times;64 gradient</button>
-          <button onclick="loadSample(128)" class="ml-2 text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">128&times;128 pattern</button>
+          <span class="text-gray-400 text-sm">or try a sample image:</span><br/>
+          <div class="flex flex-wrap gap-2 mt-2 justify-center">
+            <button onclick="loadSample('cameraman')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Cameraman</button>
+            <button onclick="loadSample('landscape')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Landscape</button>
+            <button onclick="loadSample('mandrill')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Mandrill</button>
+            <button onclick="loadSample('gradient')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Gradient</button>
+            <button onclick="loadSample('shapes')" class="text-indigo-600 hover:text-indigo-800 text-sm font-semibold underline">Shapes</button>
+          </div>
         </div>
       </div>
     </div>
@@ -316,42 +321,198 @@ function handleFile(file) {
   reader.readAsDataURL(file);
 }
 
-function loadSample(size) {
+function loadSample(name) {
+  const S = 128; // all procedural samples are 128x128
   const cvs = document.createElement('canvas');
-  cvs.width = size; cvs.height = size;
+  cvs.width = S; cvs.height = S;
   const ctx = cvs.getContext('2d');
-  const imgData = ctx.createImageData(size, size);
-  const d = imgData.data;
 
-  if (size === 64) {
-    // Smooth gradient with diagonal bands
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        d[i]     = Math.round(255 * x / size);                                   // R
-        d[i + 1] = Math.round(255 * y / size);                                   // G
-        d[i + 2] = Math.round(128 + 127 * Math.sin(2 * Math.PI * (x + y) / size)); // B
-        d[i + 3] = 255;
+  if (name === 'cameraman') {
+    // Classic "cameraman"-style: silhouette figure on graduated sky background
+    const imgData = ctx.createImageData(S, S);
+    const d = imgData.data;
+    // Seeded pseudo-random for reproducibility
+    let seed = 12345;
+    function rand(){ seed = (seed * 16807 + 0) % 2147483647; return seed / 2147483647; }
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4;
+        // Sky gradient (top=light blue, bottom=darker)
+        const sky = Math.round(200 - 120 * (y / S));
+        // Ground (bottom third)
+        const isGround = y > S * 0.7;
+        // Figure silhouette (centered person shape)
+        const cx = x - S * 0.45, cy = y - S * 0.35;
+        const headR = S * 0.07;
+        const isHead = (cx * cx + cy * cy) < headR * headR;
+        const bodyTop = S * 0.35 + headR, bodyBot = S * 0.72;
+        const bodyHalfW = S * 0.06;
+        const isBody = y > bodyTop && y < bodyBot && Math.abs(x - S * 0.45) < bodyHalfW;
+        // Tripod: three lines from body bottom
+        const tripodY = y > bodyBot && y < S * 0.88;
+        const tx = x - S * 0.45;
+        const legSlope = (y - bodyBot) / (S * 0.16);
+        const isLeftLeg = tripodY && Math.abs(tx + legSlope * S * 0.12) < 2;
+        const isRightLeg = tripodY && Math.abs(tx - legSlope * S * 0.12) < 2;
+        const isCenterLeg = tripodY && Math.abs(tx) < 1.5;
+        // Camera box
+        const camCx = S * 0.45 + S * 0.08, camCy = S * 0.38;
+        const isCam = Math.abs(x - camCx) < S * 0.05 && Math.abs(y - camCy) < S * 0.035;
+        const isFigure = isHead || isBody || isLeftLeg || isRightLeg || isCenterLeg || isCam;
+
+        let gray;
+        if (isFigure) {
+          gray = 30 + Math.round(rand() * 15);
+        } else if (isGround) {
+          gray = Math.round(80 + 40 * rand() + 20 * Math.sin(x * 0.3));
+        } else {
+          gray = Math.round(sky + 10 * rand());
+        }
+        d[i] = d[i+1] = d[i+2] = Math.max(0, Math.min(255, gray));
+        d[i+3] = 255;
       }
     }
-  } else {
-    // Checkerboard + circles pattern
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        const cx = x - size / 2, cy = y - size / 2;
-        const r = Math.sqrt(cx * cx + cy * cy);
-        const checker = ((Math.floor(x / 16) + Math.floor(y / 16)) % 2 === 0) ? 200 : 80;
-        const ring = 128 + 127 * Math.cos(r * 0.3);
-        d[i]     = Math.round(0.6 * checker + 0.4 * ring);
-        d[i + 1] = Math.round(0.3 * checker + 0.7 * (128 + 127 * Math.sin(r * 0.2)));
-        d[i + 2] = Math.round(0.5 * checker + 0.5 * (128 + 127 * Math.sin(x * 0.15)));
-        d[i + 3] = 255;
-      }
-    }
+    processImage(imgData, S, S);
+    return;
   }
 
-  processImage(imgData, size, size);
+  if (name === 'landscape') {
+    // Scenic landscape: sky, mountains, lake, trees
+    const imgData = ctx.createImageData(S, S);
+    const d = imgData.data;
+    let seed = 42;
+    function rand(){ seed = (seed * 16807 + 0) % 2147483647; return seed / 2147483647; }
+    // Mountain profile (two overlapping peaks)
+    function mountainY(x) {
+      const p1 = S * 0.35 - S * 0.18 * Math.exp(-((x - S * 0.35) / (S * 0.2)) ** 2);
+      const p2 = S * 0.38 - S * 0.22 * Math.exp(-((x - S * 0.65) / (S * 0.25)) ** 2);
+      return Math.min(p1, p2);
+    }
+    const lakeTop = S * 0.6, lakeBot = S * 0.75;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4;
+        const my = mountainY(x);
+        let r, g, b;
+        if (y < my) {
+          // Sky
+          const t = y / (S * 0.4);
+          r = Math.round(135 + 100 * (1 - t));
+          g = Math.round(170 + 70 * (1 - t));
+          b = Math.round(220 + 35 * (1 - t));
+        } else if (y < S * 0.5) {
+          // Mountain
+          const shade = 0.5 + 0.5 * ((x / S) * 0.6 + 0.4);
+          const snow = y < my + S * 0.05 ? 1.4 : 1.0;
+          r = Math.round(90 * shade * snow + rand() * 10);
+          g = Math.round(85 * shade * snow + rand() * 10);
+          b = Math.round(100 * shade * snow + rand() * 8);
+        } else if (y >= lakeTop && y <= lakeBot) {
+          // Lake (reflects sky)
+          const ry = lakeTop - (y - lakeTop) * 0.5;
+          const t = ry / (S * 0.4);
+          r = Math.round(80 + 60 * (1 - t) + rand() * 8);
+          g = Math.round(120 + 40 * (1 - t) + rand() * 8);
+          b = Math.round(160 + 50 * (1 - t) + rand() * 5);
+        } else if (y >= S * 0.5 && y < lakeTop) {
+          // Forest band
+          const treeFreq = Math.sin(x * 0.4) * Math.sin(x * 1.1);
+          r = Math.round(35 + 25 * rand() + 10 * treeFreq);
+          g = Math.round(80 + 40 * rand() + 20 * treeFreq);
+          b = Math.round(25 + 15 * rand());
+        } else {
+          // Foreground grass
+          r = Math.round(60 + 30 * rand());
+          g = Math.round(100 + 50 * rand() + 20 * Math.sin(x * 0.2));
+          b = Math.round(30 + 20 * rand());
+        }
+        d[i] = Math.max(0, Math.min(255, r));
+        d[i+1] = Math.max(0, Math.min(255, g));
+        d[i+2] = Math.max(0, Math.min(255, b));
+        d[i+3] = 255;
+      }
+    }
+    processImage(imgData, S, S);
+    return;
+  }
+
+  if (name === 'mandrill') {
+    // Colorful face-like pattern (concentric features with rich color variation)
+    const imgData = ctx.createImageData(S, S);
+    const d = imgData.data;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4;
+        const cx = (x - S/2) / (S/2), cy = (y - S/2) / (S/2);
+        const r2 = cx*cx + cy*cy;
+        const angle = Math.atan2(cy, cx);
+        // Rich color bands mimicking mandrill facial features
+        const rVal = 128 + 127 * Math.sin(5 * angle + 3 * r2 * Math.PI);
+        const gVal = 128 + 127 * Math.sin(3 * angle - 2 * r2 * Math.PI + 1);
+        const bVal = 128 + 127 * Math.cos(4 * angle + 4 * r2 * Math.PI + 2);
+        // Nose ridge (bright red/blue vertical stripe)
+        const nose = Math.exp(-((cx) / 0.08) ** 2) * (cy > -0.1 && cy < 0.5 ? 1 : 0);
+        d[i]   = Math.max(0, Math.min(255, Math.round(rVal + nose * 80)));
+        d[i+1] = Math.max(0, Math.min(255, Math.round(gVal * (1 - nose * 0.5))));
+        d[i+2] = Math.max(0, Math.min(255, Math.round(bVal + nose * 60)));
+        d[i+3] = 255;
+      }
+    }
+    processImage(imgData, S, S);
+    return;
+  }
+
+  if (name === 'gradient') {
+    // Smooth gradient — low rank structure (great for demonstrating fast convergence)
+    const imgData = ctx.createImageData(S, S);
+    const d = imgData.data;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4;
+        d[i]     = Math.round(255 * x / S);
+        d[i + 1] = Math.round(255 * y / S);
+        d[i + 2] = Math.round(128 + 127 * Math.sin(2 * Math.PI * (x + y) / S));
+        d[i + 3] = 255;
+      }
+    }
+    processImage(imgData, S, S);
+    return;
+  }
+
+  if (name === 'shapes') {
+    // Geometric shapes — edges test how many singular values are needed for sharp features
+    const imgData = ctx.createImageData(S, S);
+    const d = imgData.data;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        const i = (y * S + x) * 4;
+        const cx = x - S/2, cy = y - S/2;
+        const r = Math.sqrt(cx*cx + cy*cy);
+        // Background
+        let rv = 240, gv = 240, bv = 235;
+        // Red circle
+        if (Math.abs(r - S * 0.35) < S * 0.03) { rv = 220; gv = 50; bv = 50; }
+        // Blue filled rectangle
+        if (Math.abs(x - S*0.25) < S*0.12 && Math.abs(y - S*0.25) < S*0.08) { rv = 50; gv = 80; bv = 200; }
+        // Green triangle
+        const tx = x - S*0.7, ty = y - S*0.7;
+        if (ty > 0 && ty < S*0.2 && Math.abs(tx) < ty * 0.8) { rv = 40; gv = 180; bv = 60; }
+        // Yellow ellipse
+        const ex = (x - S*0.7) / (S*0.12), ey = (y - S*0.3) / (S*0.07);
+        if (ex*ex + ey*ey < 1) { rv = 230; gv = 200; bv = 40; }
+        // Diagonal black line
+        if (Math.abs((x - 10) - (y - 10)) < 2 && x > 5 && x < S*0.3) { rv = 30; gv = 30; bv = 30; }
+        // Checkerboard patch
+        if (x > S*0.1 && x < S*0.4 && y > S*0.55 && y < S*0.85) {
+          const cx2 = Math.floor((x - S*0.1) / 6), cy2 = Math.floor((y - S*0.55) / 6);
+          if ((cx2 + cy2) % 2 === 0) { rv = 60; gv = 60; bv = 60; } else { rv = 220; gv = 220; bv = 220; }
+        }
+        d[i] = rv; d[i+1] = gv; d[i+2] = bv; d[i+3] = 255;
+      }
+    }
+    processImage(imgData, S, S);
+    return;
+  }
 }
 
 // ============================================================
