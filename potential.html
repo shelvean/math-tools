@@ -379,11 +379,8 @@
             }
             const ctx = curveBackgroundCanvas.getContext('2d');
 
-            // Clear with gradient background
-            const gradient = ctx.createLinearGradient(0, 0, 0, curveBackgroundCanvas.height);
-            gradient.addColorStop(0, '#e6f3ff');
-            gradient.addColorStop(1, '#cce7ff');
-            ctx.fillStyle = gradient;
+            // Clear with light background
+            ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, curveBackgroundCanvas.width, curveBackgroundCanvas.height);
 
             // Draw grid
@@ -548,11 +545,8 @@
             }
             const ctx = phaseBackgroundCanvas.getContext('2d');
 
-            // Clear with gradient background
-            const gradient = ctx.createLinearGradient(0, 0, 0, phaseBackgroundCanvas.height);
-            gradient.addColorStop(0, '#f0f9ff');
-            gradient.addColorStop(1, '#e1f5fe');
-            ctx.fillStyle = gradient;
+            // Clear with light background
+            ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, phaseBackgroundCanvas.width, phaseBackgroundCanvas.height);
 
             // Draw grid
@@ -640,18 +634,54 @@
             }
             phaseCtx.drawImage(phaseBackgroundCanvas, 0, 0);
 
-            // Draw phase trajectory (simplified for performance)
+            // Draw phase trajectory with speed-based coloring
             if (phaseData.length > 1) {
-                phaseCtx.beginPath();
-                phaseCtx.moveTo(xToPhase(phaseData[0].x), vToPhase(phaseData[0].y));
+                // Compute speeds for color mapping
+                const speeds = [0];
+                let maxSpeed = 0;
                 for (let i = 1; i < phaseData.length; i++) {
-                    phaseCtx.lineTo(xToPhase(phaseData[i].x), vToPhase(phaseData[i].y));
+                    const dx = phaseData[i].x - phaseData[i-1].x;
+                    const dv = phaseData[i].y - phaseData[i-1].y;
+                    const spd = Math.sqrt(dx*dx + dv*dv);
+                    speeds.push(spd);
+                    if (spd > maxSpeed) maxSpeed = spd;
                 }
-                phaseCtx.strokeStyle = '#4f46e5';
-                phaseCtx.lineWidth = 2;
-                phaseCtx.lineJoin = 'round';
-                phaseCtx.lineCap = 'round';
-                phaseCtx.stroke();
+                if (maxSpeed === 0) maxSpeed = 1;
+
+                // Draw segment by segment with speed color
+                const fadeLen = Math.min(phaseData.length, 3000);
+                const startIdx = Math.max(0, phaseData.length - fadeLen);
+                for (let i = startIdx + 1; i < phaseData.length; i++) {
+                    const sx = xToPhase(phaseData[i-1].x);
+                    const sy = vToPhase(phaseData[i-1].y);
+                    const ex = xToPhase(phaseData[i].x);
+                    const ey = vToPhase(phaseData[i].y);
+
+                    // Speed-based color (blue -> green -> red)
+                    const ratio = Math.min(speeds[i] / maxSpeed, 1);
+                    let r, g, b;
+                    if (ratio < 0.33) {
+                        const t = ratio / 0.33;
+                        r = 0; g = Math.floor(100*t); b = Math.floor(140 + 40*t);
+                    } else if (ratio < 0.66) {
+                        const t = (ratio - 0.33) / 0.33;
+                        r = Math.floor(180*t); g = Math.floor(100 + 40*t); b = Math.floor(180*(1-t));
+                    } else {
+                        const t = (ratio - 0.66) / 0.34;
+                        r = Math.floor(180 + 20*t); g = Math.floor(140*(1-t)); b = 0;
+                    }
+
+                    // Fade older segments
+                    const age = (i - startIdx) / fadeLen;
+                    phaseCtx.globalAlpha = age * 0.95;
+                    phaseCtx.strokeStyle = `rgb(${r},${g},${b})`;
+                    phaseCtx.lineWidth = 1.5;
+                    phaseCtx.beginPath();
+                    phaseCtx.moveTo(sx, sy);
+                    phaseCtx.lineTo(ex, ey);
+                    phaseCtx.stroke();
+                }
+                phaseCtx.globalAlpha = 1;
             }
 
             // Draw current position with 3D effect
