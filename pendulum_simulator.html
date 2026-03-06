@@ -378,20 +378,49 @@
                 graphCtx.fillText(tVal.toFixed(1), x, graphCanvas.height - 25);
             }
 
-            graphCtx.strokeStyle = '#007bff';
-            graphCtx.lineWidth = 2;
-            graphCtx.beginPath();
-            let x = 50 + (graphData[0].t / endTime) * (graphCanvas.width - 70);
-            let y = graphCanvas.height - 30 - ((graphData[0].theta - minTheta) / (maxTheta - minTheta)) * verticalRange;
-            graphCtx.moveTo(x, y);
+            // Compute speeds for color mapping
+            const speeds = [0];
+            let maxSpd = 0;
+            for (let i = 1; i < graphData.length; i++) {
+                const dth = graphData[i].theta - graphData[i-1].theta;
+                const dt = graphData[i].t - graphData[i-1].t;
+                const spd = dt > 0 ? Math.abs(dth / dt) : 0;
+                speeds.push(spd);
+                if (spd > maxSpd) maxSpd = spd;
+            }
+            if (maxSpd === 0) maxSpd = 1;
+
+            let sx = 50 + (graphData[0].t / endTime) * (graphCanvas.width - 70);
+            let sy = graphCanvas.height - 30 - ((graphData[0].theta - minTheta) / (maxTheta - minTheta)) * verticalRange;
 
             for (let i = 1; i < graphData.length; i++) {
                 const point = graphData[i];
-                x = 50 + (point.t / endTime) * (graphCanvas.width - 70);
-                y = graphCanvas.height - 30 - ((point.theta - minTheta) / (maxTheta - minTheta)) * verticalRange;
-                graphCtx.lineTo(x, y);
+                const ex = 50 + (point.t / endTime) * (graphCanvas.width - 70);
+                const ey = graphCanvas.height - 30 - ((point.theta - minTheta) / (maxTheta - minTheta)) * verticalRange;
+
+                const ratio = Math.min(speeds[i] / maxSpd, 1);
+                let r, g, b;
+                if (ratio < 0.33) {
+                    const t = ratio / 0.33;
+                    r = 0; g = Math.floor(100*t); b = Math.floor(140 + 40*t);
+                } else if (ratio < 0.66) {
+                    const t = (ratio - 0.33) / 0.33;
+                    r = Math.floor(180*t); g = Math.floor(100 + 40*t); b = Math.floor(180*(1-t));
+                } else {
+                    const t = (ratio - 0.66) / 0.34;
+                    r = Math.floor(180 + 20*t); g = Math.floor(140*(1-t)); b = 0;
+                }
+
+                graphCtx.strokeStyle = `rgb(${r},${g},${b})`;
+                graphCtx.lineWidth = 2;
+                graphCtx.beginPath();
+                graphCtx.moveTo(sx, sy);
+                graphCtx.lineTo(ex, ey);
+                graphCtx.stroke();
+
+                sx = ex;
+                sy = ey;
             }
-            graphCtx.stroke();
         }
 
         function drawPhaseGraph() {
