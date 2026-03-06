@@ -36,7 +36,7 @@
     .equation-bar { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 20px; box-shadow:var(--shadow); text-align:center; width:100%; }
     .equation-bar .katex { font-size:1.1rem; }
     .canvas-wrap { background:var(--surface); border-radius:var(--radius); padding:12px; box-shadow:var(--shadow); border:1px solid var(--border); position:relative; }
-    canvas { border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; display:block; cursor:crosshair; }
+    canvas { border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; display:block; cursor:grab; }
     .ctrl-group { margin-bottom:12px; }
     .ctrl-group label { display:block; font-size:0.8rem; font-weight:600; color:#334155; margin-bottom:4px; }
     select, input[type="number"] { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:0.88rem; color:var(--text); background:#f8fafc; outline:none; transition:border-color 0.2s; }
@@ -218,6 +218,8 @@ const state = {
   decompSVD: null,
   fullMode: false,
   drawRequested: false,
+  panX: 0, panY: 0,
+  dragging: false, dragLastX: 0, dragLastY: 0,
 };
 
 // ============================================================
@@ -302,7 +304,9 @@ function svd2(M){
 // ============================================================
 //  COORDINATES & EASING
 // ============================================================
-function toCanvas(x,y){ return [CX+x*SCALE, CY-y*SCALE]; }
+function toCanvas(x,y){ return [CX+state.panX+x*SCALE, CY+state.panY-y*SCALE]; }
+function panCX(){ return CX+state.panX; }
+function panCY(){ return CY+state.panY; }
 function easeInOut(t){ return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2; }
 
 // ============================================================
@@ -346,14 +350,15 @@ function matToLatex(M){ return `\\begin{bmatrix} ${fmt(M[0][0])} & ${fmt(M[0][1]
 //  DRAWING (from transformations2d.html)
 // ============================================================
 function drawAxes(){
+  const cx=panCX(), cy=panCY();
   ctx.save(); ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.moveTo(0,CY); ctx.lineTo(W,CY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(CX,0); ctx.lineTo(CX,H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(W,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H); ctx.stroke();
   ctx.fillStyle='#94a3b8'; ctx.font='11px system-ui';
   ctx.textAlign='center'; ctx.textBaseline='top';
-  for(let i=-GRID_RANGE;i<=GRID_RANGE;i++){if(!i)continue;const[px]=toCanvas(i,0);ctx.beginPath();ctx.moveTo(px,CY-4);ctx.lineTo(px,CY+4);ctx.stroke();ctx.fillText(i,px,CY+7);}
+  for(let i=-GRID_RANGE;i<=GRID_RANGE;i++){if(!i)continue;const[px]=toCanvas(i,0);ctx.beginPath();ctx.moveTo(px,cy-4);ctx.lineTo(px,cy+4);ctx.stroke();ctx.fillText(i,px,cy+7);}
   ctx.textAlign='right'; ctx.textBaseline='middle';
-  for(let i=-GRID_RANGE;i<=GRID_RANGE;i++){if(!i)continue;const[,py]=toCanvas(0,i);ctx.beginPath();ctx.moveTo(CX-4,py);ctx.lineTo(CX+4,py);ctx.stroke();ctx.fillText(i,CX-8,py);}
+  for(let i=-GRID_RANGE;i<=GRID_RANGE;i++){if(!i)continue;const[,py]=toCanvas(0,i);ctx.beginPath();ctx.moveTo(cx-4,py);ctx.lineTo(cx+4,py);ctx.stroke();ctx.fillText(i,cx-8,py);}
   ctx.restore();
 }
 
@@ -545,7 +550,7 @@ function decompLoop(){
 
 function resetAnimation(){
   state.animating=false; state.decompMode=false; state.fullMode=false; state.animT=1;
-  state.matrix=[[1,0],[0,1]];
+  state.matrix=[[1,0],[0,1]]; state.panX=0; state.panY=0;
   document.getElementById('m00').value='1'; document.getElementById('m01').value='0';
   document.getElementById('m10').value='0'; document.getElementById('m11').value='1';
   document.getElementById('btn-decompose').textContent='\u2699 Decompose SVD';
@@ -606,6 +611,35 @@ function buildExamplesPanel(){
   list.innerHTML=html;
   examples.forEach((ex,i)=>{ try{katex.render(matToLatex(ex.m),document.getElementById('ex-mat-'+i),{throwOnError:false});}catch(e){} });
 }
+
+// ============================================================
+//  PAN (drag to pan the canvas view)
+// ============================================================
+canvas.addEventListener('mousedown',e=>{
+  state.dragging=true; state.dragLastX=e.clientX; state.dragLastY=e.clientY;
+  canvas.style.cursor='grabbing';
+});
+window.addEventListener('mousemove',e=>{
+  if(!state.dragging) return;
+  state.panX+=e.clientX-state.dragLastX;
+  state.panY+=e.clientY-state.dragLastY;
+  state.dragLastX=e.clientX; state.dragLastY=e.clientY;
+  requestDraw();
+});
+window.addEventListener('mouseup',()=>{
+  if(state.dragging){ state.dragging=false; canvas.style.cursor='grab'; }
+});
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){ const t=e.touches[0]; state.dragging=true; state.dragLastX=t.clientX; state.dragLastY=t.clientY; }
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(!state.dragging||e.touches.length!==1) return;
+  const t=e.touches[0];
+  state.panX+=t.clientX-state.dragLastX; state.panY+=t.clientY-state.dragLastY;
+  state.dragLastX=t.clientX; state.dragLastY=t.clientY;
+  requestDraw(); e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchend',()=>{ state.dragging=false; });
 
 // ============================================================
 //  INIT
