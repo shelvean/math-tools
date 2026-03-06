@@ -671,9 +671,6 @@
                         r = Math.floor(180 + 20*t); g = Math.floor(140*(1-t)); b = 0;
                     }
 
-                    // Fade older segments
-                    const age = (i - startIdx) / fadeLen;
-                    phaseCtx.globalAlpha = age * 0.95;
                     phaseCtx.strokeStyle = `rgb(${r},${g},${b})`;
                     phaseCtx.lineWidth = 1.5;
                     phaseCtx.beginPath();
@@ -681,35 +678,56 @@
                     phaseCtx.lineTo(ex, ey);
                     phaseCtx.stroke();
                 }
-                phaseCtx.globalAlpha = 1;
             }
 
-            // Draw current position with 3D effect
+            // Draw current position as small soccer ball
             if (phaseData.length > 0) {
                 const current = phaseData[phaseData.length - 1];
                 const px = xToPhase(current.x);
                 const py = vToPhase(current.y);
+                const pr = 8;
 
-                // Outer glow
+                // Shadow
                 phaseCtx.beginPath();
-                phaseCtx.arc(px, py, 10, 0, Math.PI * 2);
-                phaseCtx.fillStyle = 'rgba(220, 38, 38, 0.3)';
+                phaseCtx.arc(px+1, py+1, pr, 0, Math.PI * 2);
+                phaseCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
                 phaseCtx.fill();
 
-                // Main circle with gradient
-                const ballGradient = phaseCtx.createRadialGradient(px-3, py-3, 1, px, py, 8);
-                ballGradient.addColorStop(0, '#dc2626');
-                ballGradient.addColorStop(1, '#7f1d1d');
-
+                // White base
+                const bg = phaseCtx.createRadialGradient(px-pr*0.3, py-pr*0.3, pr*0.1, px, py, pr);
+                bg.addColorStop(0, '#ffffff');
+                bg.addColorStop(0.6, '#f0f0f0');
+                bg.addColorStop(1, '#b0b0b0');
                 phaseCtx.beginPath();
-                phaseCtx.arc(px, py, 8, 0, Math.PI * 2);
-                phaseCtx.fillStyle = ballGradient;
+                phaseCtx.arc(px, py, pr, 0, Math.PI * 2);
+                phaseCtx.fillStyle = bg;
                 phaseCtx.fill();
+                phaseCtx.strokeStyle = '#888';
+                phaseCtx.lineWidth = 0.5;
+                phaseCtx.stroke();
+
+                // Center pentagon
+                phaseCtx.save();
+                phaseCtx.beginPath();
+                phaseCtx.arc(px, py, pr, 0, Math.PI * 2);
+                phaseCtx.clip();
+                phaseCtx.beginPath();
+                for (let j = 0; j < 5; j++) {
+                    const a = -Math.PI/2 + j * 2 * Math.PI / 5;
+                    const ppx = px + pr*0.3 * Math.cos(a);
+                    const ppy = py + pr*0.3 * Math.sin(a);
+                    if (j === 0) phaseCtx.moveTo(ppx, ppy);
+                    else phaseCtx.lineTo(ppx, ppy);
+                }
+                phaseCtx.closePath();
+                phaseCtx.fillStyle = '#222';
+                phaseCtx.fill();
+                phaseCtx.restore();
 
                 // Highlight
                 phaseCtx.beginPath();
-                phaseCtx.arc(px-2, py-2, 3, 0, Math.PI * 2);
-                phaseCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                phaseCtx.arc(px - pr*0.3, py - pr*0.3, pr*0.2, 0, Math.PI * 2);
+                phaseCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
                 phaseCtx.fill();
             }
         }
@@ -731,22 +749,73 @@
             const ballX = canvasX + ballRadius * n_x;
             const ballY = canvasY + ballRadius * n_y;
 
-            // Ball with gradient for 3D effect
+            // Soccer ball
+            const R = ballRadius;
+
+            // White base with 3D shading
             const ballGradient = curveCtx.createRadialGradient(
-                ballX - ballRadius/3, ballY - ballRadius/3, 1,
-                ballX, ballY, ballRadius
+                ballX - R*0.3, ballY - R*0.3, R*0.1,
+                ballX, ballY, R
             );
-            ballGradient.addColorStop(0, '#f97316');
-            ballGradient.addColorStop(1, '#ea580c');
+            ballGradient.addColorStop(0, '#ffffff');
+            ballGradient.addColorStop(0.6, '#f0f0f0');
+            ballGradient.addColorStop(1, '#c0c0c0');
 
             curveCtx.beginPath();
-            curveCtx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+            curveCtx.arc(ballX, ballY, R, 0, Math.PI * 2);
             curveCtx.fillStyle = ballGradient;
             curveCtx.fill();
+            curveCtx.strokeStyle = '#888';
+            curveCtx.lineWidth = 0.5;
+            curveCtx.stroke();
 
-            // Highlight
+            // Draw pentagon patches
+            curveCtx.save();
             curveCtx.beginPath();
-            curveCtx.arc(ballX - ballRadius/3, ballY - ballRadius/3, ballRadius/3, 0, Math.PI * 2);
+            curveCtx.arc(ballX, ballY, R, 0, Math.PI * 2);
+            curveCtx.clip();
+
+            function drawPentagon(cx, cy, size, filled) {
+                curveCtx.beginPath();
+                for (let j = 0; j < 5; j++) {
+                    const angle = -Math.PI/2 + j * 2 * Math.PI / 5;
+                    const px = cx + size * Math.cos(angle);
+                    const py = cy + size * Math.sin(angle);
+                    if (j === 0) curveCtx.moveTo(px, py);
+                    else curveCtx.lineTo(px, py);
+                }
+                curveCtx.closePath();
+                if (filled) {
+                    curveCtx.fillStyle = '#222';
+                    curveCtx.fill();
+                }
+                curveCtx.strokeStyle = '#444';
+                curveCtx.lineWidth = 0.8;
+                curveCtx.stroke();
+            }
+
+            // Center pentagon (black)
+            drawPentagon(ballX, ballY, R*0.3, true);
+            // Surrounding pentagons
+            const pSize = R * 0.25;
+            for (let j = 0; j < 5; j++) {
+                const angle = -Math.PI/2 + j * 2 * Math.PI / 5;
+                const px = ballX + R*0.62 * Math.cos(angle);
+                const py = ballY + R*0.62 * Math.sin(angle);
+                drawPentagon(px, py, pSize, false);
+            }
+            // Edge pentagons (black, partially visible)
+            for (let j = 0; j < 5; j++) {
+                const angle = -Math.PI/2 + (j + 0.5) * 2 * Math.PI / 5;
+                const px = ballX + R*0.95 * Math.cos(angle);
+                const py = ballY + R*0.95 * Math.sin(angle);
+                drawPentagon(px, py, pSize, true);
+            }
+            curveCtx.restore();
+
+            // Specular highlight
+            curveCtx.beginPath();
+            curveCtx.arc(ballX - R*0.3, ballY - R*0.3, R*0.25, 0, Math.PI * 2);
             curveCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             curveCtx.fill();
         }
