@@ -373,6 +373,9 @@
             <option value="arrow">Arrow</option>
             <option value="star">Star</option>
             <option value="boat">Sailboat</option>
+            <option value="smiley">Smiley Face</option>
+            <option value="cat">Cat</option>
+            <option value="dog">Dog</option>
           </select>
         </div>
         <div class="chk-row">
@@ -503,6 +506,16 @@ const state = {
   drawRequested: false,
 };
 
+// Preload images for image-based objects
+const imageCache = {};
+function preloadImage(key, src){
+  const img = new Image();
+  img.src = src;
+  img.onload = function(){ imageCache[key] = img; requestDraw(); };
+}
+preloadImage('cat', 'cat_image.png');
+preloadImage('dog', 'dog_image.png');
+
 // ============================================================
 //  OBJECT DEFINITIONS
 // ============================================================
@@ -564,6 +577,20 @@ const objectDefs = {
       { verts: [[0.05,0.40],[0.05,-0.10],[0.42,0.08]], fill:'#FFFFFF', stroke:'#999' },
       { verts: [[-0.05,0.40],[-0.05,0.00],[-0.30,0.12]], fill:'#EF4444', stroke:'#B91C1C' },
     ]
+  },
+  smiley: {
+    name: 'Smiley Face',
+    type: 'smiley'
+  },
+  cat: {
+    name: 'Cat',
+    type: 'image',
+    imageKey: 'cat'
+  },
+  dog: {
+    name: 'Dog',
+    type: 'image',
+    imageKey: 'dog'
   }
 };
 
@@ -881,11 +908,91 @@ function drawEigenvectors(M, t){
   ctx.restore();
 }
 
+function drawSmiley(Mt, tt, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const N = 48;
+  // Helper: draw a filled circle via transformed polygon
+  function fillCircle(cx, cy, r, fill, stroke){
+    ctx.beginPath();
+    for(let i=0;i<=N;i++){
+      const a = 2*Math.PI*i/N;
+      let p = [cx+r*Math.cos(a), cy+r*Math.sin(a)];
+      p = matVec(Mt, p);
+      p = [p[0]+tt[0], p[1]+tt[1]];
+      const [px,py] = toCanvas(p[0],p[1]);
+      i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+    if(stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); }
+  }
+  // Face
+  fillCircle(0, 0, 0.50, '#FFD93D', '#E8A317');
+  // Left eye
+  fillCircle(-0.17, 0.14, 0.065, '#333', null);
+  // Right eye
+  fillCircle(0.17, 0.14, 0.065, '#333', null);
+  // Smile arc (drawn as a thick curved line)
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const a = -Math.PI*0.15 - (Math.PI*0.7)*i/N;
+    let p = [0.25*Math.cos(a), -0.02 + 0.25*Math.sin(a)];
+    p = matVec(Mt, p);
+    p = [p[0]+tt[0], p[1]+tt[1]];
+    const [px,py] = toCanvas(p[0],p[1]);
+    i===0 ? ctx.moveTo(px,py) : ctx.lineTo(px,py);
+  }
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.restore();
+}
+
+function drawImageObject(imgKey, Mt, tt, alpha){
+  const img = imageCache[imgKey];
+  if(!img) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // Map the image into the unit square [-0.5,0.5]x[-0.5,0.5] using the transformation
+  // We use setTransform to apply the full affine transform
+  // Canvas transform: from math coords to canvas via Mt then toCanvas
+  // The image occupies [-0.6, 0.6] in math coords (slightly wider for landscape photos)
+  const hw = 0.6, hh = 0.45; // half-width, half-height in math coords
+  // Compute the 4 corners after transform
+  const corners = [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
+  const tc = corners.map(c => {
+    let p = matVec(Mt, c);
+    p = [p[0]+tt[0], p[1]+tt[1]];
+    return toCanvas(p[0], p[1]);
+  });
+  // Use canvas setTransform to map the image
+  // We need to find an affine transform that maps (0,0)->(tc[3]), (imgW,0)->(tc[2]), (0,imgH)->(tc[0])
+  // Actually map image rectangle [0,imgW]x[0,imgH] to the quad
+  // For a parallelogram, we can use the top-left=tc[3], top-right=tc[2], bottom-left=tc[0]
+  const ax = (tc[2][0]-tc[3][0])/img.width;
+  const ay = (tc[2][1]-tc[3][1])/img.width;
+  const bx = (tc[0][0]-tc[3][0])/img.height;
+  const by = (tc[0][1]-tc[3][1])/img.height;
+  ctx.setTransform(ax, ay, bx, by, tc[3][0], tc[3][1]);
+  ctx.drawImage(img, 0, 0);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.restore();
+}
+
 function drawObjectShape(objDef, M, t, trans, alpha){
   const Mt = lerpMatrix(identity(), M, t);
   const tt = lerpVec([0,0], trans, t);
   ctx.save();
   ctx.globalAlpha = alpha;
+  if(objDef.type === 'smiley'){
+    ctx.restore();
+    drawSmiley(Mt, tt, alpha);
+    return;
+  }
+  if(objDef.type === 'image'){
+    ctx.restore();
+    drawImageObject(objDef.imageKey, Mt, tt, alpha);
+    return;
+  }
   for(const part of objDef.parts){
     ctx.beginPath();
     for(let i=0;i<part.verts.length;i++){
