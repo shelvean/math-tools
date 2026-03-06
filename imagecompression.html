@@ -35,6 +35,7 @@
     .info-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.75rem; text-align: center; }
     .info-card .label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
     .info-card .value { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 0.25rem; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center">
@@ -202,93 +203,119 @@ const state = {
 };
 
 // ============================================================
-//  SVD IMPLEMENTATION (one-sided Jacobi for thin SVD)
+//  SVD via eigendecomposition of A^T A (fast for image matrices)
+//  Computes all singular values/vectors needed for rank-k reconstruction.
+//  Uses Jacobi eigenvalue algorithm on the smaller n×n matrix A^T A.
 // ============================================================
 
-// Compute thin SVD of an m x n matrix A (m >= n) stored as flat Float64Array row-major
-// Returns {U: Float64Array[m*n], S: Float64Array[n], V: Float64Array[n*n]}
-function thinSVD(A, m, n) {
-  // Work on A^T A for right singular vectors, then recover left
-  // For images we use one-sided Jacobi on A directly
+// Multiply: C = A^T * A  where A is m×n row-major → C is n×n
+function computeAtA(A, m, n) {
+  const C = new Float64Array(n * n);
+  // Process in blocks for cache efficiency
+  for (let i = 0; i < n; i++) {
+    for (let j = i; j < n; j++) {
+      let s = 0;
+      for (let r = 0; r < m; r++) s += A[r * n + i] * A[r * n + j];
+      C[i * n + j] = s;
+      C[j * n + i] = s;
+    }
+  }
+  return C;
+}
 
-  // Copy A into working matrix
-  const W = new Float64Array(A);
+// Jacobi eigenvalue decomposition for symmetric n×n matrix
+// Returns {eigenvalues: Float64Array[n], eigenvectors: Float64Array[n*n]}
+// eigenvectors stored column-major in row-major array (V[i*n+j] = j-th component of i-th row)
+function jacobiEigen(S, n) {
+  const A = new Float64Array(S); // work copy
   const V = new Float64Array(n * n);
-  // V = I
   for (let i = 0; i < n; i++) V[i * n + i] = 1;
 
-  const maxIter = 50;
+  const maxIter = 100;
   const tol = 1e-10;
 
   for (let iter = 0; iter < maxIter; iter++) {
-    let converged = true;
-
-    for (let p = 0; p < n - 1; p++) {
-      for (let q = p + 1; q < n; q++) {
-        // Compute dot products of columns p and q of W
-        let app = 0, aqq = 0, apq = 0;
-        for (let i = 0; i < m; i++) {
-          const wp = W[i * n + p], wq = W[i * n + q];
-          app += wp * wp;
-          aqq += wq * wq;
-          apq += wp * wq;
-        }
-
-        if (Math.abs(apq) < tol * Math.sqrt(app * aqq)) continue;
-        converged = false;
-
-        // Compute Jacobi rotation
-        const tau = (aqq - app) / (2 * apq);
-        const t = Math.sign(tau) / (Math.abs(tau) + Math.sqrt(1 + tau * tau));
-        const c = 1 / Math.sqrt(1 + t * t);
-        const s = t * c;
-
-        // Apply rotation to W columns p, q
-        for (let i = 0; i < m; i++) {
-          const wp = W[i * n + p], wq = W[i * n + q];
-          W[i * n + p] = c * wp - s * wq;
-          W[i * n + q] = s * wp + c * wq;
-        }
-
-        // Apply rotation to V columns p, q
-        for (let i = 0; i < n; i++) {
-          const vp = V[i * n + p], vq = V[i * n + q];
-          V[i * n + p] = c * vp - s * vq;
-          V[i * n + q] = s * vp + c * vq;
-        }
+    // Find largest off-diagonal element
+    let maxVal = 0, p = 0, q = 1;
+    for (let i = 0; i < n - 1; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const v = Math.abs(A[i * n + j]);
+        if (v > maxVal) { maxVal = v; p = i; q = j; }
       }
     }
-    if (converged) break;
+    if (maxVal < tol) break;
+
+    // Compute rotation
+    const app = A[p * n + p], aqq = A[q * n + q], apq = A[p * n + q];
+    let c, s;
+    if (Math.abs(app - aqq) < 1e-15) {
+      c = s = Math.SQRT1_2;
+    } else {
+      const tau = (aqq - app) / (2 * apq);
+      const t = Math.sign(tau) / (Math.abs(tau) + Math.sqrt(1 + tau * tau));
+      c = 1 / Math.sqrt(1 + t * t);
+      s = t * c;
+    }
+
+    // Apply rotation to A (symmetric, so update rows and cols p,q)
+    for (let i = 0; i < n; i++) {
+      if (i === p || i === q) continue;
+      const aip = A[i * n + p], aiq = A[i * n + q];
+      A[i * n + p] = A[p * n + i] = c * aip - s * aiq;
+      A[i * n + q] = A[q * n + i] = s * aip + c * aiq;
+    }
+    const newpp = c*c*app - 2*s*c*apq + s*s*aqq;
+    const newqq = s*s*app + 2*s*c*apq + c*c*aqq;
+    A[p * n + p] = newpp;
+    A[q * n + q] = newqq;
+    A[p * n + q] = A[q * n + p] = 0;
+
+    // Update eigenvectors
+    for (let i = 0; i < n; i++) {
+      const vp = V[i * n + p], vq = V[i * n + q];
+      V[i * n + p] = c * vp - s * vq;
+      V[i * n + q] = s * vp + c * vq;
+    }
   }
 
-  // Extract singular values (column norms of W) and normalize to get U
+  const eigenvalues = new Float64Array(n);
+  for (let i = 0; i < n; i++) eigenvalues[i] = A[i * n + i];
+  return { eigenvalues, eigenvectors: V };
+}
+
+// Full thin SVD: A (m×n, m>=n) = U * diag(S) * V^T
+// Strategy: eigen-decompose A^T A = V * diag(λ) * V^T, then S = sqrt(λ), U = A*V*diag(1/S)
+function thinSVD(A, m, n) {
+  const AtA = computeAtA(A, m, n);
+  const { eigenvalues, eigenvectors: V } = jacobiEigen(AtA, n);
+
+  // Sort by descending eigenvalue
+  const idx = Array.from({ length: n }, (_, i) => i);
+  idx.sort((a, b) => eigenvalues[b] - eigenvalues[a]);
+
   const S = new Float64Array(n);
+  const Vs = new Float64Array(n * n);
   const U = new Float64Array(m * n);
 
   for (let j = 0; j < n; j++) {
-    let norm = 0;
-    for (let i = 0; i < m; i++) norm += W[i * n + j] * W[i * n + j];
-    S[j] = Math.sqrt(norm);
+    const eigVal = Math.max(0, eigenvalues[idx[j]]);
+    S[j] = Math.sqrt(eigVal);
+
+    // Copy sorted eigenvector column
+    for (let i = 0; i < n; i++) Vs[i * n + j] = V[i * n + idx[j]];
+
+    // Compute U column: u_j = (1/s_j) * A * v_j
     if (S[j] > 1e-12) {
-      for (let i = 0; i < m; i++) U[i * n + j] = W[i * n + j] / S[j];
+      const invS = 1 / S[j];
+      for (let r = 0; r < m; r++) {
+        let sum = 0;
+        for (let c = 0; c < n; c++) sum += A[r * n + c] * Vs[c * n + j];
+        U[r * n + j] = sum * invS;
+      }
     }
   }
 
-  // Sort by descending singular value
-  const idx = Array.from({ length: n }, (_, i) => i);
-  idx.sort((a, b) => S[b] - S[a]);
-
-  const Ss = new Float64Array(n);
-  const Us = new Float64Array(m * n);
-  const Vs = new Float64Array(n * n);
-
-  for (let j = 0; j < n; j++) {
-    Ss[j] = S[idx[j]];
-    for (let i = 0; i < m; i++) Us[i * n + j] = U[i * n + idx[j]];
-    for (let i = 0; i < n; i++) Vs[i * n + j] = V[i * n + idx[j]];
-  }
-
-  return { U: Us, S: Ss, V: Vs };
+  return { U, S, V: Vs };
 }
 
 // ============================================================
@@ -533,71 +560,79 @@ function processImage(imgData, w, h) {
   // Draw original
   drawOriginal();
 
-  // Compute SVD for each channel
-  computeAllSVDs();
-
-  // Set slider range
-  state.maxRank = Math.min(w, h);
-  const slider = document.getElementById('k-slider');
-  slider.max = state.maxRank;
-  slider.value = 1;
-  document.getElementById('k-input').max = state.maxRank;
-  document.getElementById('k-input').value = 1;
-  document.getElementById('max-rank-label').textContent = state.maxRank;
-
-  state.k = 1;
-  updateApproximation();
-  drawSpectrum();
-  updateEquation();
-
+  // Show loading state
+  const eqEl = document.getElementById('equation-display');
+  eqEl.innerHTML = '<div class="text-center text-gray-500"><span class="inline-block animate-spin mr-2" style="animation:spin 1s linear infinite">&#9881;</span>Computing SVD for ' + w + '&times;' + h + ' image (3 channels)...</div>';
   document.getElementById('info-size').textContent = w + ' x ' + h;
+
+  // Compute SVD asynchronously (one channel per frame to keep UI responsive)
+  state.channels = [];
+  const channelNames = ['Red', 'Green', 'Blue'];
+
+  function computeNextChannel(ch) {
+    if (ch >= 3) {
+      // All done — finalize
+      state.maxRank = Math.min(w, h);
+      const slider = document.getElementById('k-slider');
+      slider.max = state.maxRank;
+      slider.value = 1;
+      document.getElementById('k-input').max = state.maxRank;
+      document.getElementById('k-input').value = 1;
+      document.getElementById('max-rank-label').textContent = state.maxRank;
+      state.k = 1;
+      updateApproximation();
+      drawSpectrum();
+      updateEquation();
+      return;
+    }
+
+    eqEl.innerHTML = '<div class="text-center text-gray-500"><span class="inline-block" style="animation:spin 1s linear infinite">&#9881;</span> Computing SVD &mdash; ' + channelNames[ch] + ' channel (' + (ch+1) + '/3)...</div>';
+
+    setTimeout(function() {
+      computeOneChannel(ch);
+      computeNextChannel(ch + 1);
+    }, 20);
+  }
+
+  setTimeout(function() { computeNextChannel(0); }, 50);
 }
 
-function computeAllSVDs() {
+function computeOneChannel(ch) {
   const { imgData, width: w, height: h } = state;
   const d = imgData.data;
   const m = h, n = w;
 
-  state.channels = [];
-
-  for (let ch = 0; ch < 3; ch++) {
-    // Extract channel as m x n matrix (row-major)
-    const A = new Float64Array(m * n);
-    for (let y = 0; y < m; y++) {
-      for (let x = 0; x < n; x++) {
-        A[y * n + x] = d[(y * w + x) * 4 + ch];
-      }
+  // Extract channel as m x n matrix (row-major)
+  const A = new Float64Array(m * n);
+  for (let y = 0; y < m; y++) {
+    for (let x = 0; x < n; x++) {
+      A[y * n + x] = d[(y * w + x) * 4 + ch];
     }
-
-    let svd;
-    if (m >= n) {
-      svd = thinSVD(A, m, n);
-    } else {
-      // Transpose, compute SVD, then swap U and V
-      const At = new Float64Array(n * m);
-      for (let y = 0; y < m; y++)
-        for (let x = 0; x < n; x++)
-          At[x * m + y] = A[y * n + x];
-      const svdT = thinSVD(At, n, m);
-      svd = { U: svdT.V, S: svdT.S, V: svdT.U };
-      // Fix dimensions: U is m x m, V is n x m
-      // Actually for thin SVD of At (n x m): U is n x m, S is m, V is m x m
-      // So swapped: U = V_t (m x m), V = U_t (n x m) -- this is correct for A = U S V^T
-    }
-
-    let totalEnergy = 0;
-    for (let i = 0; i < svd.S.length; i++) totalEnergy += svd.S[i] * svd.S[i];
-
-    state.channels.push({
-      U: svd.U,
-      S: svd.S,
-      V: svd.V,
-      totalEnergy,
-      m: m >= n ? m : m,
-      n: m >= n ? n : n,
-      rank: svd.S.length
-    });
   }
+
+  let svd;
+  if (m >= n) {
+    svd = thinSVD(A, m, n);
+  } else {
+    // Transpose so tall matrix goes to thinSVD, then swap U and V
+    const At = new Float64Array(n * m);
+    for (let y = 0; y < m; y++)
+      for (let x = 0; x < n; x++)
+        At[x * m + y] = A[y * n + x];
+    const svdT = thinSVD(At, n, m);
+    svd = { U: svdT.V, S: svdT.S, V: svdT.U };
+  }
+
+  let totalEnergy = 0;
+  for (let i = 0; i < svd.S.length; i++) totalEnergy += svd.S[i] * svd.S[i];
+
+  state.channels.push({
+    U: svd.U,
+    S: svd.S,
+    V: svd.V,
+    totalEnergy,
+    rank: svd.S.length
+  });
 }
 
 // ============================================================
