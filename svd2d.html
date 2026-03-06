@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Interactive 2D SVD Visualization: See how the Singular Value Decomposition decomposes any 2×2 matrix into rotation, scaling, and rotation. Animate each step with smiley face and other objects.">
+  <meta name="keywords" content="SVD, Singular Value Decomposition, 2D, Linear Algebra, Matrix Visualization, Rotation, Scaling, Rank Deficiency">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+  <title>2D SVD Visualization</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    :root {
+      --primary: #4f46e5; --primary-light: #6366f1;
+      --surface: #ffffff; --bg: #f0f4f8;
+      --text: #1e293b; --text-muted: #64748b;
+      --border: #e2e8f0; --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+    .main-container { max-width:1800px; margin:70px auto 20px; padding:20px; display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+    .left-panel { flex:0 0 310px; display:flex; flex-direction:column; gap:14px; }
+    .center-panel { flex:1 1 650px; display:flex; flex-direction:column; align-items:center; gap:14px; }
+    .right-panel { flex:0 0 340px; display:flex; flex-direction:column; gap:14px; }
+    .panel-card { background:var(--surface); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); border:1px solid var(--border); }
+    .panel-card h3 { font-size:0.78rem; text-transform:uppercase; letter-spacing:1.1px; color:var(--text-muted); margin-bottom:12px; font-weight:700; }
+    .equation-bar { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 20px; box-shadow:var(--shadow); text-align:center; width:100%; }
+    .equation-bar .katex { font-size:1.1rem; }
+    .canvas-wrap { background:var(--surface); border-radius:var(--radius); padding:12px; box-shadow:var(--shadow); border:1px solid var(--border); position:relative; }
+    canvas { border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; display:block; cursor:grab; }
+    .ctrl-group { margin-bottom:12px; }
+    .ctrl-group label { display:block; font-size:0.8rem; font-weight:600; color:#334155; margin-bottom:4px; }
+    select, input[type="number"] { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:0.88rem; color:var(--text); background:#f8fafc; outline:none; transition:border-color 0.2s; }
+    select:focus, input[type="number"]:focus { border-color:var(--primary); }
+    input[type="range"] { width:100%; accent-color:var(--primary); }
+    .range-row { display:flex; align-items:center; gap:8px; }
+    .range-row input[type="range"] { flex:1; }
+    .range-val { font-size:0.82rem; font-weight:600; color:var(--primary); min-width:42px; text-align:right; }
+    .matrix-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; max-width:200px; margin:6px auto; }
+    .matrix-grid input { width:100%; text-align:center; padding:8px 4px; border:2px solid var(--border); border-radius:8px; font-size:0.95rem; font-weight:600; }
+    .matrix-grid input:focus { border-color:var(--primary); outline:none; }
+    .matrix-brackets { display:flex; align-items:center; justify-content:center; gap:4px; }
+    .bracket { font-size:3rem; font-weight:200; color:#94a3b8; line-height:1; }
+    .btn { padding:8px 16px; border:none; border-radius:8px; font-weight:600; font-size:0.82rem; color:white; cursor:pointer; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+    .btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+    .btn:active { transform:translateY(0); }
+    .btn-primary { background:linear-gradient(135deg,#4f46e5,#6366f1); }
+    .btn-danger { background:linear-gradient(135deg,#ef4444,#f87171); }
+    .btn-amber { background:linear-gradient(135deg,#f59e0b,#fbbf24); color:#1e293b; }
+    .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
+    .chk-row { display:flex; align-items:center; gap:6px; margin:4px 0; }
+    .chk-row input { width:16px; height:16px; accent-color:var(--primary); cursor:pointer; }
+    .chk-row label { font-size:0.82rem; color:#334155; cursor:pointer; font-weight:500; }
+    .info-box { background:#f1f5f9; border-radius:8px; padding:10px 14px; border:1px solid var(--border); margin-bottom:10px; }
+    .info-box h4 { font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); margin-bottom:6px; font-weight:700; }
+    .info-box .katex { font-size:0.9rem; }
+    .decomp-step { padding:10px; border-radius:8px; margin-bottom:8px; border:2px solid var(--border); transition:all 0.3s; background:#f8fafc; }
+    .decomp-step.active { border-color:var(--primary); background:#eef2ff; box-shadow:0 2px 12px rgba(79,70,229,0.15); }
+    .decomp-step.completed { border-color:#10b981; background:#f0fdf4; }
+    .decomp-step .step-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); font-weight:700; margin-bottom:4px; }
+    .decomp-step .step-desc { font-size:0.8rem; color:#334155; margin-bottom:4px; }
+    .examples-header { background:linear-gradient(135deg,var(--primary),var(--primary-light)); color:white; padding:10px 16px; border-radius:var(--radius) var(--radius) 0 0; font-size:1rem; font-weight:700; text-align:center; margin:-16px -16px 12px; }
+    .example-item { padding:10px; border-radius:8px; cursor:pointer; border:1px solid #e5e7eb; background:#f8fafc; margin-bottom:8px; transition:all 0.2s; }
+    .example-item:hover { background:#f0f9ff; border-color:#3b82f6; transform:translateY(-1px); box-shadow:0 3px 10px rgba(59,130,246,0.15); }
+    .example-item h4 { font-size:0.85rem; font-weight:600; color:#1e293b; margin-bottom:4px; }
+    .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.75rem; }
+    .legend-item { display:flex; align-items:center; gap:4px; }
+    .legend-swatch { width:14px; height:3px; border-radius:2px; }
+    .rank-alert { background:#fef3c7; border:2px solid #f59e0b; border-radius:8px; padding:10px 14px; margin-bottom:10px; font-size:0.82rem; color:#92400e; font-weight:600; text-align:center; }
+    @media (max-width:1400px) { .left-panel{flex:0 0 280px;} .right-panel{flex:0 0 310px;} }
+    @media (max-width:1100px) { .main-container{flex-direction:column;align-items:center;} .left-panel,.right-panel{flex:1 1 100%;max-width:700px;} .center-panel{order:-1;} }
+  </style>
+</head>
+<body>
+  <!-- Nav -->
+  <div class="w-full bg-white shadow-md fixed top-0 left-0 z-50">
+    <nav class="max-w-5xl mx-auto px-4 py-3">
+      <ul class="flex justify-center space-x-4 sm:space-x-6">
+        <li><a href="index.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Home</a></li>
+        <li><a href="teaching.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Teaching</a></li>
+        <li><a href="projects.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Diff Eq</a></li>
+        <li><a href="linear.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Linear Algebra</a></li>
+        <li><a href="numerical.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Numerical Methods</a></li>
+      </ul>
+    </nav>
+  </div>
+
+  <div style="max-width:1800px; margin:70px auto 0; padding:20px 20px 0; text-align:center;">
+    <h1 style="font-size:2.2rem; font-weight:800; color:#1e293b; margin-bottom:4px;">2D SVD Visualization</h1>
+    <p style="font-size:1.05rem; color:#64748b; max-width:800px; margin:0 auto;">
+      Visualize how the Singular Value Decomposition breaks any 2&times;2 matrix into three geometric steps:
+      <strong>rotate</strong> (V<sup>T</sup>), <strong>scale</strong> (&Sigma;), <strong>rotate</strong> (U).
+      See rank deficiency collapse objects to a line.
+    </p>
+  </div>
+
+  <div class="main-container" style="margin-top:10px;">
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+      <div class="panel-card">
+        <h3>Matrix A (2&times;2)</h3>
+        <div class="ctrl-group">
+          <label>Enter matrix entries</label>
+          <div class="matrix-brackets">
+            <span class="bracket">[</span>
+            <div class="matrix-grid">
+              <input type="number" id="m00" value="2" step="0.1" oninput="onMatrixChange()">
+              <input type="number" id="m01" value="1" step="0.1" oninput="onMatrixChange()">
+              <input type="number" id="m10" value="1" step="0.1" oninput="onMatrixChange()">
+              <input type="number" id="m11" value="3" step="0.1" oninput="onMatrixChange()">
+            </div>
+            <span class="bracket">]</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel-card">
+        <h3>Object &amp; Display</h3>
+        <div class="ctrl-group">
+          <label>Object shape</label>
+          <select id="object-type" onchange="onObjectChange()">
+            <option value="smiley" selected>Smiley Face</option>
+            <option value="cat">Cat</option>
+            <option value="dog">Dog</option>
+            <option value="house">House</option>
+            <option value="letterF">Letter F</option>
+            <option value="arrow">Arrow</option>
+            <option value="star">Star</option>
+            <option value="boat">Sailboat</option>
+          </select>
+        </div>
+        <div class="chk-row"><input type="checkbox" id="show-grid" checked onchange="requestDraw()"><label for="show-grid">Show transformed grid</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-ghost" checked onchange="requestDraw()"><label for="show-ghost">Show original (ghost)</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-basis" checked onchange="requestDraw()"><label for="show-basis">Show basis vectors</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-circle" checked onchange="requestDraw()"><label for="show-circle">Unit circle &rarr; ellipse</label></div>
+        <div class="chk-row"><input type="checkbox" id="show-sigma-axes" checked onchange="requestDraw()"><label for="show-sigma-axes">Show &sigma; axes on ellipse</label></div>
+      </div>
+      <div class="panel-card">
+        <h3>Animation</h3>
+        <div class="btn-row" style="margin-bottom:10px">
+          <button class="btn btn-amber" id="btn-decompose" onclick="startDecomposition()">&#9881; Decompose SVD</button>
+          <button class="btn btn-danger" onclick="resetAnimation()">&#8634; Reset</button>
+        </div>
+        <div class="btn-row" style="margin-bottom:10px">
+          <button class="btn btn-primary" id="btn-full" onclick="startFullAnimation()">&#9654; Full Transform</button>
+        </div>
+        <div class="ctrl-group">
+          <label>Speed</label>
+          <div class="range-row">
+            <input type="range" id="anim-speed" min="0.2" max="3" value="1" step="0.1" oninput="document.getElementById('anim-speed-val').textContent=parseFloat(this.value).toFixed(1)+'×'">
+            <span class="range-val" id="anim-speed-val">1.0&times;</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER PANEL -->
+    <div class="center-panel">
+      <div class="equation-bar" id="equation-bar"></div>
+      <div class="canvas-wrap"><canvas id="mainCanvas" width="650" height="650"></canvas></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> e&#8321;</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div> e&#8322;</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(168,85,247,0.6)"></div> Ellipse</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#059669"></div> &sigma;&#8321;</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#d97706"></div> &sigma;&#8322;</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,0,0,0.12)"></div> Ghost</div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel">
+      <div class="panel-card">
+        <h3>SVD Decomposition</h3>
+        <div id="rank-alert" class="rank-alert" style="display:none"></div>
+        <div class="info-box"><div id="svd-full-display"></div></div>
+        <div class="info-box"><h4>Determinant &amp; Singular Values</h4><div id="det-sigma-display"></div></div>
+      </div>
+      <div class="panel-card">
+        <h3>Decomposition Steps</h3>
+        <div class="decomp-step" id="step-0"><div class="step-label">Step 1: First Rotation</div><div class="step-desc">Apply V<sup>T</sup> &mdash; rotate to align with singular directions</div><div id="step-0-mat"></div></div>
+        <div class="decomp-step" id="step-1"><div class="step-label">Step 2: Scaling</div><div class="step-desc">Apply &Sigma; &mdash; stretch/compress along axes by &sigma;&#8321;, &sigma;&#8322;</div><div id="step-1-mat"></div></div>
+        <div class="decomp-step" id="step-2"><div class="step-label">Step 3: Second Rotation</div><div class="step-desc">Apply U &mdash; rotate to final orientation</div><div id="step-2-mat"></div></div>
+      </div>
+      <div class="panel-card" style="padding:0; overflow:hidden;">
+        <div class="examples-header">Preset Examples</div>
+        <div style="padding:12px; max-height:450px; overflow-y:auto;" id="examples-list"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const CX = W/2, CY = H/2;
+const GRID_RANGE = 4;
+const SCALE = W/(2*GRID_RANGE);
+
+const imageCache = {};
+function preloadImage(key, src){
+  const img = new Image();
+  img.src = src;
+  img.onload = function(){ imageCache[key] = img; requestDraw(); };
+}
+preloadImage('cat', 'cat_image.png');
+preloadImage('dog', 'dog_image.png');
+
+const state = {
+  matrix: [[2,1],[1,3]],
+  objectType: 'smiley',
+  animT: 1,
+  animating: false,
+  animStartTime: 0,
+  animDuration: 1500,
+  decompMode: false,
+  decompPhase: 0,
+  decompSVD: null,
+  fullMode: false,
+  drawRequested: false,
+  panX: 0, panY: 0,
+  dragging: false, dragLastX: 0, dragLastY: 0,
+};
+
+// ============================================================
+//  OBJECT DEFINITIONS (from transformations2d.html)
+// ============================================================
+const objectDefs = {
+  house: {
+    parts: [
+      { verts:[[-0.50,-0.45],[0.50,-0.45],[0.50,0.15],[-0.50,0.15]], fill:'#F4A460', stroke:'#8B4513' },
+      { verts:[[-0.60,0.15],[0,0.60],[0.60,0.15]], fill:'#DC143C', stroke:'#8B0000' },
+      { verts:[[-0.10,-0.45],[0.10,-0.45],[0.10,-0.15],[-0.10,-0.15]], fill:'#654321', stroke:'#3E2723' },
+      { verts:[[0.18,-0.10],[0.40,-0.10],[0.40,0.08],[0.18,0.08]], fill:'#87CEEB', stroke:'#4682B4' },
+      { verts:[[-0.40,-0.10],[-0.18,-0.10],[-0.18,0.08],[-0.40,0.08]], fill:'#87CEEB', stroke:'#4682B4' },
+      { verts:[[0.22,0.30],[0.22,0.55],[0.37,0.55],[0.37,0.30]], fill:'#696969', stroke:'#444' },
+    ]
+  },
+  letterF: {
+    parts: [{ verts:[[-0.30,-0.50],[-0.10,-0.50],[-0.10,-0.08],[0.22,-0.08],[0.22,0.08],[-0.10,0.08],[-0.10,0.28],[0.30,0.28],[0.30,0.50],[-0.30,0.50]], fill:'#3B82F6', stroke:'#1E40AF' }]
+  },
+  arrow: {
+    parts: [{ verts:[[-0.50,-0.10],[0.10,-0.10],[0.10,-0.28],[0.55,0.00],[0.10,0.28],[0.10,0.10],[-0.50,0.10]], fill:'#10B981', stroke:'#065F46' }]
+  },
+  star: {
+    parts: [{ verts:(function(){ const pts=[]; for(let i=0;i<10;i++){ const a=Math.PI/2+i*Math.PI/5, r=i%2===0?0.80:0.32; pts.push([r*Math.cos(a),r*Math.sin(a)]); } return pts; })(), fill:'#F59E0B', stroke:'#B45309' }]
+  },
+  boat: {
+    parts: [
+      { verts:[[-0.80,-0.48],[-0.56,-0.80],[0.56,-0.80],[0.80,-0.48]], fill:'#8B4513', stroke:'#5D2E0C' },
+      { verts:[[-0.05,-0.48],[0.05,-0.48],[0.05,0.72],[-0.05,0.72]], fill:'#666', stroke:'#333' },
+      { verts:[[0.08,0.64],[0.08,-0.16],[0.67,0.13]], fill:'#FFFFFF', stroke:'#999' },
+      { verts:[[-0.08,0.64],[-0.08,0.00],[-0.48,0.19]], fill:'#EF4444', stroke:'#B91C1C' },
+    ]
+  },
+  smiley: { type:'smiley' },
+  cat: { type:'image', imageKey:'cat' },
+  dog: { type:'image', imageKey:'dog' }
+};
+
+// ============================================================
+//  EXAMPLES
+// ============================================================
+const examples = [
+  { name:'Simple rotation (45\u00B0)', m:[[Math.SQRT1_2,-Math.SQRT1_2],[Math.SQRT1_2,Math.SQRT1_2]], desc:'\u03C3\u2081=\u03C3\u2082=1, pure rotation' },
+  { name:'Horizontal stretch', m:[[3,0],[0,1]], desc:'\u03C3\u2081=3, \u03C3\u2082=1' },
+  { name:'Non-uniform scaling', m:[[2,0],[0,0.5]], desc:'\u03C3\u2081=2, \u03C3\u2082=0.5' },
+  { name:'Shear', m:[[1,1],[0,1]], desc:'Shear reveals hidden rotation+scaling' },
+  { name:'Rotation + scaling', m:[[2,1],[1,3]], desc:'General invertible matrix' },
+  { name:'Reflection + stretch', m:[[2,0],[0,-1]], desc:'det < 0, orientation-reversing' },
+  { name:'Rank-1 (\u2192 line)', m:[[1,2],[0.5,1]], desc:'\u03C3\u2082=0, collapses to a line' },
+  { name:'Rank-0 (\u2192 point)', m:[[0,0],[0,0]], desc:'Zero matrix, total collapse' },
+  { name:'Projection onto x-axis', m:[[1,0],[0,0]], desc:'\u03C3\u2081=1, \u03C3\u2082=0' },
+  { name:'Projection onto y=x', m:[[0.5,0.5],[0.5,0.5]], desc:'\u03C3\u2081=1, \u03C3\u2082=0' },
+  { name:'Near-singular', m:[[1,2],[0.5,1.001]], desc:'\u03C3\u2082 \u2248 0, nearly collapses' },
+  { name:'Uniform dilation (2\u00D7)', m:[[2,0],[0,2]], desc:'\u03C3\u2081=\u03C3\u2082=2' },
+  { name:'Squeeze mapping', m:[[2,0],[0,0.5]], desc:'Area-preserving, det=1' },
+  { name:'90\u00B0 rotation + scale', m:[[0,-2],[3,0]], desc:'\u03C3\u2081=3, \u03C3\u2082=2' },
+];
+
+// ============================================================
+//  MATH (from transformations2d.html)
+// ============================================================
+function matMul(A,B){ return [[A[0][0]*B[0][0]+A[0][1]*B[1][0],A[0][0]*B[0][1]+A[0][1]*B[1][1]],[A[1][0]*B[0][0]+A[1][1]*B[1][0],A[1][0]*B[0][1]+A[1][1]*B[1][1]]]; }
+function matVec(M,v){ return [M[0][0]*v[0]+M[0][1]*v[1],M[1][0]*v[0]+M[1][1]*v[1]]; }
+function det2(M){ return M[0][0]*M[1][1]-M[0][1]*M[1][0]; }
+function transpose2(M){ return [[M[0][0],M[1][0]],[M[0][1],M[1][1]]]; }
+function lerpMatrix(A,B,t){ return [[A[0][0]+(B[0][0]-A[0][0])*t,A[0][1]+(B[0][1]-A[0][1])*t],[A[1][0]+(B[1][0]-A[1][0])*t,A[1][1]+(B[1][1]-A[1][1])*t]]; }
+function lerpVec(a,b,t){ return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]; }
+function identity(){ return [[1,0],[0,1]]; }
+
+function svd2(M){
+  const a=M[0][0],b=M[0][1],c=M[1][0],d=M[1][1];
+  const E=(a+d)/2,F=(a-d)/2,G=(c+b)/2,H=(c-b)/2;
+  const Q=Math.sqrt(E*E+H*H), R=Math.sqrt(F*F+G*G);
+  const sx=Q+R, sy=Q-R;
+  const a1=Math.atan2(G,F), a2=Math.atan2(H,E);
+  const theta=(a2-a1)/2, phi=(a2+a1)/2;
+  const ct=Math.cos(theta),st=Math.sin(theta),cp=Math.cos(phi),sp=Math.sin(phi);
+  let U,S,V;
+  if(sy>=0){ U=[[cp,-sp],[sp,cp]]; S=[[sx,0],[0,sy]]; V=[[ct,st],[-st,ct]]; }
+  else { U=[[cp,sp],[sp,-cp]]; S=[[sx,0],[0,-sy]]; V=[[ct,st],[-st,ct]]; }
+  return { U,S,V, sx, sy:Math.abs(sy), phiDeg:phi*180/Math.PI, thetaDeg:theta*180/Math.PI, hasReflection:sy<0 };
+}
+
+// ============================================================
+//  COORDINATES & EASING
+// ============================================================
+function toCanvas(x,y){ return [CX+state.panX+x*SCALE, CY+state.panY-y*SCALE]; }
+function panCX(){ return CX+state.panX; }
+function panCY(){ return CY+state.panY; }
+function easeInOut(t){ return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2; }
+
+// ============================================================
+//  FORMATTING (from transformations2d.html)
+// ============================================================
+const SQRT_CACHE = Array.from({length:101},(_,i)=>Math.sqrt(i));
+function gcdInt(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){[a,b]=[b,a%b];} return a; }
+function simplifyRadicand(c,r){ for(let p=2;p*p<=r;p++){while(r%(p*p)===0){r/=(p*p);c*=p;}} return {coeff:c,radicand:r}; }
+function floatToFraction(num,tol=1e-6,maxI=30){
+  if(Math.abs(num)<1e-12) return {numer:0,denom:1};
+  let s=Math.sign(num); num=Math.abs(num);
+  let a=Math.floor(num),h=a,k=1,hP=1,kP=0,x=num-a,it=0;
+  while(x>tol&&it<maxI){ x=1/x; a=Math.floor(x); let hT=a*h+hP,kT=a*k+kP; hP=h;kP=k;h=hT;k=kT; x-=a;it++; if(Math.abs(num-h/k)<tol)break; }
+  return {numer:s*h,denom:k};
+}
+function formatSurdLatex(sign,coeff,rad,rden){
+  let {coeff:c,radicand:r}=simplifyRadicand(coeff,rad);
+  if(r===1){let g=gcdInt(c,rden);c/=g;rden/=g;if(rden===1)return sign+c;return sign+"\\dfrac{"+c+"}{"+rden+"}";}
+  let sq=(c===1?"":""+c)+"\\sqrt{"+r+"}";
+  if(rden===1) return sign+sq;
+  return sign+"\\dfrac{"+(c===1?"":""+c)+"\\sqrt{"+r+"}}{"+rden+"}";
+}
+function toSurd(val){
+  if(Math.abs(val)<1e-7)return "0";
+  let neg=val<0,sign=neg?"-":"",av=Math.abs(val),tol=1e-9;
+  // Only recognize surds from special angles: √2, √3 with small integer coefficients and denominators ≤4
+  for(let d=1;d<=4;d++){let sc=av*d;for(let a of [2,3]){let sq=SQRT_CACHE[a],c=Math.round(sc/sq);if(c>=1&&c<=4&&Math.abs(sc-c*sq)<tol)return formatSurdLatex(sign,c,a,d);}}
+  return null;
+}
+function fmt(x){
+  if(Math.abs(x)<1e-9)return "0";
+  if(Math.abs(x-Math.round(x))<1e-9)return Math.round(x).toString();
+  let s=toSurd(x); if(s)return s;
+  let f=floatToFraction(x);
+  if(Math.abs(x-f.numer/f.denom)<1e-9&&Math.abs(f.numer)<=20&&f.denom<=12){if(f.denom===1)return f.numer.toString();return "\\dfrac{"+f.numer+"}{"+f.denom+"}";}
+  return x.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+}
+function matToLatex(M){ return `\\begin{bmatrix} ${fmt(M[0][0])} & ${fmt(M[0][1])} \\\\ ${fmt(M[1][0])} & ${fmt(M[1][1])} \\end{bmatrix}`; }
+
+// ============================================================
+//  DRAWING (from transformations2d.html)
+// ============================================================
+function drawAxes(){
+  const cx=panCX(), cy=panCY();
+  ctx.save(); ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(W,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H); ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='11px system-ui';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  for(let i=-GRID_RANGE;i<=GRID_RANGE;i++){if(!i)continue;const[px]=toCanvas(i,0);ctx.beginPath();ctx.moveTo(px,cy-4);ctx.lineTo(px,cy+4);ctx.stroke();ctx.fillText(i,px,cy+7);}
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  for(let i=-GRID_RANGE;i<=GRID_RANGE;i++){if(!i)continue;const[,py]=toCanvas(0,i);ctx.beginPath();ctx.moveTo(cx-4,py);ctx.lineTo(cx+4,py);ctx.stroke();ctx.fillText(i,cx-8,py);}
+  ctx.restore();
+}
+
+function drawGrid(M,t){
+  if(!document.getElementById('show-grid').checked)return;
+  const Mt=lerpMatrix(identity(),M,t);
+  ctx.save(); ctx.strokeStyle='rgba(99,102,241,0.12)'; ctx.lineWidth=1;
+  const R=GRID_RANGE+1;
+  for(let i=-R;i<=R;i++){ctx.beginPath();const p1=matVec(Mt,[i,-R]),p2=matVec(Mt,[i,R]);const[x1,y1]=toCanvas(p1[0],p1[1]),[x2,y2]=toCanvas(p2[0],p2[1]);ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+  for(let i=-R;i<=R;i++){ctx.beginPath();const p1=matVec(Mt,[-R,i]),p2=matVec(Mt,[R,i]);const[x1,y1]=toCanvas(p1[0],p1[1]),[x2,y2]=toCanvas(p2[0],p2[1]);ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+  ctx.restore();
+}
+
+function drawUnitCircle(M,t){
+  if(!document.getElementById('show-circle').checked)return;
+  const Mt=lerpMatrix(identity(),M,t); const N=80;
+  ctx.save();
+  ctx.strokeStyle='rgba(168,85,247,0.25)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+  ctx.beginPath(); for(let i=0;i<=N;i++){const a=2*Math.PI*i/N,[px,py]=toCanvas(Math.cos(a),Math.sin(a));i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);} ctx.stroke();
+  ctx.strokeStyle='rgba(168,85,247,0.6)'; ctx.lineWidth=2; ctx.setLineDash([]);
+  ctx.beginPath(); for(let i=0;i<=N;i++){const a=2*Math.PI*i/N,p=matVec(Mt,[Math.cos(a),Math.sin(a)]),[px,py]=toCanvas(p[0],p[1]);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);} ctx.stroke();
+  ctx.restore();
+}
+
+function drawSigmaAxes(M,t){
+  if(!document.getElementById('show-sigma-axes').checked)return;
+  const svd=svd2(M), Mt=lerpMatrix(identity(),M,t);
+  const colors=['#059669','#d97706'], labels=['\u03C3\u2081','\u03C3\u2082'], sigmas=[svd.sx,svd.sy];
+  ctx.save();
+  for(let i=0;i<2;i++){
+    if(sigmas[i]<1e-7)continue;
+    const vCol=[svd.V[0][i],svd.V[1][i]];
+    const ep=matVec(Mt,vCol);
+    const[ox,oy]=toCanvas(0,0),[ex,ey]=toCanvas(ep[0],ep[1]);
+    ctx.strokeStyle=colors[i]; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+    ctx.beginPath(); ctx.moveTo(ox,oy); ctx.lineTo(ex,ey); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=colors[i]; ctx.beginPath(); ctx.arc(ex,ey,4,0,2*Math.PI); ctx.fill();
+    // Place label beyond endpoint, shifted perpendicular to the axis for clarity
+    const dx=ex-ox,dy=ey-oy,len=Math.sqrt(dx*dx+dy*dy)||1;
+    const ux=dx/len,uy=dy/len;
+    const perpX=-uy,perpY=ux; // perpendicular direction
+    const along=22,perp=14;
+    const lx=ex+ux*along+perpX*perp,ly=ey+uy*along+perpY*perp;
+    ctx.font='bold 12px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(labels[i]+'='+sigmas[i].toFixed(2),lx,ly);
+  }
+  ctx.restore();
+}
+
+function drawArrowVec(x1,y1,x2,y2,color,lw,dashed){
+  const[cx1,cy1]=toCanvas(x1,y1),[cx2,cy2]=toCanvas(x2,y2);
+  const dx=cx2-cx1,dy=cy2-cy1,len=Math.sqrt(dx*dx+dy*dy);
+  if(len<2)return;
+  const ux=dx/len,uy=dy/len,hl=Math.min(12,len*0.3);
+  ctx.save(); ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineWidth=lw;
+  if(dashed)ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(cx1,cy1); ctx.lineTo(cx2,cy2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(cx2,cy2);
+  ctx.lineTo(cx2-ux*hl-uy*hl*0.4,cy2-uy*hl+ux*hl*0.4);
+  ctx.lineTo(cx2-ux*hl+uy*hl*0.4,cy2-uy*hl-ux*hl*0.4);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function drawBasisVectors(M,t){
+  if(!document.getElementById('show-basis').checked)return;
+  const Mt=lerpMatrix(identity(),M,t);
+  drawArrowVec(0,0,1.5,0,'rgba(239,68,68,0.3)',2,true);
+  drawArrowVec(0,0,0,1.5,'rgba(59,130,246,0.3)',2,true);
+  const e1t=matVec(Mt,[1.5,0]),e2t=matVec(Mt,[0,1.5]);
+  drawArrowVec(0,0,e1t[0],e1t[1],'#ef4444',2.5,false);
+  drawArrowVec(0,0,e2t[0],e2t[1],'#3b82f6',2.5,false);
+  ctx.save(); ctx.font='bold 12px system-ui';
+  let[lx,ly]=toCanvas(e1t[0],e1t[1]); ctx.fillStyle='#ef4444'; ctx.fillText('Ae\u2081',lx+6,ly-6);
+  [lx,ly]=toCanvas(e2t[0],e2t[1]); ctx.fillStyle='#3b82f6'; ctx.fillText('Ae\u2082',lx+6,ly-6);
+  ctx.restore();
+}
+
+function drawSmiley(Mt,alpha){
+  ctx.save(); ctx.globalAlpha=alpha; const N=48;
+  function fc(cx,cy,r,fill,stroke){
+    ctx.beginPath();
+    for(let i=0;i<=N;i++){const a=2*Math.PI*i/N;let p=[cx+r*Math.cos(a),cy+r*Math.sin(a)];p=matVec(Mt,p);const[px,py]=toCanvas(p[0],p[1]);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+    ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke();}
+  }
+  fc(0,0,0.80,'#FFD93D','#E8A317');
+  fc(-0.27,0.22,0.104,'#333',null);
+  fc(0.27,0.22,0.104,'#333',null);
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const a=-Math.PI*0.15-(Math.PI*0.7)*i/N;let p=[0.40*Math.cos(a),-0.03+0.40*Math.sin(a)];p=matVec(Mt,p);const[px,py]=toCanvas(p[0],p[1]);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+  ctx.strokeStyle='#333'; ctx.lineWidth=3; ctx.stroke();
+  ctx.restore();
+}
+
+function drawImageObject(imgKey,Mt,alpha){
+  const img=imageCache[imgKey];
+  if(!img) return;
+  ctx.save(); ctx.globalAlpha=alpha;
+  const hw=0.95, hh=0.72;
+  const corners=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
+  const tc=corners.map(c=>{ const p=matVec(Mt,c); return toCanvas(p[0],p[1]); });
+  const ax=(tc[2][0]-tc[3][0])/img.width, ay=(tc[2][1]-tc[3][1])/img.width;
+  const bx=(tc[0][0]-tc[3][0])/img.height, by=(tc[0][1]-tc[3][1])/img.height;
+  ctx.setTransform(ax,ay,bx,by,tc[3][0],tc[3][1]);
+  ctx.drawImage(img,0,0);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.restore();
+}
+
+function drawObject(objDef,M,t,alpha){
+  const Mt=lerpMatrix(identity(),M,t);
+  if(objDef.type==='smiley'){ drawSmiley(Mt,alpha); return; }
+  if(objDef.type==='image'){ drawImageObject(objDef.imageKey,Mt,alpha); return; }
+  ctx.save(); ctx.globalAlpha=alpha;
+  for(const part of objDef.parts){
+    ctx.beginPath();
+    for(let i=0;i<part.verts.length;i++){const p=matVec(Mt,part.verts[i]),[px,py]=toCanvas(p[0],p[1]);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+    ctx.closePath(); ctx.fillStyle=part.fill; ctx.fill(); ctx.strokeStyle=part.stroke; ctx.lineWidth=2; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ============================================================
+//  MAIN DRAW
+// ============================================================
+function draw(){
+  state.drawRequested=false;
+  ctx.clearRect(0,0,W,H);
+  const M=state.matrix;
+
+  if(state.decompMode&&state.decompSVD){ drawDecomposition(); return; }
+
+  const t=state.fullMode?easeInOut(state.animT):(state.animating?easeInOut(state.animT):1);
+  drawGrid(M,t); drawAxes(); drawUnitCircle(M,t); drawSigmaAxes(M,t);
+  if(document.getElementById('show-ghost').checked&&t<0.99) drawObject(objectDefs[state.objectType],identity(),0,0.2);
+  drawObject(objectDefs[state.objectType],M,t,0.92);
+  drawBasisVectors(M,t);
+}
+
+function drawDecomposition(){
+  const svd=state.decompSVD, phase=state.decompPhase, t=easeInOut(state.animT);
+  const VT=transpose2(svd.V), SVT=matMul(svd.S,VT), USVT=matMul(svd.U,SVT);
+  let cur;
+  if(phase===0) cur=lerpMatrix(identity(),VT,t);
+  else if(phase===1) cur=lerpMatrix(VT,SVT,t);
+  else cur=lerpMatrix(SVT,USVT,t);
+
+  drawGrid(cur,1); drawAxes(); drawUnitCircle(cur,1); drawSigmaAxes(state.matrix,1);
+  if(document.getElementById('show-ghost').checked) drawObject(objectDefs[state.objectType],identity(),0,0.15);
+  drawObject(objectDefs[state.objectType],cur,1,0.9);
+  drawBasisVectors(cur,1);
+
+  ctx.save(); ctx.fillStyle='rgba(79,70,229,0.9)'; ctx.font='bold 14px system-ui';
+  const lbl=['Step 1: Rotate by V\u1D40','Step 2: Scale by \u03A3','Step 3: Rotate by U'];
+  ctx.fillText(lbl[phase],15,25); ctx.restore();
+
+  for(let i=0;i<3;i++){
+    const el=document.getElementById('step-'+i);
+    el.classList.remove('active','completed');
+    if(i<phase)el.classList.add('completed');
+    else if(i===phase)el.classList.add('active');
+  }
+}
+
+function requestDraw(){ if(!state.drawRequested){state.drawRequested=true;requestAnimationFrame(draw);} }
+
+// ============================================================
+//  ANIMATION
+// ============================================================
+function startFullAnimation(){
+  if(state.animating)return;
+  state.decompMode=false; state.fullMode=true; state.animT=0; state.animating=true;
+  state.animStartTime=performance.now();
+  state.animDuration=1500/parseFloat(document.getElementById('anim-speed').value);
+  document.getElementById('btn-full').textContent='\u23F8 Playing';
+  (function loop(){
+    if(!state.animating)return;
+    state.animT=Math.min(1,(performance.now()-state.animStartTime)/state.animDuration);
+    draw();
+    if(state.animT<1) requestAnimationFrame(loop);
+    else { state.animating=false; state.animT=1; state.fullMode=false; document.getElementById('btn-full').textContent='\u25B6 Full Transform'; }
+  })();
+}
+
+function startDecomposition(){
+  if(state.animating)return;
+  state.decompSVD=svd2(state.matrix); state.decompMode=true; state.fullMode=false;
+  state.decompPhase=0; state.animT=0; state.animating=true;
+  state.animStartTime=performance.now();
+  state.animDuration=1500/parseFloat(document.getElementById('anim-speed').value);
+  updateSVDDisplays();
+  document.getElementById('btn-decompose').textContent='\u23F8 Playing';
+  decompLoop();
+}
+
+function decompLoop(){
+  if(!state.animating||!state.decompMode)return;
+  state.animT=Math.min(1,(performance.now()-state.animStartTime)/state.animDuration);
+  draw();
+  if(state.animT>=1){
+    if(state.decompPhase<2){ state.decompPhase++; state.animT=0; state.animStartTime=performance.now(); requestAnimationFrame(decompLoop); }
+    else { state.animating=false; state.animT=1; document.getElementById('btn-decompose').textContent='\u2699 Decompose SVD'; draw(); }
+  } else requestAnimationFrame(decompLoop);
+}
+
+function resetAnimation(){
+  state.animating=false; state.decompMode=false; state.fullMode=false; state.animT=1;
+  state.matrix=[[1,0],[0,1]]; state.panX=0; state.panY=0;
+  document.getElementById('m00').value='1'; document.getElementById('m01').value='0';
+  document.getElementById('m10').value='0'; document.getElementById('m11').value='1';
+  document.getElementById('btn-decompose').textContent='\u2699 Decompose SVD';
+  document.getElementById('btn-full').textContent='\u25B6 Full Transform';
+  for(let i=0;i<3;i++) document.getElementById('step-'+i).classList.remove('active','completed');
+  updateSVDDisplays(); draw();
+}
+
+// ============================================================
+//  DISPLAYS
+// ============================================================
+function updateSVDDisplays(){
+  const M=state.matrix, s=svd2(M), d=det2(M);
+  try{
+    katex.render(`A = U\\Sigma V^T\\\\[4pt]U=${matToLatex(s.U)}\\\\[4pt]\\Sigma=${matToLatex(s.S)}\\\\[4pt]V=${matToLatex(s.V)}`,
+      document.getElementById('svd-full-display'),{throwOnError:false});
+  }catch(e){}
+  try{
+    const rank=(s.sx>1e-7?1:0)+(s.sy>1e-7?1:0);
+    katex.render(`\\det(A)=${fmt(d)}\\\\[4pt]\\sigma_1=${fmt(s.sx)},\\;\\sigma_2=${fmt(s.sy)}\\\\[4pt]\\text{rank}(A)=${rank}`,
+      document.getElementById('det-sigma-display'),{throwOnError:false});
+  }catch(e){}
+  const al=document.getElementById('rank-alert');
+  if(s.sy<1e-7){ al.textContent=s.sx<1e-7?'Rank 0: Zero matrix \u2014 everything collapses to the origin!':'Rank 1: Rank-deficient \u2014 the image collapses to a line!'; al.style.display=''; }
+  else al.style.display='none';
+  try{
+    katex.render(`V^T=${matToLatex(transpose2(s.V))}`,document.getElementById('step-0-mat'),{throwOnError:false});
+    katex.render(`\\Sigma=${matToLatex(s.S)}`,document.getElementById('step-1-mat'),{throwOnError:false});
+    katex.render(`U=${matToLatex(s.U)}`,document.getElementById('step-2-mat'),{throwOnError:false});
+  }catch(e){}
+  try{ katex.render(`A=${matToLatex(M)}=U\\Sigma V^T`,document.getElementById('equation-bar'),{throwOnError:false,displayMode:true}); }catch(e){}
+}
+
+function onMatrixChange(){
+  state.matrix=[[parseFloat(document.getElementById('m00').value)||0,parseFloat(document.getElementById('m01').value)||0],[parseFloat(document.getElementById('m10').value)||0,parseFloat(document.getElementById('m11').value)||0]];
+  if(!state.animating){state.animT=1;state.decompMode=false;state.fullMode=false;}
+  updateSVDDisplays(); requestDraw();
+}
+
+function onObjectChange(){ state.objectType=document.getElementById('object-type').value; requestDraw(); }
+
+// ============================================================
+//  EXAMPLES
+// ============================================================
+function loadExample(idx){
+  const ex=examples[idx];
+  document.getElementById('m00').value=ex.m[0][0]; document.getElementById('m01').value=ex.m[0][1];
+  document.getElementById('m10').value=ex.m[1][0]; document.getElementById('m11').value=ex.m[1][1];
+  onMatrixChange(); startDecomposition();
+}
+
+function buildExamplesPanel(){
+  const list=document.getElementById('examples-list');
+  let html='';
+  examples.forEach((ex,i)=>{
+    html+=`<div class="example-item" onclick="loadExample(${i})"><h4>${ex.name}</h4><div style="font-size:0.75rem;color:#64748b;margin-bottom:4px;">${ex.desc}</div><div id="ex-mat-${i}"></div></div>`;
+  });
+  list.innerHTML=html;
+  examples.forEach((ex,i)=>{ try{katex.render(matToLatex(ex.m),document.getElementById('ex-mat-'+i),{throwOnError:false});}catch(e){} });
+}
+
+// ============================================================
+//  PAN (drag to pan the canvas view)
+// ============================================================
+canvas.addEventListener('mousedown',e=>{
+  state.dragging=true; state.dragLastX=e.clientX; state.dragLastY=e.clientY;
+  canvas.style.cursor='grabbing';
+});
+window.addEventListener('mousemove',e=>{
+  if(!state.dragging) return;
+  state.panX+=e.clientX-state.dragLastX;
+  state.panY+=e.clientY-state.dragLastY;
+  state.dragLastX=e.clientX; state.dragLastY=e.clientY;
+  requestDraw();
+});
+window.addEventListener('mouseup',()=>{
+  if(state.dragging){ state.dragging=false; canvas.style.cursor='grab'; }
+});
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){ const t=e.touches[0]; state.dragging=true; state.dragLastX=t.clientX; state.dragLastY=t.clientY; }
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(!state.dragging||e.touches.length!==1) return;
+  const t=e.touches[0];
+  state.panX+=t.clientX-state.dragLastX; state.panY+=t.clientY-state.dragLastY;
+  state.dragLastX=t.clientX; state.dragLastY=t.clientY;
+  requestDraw(); e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchend',()=>{ state.dragging=false; });
+
+// ============================================================
+//  INIT
+// ============================================================
+function init(){ onMatrixChange(); buildExamplesPanel(); draw(); }
+if(document.readyState==='complete') init(); else window.addEventListener('load',init);
+</script>
+</body>
+</html>
