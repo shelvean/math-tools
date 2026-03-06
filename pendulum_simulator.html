@@ -398,7 +398,7 @@
             phaseGraphCtx.clearRect(0, 0, phaseGraphCanvas.width, phaseGraphCanvas.height);
             if (graphData.length === 0) return;
 
-            const phaseData = graphData.slice(-maxPhasePoints);
+            const phaseData = graphData;
             const omegaValues = phaseData.map(d => d.omega);
             const minOmega = Math.min(...omegaValues) - 0.2;
             const maxOmega = Math.max(...omegaValues) + 0.2;
@@ -431,33 +431,58 @@
                 phaseGraphCtx.fillText(val.toFixed(2), 45, y);
             });
 
-            phaseGraphCtx.strokeStyle = '#007bff';
-            phaseGraphCtx.lineWidth = 1.8;
-            phaseGraphCtx.beginPath();
+            // Compute speeds for color mapping
+            const speeds = [0];
+            let maxSpd = 0;
+            for (let i = 1; i < phaseData.length; i++) {
+                const dth = phaseData[i].theta - phaseData[i-1].theta;
+                const dom = phaseData[i].omega - phaseData[i-1].omega;
+                const spd = Math.sqrt(dth*dth + dom*dom);
+                speeds.push(spd);
+                if (spd > maxSpd) maxSpd = spd;
+            }
+            if (maxSpd === 0) maxSpd = 1;
 
             let prevWrapped = ((phaseData[0].theta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
             if (prevWrapped > Math.PI) prevWrapped -= 2*Math.PI;
 
-            let x = 50 + (prevWrapped + Math.PI) / (2 * Math.PI) * (W - 80);
-            let y = H - 30 - (phaseData[0].omega - minOmega) / omegaRange * (H - 50);
-            phaseGraphCtx.moveTo(x, y);
+            let sx = 50 + (prevWrapped + Math.PI) / (2 * Math.PI) * (W - 80);
+            let sy = H - 30 - (phaseData[0].omega - minOmega) / omegaRange * (H - 50);
 
             for (let i = 1; i < phaseData.length; i++) {
                 let wrapped = ((phaseData[i].theta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
                 if (wrapped > Math.PI) wrapped -= 2*Math.PI;
 
-                if (Math.abs(wrapped - prevWrapped) > Math.PI * 0.9) {
-                    phaseGraphCtx.stroke();
+                const ex = 50 + (wrapped + Math.PI) / (2 * Math.PI) * (W - 80);
+                const ey = H - 30 - (phaseData[i].omega - minOmega) / omegaRange * (H - 50);
+
+                if (Math.abs(wrapped - prevWrapped) <= Math.PI * 0.9) {
+                    // Speed-based color (blue -> green -> red)
+                    const ratio = Math.min(speeds[i] / maxSpd, 1);
+                    let r, g, b;
+                    if (ratio < 0.33) {
+                        const t = ratio / 0.33;
+                        r = 0; g = Math.floor(100*t); b = Math.floor(140 + 40*t);
+                    } else if (ratio < 0.66) {
+                        const t = (ratio - 0.33) / 0.33;
+                        r = Math.floor(180*t); g = Math.floor(100 + 40*t); b = Math.floor(180*(1-t));
+                    } else {
+                        const t = (ratio - 0.66) / 0.34;
+                        r = Math.floor(180 + 20*t); g = Math.floor(140*(1-t)); b = 0;
+                    }
+
+                    phaseGraphCtx.strokeStyle = `rgb(${r},${g},${b})`;
+                    phaseGraphCtx.lineWidth = 1.5;
                     phaseGraphCtx.beginPath();
+                    phaseGraphCtx.moveTo(sx, sy);
+                    phaseGraphCtx.lineTo(ex, ey);
+                    phaseGraphCtx.stroke();
                 }
 
-                x = 50 + (wrapped + Math.PI) / (2 * Math.PI) * (W - 80);
-                y = H - 30 - (phaseData[i].omega - minOmega) / omegaRange * (H - 50);
-                phaseGraphCtx.lineTo(x, y);
-
+                sx = ex;
+                sy = ey;
                 prevWrapped = wrapped;
             }
-            phaseGraphCtx.stroke();
 
             if (phaseData.length > 0) {
                 const current = phaseData[phaseData.length - 1];
