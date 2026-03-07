@@ -156,7 +156,7 @@
     <!-- CENTER PANEL -->
     <div class="center-panel">
       <div class="equation-bar" id="equation-bar"></div>
-      <div class="canvas-wrap"><canvas id="mainCanvas" width="650" height="650"></canvas></div>
+      <div class="canvas-wrap"><canvas id="mainCanvas" width="650" height="650"></canvas><div id="coord-label" style="position:absolute;pointer-events:none;background:rgba(255,255,255,0.88);padding:2px 6px;border-radius:4px;font-size:0.85rem;white-space:nowrap;display:none;"></div></div>
       <div class="legend">
         <div class="legend-item"><div class="legend-swatch" style="background:#111111"></div> Point vector</div>
         <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> v&#8321; / u&#8321;</div>
@@ -412,7 +412,7 @@ function drawBasisVectors(basisMatrix, alpha, label1, label2){
   ctx.restore();
 }
 
-function drawPointVector(std, coordLabel, color){
+function drawPointVector(std, color){
   // Draw bold arrow from origin to point — dark black
   const tipColor = color || '#111111';
   drawArrowVec(0,0,std[0],std[1],tipColor,3,false);
@@ -421,17 +421,19 @@ function drawPointVector(std, coordLabel, color){
   ctx.save();
   ctx.fillStyle=tipColor;
   ctx.beginPath(); ctx.arc(cx,cy,5,0,2*Math.PI); ctx.fill();
-  // Draw coordinate label near tip — dark black text
-  if(coordLabel){
-    ctx.font='bold 13px system-ui';
-    const tm=ctx.measureText(coordLabel);
-    const lx=cx+12, ly=cy-14;
-    ctx.fillStyle='rgba(255,255,255,0.88)';
-    ctx.fillRect(lx-3,ly-12,tm.width+6,16);
-    ctx.fillStyle='#111111';
-    ctx.fillText(coordLabel,lx,ly);
-  }
   ctx.restore();
+}
+
+function updateCoordLabel(){
+  const el = document.getElementById('coord-label');
+  const[cx,cy]=toCanvas(state.pointStd[0],state.pointStd[1]);
+  const coordsShown = state.animDone ? state.coordsC : state.coordsB;
+  const basisName = state.animDone ? '\\mathcal{C}' : '\\mathcal{B}';
+  const tex = `[\\mathbf{x}]_{${basisName}} = \\begin{bmatrix} ${fmtShort(coordsShown[0])} \\\\ ${fmtShort(coordsShown[1])} \\end{bmatrix}`;
+  el.style.display = 'block';
+  el.style.left = (cx + 12 + 14) + 'px';
+  el.style.top = (cy + 12 - 24) + 'px';
+  try{ katex.render(tex, el, {throwOnError:false}); }catch(e){}
 }
 
 function drawNewAxes(basisMatrix){
@@ -498,10 +500,8 @@ function draw(){
   ctx.restore();
 
   // Draw point vector (fixed in standard coordinates) — dark black
-  const coordsShown = state.animDone ? state.coordsC : state.coordsB;
-  const basisSub = state.animDone ? '\u1D4DE' : '\u1D4D1';
-  const label = '[x]' + basisSub + ' = (' + fmtShort(coordsShown[0]) + ', ' + fmtShort(coordsShown[1]) + ')';
-  drawPointVector(state.pointStd, label, '#111111');
+  drawPointVector(state.pointStd, '#111111');
+  updateCoordLabel();
 
   // During animation, also show ghost basis vectors for initial basis (dashed, faded)
   if(state.animating && t > 0.01){
