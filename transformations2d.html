@@ -67,7 +67,7 @@
     }
     canvas {
       border: 1px solid #e5e7eb; border-radius: 8px;
-      background: #fafbfc; display: block; cursor: crosshair;
+      background: #fafbfc; display: block; cursor: grab;
     }
 
     /* Right Panel */
@@ -507,6 +507,9 @@ const state = {
   queueStep: 0,
   queue: [],
   drawRequested: false,
+  panX: 0, panY: 0, zoom: 1,
+  dragging: false, dragLastX: 0, dragLastY: 0,
+  pinching: false, pinchDist0: 0, pinchZoom0: 1, pinchCX: 0, pinchCY: 0,
 };
 
 // Preload images for image-based objects
@@ -739,8 +742,10 @@ function svd2(M){
 // ============================================================
 //  COORDINATE HELPERS
 // ============================================================
-function toCanvas(x,y){ return [CX + x*SCALE, CY - y*SCALE]; }
-function toMath(cx,cy){ return [(cx-CX)/SCALE, (CY-cy)/SCALE]; }
+function zoomedScale(){ return SCALE*state.zoom; }
+function toCanvas(x,y){ const s=zoomedScale(); return [CX+state.panX+x*s, CY+state.panY-y*s]; }
+function toMath(cx,cy){ const s=zoomedScale(); return [(cx-CX-state.panX)/s, (CY+state.panY-cy)/s]; }
+function visibleRange(){ return Math.ceil(GRID_RANGE/state.zoom)+2; }
 
 function easeInOut(t){
   return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
@@ -750,30 +755,26 @@ function easeInOut(t){
 //  DRAWING FUNCTIONS
 // ============================================================
 function drawAxes(){
+  const cx=CX+state.panX, cy=CY+state.panY, R=visibleRange();
   ctx.save();
   ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5;
-  // x-axis
-  ctx.beginPath();
-  ctx.moveTo(0, CY); ctx.lineTo(W, CY); ctx.stroke();
-  // y-axis
-  ctx.beginPath();
-  ctx.moveTo(CX, 0); ctx.lineTo(CX, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
 
-  // Tick marks and labels
   ctx.fillStyle = '#94a3b8'; ctx.font = '11px system-ui';
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for(let i=-GRID_RANGE; i<=GRID_RANGE; i++){
+  for(let i=-R; i<=R; i++){
     if(i===0) continue;
     const [px] = toCanvas(i, 0);
-    ctx.beginPath(); ctx.moveTo(px, CY-4); ctx.lineTo(px, CY+4); ctx.stroke();
-    ctx.fillText(i, px, CY+7);
+    ctx.beginPath(); ctx.moveTo(px, cy-4); ctx.lineTo(px, cy+4); ctx.stroke();
+    ctx.fillText(i, px, cy+7);
   }
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-  for(let i=-GRID_RANGE; i<=GRID_RANGE; i++){
+  for(let i=-R; i<=R; i++){
     if(i===0) continue;
     const [,py] = toCanvas(0, i);
-    ctx.beginPath(); ctx.moveTo(CX-4, py); ctx.lineTo(CX+4, py); ctx.stroke();
-    ctx.fillText(i, CX-8, py);
+    ctx.beginPath(); ctx.moveTo(cx-4, py); ctx.lineTo(cx+4, py); ctx.stroke();
+    ctx.fillText(i, cx-8, py);
   }
   ctx.restore();
 }
@@ -783,7 +784,7 @@ function drawGrid(M, t){
   const Mt = lerpMatrix(identity(), M, t);
   ctx.save();
   ctx.strokeStyle = 'rgba(99,102,241,0.12)'; ctx.lineWidth = 1;
-  const R = GRID_RANGE + 1;
+  const R = visibleRange() + 1;
   // Vertical lines
   for(let i=-R; i<=R; i++){
     ctx.beginPath();
@@ -1721,6 +1722,74 @@ function buildExamplesPanel(){
     } catch(e){ el.textContent = JSON.stringify(M); }
   });
 }
+
+// ============================================================
+//  PAN & ZOOM (drag to pan, scroll/pinch to zoom)
+// ============================================================
+canvas.addEventListener('mousedown',e=>{
+  state.dragging=true; state.dragLastX=e.clientX; state.dragLastY=e.clientY;
+  canvas.style.cursor='grabbing';
+});
+window.addEventListener('mousemove',e=>{
+  if(!state.dragging) return;
+  state.panX+=e.clientX-state.dragLastX;
+  state.panY+=e.clientY-state.dragLastY;
+  state.dragLastX=e.clientX; state.dragLastY=e.clientY;
+  requestDraw();
+});
+window.addEventListener('mouseup',()=>{
+  if(state.dragging){ state.dragging=false; canvas.style.cursor='grab'; }
+});
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){ const t=e.touches[0]; state.dragging=true; state.dragLastX=t.clientX; state.dragLastY=t.clientY; }
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(!state.dragging||e.touches.length!==1) return;
+  const t=e.touches[0];
+  state.panX+=t.clientX-state.dragLastX; state.panY+=t.clientY-state.dragLastY;
+  state.dragLastX=t.clientX; state.dragLastY=t.clientY;
+  requestDraw(); e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchend',e=>{ state.dragging=false; state.pinching=false; });
+
+// Pinch-to-zoom (two-finger touch)
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){
+    state.dragging=false; state.pinching=true;
+    const t0=e.touches[0], t1=e.touches[1];
+    state.pinchDist0=Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+    state.pinchZoom0=state.zoom;
+    const rect=canvas.getBoundingClientRect();
+    state.pinchCX=(t0.clientX+t1.clientX)/2 - rect.left;
+    state.pinchCY=(t0.clientY+t1.clientY)/2 - rect.top;
+  }
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(!state.pinching||e.touches.length!==2) return;
+  e.preventDefault();
+  const t0=e.touches[0], t1=e.touches[1];
+  const dist=Math.hypot(t1.clientX-t0.clientX, t1.clientY-t0.clientY);
+  const newZoom=Math.min(10, Math.max(0.1, state.pinchZoom0*(dist/state.pinchDist0)));
+  const cx=state.pinchCX, cy=state.pinchCY;
+  const wx=(cx-CX-state.panX)/(SCALE*state.zoom), wy=(CY+state.panY-cy)/(SCALE*state.zoom);
+  state.zoom=newZoom;
+  state.panX=cx-CX-wx*SCALE*state.zoom;
+  state.panY=cy-CY+wy*SCALE*state.zoom;
+  requestDraw();
+},{passive:false});
+
+// Mouse-wheel zoom
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const wx=(mx-CX-state.panX)/(SCALE*state.zoom), wy=(CY+state.panY-my)/(SCALE*state.zoom);
+  const factor=e.deltaY<0?1.1:1/1.1;
+  state.zoom=Math.min(10, Math.max(0.1, state.zoom*factor));
+  state.panX=mx-CX-wx*SCALE*state.zoom;
+  state.panY=my-CY+wy*SCALE*state.zoom;
+  requestDraw();
+},{passive:false});
 
 // ============================================================
 //  INITIALIZATION
