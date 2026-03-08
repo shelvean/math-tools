@@ -14,9 +14,21 @@
     gtag('config', 'G-LEQE004C92');
   </script>
   <title>Change of Coordinates Visualizer</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <!-- MathJax with accessibility -->
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+      options: {
+        enableExplorer: true,
+        enableAssistiveMml: true,
+        menuOptions: { settings: { assistiveMml: true, explorer: true } },
+        skipHtmlTags: ['script','noscript','style','textarea','pre','code']
+      },
+      startup: { pageReady: function(){ return MathJax.startup.defaultPageReady(); } }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <style>
     :root {
       --primary: #4f46e5; --primary-light: #6366f1;
@@ -24,9 +36,67 @@
       --text: #1e293b; --text-muted: #64748b;
       --border: #e2e8f0; --radius: 12px;
       --shadow: 0 4px 24px rgba(0,0,0,0.08);
+      --color-v1: #ef4444; --color-v2: #3b82f6;
+      --canvas-bg: #fafbfc; --canvas-border: #e5e7eb;
+      --grid-color: rgba(99,102,241,0.35);
+      --btn-primary: #4f46e5; --btn-danger: #ef4444;
+      --btn-amber: #f59e0b; --btn-amber-text: #1e293b;
+      --input-bg: #f8fafc;
+    }
+    @media (prefers-contrast: more) {
+      :root {
+        --primary: #0000cc; --primary-light: #0000ff;
+        --surface: #ffffff; --bg: #ffffff;
+        --text: #000000; --text-muted: #333333;
+        --border: #000000;
+        --shadow: 0 0 0 2px #000;
+        --color-v1: #cc0000; --color-v2: #0000cc;
+        --canvas-bg: #ffffff; --canvas-border: #000000;
+        --grid-color: #666666;
+        --btn-primary: #0000cc; --btn-danger: #cc0000;
+        --btn-amber: #cc5500; --btn-amber-text: #ffffff;
+        --input-bg: #ffffff;
+      }
+    }
+    .high-contrast {
+      --primary: #0000cc; --primary-light: #0000ff;
+      --surface: #ffffff; --bg: #ffffff;
+      --text: #000000; --text-muted: #333333;
+      --border: #000000;
+      --shadow: 0 0 0 2px #000;
+      --color-v1: #cc0000; --color-v2: #0000cc;
+      --canvas-bg: #ffffff; --canvas-border: #000000;
+      --grid-color: #666666;
+      --btn-primary: #0000cc; --btn-danger: #cc0000;
+      --btn-amber: #cc5500; --btn-amber-text: #ffffff;
+      --input-bg: #ffffff;
     }
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+    *:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+    select:focus-visible, input:focus-visible { outline: 3px solid var(--primary); outline-offset: 1px; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .skip-link {
+      position: absolute; top: -100%; left: 50%; transform: translateX(-50%);
+      background: var(--primary); color: #fff; padding: 0.75rem 1.5rem;
+      z-index: 1000; border-radius: 0 0 0.5rem 0.5rem;
+      font-weight: 600; text-decoration: none;
+    }
+    .skip-link:focus { top: 0; outline: 3px solid #000; outline-offset: 2px; }
+    .contrast-toggle {
+      position: fixed; bottom: 18px; right: 18px; z-index: 100;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 2px solid var(--border); background: var(--surface);
+      font-size: 1.4rem; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .contrast-toggle:hover { transform: scale(1.1); }
+    .contrast-toggle:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
     .main-container { max-width:1800px; margin:70px auto 20px; padding:20px; display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
     .left-panel { flex:0 0 310px; display:flex; flex-direction:column; gap:14px; }
     .center-panel { flex:1 1 650px; display:flex; flex-direction:column; align-items:center; gap:14px; }
@@ -40,12 +110,12 @@
     details[open] > .panel-summary::before { transform:rotate(90deg); }
     details:not([open]) > .panel-summary { margin-bottom:0; }
     .equation-bar { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 20px; box-shadow:var(--shadow); text-align:center; width:100%; }
-    .equation-bar .katex { font-size:1.05rem; }
+    .equation-bar .MathJax { font-size:1.05rem; }
     .canvas-wrap { background:var(--surface); border-radius:var(--radius); padding:12px; box-shadow:var(--shadow); border:1px solid var(--border); position:relative; }
-    canvas { border:1px solid #e5e7eb; border-radius:8px; background:#fafbfc; display:block; cursor:grab; }
+    canvas { border:1px solid var(--canvas-border); border-radius:8px; background:var(--canvas-bg); display:block; cursor:grab; }
     .ctrl-group { margin-bottom:12px; }
     .ctrl-group label { display:block; font-size:0.8rem; font-weight:600; color:#334155; margin-bottom:4px; }
-    select, input[type="number"] { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:0.88rem; color:var(--text); background:#f8fafc; outline:none; transition:border-color 0.2s; }
+    select, input[type="number"] { width:100%; padding:8px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:0.88rem; color:var(--text); background:var(--input-bg); outline:none; transition:border-color 0.2s; }
     select:focus, input[type="number"]:focus { border-color:var(--primary); }
     input[type="range"] { width:100%; accent-color:var(--primary); }
     .range-row { display:flex; align-items:center; gap:8px; }
@@ -58,25 +128,25 @@
     .bracket { font-size:3rem; font-weight:200; color:#94a3b8; line-height:1; }
     .basis-table { border-collapse:separate; border-spacing:4px; }
     .basis-table td { padding:1px; }
-    .basis-table input { width:56px; padding:6px 4px; text-align:center; border:2px solid var(--border); border-radius:6px; font-size:0.92rem; font-weight:600; background:#f8fafc; outline:none; transition:border-color 0.2s; }
+    .basis-table input { width:56px; padding:6px 4px; text-align:center; border:2px solid var(--border); border-radius:6px; font-size:0.92rem; font-weight:600; background:var(--input-bg); outline:none; transition:border-color 0.2s; }
     .basis-table input:hover { border-color:#3b82f6; }
     .basis-table input:focus { border-color:var(--primary); }
     .btn { padding:8px 16px; border:none; border-radius:8px; font-weight:600; font-size:0.82rem; color:white; cursor:pointer; transition:all 0.2s; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
     .btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.15); }
     .btn:active { transform:translateY(0); }
-    .btn-primary { background:linear-gradient(135deg,#4f46e5,#6366f1); }
-    .btn-danger { background:linear-gradient(135deg,#ef4444,#f87171); }
-    .btn-amber { background:linear-gradient(135deg,#f59e0b,#fbbf24); color:#1e293b; }
+    .btn-primary { background:linear-gradient(135deg,var(--btn-primary),var(--primary-light)); }
+    .btn-danger { background:linear-gradient(135deg,var(--btn-danger),#f87171); }
+    .btn-amber { background:linear-gradient(135deg,var(--btn-amber),#fbbf24); color:var(--btn-amber-text); }
     .btn-green { background:linear-gradient(135deg,#10b981,#34d399); }
     .btn-row { display:flex; gap:8px; flex-wrap:wrap; }
     .info-box { background:#f1f5f9; border-radius:8px; padding:10px 14px; border:1px solid var(--border); margin-bottom:10px; }
     .info-box h4 { font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); margin-bottom:6px; font-weight:700; }
-    .info-box .katex { font-size:0.9rem; }
+    .info-box .MathJax { font-size:0.9rem; }
     .examples-header { background:linear-gradient(135deg,var(--primary),var(--primary-light)); color:white; padding:10px 16px; border-radius:var(--radius) var(--radius) 0 0; font-size:1rem; font-weight:700; text-align:center; margin:-16px -16px 12px; }
-    .example-item { padding:10px; border-radius:8px; cursor:pointer; border:1px solid #e5e7eb; background:#f8fafc; margin-bottom:8px; transition:all 0.2s; }
-    .example-item:hover { background:#f0f9ff; border-color:#3b82f6; box-shadow:0 3px 10px rgba(59,130,246,0.15); }
-    .example-item h4 { font-size:0.85rem; font-weight:600; color:#1e293b; margin-bottom:4px; }
-    .example-item .ex-desc { font-size:0.75rem; color:#64748b; margin-bottom:4px; }
+    .example-item { padding:10px; border-radius:8px; cursor:pointer; border:1px solid #e5e7eb; background:var(--input-bg); margin-bottom:8px; transition:all 0.2s; }
+    .example-item:hover, .example-item:focus-visible { background:#f0f9ff; border-color:#3b82f6; box-shadow:0 3px 10px rgba(59,130,246,0.15); }
+    .example-item h4 { font-size:0.85rem; font-weight:600; color:var(--text); margin-bottom:4px; }
+    .example-item .ex-desc { font-size:0.75rem; color:var(--text-muted); margin-bottom:4px; }
     .example-item .ex-type { display:inline-block; font-size:0.68rem; font-weight:700; padding:2px 8px; border-radius:10px; margin-bottom:6px; }
     .type-std-to-non { background:#dbeafe; color:#1e40af; }
     .type-non-to-std { background:#dcfce7; color:#166534; }
@@ -84,17 +154,24 @@
     .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.75rem; }
     .legend-item { display:flex; align-items:center; gap:4px; }
     .legend-swatch { width:14px; height:3px; border-radius:2px; }
-    .calc-step { background:#f8fafc; border-radius:8px; padding:10px 14px; border:1px solid var(--border); margin-bottom:8px; }
-    .calc-step .katex { font-size:0.88rem; }
+    .calc-step { background:var(--input-bg); border-radius:8px; padding:10px 14px; border:1px solid var(--border); margin-bottom:8px; }
+    .calc-step .MathJax { font-size:0.88rem; }
+    .footer { max-width: 900px; margin: 2rem auto; padding: 1.5rem 1rem; text-align: center; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid var(--border); }
+    .footer a { color: var(--primary); text-decoration: none; }
+    .footer a:hover, .footer a:focus-visible { text-decoration: underline; }
     @media (max-width:1400px) { .left-panel{flex:0 0 280px;} .right-panel{flex:0 0 310px;} }
     @media (max-width:1100px) { .main-container{flex-direction:column;align-items:center;} .left-panel,.right-panel{flex:1 1 100%;max-width:700px;} .center-panel{order:-1;} }
   </style>
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <!-- Live region for screen reader announcements -->
+  <div id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
   <!-- Nav -->
   <div class="w-full bg-white shadow-md fixed top-0 left-0 z-50">
-    <nav class="max-w-5xl mx-auto px-4 py-3">
-      <ul class="flex justify-center space-x-4 sm:space-x-6">
+    <nav class="max-w-5xl mx-auto px-4 py-3" aria-label="Main navigation">
+      <ul class="flex justify-center space-x-4 sm:space-x-6" role="list">
         <li><a href="index.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Home</a></li>
         <li><a href="teaching.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Teaching</a></li>
         <li><a href="projects.html" class="text-indigo-600 hover:text-indigo-800 font-bold text-sm sm:text-lg">Diff Eq</a></li>
@@ -104,6 +181,7 @@
     </nav>
   </div>
 
+  <main id="main-content" role="main">
   <div style="max-width:1800px; margin:70px auto 0; padding:20px 20px 0; text-align:center;">
     <h1 style="font-size:2.2rem; font-weight:800; color:#1e293b; margin-bottom:4px;">Change of Coordinates Visualizer</h1>
     <p style="font-size:1.05rem; color:#64748b; max-width:800px; margin:0 auto;">
@@ -114,22 +192,22 @@
 
   <div class="main-container" style="margin-top:10px;">
     <!-- LEFT PANEL -->
-    <div class="left-panel">
+    <div class="left-panel" role="region" aria-label="Input controls">
       <div class="panel-card">
         <h3>Bases (V: Initial, U: Final)</h3>
         <div style="display:flex; justify-content:center; gap:24px;">
           <div style="text-align:center;">
             <p style="font-size:0.8rem; font-weight:600; color:#334155; margin-bottom:6px;">V (Initial Basis)</p>
             <table class="basis-table">
-              <tr><td><input type="text" id="v1x" value="1" oninput="onInputChange()"></td><td><input type="text" id="v2x" value="0" oninput="onInputChange()"></td></tr>
-              <tr><td><input type="text" id="v1y" value="0" oninput="onInputChange()"></td><td><input type="text" id="v2y" value="1" oninput="onInputChange()"></td></tr>
+              <tr><td><input type="text" id="v1x" value="1" oninput="onInputChange()" aria-label="V basis vector 1, x component"></td><td><input type="text" id="v2x" value="0" oninput="onInputChange()" aria-label="V basis vector 2, x component"></td></tr>
+              <tr><td><input type="text" id="v1y" value="0" oninput="onInputChange()" aria-label="V basis vector 1, y component"></td><td><input type="text" id="v2y" value="1" oninput="onInputChange()" aria-label="V basis vector 2, y component"></td></tr>
             </table>
           </div>
           <div style="text-align:center;">
             <p style="font-size:0.8rem; font-weight:600; color:#334155; margin-bottom:6px;">U (Final Basis)</p>
             <table class="basis-table">
-              <tr><td><input type="text" id="u1x" value="1" oninput="onInputChange()"></td><td><input type="text" id="u2x" value="-1" oninput="onInputChange()"></td></tr>
-              <tr><td><input type="text" id="u1y" value="1" oninput="onInputChange()"></td><td><input type="text" id="u2y" value="1" oninput="onInputChange()"></td></tr>
+              <tr><td><input type="text" id="u1x" value="1" oninput="onInputChange()" aria-label="U basis vector 1, x component"></td><td><input type="text" id="u2x" value="-1" oninput="onInputChange()" aria-label="U basis vector 2, x component"></td></tr>
+              <tr><td><input type="text" id="u1y" value="1" oninput="onInputChange()" aria-label="U basis vector 1, y component"></td><td><input type="text" id="u2y" value="1" oninput="onInputChange()" aria-label="U basis vector 2, y component"></td></tr>
             </table>
           </div>
         </div>
@@ -138,21 +216,21 @@
         <h3>Point [x]<sub>&#x1D4B1;</sub></h3>
         <div style="display:flex; justify-content:center;">
           <table class="basis-table" style="width:auto;">
-            <tr><td><input type="text" id="px" value="3" oninput="onInputChange()"></td></tr>
-            <tr><td><input type="text" id="py" value="2" oninput="onInputChange()"></td></tr>
+            <tr><td><input type="text" id="px" value="3" oninput="onInputChange()" aria-label="Point x coordinate in basis V"></td></tr>
+            <tr><td><input type="text" id="py" value="2" oninput="onInputChange()" aria-label="Point y coordinate in basis V"></td></tr>
           </table>
         </div>
       </div>
       <div class="panel-card">
         <h3>Animation</h3>
         <div class="btn-row" style="margin-bottom:10px">
-          <button class="btn btn-primary" id="btn-animate" onclick="startAnimation()">&#9654; Animate</button>
-          <button class="btn btn-danger" onclick="resetAnimation()">&#8634; Reset</button>
+          <button class="btn btn-primary" id="btn-animate" onclick="startAnimation()" aria-label="Animate basis change">&#9654; Animate</button>
+          <button class="btn btn-danger" onclick="resetAnimation()" aria-label="Reset animation and view">&#8634; Reset</button>
         </div>
         <div class="ctrl-group">
-          <label>Speed</label>
+          <label for="anim-speed">Speed</label>
           <div class="range-row">
-            <input type="range" id="anim-speed" min="0.2" max="3" value="1" step="0.1" oninput="document.getElementById('anim-speed-val').textContent=parseFloat(this.value).toFixed(1)+'×'">
+            <input type="range" id="anim-speed" min="0.2" max="3" value="1" step="0.1" aria-label="Animation speed" oninput="document.getElementById('anim-speed-val').textContent=parseFloat(this.value).toFixed(1)+'×'">
             <span class="range-val" id="anim-speed-val">1.0&times;</span>
           </div>
         </div>
@@ -160,37 +238,58 @@
     </div>
 
     <!-- CENTER PANEL -->
-    <div class="center-panel">
-      <div class="equation-bar" id="equation-bar"></div>
-      <div class="canvas-wrap"><canvas id="mainCanvas" width="650" height="650"></canvas><div id="coord-label" style="position:absolute;pointer-events:none;background:rgba(255,255,255,0.88);padding:2px 6px;border-radius:4px;font-size:0.85rem;white-space:nowrap;display:none;"></div></div>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-swatch" style="background:#111111"></div> Point vector</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> v&#8321; / u&#8321;</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div> v&#8322; / u&#8322;</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6; border-top:2px dashed #3b82f6; height:0;"></div> New axes</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(99,102,241,0.35)"></div> Grid</div>
+    <div class="center-panel" role="region" aria-label="Visualization">
+      <div class="equation-bar" id="equation-bar" role="status" aria-label="Current transformation equation"></div>
+      <div class="canvas-wrap"><canvas id="mainCanvas" width="650" height="650" role="img" aria-label="Change of coordinates visualization. Use arrow keys to pan, 0 to reset view."></canvas><div id="coord-label" style="position:absolute;pointer-events:none;background:rgba(255,255,255,0.88);padding:2px 6px;border-radius:4px;font-size:0.85rem;white-space:nowrap;display:none;" aria-hidden="true"></div></div>
+      <div class="legend" role="list" aria-label="Visualization legend">
+        <div class="legend-item" role="listitem"><div class="legend-swatch" style="background:#111111"></div> Point vector</div>
+        <div class="legend-item" role="listitem"><div class="legend-swatch" style="background:#ef4444"></div> v&#8321; / u&#8321;</div>
+        <div class="legend-item" role="listitem"><div class="legend-swatch" style="background:#3b82f6"></div> v&#8322; / u&#8322;</div>
+        <div class="legend-item" role="listitem"><div class="legend-swatch" style="background:#3b82f6; border-top:2px dashed #3b82f6; height:0;"></div> New axes</div>
+        <div class="legend-item" role="listitem"><div class="legend-swatch" style="background:rgba(99,102,241,0.35)"></div> Grid</div>
       </div>
     </div>
 
     <!-- RIGHT PANEL -->
-    <div class="right-panel">
-      <details class="panel-card" open>
+    <div class="right-panel" role="region" aria-label="Results and calculations">
+      <details class="panel-card" open aria-label="Bases and change of coordinates matrix">
         <summary class="panel-summary">Bases &amp; Change of Coordinates Matrix</summary>
-        <div class="info-box"><div id="bases-display"></div></div>
-        <div class="info-box"><h4>Change of Coordinates Matrix S = U⁻¹V</h4><div id="matrix-display"></div></div>
+        <div class="info-box"><div id="bases-display" aria-live="polite"></div></div>
+        <div class="info-box"><h4>Change of Coordinates Matrix S = U⁻¹V</h4><div id="matrix-display" aria-live="polite"></div></div>
       </details>
-      <details class="panel-card" open>
+      <details class="panel-card" open aria-label="Step-by-step calculation">
         <summary class="panel-summary">Calculation</summary>
         <div id="calc-display"></div>
       </details>
       <div class="panel-card" style="padding:0; overflow:hidden;">
         <div class="examples-header">Preset Examples</div>
-        <div style="padding:12px; max-height:500px; overflow-y:auto;" id="examples-list"></div>
+        <div style="padding:12px; max-height:500px; overflow-y:auto;" id="examples-list" role="list" aria-label="Preset examples"></div>
       </div>
     </div>
   </div>
+  </main>
 
 <script>
+// ============================================================
+//  ANNOUNCER (screen reader)
+// ============================================================
+function announce(msg) {
+  var el = document.getElementById('liveRegion');
+  el.textContent = '';
+  setTimeout(function() { el.textContent = msg; }, 50);
+}
+
+// ============================================================
+//  TEX RENDERING (MathJax with screen reader support)
+// ============================================================
+function renderTeX(latex, el, displayMode) {
+  if (!el) return;
+  el.innerHTML = (displayMode ? '\\[' : '\\(') + latex + (displayMode ? '\\]' : '\\)');
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([el]).catch(function(err) { console.warn('MathJax error:', err); });
+  }
+}
+
 // ============================================================
 //  STATE
 // ============================================================
@@ -341,13 +440,11 @@ function drawAxes(){
 }
 
 function drawBasisGrid(basisMatrix, alpha, color){
-  // Draw grid lines along basis vectors
   ctx.save();
   ctx.strokeStyle=color || 'rgba(99,102,241,0.12)';
   ctx.lineWidth=1;
   ctx.globalAlpha=alpha;
   const R=GRID_RANGE+2;
-  // Lines along v1 direction (parameterized by v2 integer multiples)
   for(let i=-R;i<=R;i++){
     ctx.beginPath();
     const p1=[basisMatrix[0][0]*(-R)+basisMatrix[0][1]*i, basisMatrix[1][0]*(-R)+basisMatrix[1][1]*i];
@@ -356,7 +453,6 @@ function drawBasisGrid(basisMatrix, alpha, color){
     const[x2,y2]=toCanvas(p2[0],p2[1]);
     ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
   }
-  // Lines along v2 direction (parameterized by v1 integer multiples)
   for(let i=-R;i<=R;i++){
     ctx.beginPath();
     const p1=[basisMatrix[0][0]*i+basisMatrix[0][1]*(-R), basisMatrix[1][0]*i+basisMatrix[1][1]*(-R)];
@@ -395,10 +491,8 @@ function drawBasisVectors(basisMatrix, alpha, label1, label2){
 }
 
 function drawPointVector(std, color){
-  // Draw bold arrow from origin to point — dark black
   const tipColor = color || '#111111';
   drawArrowVec(0,0,std[0],std[1],tipColor,3,false);
-  // Draw dot at tip
   const[cx,cy]=toCanvas(std[0],std[1]);
   ctx.save();
   ctx.fillStyle=tipColor;
@@ -415,22 +509,19 @@ function updateCoordLabel(){
   el.style.display = 'block';
   el.style.left = (cx + 12 + 14) + 'px';
   el.style.top = (cy + 12 - 24) + 'px';
-  try{ katex.render(tex, el, {throwOnError:false}); }catch(e){}
+  renderTeX(tex, el, false);
 }
 
 function drawNewAxes(basisMatrix){
-  // Draw dashed blue lines through the origin along each basis direction, spanning the canvas
   ctx.save();
   ctx.strokeStyle='#3b82f6';
   ctx.lineWidth=1.5;
   ctx.setLineDash([8,5]);
   const R=GRID_RANGE+2;
-  // Axis along first basis vector direction
   const d1=[basisMatrix[0][0],basisMatrix[1][0]];
   const[ax1,ay1]=toCanvas(-R*d1[0],-R*d1[1]);
   const[ax2,ay2]=toCanvas(R*d1[0],R*d1[1]);
   ctx.beginPath(); ctx.moveTo(ax1,ay1); ctx.lineTo(ax2,ay2); ctx.stroke();
-  // Axis along second basis vector direction
   const d2=[basisMatrix[0][1],basisMatrix[1][1]];
   const[bx1,by1]=toCanvas(-R*d2[0],-R*d2[1]);
   const[bx2,by2]=toCanvas(R*d2[0],R*d2[1]);
@@ -533,27 +624,21 @@ function updateDisplays(){
   const V=state.V, U=state.U, S=state.S, cb=state.coordsB, cc=state.coordsC, ps=state.pointStd;
 
   // Equation bar
-  try{
-    const eqTex = state.animDone
-      ? `[\\mathbf{x}]_{\\mathcal{U}} = ${vecToLatex(cc)} \\quad\\leftarrow\\quad \\mathbf{S}\\,[\\mathbf{x}]_{\\mathcal{V}} = ${matToLatex(S)}${vecToLatex(cb)}`
-      : `[\\mathbf{x}]_{\\mathcal{V}} = ${vecToLatex(cb)} \\quad\\Rightarrow\\quad \\mathbf{x} = V\\,[\\mathbf{x}]_{\\mathcal{V}} = ${vecToLatex(ps)}`;
-    katex.render(eqTex, document.getElementById('equation-bar'), {throwOnError:false});
-  }catch(e){}
+  const eqTex = state.animDone
+    ? `[\\mathbf{x}]_{\\mathcal{U}} = ${vecToLatex(cc)} \\quad\\leftarrow\\quad \\mathbf{S}\\,[\\mathbf{x}]_{\\mathcal{V}} = ${matToLatex(S)}${vecToLatex(cb)}`
+    : `[\\mathbf{x}]_{\\mathcal{V}} = ${vecToLatex(cb)} \\quad\\Rightarrow\\quad \\mathbf{x} = V\\,[\\mathbf{x}]_{\\mathcal{V}} = ${vecToLatex(ps)}`;
+  renderTeX(eqTex, document.getElementById('equation-bar'), false);
 
   // Bases display
-  try{
-    const baseTex = `V = ${matToLatex(V)}\\quad U = ${matToLatex(U)}`;
-    katex.render(baseTex, document.getElementById('bases-display'), {throwOnError:false});
-  }catch(e){}
+  const baseTex = `V = ${matToLatex(V)}\\quad U = ${matToLatex(U)}`;
+  renderTeX(baseTex, document.getElementById('bases-display'), false);
 
   // Matrix display
-  try{
-    if(state.singular){
-      katex.render(`\\text{U is singular — no change of coordinates matrix}`, document.getElementById('matrix-display'), {throwOnError:false});
-    } else {
-      katex.render(`S = U^{-1}V = ${matToLatex(S)}`, document.getElementById('matrix-display'), {throwOnError:false});
-    }
-  }catch(e){}
+  if(state.singular){
+    renderTeX(`\\text{U is singular — no change of coordinates matrix}`, document.getElementById('matrix-display'), false);
+  } else {
+    renderTeX(`S = U^{-1}V = ${matToLatex(S)}`, document.getElementById('matrix-display'), false);
+  }
 
   // Calculation display
   updateCalcDisplay();
@@ -562,45 +647,32 @@ function updateDisplays(){
 function updateCalcDisplay(){
   const el = document.getElementById('calc-display');
   if(state.singular){
-    el.innerHTML = '<div class="calc-step" style="color:#ef4444; font-weight:600;">U is singular — cannot compute change of coordinates.</div>';
+    el.innerHTML = '<div class="calc-step" style="color:#ef4444; font-weight:600;" role="alert">U is singular — cannot compute change of coordinates.</div>';
     return;
   }
 
   const V=state.V, U=state.U, S=state.S, cb=state.coordsB, cc=state.coordsC, ps=state.pointStd;
 
   let html = '';
-
-  // Step 1: Point in standard coords
   html += '<div class="calc-step"><div id="calc-step1"></div></div>';
-
-  // Step 2: The change of coordinates matrix
   html += '<div class="calc-step"><div id="calc-step2"></div></div>';
-
-  // Step 3: Matrix multiplication
   html += '<div class="calc-step"><div id="calc-step3"></div></div>';
-
   el.innerHTML = html;
 
-  try{
-    katex.render(
-      `\\textbf{Step 1: }\\text{Point in standard coords}\\\\[6pt] \\mathbf{x} = V\\,[\\mathbf{x}]_{\\mathcal{V}} = ${matToLatex(V)}${vecToLatex(cb)} = ${vecToLatex(ps)}`,
-      document.getElementById('calc-step1'), {throwOnError:false}
-    );
-  }catch(e){}
+  renderTeX(
+    `\\textbf{Step 1: }\\text{Point in standard coords}\\\\[6pt] \\mathbf{x} = V\\,[\\mathbf{x}]_{\\mathcal{V}} = ${matToLatex(V)}${vecToLatex(cb)} = ${vecToLatex(ps)}`,
+    document.getElementById('calc-step1'), false
+  );
 
-  try{
-    katex.render(
-      `\\textbf{Step 2: }\\text{Change of coordinates matrix}\\\\[6pt] S = U^{-1}V = ${matToLatex(S)}`,
-      document.getElementById('calc-step2'), {throwOnError:false}
-    );
-  }catch(e){}
+  renderTeX(
+    `\\textbf{Step 2: }\\text{Change of coordinates matrix}\\\\[6pt] S = U^{-1}V = ${matToLatex(S)}`,
+    document.getElementById('calc-step2'), false
+  );
 
-  try{
-    katex.render(
-      `\\textbf{Step 3: }\\text{New coordinates}\\\\[6pt] [\\mathbf{x}]_{\\mathcal{U}} = S\\,[\\mathbf{x}]_{\\mathcal{V}} = ${matToLatex(S)}${vecToLatex(cb)} = ${vecToLatex(cc)}`,
-      document.getElementById('calc-step3'), {throwOnError:false}
-    );
-  }catch(e){}
+  renderTeX(
+    `\\textbf{Step 3: }\\text{New coordinates}\\\\[6pt] [\\mathbf{x}]_{\\mathcal{U}} = S\\,[\\mathbf{x}]_{\\mathcal{V}} = ${matToLatex(S)}${vecToLatex(cb)} = ${vecToLatex(cc)}`,
+    document.getElementById('calc-step3'), false
+  );
 }
 
 // ============================================================
@@ -648,13 +720,14 @@ function onInputChange(){
 // ============================================================
 function startAnimation(){
   if(state.animating) return;
-  if(state.singular){ return; }
+  if(state.singular){ announce('Cannot animate: U basis is singular'); return; }
   state.animDone = false;
   state.animT = 0;
   state.animating = true;
   state.animStartTime = performance.now();
   state.animDuration = 2000 / parseFloat(document.getElementById('anim-speed').value);
   document.getElementById('btn-animate').textContent = '\u23F8 Playing';
+  announce('Animation started');
   animLoop();
 }
 
@@ -669,9 +742,9 @@ function animLoop(){
     state.animDone = true;
     state.animT = 1;
     document.getElementById('btn-animate').textContent = '\u25B6 Animate';
-    // Update equation bar to show new coordinates
     updateDisplays();
     draw();
+    announce('Animation complete');
   }
 }
 
@@ -684,6 +757,7 @@ function resetAnimation(){
   document.getElementById('btn-animate').textContent = '\u25B6 Animate';
   updateDisplays();
   draw();
+  announce('Animation reset');
 }
 
 // ============================================================
@@ -702,6 +776,7 @@ function loadExample(idx){
   state.panY = 0;
   document.getElementById('btn-animate').textContent = '\u25B6 Animate';
   recompute();
+  announce('Loaded example: ' + ex.name);
   // Auto-start animation after a short delay
   setTimeout(()=>startAnimation(), 300);
 }
@@ -714,7 +789,7 @@ function buildExamplesPanel(){
     let typeLabel = 'Standard \u2192 Non-standard';
     if(ex.type==='non-to-std'){ typeClass='type-non-to-std'; typeLabel='Non-standard \u2192 Standard'; }
     if(ex.type==='non-to-non'){ typeClass='type-non-to-non'; typeLabel='Non-standard \u2192 Non-standard'; }
-    html += `<div class="example-item" onclick="loadExample(${i})">
+    html += `<div class="example-item" role="button" tabindex="0" aria-label="Load example: ${ex.name}" onclick="loadExample(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();loadExample(${i});}">
       <div class="ex-type ${typeClass}">${typeLabel}</div>
       <h4>${ex.name}</h4>
       <div class="ex-desc">${ex.desc}</div>
@@ -725,9 +800,7 @@ function buildExamplesPanel(){
 
   // Render point info for each example
   examples.forEach((ex,i)=>{
-    try{
-      katex.render(`[\\mathbf{x}]_{\\mathcal{V}} = ${vecToLatex(ex.p)}`, document.getElementById('ex-info-'+i), {throwOnError:false});
-    }catch(e){}
+    renderTeX(`[\\mathbf{x}]_{\\mathcal{V}} = ${vecToLatex(ex.p)}`, document.getElementById('ex-info-'+i), false);
   });
 }
 
@@ -761,18 +834,52 @@ canvas.addEventListener('touchmove',e=>{
 canvas.addEventListener('touchend',()=>{ state.dragging=false; });
 
 // ============================================================
+//  KEYBOARD NAVIGATION (canvas)
+// ============================================================
+canvas.setAttribute('tabindex', '0');
+canvas.addEventListener('keydown', function(e) {
+  var step = 20;
+  var handled = true;
+  switch(e.key) {
+    case 'ArrowLeft':  state.panX += step; break;
+    case 'ArrowRight': state.panX -= step; break;
+    case 'ArrowUp':    state.panY += step; break;
+    case 'ArrowDown':  state.panY -= step; break;
+    case '0': state.panX = 0; state.panY = 0; announce('Canvas view reset'); break;
+    default: handled = false;
+  }
+  if (handled) { e.preventDefault(); requestDraw(); }
+});
+
+// ============================================================
 //  INIT
 // ============================================================
 function init(){
   buildExamplesPanel();
   loadExample(0);
+  // High contrast toggle
+  document.getElementById('contrastToggle').addEventListener('click', function() {
+    document.documentElement.classList.toggle('high-contrast');
+    var on = document.documentElement.classList.contains('high-contrast');
+    announce('High contrast mode ' + (on ? 'enabled' : 'disabled'));
+  });
 }
 if(document.readyState==='complete') init(); else window.addEventListener('load',init);
 </script>
-<div class="mt-6 border-t pt-4 text-center text-gray-500 text-sm">
-  © 2026 Shelvean Kapita: kapita@tamu.edu <br>
-  All code released under the MIT License. <br>
-  Last modified: March 7, 2026
-</div>
+
+<button class="contrast-toggle" id="contrastToggle" aria-label="Toggle high-contrast mode" title="Toggle high-contrast mode" type="button">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<footer class="footer" role="contentinfo">
+  &copy; 2026 Shelvean Kapita: kapita@tamu.edu<br>
+  All code released under the MIT License.<br>
+  Last modified: March 8, 2026<br>
+  <strong>Accessibility:</strong> This tool is designed to meet
+  <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards.
+  It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators.
+  If you encounter any accessibility issues, please contact
+  <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.
+</footer>
 </body>
 </html>
