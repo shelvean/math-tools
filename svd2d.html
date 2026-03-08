@@ -63,9 +63,24 @@
     .main-container { max-width:1800px; margin:70px auto 20px; padding:20px; display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
     .left-panel { flex:0 0 310px; display:flex; flex-direction:column; gap:14px; }
     .center-panel { flex:1 1 650px; display:flex; flex-direction:column; align-items:center; gap:14px; }
-    .right-panel { flex:0 0 340px; display:flex; flex-direction:column; gap:14px; }
+    .right-panel { flex:0 0 320px; display:flex; flex-direction:column; gap:14px; }
     .panel-card { background:var(--surface); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); border:1px solid var(--border); }
     .panel-card h2 { font-size:0.78rem; text-transform:uppercase; letter-spacing:1.1px; color:var(--text-muted); margin-bottom:12px; font-weight:700; }
+    /* Examples dropdown */
+    .examples-bar { display:flex; align-items:center; gap:10px; width:100%; }
+    .examples-bar label { font-size:0.82rem; font-weight:700; color:var(--text-label); white-space:nowrap; }
+    .examples-select {
+      flex:1; padding:8px 12px; border:1.5px solid var(--border);
+      border-radius:8px; font-size:0.88rem; color:var(--text);
+      background:#f8fafc; outline:none; cursor:pointer; min-height:44px;
+    }
+    .examples-select:focus { border-color:var(--primary); }
+    .examples-select option { font-weight:400; color:var(--text); padding:4px 0; }
+
+    /* SVD properties stacked below canvas */
+    .props-bar { display:block; width:100%; }
+    .props-bar .info-box { text-align:center; width:100%; margin-bottom:10px; }
+
     .equation-bar { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:12px 20px; box-shadow:var(--shadow); text-align:center; width:100%; }
     .equation-bar .katex { font-size:1.1rem; }
     .canvas-wrap { background:var(--surface); border-radius:var(--radius); padding:12px; box-shadow:var(--shadow); border:1px solid var(--border); position:relative; }
@@ -102,10 +117,6 @@
     .decomp-step.completed { border-color:#10b981; background:#f0fdf4; }
     .decomp-step .step-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); font-weight:700; margin-bottom:4px; }
     .decomp-step .step-desc { font-size:0.8rem; color:#334155; margin-bottom:4px; }
-    .examples-header { background:linear-gradient(135deg,var(--primary),var(--primary-light)); color:white; padding:10px 16px; border-radius:var(--radius) var(--radius) 0 0; font-size:1rem; font-weight:700; text-align:center; margin:0; text-transform:none; letter-spacing:normal; }
-    .example-item { padding:10px; border-radius:8px; cursor:pointer; border:1px solid #e5e7eb; background:#f8fafc; margin-bottom:8px; transition:all 0.2s; }
-    .example-item:hover { background:#f0f9ff; border-color:#3b82f6; transform:translateY(-1px); box-shadow:0 3px 10px rgba(59,130,246,0.15); }
-    .example-item h3 { font-size:0.85rem; font-weight:600; color:#1e293b; margin-bottom:4px; }
     .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:0.75rem; }
     .legend-item { display:flex; align-items:center; gap:4px; }
     .legend-swatch { width:14px; height:3px; border-radius:2px; }
@@ -123,7 +134,6 @@
       .btn { transition: none; }
       .btn:hover { transform: none; }
       .decomp-step { transition: none; }
-      .example-item { transition: none; }
     }
 
     /* Contrast toggle */
@@ -146,7 +156,7 @@
     .footer a { color: var(--primary); text-decoration: none; }
     .footer a:hover, .footer a:focus-visible { text-decoration: underline; }
 
-    @media (max-width:1400px) { .left-panel{flex:0 0 280px;} .right-panel{flex:0 0 310px;} }
+    @media (max-width:1400px) { .left-panel{flex:0 0 280px;} .right-panel{flex:0 0 290px;} }
     @media (max-width:1100px) { .main-container{flex-direction:column;align-items:center;} .left-panel,.right-panel{flex:1 1 100%;max-width:700px;} .center-panel{order:-1;} }
   </style>
 </head>
@@ -249,6 +259,10 @@
 
     <!-- CENTER PANEL -->
     <div class="center-panel" role="region" aria-label="Visualization">
+      <div class="examples-bar">
+        <label for="examples-select">Preset:</label>
+        <select id="examples-select" class="examples-select" aria-label="Load a preset example"></select>
+      </div>
       <div class="equation-bar" id="equation-bar" role="status" aria-label="Current SVD equation"></div>
       <div class="canvas-wrap"><canvas id="mainCanvas" width="650" height="650" role="img" aria-label="2D SVD visualization. Use arrow keys to pan, plus and minus to zoom, 0 to reset view."></canvas></div>
       <div class="legend">
@@ -259,25 +273,27 @@
         <div class="legend-item"><div class="legend-swatch" style="background:#d97706"></div> &sigma;&#8322;</div>
         <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,0,0,0.12)"></div> Ghost</div>
       </div>
+      <!-- SVD Properties (below canvas) -->
+      <div class="props-bar" role="region" aria-label="SVD properties">
+        <div id="rank-alert" class="rank-alert" style="display:none"></div>
+        <div class="info-box">
+          <h3>SVD Decomposition</h3>
+          <div id="svd-full-display" aria-live="polite"></div>
+        </div>
+        <div class="info-box">
+          <h3>Determinant &amp; Singular Values</h3>
+          <div id="det-sigma-display" aria-live="polite"></div>
+        </div>
+      </div>
     </div>
 
     <!-- RIGHT PANEL -->
-    <div class="right-panel" role="region" aria-label="SVD details and examples">
-      <div class="panel-card">
-        <h2>SVD Decomposition</h2>
-        <div id="rank-alert" class="rank-alert" style="display:none"></div>
-        <div class="info-box"><div id="svd-full-display" aria-live="polite"></div></div>
-        <div class="info-box"><h3>Determinant &amp; Singular Values</h3><div id="det-sigma-display" aria-live="polite"></div></div>
-      </div>
+    <div class="right-panel" role="region" aria-label="Decomposition steps">
       <div class="panel-card">
         <h2>Decomposition Steps</h2>
         <div class="decomp-step" id="step-0"><div class="step-label">Step 1: First Rotation</div><div class="step-desc">Apply V<sup>T</sup> &mdash; rotate to align with singular directions</div><div id="step-0-mat"></div></div>
         <div class="decomp-step" id="step-1"><div class="step-label">Step 2: Scaling</div><div class="step-desc">Apply &Sigma; &mdash; stretch/compress along axes by &sigma;&#8321;, &sigma;&#8322;</div><div id="step-1-mat"></div></div>
         <div class="decomp-step" id="step-2"><div class="step-label">Step 3: Second Rotation</div><div class="step-desc">Apply U &mdash; rotate to final orientation</div><div id="step-2-mat"></div></div>
-      </div>
-      <div class="panel-card" style="padding:0; overflow:hidden;">
-        <h2 class="examples-header">Preset Examples</h2>
-        <div style="padding:12px; max-height:450px; overflow-y:auto;" id="examples-list"></div>
       </div>
     </div>
   </div>
@@ -741,7 +757,9 @@ function onObjectChange(){ state.objectType=document.getElementById('object-type
 // ============================================================
 //  EXAMPLES
 // ============================================================
-function loadExample(idx){
+function onExampleSelect(val){
+  if(val==='')return;
+  const idx=parseInt(val);
   const ex=examples[idx];
   document.getElementById('m00').value=ex.m[0][0]; document.getElementById('m01').value=ex.m[0][1];
   document.getElementById('m10').value=ex.m[1][0]; document.getElementById('m11').value=ex.m[1][1];
@@ -749,13 +767,12 @@ function loadExample(idx){
 }
 
 function buildExamplesPanel(){
-  const list=document.getElementById('examples-list');
-  let html='';
+  const sel=document.getElementById('examples-select');
+  let html='<option value="">— Choose an example —</option>';
   examples.forEach((ex,i)=>{
-    html+=`<div class="example-item" onclick="loadExample(${i})"><h3>${ex.name}</h3><div style="font-size:0.75rem;color:#475569;margin-bottom:4px;">${ex.desc}</div><div id="ex-mat-${i}"></div></div>`;
+    html+=`<option value="${i}">${ex.name}</option>`;
   });
-  list.innerHTML=html;
-  examples.forEach((ex,i)=>{ try{katex.render(matToLatex(ex.m),document.getElementById('ex-mat-'+i),{throwOnError:false});}catch(e){} });
+  sel.innerHTML=html;
 }
 
 // ============================================================
@@ -832,6 +849,7 @@ canvas.addEventListener('wheel',e=>{
 // ============================================================
 function init(){
   document.getElementById('object-type').addEventListener('change', onObjectChange);
+  document.getElementById('examples-select').addEventListener('change', function(){ onExampleSelect(this.value); });
   onMatrixChange(); buildExamplesPanel(); draw();
 }
 
