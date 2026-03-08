@@ -210,16 +210,49 @@
       color: white; padding: 10px 16px; border-radius: var(--radius) var(--radius) 0 0;
       font-size: 1rem; font-weight: 700; text-align: center; margin: -16px -16px 12px;
     }
+
+    /* Category filter tabs */
+    .example-tabs {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+    }
+    .example-tab {
+      padding: 5px 12px; border-radius: 20px; border: 1.5px solid var(--border);
+      background: var(--example-bg); color: var(--text-label); font-size: 0.75rem;
+      font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    }
+    .example-tab:hover, .example-tab:focus-visible {
+      border-color: var(--primary); color: var(--primary);
+    }
+    .example-tab[aria-selected="true"] {
+      background: var(--primary); color: #fff; border-color: var(--primary);
+    }
+
+    /* Category group */
+    .example-category { margin-bottom: 10px; }
+    .example-category-label {
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); font-weight: 700; margin-bottom: 6px; padding-left: 2px;
+    }
+
+    /* Example cards in a compact 2-column grid */
+    .example-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    }
     .example-item {
-      padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-light);
-      background: var(--example-bg); margin-bottom: 8px; transition: all 0.2s;
+      padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-light);
+      background: var(--example-bg); transition: all 0.2s; text-align: center;
     }
     .example-item:hover, .example-item:focus-visible {
       background: var(--example-hover-bg); border-color: var(--example-hover-border);
       transform: translateY(-1px); box-shadow: 0 3px 10px rgba(59,130,246,0.15);
     }
-    .example-item h4 { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-    .example-item .MathJax { font-size: 0.8rem; }
+    .example-item.active-example {
+      border-color: var(--primary); background: var(--example-hover-bg);
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+    .example-item h4 { font-size: 0.78rem; font-weight: 600; color: var(--text); margin-bottom: 2px; line-height: 1.2; }
+    .example-item .ex-matrix { font-size: 0.72rem; color: var(--text-muted); }
+    .example-item .MathJax { font-size: 0.72rem; }
 
     /* Controls */
     .ctrl-group { margin-bottom: 12px; }
@@ -394,6 +427,8 @@
       canvas { max-width: 100%; height: auto; }
       .legend { font-size: 0.7rem; gap: 6px; }
       .footer { padding: 0.75rem; font-size: 0.78rem; }
+      .example-grid { grid-template-columns: 1fr; }
+      .example-tab { font-size: 0.7rem; padding: 4px 10px; }
     }
   </style>
 </head>
@@ -701,7 +736,10 @@
       <!-- Examples -->
       <div class="panel-card" style="padding:0; overflow:hidden;">
         <div class="examples-header">Preset Examples</div>
-        <div style="padding:12px; max-height:520px; overflow-y:auto;" id="examples-list"></div>
+        <div style="padding:12px;">
+          <div class="example-tabs" id="example-tabs" role="tablist" aria-label="Example categories"></div>
+          <div id="examples-list" style="max-height:480px; overflow-y:auto;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -862,25 +900,35 @@ const objectDefs = {
 // ============================================================
 //  EXAMPLES
 // ============================================================
+const exampleCategories = [
+  { id:'all', label:'All' },
+  { id:'rotation', label:'Rotation' },
+  { id:'reflection', label:'Reflection' },
+  { id:'scaling', label:'Scaling' },
+  { id:'shear', label:'Shear' },
+  { id:'projection', label:'Projection' },
+  { id:'combined', label:'Combined' },
+];
+
 const examples = [
-  { name:'Rotation 45°', type:'rotation', params:{angle:45}, tx:0, ty:0 },
-  { name:'Rotation 90°', type:'rotation', params:{angle:90}, tx:0, ty:0 },
-  { name:'Rotation 180°', type:'rotation', params:{angle:180}, tx:0, ty:0 },
-  { name:'Reflect across x-axis', type:'reflection', params:{axis:'x'}, tx:0, ty:0 },
-  { name:'Reflect across y-axis', type:'reflection', params:{axis:'y'}, tx:0, ty:0 },
-  { name:'Reflect across y = x', type:'reflection', params:{axis:'yx'}, tx:0, ty:0 },
-  { name:'Reflect across y = −x', type:'reflection', params:{axis:'ynx'}, tx:0, ty:0 },
-  { name:'Horizontal stretch (2×)', type:'scaling', params:{sx:2, sy:1}, tx:0, ty:0 },
-  { name:'Vertical compression (0.5×)', type:'scaling', params:{sx:1, sy:0.5}, tx:0, ty:0 },
-  { name:'Uniform dilation (1.5×)', type:'scaling', params:{sx:1.5, sy:1.5}, tx:0, ty:0 },
-  { name:'Shrink (0.4×)', type:'scaling', params:{sx:0.4, sy:0.4}, tx:0, ty:0 },
-  { name:'Horizontal shear', type:'shear', params:{dir:'horizontal', k:1}, tx:0, ty:0 },
-  { name:'Vertical shear', type:'shear', params:{dir:'vertical', k:0.8}, tx:0, ty:0 },
-  { name:'Project onto x-axis', type:'projection', params:{target:'x'}, tx:0, ty:0 },
-  { name:'Project onto y = x', type:'projection', params:{target:'custom', angle:45}, tx:0, ty:0 },
-  { name:'Squeeze (area-preserving)', type:'custom', params:{m:[[2,0],[0,0.5]]}, tx:0, ty:0 },
-  { name:'Rotation 30° + translate', type:'rotation', params:{angle:30}, tx:1.5, ty:0.5 },
-  { name:'Shear + translate', type:'shear', params:{dir:'horizontal', k:0.7}, tx:0, ty:1 },
+  { name:'45°', type:'rotation', category:'rotation', params:{angle:45}, tx:0, ty:0 },
+  { name:'90°', type:'rotation', category:'rotation', params:{angle:90}, tx:0, ty:0 },
+  { name:'180°', type:'rotation', category:'rotation', params:{angle:180}, tx:0, ty:0 },
+  { name:'x-axis', type:'reflection', category:'reflection', params:{axis:'x'}, tx:0, ty:0 },
+  { name:'y-axis', type:'reflection', category:'reflection', params:{axis:'y'}, tx:0, ty:0 },
+  { name:'y = x', type:'reflection', category:'reflection', params:{axis:'yx'}, tx:0, ty:0 },
+  { name:'y = \u2212x', type:'reflection', category:'reflection', params:{axis:'ynx'}, tx:0, ty:0 },
+  { name:'Stretch 2\u00d7', type:'scaling', category:'scaling', params:{sx:2, sy:1}, tx:0, ty:0 },
+  { name:'Compress 0.5\u00d7', type:'scaling', category:'scaling', params:{sx:1, sy:0.5}, tx:0, ty:0 },
+  { name:'Dilate 1.5\u00d7', type:'scaling', category:'scaling', params:{sx:1.5, sy:1.5}, tx:0, ty:0 },
+  { name:'Shrink 0.4\u00d7', type:'scaling', category:'scaling', params:{sx:0.4, sy:0.4}, tx:0, ty:0 },
+  { name:'Horizontal', type:'shear', category:'shear', params:{dir:'horizontal', k:1}, tx:0, ty:0 },
+  { name:'Vertical', type:'shear', category:'shear', params:{dir:'vertical', k:0.8}, tx:0, ty:0 },
+  { name:'Onto x-axis', type:'projection', category:'projection', params:{target:'x'}, tx:0, ty:0 },
+  { name:'Onto y = x', type:'projection', category:'projection', params:{target:'custom', angle:45}, tx:0, ty:0 },
+  { name:'Squeeze', type:'custom', category:'combined', params:{m:[[2,0],[0,0.5]]}, tx:0, ty:0 },
+  { name:'Rot 30\u00b0 + shift', type:'rotation', category:'combined', params:{angle:30}, tx:1.5, ty:0.5 },
+  { name:'Shear + shift', type:'shear', category:'combined', params:{dir:'horizontal', k:0.7}, tx:0, ty:1 },
 ];
 
 // ============================================================
@@ -1785,8 +1833,8 @@ function updateSVDDisplay(){
   const s = svd2(state.matrix);
   try {
     const latex = `A = U\\Sigma V^T` +
-      `\\\\[4pt] U = ${matToLatex(s.U)},\\quad` +
-      `\\Sigma = ${matToLatex(s.S)},\\quad` +
+      `\\\\[4pt] U = ${matToLatex(s.U)},\\quad ` +
+      `\\Sigma = ${matToLatex(s.S)},\\quad ` +
       `V = ${matToLatex(s.V)}` +
       `\\\\[4pt] \\sigma_1 = ${fmt(s.sx)},\\;\\sigma_2 = ${fmt(s.sy)}`;
     renderTeX(latex, el, false);
@@ -1952,47 +2000,92 @@ function loadExample(idx){
   document.getElementById('ty').value = ex.ty||0;
 
   onParamChange();
+  // Highlight active example
+  activeExampleIndex = idx;
+  document.querySelectorAll('.example-item').forEach(el => {
+    el.classList.toggle('active-example', parseInt(el.dataset.idx) === idx);
+  });
+  announce('Loaded example: ' + ex.name);
   // Auto-animate
   startAnimation();
 }
 
-function buildExamplesPanel(){
-  const list = document.getElementById('examples-list');
-  let html = '';
-  examples.forEach((ex, i) => {
-    // Compute matrix for display
-    let M;
-    switch(ex.type){
-      case 'rotation': M = rotMatrix(ex.params.angle); break;
-      case 'reflection': M = reflectMatrix(ex.params.axis, ex.params.angle); break;
-      case 'scaling': M = scaleMatrix(ex.params.sx, ex.params.sy); break;
-      case 'shear': M = shearMatrix(ex.params.dir, ex.params.k); break;
-      case 'projection': M = projMatrix(ex.params.target, ex.params.angle); break;
-      case 'custom': M = ex.params.m; break;
-    }
-    html += `<div class="example-item" role="button" tabindex="0" aria-label="${ex.name} preset" onclick="loadExample(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();loadExample(${i});}">
-      <h4>${ex.name}</h4>
-      <div class="ex-matrix" id="ex-mat-${i}"></div>
-    </div>`;
+let activeExampleFilter = 'all';
+let activeExampleIndex = -1;
+
+function exampleMatrix(ex){
+  switch(ex.type){
+    case 'rotation': return rotMatrix(ex.params.angle);
+    case 'reflection': return reflectMatrix(ex.params.axis, ex.params.angle);
+    case 'scaling': return scaleMatrix(ex.params.sx, ex.params.sy);
+    case 'shear': return shearMatrix(ex.params.dir, ex.params.k);
+    case 'projection': return projMatrix(ex.params.target, ex.params.angle);
+    case 'custom': return ex.params.m;
+  }
+}
+
+function filterExamples(catId){
+  activeExampleFilter = catId;
+  // Update tab states
+  document.querySelectorAll('.example-tab').forEach(t => {
+    t.setAttribute('aria-selected', t.dataset.cat === catId ? 'true' : 'false');
   });
+  renderExamplesList();
+}
+
+function renderExamplesList(){
+  const list = document.getElementById('examples-list');
+  const filter = activeExampleFilter;
+
+  // Group visible examples by category
+  const groups = {};
+  examples.forEach((ex, i) => {
+    if(filter !== 'all' && ex.category !== filter) return;
+    if(!groups[ex.category]) groups[ex.category] = [];
+    groups[ex.category].push({ ex, i });
+  });
+
+  // Render groups
+  const catOrder = ['rotation','reflection','scaling','shear','projection','combined'];
+  let html = '';
+  for(const cat of catOrder){
+    if(!groups[cat]) continue;
+    const label = exampleCategories.find(c => c.id === cat);
+    if(filter === 'all'){
+      html += `<div class="example-category"><div class="example-category-label">${label ? label.label : cat}</div>`;
+    }
+    html += `<div class="example-grid">`;
+    for(const {ex, i} of groups[cat]){
+      const active = i === activeExampleIndex ? ' active-example' : '';
+      html += `<div class="example-item${active}" role="button" tabindex="0" aria-label="${ex.name} preset" data-idx="${i}" onclick="loadExample(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();loadExample(${i});}">
+        <h4>${ex.name}</h4>
+        <div class="ex-matrix" id="ex-mat-${i}"></div>
+      </div>`;
+    }
+    html += `</div>`;
+    if(filter === 'all') html += `</div>`;
+  }
   list.innerHTML = html;
 
-  // Render MathJax for each example
+  // Render MathJax for visible examples
   examples.forEach((ex, i) => {
-    let M;
-    switch(ex.type){
-      case 'rotation': M = rotMatrix(ex.params.angle); break;
-      case 'reflection': M = reflectMatrix(ex.params.axis, ex.params.angle); break;
-      case 'scaling': M = scaleMatrix(ex.params.sx, ex.params.sy); break;
-      case 'shear': M = shearMatrix(ex.params.dir, ex.params.k); break;
-      case 'projection': M = projMatrix(ex.params.target, ex.params.angle); break;
-      case 'custom': M = ex.params.m; break;
-    }
     const el = document.getElementById('ex-mat-'+i);
-    try {
-      renderTeX(matToLatex(M), el, false);
-    } catch(e){ el.textContent = JSON.stringify(M); }
+    if(!el) return;
+    try { renderTeX(matToLatex(exampleMatrix(ex)), el, false); }
+    catch(e){ el.textContent = ''; }
   });
+}
+
+function buildExamplesPanel(){
+  // Build tabs
+  const tabsEl = document.getElementById('example-tabs');
+  let tabsHtml = '';
+  exampleCategories.forEach(cat => {
+    const sel = cat.id === 'all' ? 'true' : 'false';
+    tabsHtml += `<button class="example-tab" role="tab" data-cat="${cat.id}" aria-selected="${sel}" onclick="filterExamples('${cat.id}')">${cat.label}</button>`;
+  });
+  tabsEl.innerHTML = tabsHtml;
+  renderExamplesList();
 }
 
 // ============================================================
