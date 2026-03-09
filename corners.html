@@ -17,8 +17,20 @@
     </script>
 
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <!-- MathJax with accessibility -->
+    <script>
+        window.MathJax = {
+            tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+            options: {
+                enableExplorer: true,
+                enableAssistiveMml: true,
+                menuOptions: { settings: { assistiveMml: true, explorer: true } },
+                skipHtmlTags: ['script','noscript','style','textarea','pre','code']
+            },
+            startup: { pageReady: function(){ return MathJax.startup.defaultPageReady(); } }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -443,24 +455,28 @@
         // Update copyright year dynamically
         document.getElementById('current-year').textContent = new Date().getFullYear();
 
+        // MathJax render helper
+        function mjRender(el) {
+            if (window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([el]).catch(function(e) { console.log('MathJax error:', e); });
+            }
+        }
+
         // Render LaTeX in page title
         setTimeout(() => {
             const pageTitle = document.getElementById('page-title');
-            if (pageTitle && typeof katex !== 'undefined') {
-                try {
-                    katex.render('\\text{Linear Programming: Method of Corners}', pageTitle, { throwOnError: false });
-                } catch (e) {
-                    // Keep fallback text if KaTeX fails
-                    console.log('KaTeX rendering failed for title:', e);
-                }
+            if (pageTitle) {
+                pageTitle.innerHTML = '\\(\\text{Linear Programming: Method of Corners}\\)';
+                mjRender(pageTitle);
             }
         }, 200);
 
         // Render LaTeX in add non-negativity button
         setTimeout(() => {
             const nonNegLatex = document.getElementById('non-neg-latex');
-            if (nonNegLatex && typeof katex !== 'undefined') {
-                katex.render('x, y \\ge 0', nonNegLatex, { throwOnError: false });
+            if (nonNegLatex) {
+                nonNegLatex.innerHTML = '\\(x, y \\ge 0\\)';
+                mjRender(nonNegLatex);
             }
         }, 100);
 
@@ -700,15 +716,12 @@
                     container.className = 'inequality-item';
                     const latex = this.generateLatex(ineq, i);
                     const latexSpan = document.createElement('span');
-                    latexSpan.className = 'inequality-katex';
+                    latexSpan.className = 'inequality-mathjax';
+                    latexSpan.innerHTML = `\\(${latex}\\)`;
                     container.appendChild(latexSpan);
-                    try {
-                        katex.render(latex, latexSpan, { throwOnError: false });
-                    } catch (error) {
-                        latexSpan.textContent = `${this.formatLHS(ineq)} ${ineq.relation} ${ineq.c}`;
-                    }
                     display.appendChild(container);
                 });
+                mjRender(display);
             }
 
             formatRHSForLatex(rhsString, rhsValue) {
@@ -1091,27 +1104,19 @@
                     coordCell.className = 'corner-coordinates';
                     const xLatex = this.formatNumberAsLatex(p[0], true);
                     const yLatex = this.formatNumberAsLatex(p[1], true);
-                    const coordLatex = `\\left(${xLatex}, ${yLatex}\\right)`;
-                    try {
-                        katex.render(coordLatex, coordCell, { throwOnError: false });
-                    } catch (error) {
-                        coordCell.textContent = `(${this.formatNumber(p[0])}, ${this.formatNumber(p[1])})`;
-                    }
+                    coordCell.innerHTML = `\\(\\left(${xLatex}, ${yLatex}\\right)\\)`;
 
                     const valueCell = document.createElement('td');
                     valueCell.className = 'objective-value';
                     const valLatex = this.formatNumberAsLatex(val, true);
-                    try {
-                        katex.render(valLatex, valueCell, { throwOnError: false });
-                    } catch (error) {
-                        valueCell.textContent = this.formatNumber(val);
-                    }
+                    valueCell.innerHTML = `\\(${valLatex}\\)`;
 
                     tr.appendChild(labelCell);
                     tr.appendChild(coordCell);
                     tr.appendChild(valueCell);
                     tbody.appendChild(tr);
                 });
+                mjRender(tbody);
 
                 // Add summary row for edge optimals or unbounded
                 const inequalities = this.getInequalities();
