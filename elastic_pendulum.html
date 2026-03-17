@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -292,7 +293,6 @@
       .content-wrapper { flex-direction: column; align-items: center; }
       .left-column, .center-column, .right-column { max-width: 100%; flex: 1 1 auto; }
       .center-column { flex: 0 0 auto; }
-      #simulationCanvas { width: 100%; height: auto; aspect-ratio: 5 / 6; }
     }
     @media (max-width: 640px) {
       .card { margin: 3.5rem 0.5rem 1rem; padding: 1rem; }
@@ -493,7 +493,7 @@
       <!-- Center column: Main simulation canvas + displacement graph -->
       <div class="center-column">
         <div role="img" aria-label="Animated simulation of an elastic pendulum showing a mass attached to a spring that can both stretch and swing. The spring stretches and the mass swings based on the parameters set in the controls.">
-          <canvas id="simulationCanvas" width="500" height="600" aria-hidden="true"></canvas>
+          <canvas id="simulationCanvas" width="500" height="600" style="width:100%;aspect-ratio:5/6;" aria-hidden="true"></canvas>
         </div>
         <div class="graph-container">
           <div class="legend" role="group" aria-label="Graph trace toggles">
@@ -508,7 +508,7 @@
           </div>
           <h2 id="graph-heading">Displacement vs Time</h2>
           <div role="img" aria-label="Line graph showing spring extension and angular displacement over time. Red line is spring extension, blue line is angular displacement.">
-            <canvas id="graphCanvas" width="500" height="250" aria-hidden="true"></canvas>
+            <canvas id="graphCanvas" width="500" height="250" style="width:100%;aspect-ratio:2/1;" aria-hidden="true"></canvas>
           </div>
         </div>
       </div>
@@ -614,12 +614,12 @@
     const maxTrajPoints = 8000;
 
     // ─── Visualization constants ────────────────────────────────────
-    const SCALE = 110;          // pixels per meter
-    const PIVOT_X = canvas.width / 2;
     const PIVOT_Y = 80;
     const SPRING_COILS = 10;
     const SPRING_RADIUS = 12;
     const BOB_RADIUS = 16;
+    let simScale = 110;          // pixels per meter (dynamic)
+    let maxRSeen = 0;            // track largest r for auto-scaling
 
     // ─── Offscreen canvases ─────────────────────────────────────────
     let simBgCanvas = null;
@@ -641,7 +641,38 @@
       }
     }
     resizeTrajCanvas();
-    window.addEventListener('resize', resizeTrajCanvas);
+
+    function resizeSimCanvas() {
+      var rect = canvas.getBoundingClientRect();
+      var w = Math.round(rect.width);
+      var h = Math.round(rect.height);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        simBgCanvas = null;
+        needsRedrawSimBg = true;
+      }
+    }
+    resizeSimCanvas();
+
+    function resizeGraphCanvas() {
+      var rect = graphCanvas.getBoundingClientRect();
+      var w = Math.round(rect.width);
+      var h = Math.round(rect.height);
+      if (graphCanvas.width !== w || graphCanvas.height !== h) {
+        graphCanvas.width = w;
+        graphCanvas.height = h;
+        graphBgCanvas = null;
+        needsRedrawGraphBg = true;
+      }
+    }
+    resizeGraphCanvas();
+
+    window.addEventListener('resize', function() {
+      resizeTrajCanvas();
+      resizeSimCanvas();
+      resizeGraphCanvas();
+    });
 
     // ─── Input link setup ───────────────────────────────────────────
     function setupInputLinks() {
@@ -790,7 +821,7 @@
 
       // Support bar
       var barW = 120, barH = 25;
-      var barX = PIVOT_X - barW / 2;
+      var barX = (canvas.width / 2) - barW / 2;
       var barY = PIVOT_Y - 25;
       var barGrad = bg.createLinearGradient(barX, barY, barX, barY + barH);
       barGrad.addColorStop(0, '#B0B0B0');
@@ -815,15 +846,15 @@
       // Pivot point
       bg.fillStyle = '#303030';
       bg.beginPath();
-      bg.arc(PIVOT_X, PIVOT_Y, 5, 0, Math.PI * 2);
+      bg.arc((canvas.width / 2), PIVOT_Y, 5, 0, Math.PI * 2);
       bg.fill();
 
       // Equilibrium dashed line (vertical from pivot)
       bg.strokeStyle = 'rgba(0, 0, 0, 0.15)';
       bg.setLineDash([5, 5]);
       bg.beginPath();
-      bg.moveTo(PIVOT_X, PIVOT_Y);
-      bg.lineTo(PIVOT_X, simBgCanvas.height - 40);
+      bg.moveTo((canvas.width / 2), PIVOT_Y);
+      bg.lineTo((canvas.width / 2), simBgCanvas.height - 40);
       bg.stroke();
       bg.setLineDash([]);
 
@@ -913,12 +944,19 @@
       if (needsRedrawSimBg || !simBgCanvas) createSimBackground();
       ctx.drawImage(simBgCanvas, 0, 0);
 
+      // Auto-scale: ensure the bob fits within the canvas
+      if (r > maxRSeen) maxRSeen = r;
+      var margin = BOB_RADIUS + 10;
+      var maxVertical = (canvas.height - 40 - PIVOT_Y - margin) / Math.max(maxRSeen, 0.5);
+      var maxHorizontal = ((canvas.width / 2) - margin) / Math.max(maxRSeen, 0.5);
+      simScale = Math.min(maxVertical, maxHorizontal, 200);
+
       var pos = getMassPos();
-      var bobX = PIVOT_X + pos.x * SCALE;
-      var bobY = PIVOT_Y + pos.y * SCALE;
+      var bobX = (canvas.width / 2) + pos.x * simScale;
+      var bobY = PIVOT_Y + pos.y * simScale;
 
       // Draw spring from pivot to bob
-      drawHelicalSpring(PIVOT_X, PIVOT_Y, bobX, bobY);
+      drawHelicalSpring((canvas.width / 2), PIVOT_Y, bobX, bobY);
 
       // Draw bob
       drawBob(bobX, bobY);
@@ -930,9 +968,9 @@
         ctx.lineWidth = 2;
         ctx.beginPath();
         if (theta > 0) {
-          ctx.arc(PIVOT_X, PIVOT_Y, arcR, Math.PI / 2 - theta, Math.PI / 2);
+          ctx.arc((canvas.width / 2), PIVOT_Y, arcR, Math.PI / 2 - theta, Math.PI / 2);
         } else {
-          ctx.arc(PIVOT_X, PIVOT_Y, arcR, Math.PI / 2, Math.PI / 2 - theta);
+          ctx.arc((canvas.width / 2), PIVOT_Y, arcR, Math.PI / 2, Math.PI / 2 - theta);
         }
         ctx.stroke();
 
@@ -940,7 +978,7 @@
         ctx.fillStyle = '#2563eb';
         ctx.font = 'italic 14px serif';
         ctx.textAlign = 'center';
-        ctx.fillText('\u03B8', PIVOT_X + arcR * 0.7 * Math.sin(theta / 2), PIVOT_Y + arcR * 0.7 * Math.cos(theta / 2) + 5);
+        ctx.fillText('\u03B8', (canvas.width / 2) + arcR * 0.7 * Math.sin(theta / 2), PIVOT_Y + arcR * 0.7 * Math.cos(theta / 2) + 5);
       }
 
       // Draw time display
@@ -1104,24 +1142,6 @@
         bg.beginPath(); bg.moveTo(0, y); bg.lineTo(trajBgCanvas.width, y); bg.stroke();
       }
 
-      // Axes through center
-      bg.strokeStyle = 'rgba(0,0,0,0.2)';
-      bg.lineWidth = 1;
-      bg.beginPath();
-      bg.moveTo(trajBgCanvas.width / 2, 0);
-      bg.lineTo(trajBgCanvas.width / 2, trajBgCanvas.height);
-      bg.stroke();
-      bg.beginPath();
-      bg.moveTo(0, 30);
-      bg.lineTo(trajBgCanvas.width, 30);
-      bg.stroke();
-
-      // Pivot label
-      bg.fillStyle = '#666';
-      bg.font = '11px Arial';
-      bg.textAlign = 'center';
-      bg.fillText('pivot', trajBgCanvas.width / 2, 22);
-
       needsRedrawTrajBg = false;
     }
 
@@ -1132,20 +1152,29 @@
 
       if (trajData.length < 2) return;
 
-      var cx = trajCanvas.width / 2;
-      var pivotYOnTraj = 30;
-
-      // Auto-scale to fit all points
-      var maxExtent = 0.5;
+      // Compute bounding box of trajectory data (include pivot at 0,0)
+      var minX = 0, maxX = 0, minY = 0, maxY = 0;
       for (var i = 0; i < trajData.length; i++) {
-        var ax = Math.abs(trajData[i].x);
-        var ay = trajData[i].y; // y is always positive (downward)
-        if (ax > maxExtent) maxExtent = ax;
-        if (ay > maxExtent) maxExtent = ay;
+        var dx = trajData[i].x, dy = trajData[i].y;
+        if (dx < minX) minX = dx;
+        if (dx > maxX) maxX = dx;
+        if (dy < minY) minY = dy;
+        if (dy > maxY) maxY = dy;
       }
-      var trajScale = (trajCanvas.height - pivotYOnTraj - 20) / (maxExtent * 1.1);
-      var xScale = (trajCanvas.width / 2 - 20) / (maxExtent * 1.1);
-      var scale = Math.min(trajScale, xScale);
+      var rangeX = maxX - minX || 0.1;
+      var rangeY = maxY - minY || 0.1;
+
+      // Scale to fill canvas with margin
+      var margin = 30;
+      var usableW = trajCanvas.width - 2 * margin;
+      var usableH = trajCanvas.height - 2 * margin;
+      var scale = Math.min(usableW / rangeX, usableH / rangeY);
+
+      // Center the bounding box in the canvas
+      var centerDataX = (minX + maxX) / 2;
+      var centerDataY = (minY + maxY) / 2;
+      var offsetX = trajCanvas.width / 2 - centerDataX * scale;
+      var offsetY = trajCanvas.height / 2 - centerDataY * scale;
 
       // Draw trail with gradient color
       for (var i = 1; i < trajData.length; i++) {
@@ -1158,25 +1187,30 @@
         trajCtx.beginPath();
         trajCtx.strokeStyle = 'rgba(' + rr + ',' + gg + ',' + bb + ',' + alpha.toFixed(2) + ')';
         trajCtx.lineWidth = 1.5;
-        trajCtx.moveTo(cx + trajData[i - 1].x * scale, pivotYOnTraj + trajData[i - 1].y * scale);
-        trajCtx.lineTo(cx + trajData[i].x * scale, pivotYOnTraj + trajData[i].y * scale);
+        trajCtx.moveTo(offsetX + trajData[i - 1].x * scale, offsetY + trajData[i - 1].y * scale);
+        trajCtx.lineTo(offsetX + trajData[i].x * scale, offsetY + trajData[i].y * scale);
         trajCtx.stroke();
       }
 
       // Draw current position
       var last = trajData[trajData.length - 1];
-      var lastPx = cx + last.x * scale;
-      var lastPy = pivotYOnTraj + last.y * scale;
+      var lastPx = offsetX + last.x * scale;
+      var lastPy = offsetY + last.y * scale;
       trajCtx.fillStyle = '#e63946';
       trajCtx.beginPath();
       trajCtx.arc(lastPx, lastPy, 5, 0, Math.PI * 2);
       trajCtx.fill();
 
       // Pivot marker
+      var pivotPx = offsetX;
+      var pivotPy = offsetY;
       trajCtx.fillStyle = '#333';
       trajCtx.beginPath();
-      trajCtx.arc(cx, pivotYOnTraj, 4, 0, Math.PI * 2);
+      trajCtx.arc(pivotPx, pivotPy, 4, 0, Math.PI * 2);
       trajCtx.fill();
+      trajCtx.font = '11px Arial';
+      trajCtx.textAlign = 'left';
+      trajCtx.fillText('pivot', pivotPx + 7, pivotPy + 4);
 
       // Scale label
       trajCtx.fillStyle = '#666';
@@ -1245,6 +1279,7 @@
 
       graphData.length = 0;
       trajData.length = 0;
+      maxRSeen = r0;
 
       var pos = getMassPos();
       graphData.push({ t: 0, r: r, theta: theta });
