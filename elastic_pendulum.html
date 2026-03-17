@@ -615,12 +615,13 @@
     const maxTrajPoints = 8000;
 
     // ─── Visualization constants ────────────────────────────────────
-    const SCALE = 110;          // pixels per meter
     const PIVOT_X = canvas.width / 2;
     const PIVOT_Y = 80;
     const SPRING_COILS = 10;
     const SPRING_RADIUS = 12;
     const BOB_RADIUS = 16;
+    let simScale = 110;          // pixels per meter (dynamic)
+    let maxRSeen = 0;            // track largest r for auto-scaling
 
     // ─── Offscreen canvases ─────────────────────────────────────────
     let simBgCanvas = null;
@@ -914,9 +915,16 @@
       if (needsRedrawSimBg || !simBgCanvas) createSimBackground();
       ctx.drawImage(simBgCanvas, 0, 0);
 
+      // Auto-scale: ensure the bob fits within the canvas
+      if (r > maxRSeen) maxRSeen = r;
+      var margin = BOB_RADIUS + 10;
+      var maxVertical = (canvas.height - 40 - PIVOT_Y - margin) / Math.max(maxRSeen, 0.5);
+      var maxHorizontal = (PIVOT_X - margin) / Math.max(maxRSeen, 0.5);
+      simScale = Math.min(maxVertical, maxHorizontal, 200);
+
       var pos = getMassPos();
-      var bobX = PIVOT_X + pos.x * SCALE;
-      var bobY = PIVOT_Y + pos.y * SCALE;
+      var bobX = PIVOT_X + pos.x * simScale;
+      var bobY = PIVOT_Y + pos.y * simScale;
 
       // Draw spring from pivot to bob
       drawHelicalSpring(PIVOT_X, PIVOT_Y, bobX, bobY);
@@ -1136,17 +1144,20 @@
       var cx = trajCanvas.width / 2;
       var pivotYOnTraj = 30;
 
-      // Auto-scale to fit all points
-      var maxExtent = 0.5;
+      // Auto-scale to fit all points (handles mass above and below pivot)
+      var minY = 0, maxY = 0.5, maxAbsX = 0.5;
       for (var i = 0; i < trajData.length; i++) {
         var ax = Math.abs(trajData[i].x);
-        var ay = trajData[i].y; // y is always positive (downward)
-        if (ax > maxExtent) maxExtent = ax;
-        if (ay > maxExtent) maxExtent = ay;
+        var py = trajData[i].y;
+        if (ax > maxAbsX) maxAbsX = ax;
+        if (py > maxY) maxY = py;
+        if (py < minY) minY = py;
       }
-      var trajScale = (trajCanvas.height - pivotYOnTraj - 20) / (maxExtent * 1.1);
-      var xScale = (trajCanvas.width / 2 - 20) / (maxExtent * 1.1);
-      var scale = Math.min(trajScale, xScale);
+      var margin = 20;
+      var scaleDown = (trajCanvas.height - pivotYOnTraj - margin) / (maxY * 1.1 || 0.5);
+      var scaleUp = minY < 0 ? (pivotYOnTraj - margin) / (-minY * 1.1) : Infinity;
+      var scaleX = (trajCanvas.width / 2 - margin) / (maxAbsX * 1.1 || 0.5);
+      var scale = Math.min(scaleDown, scaleUp, scaleX);
 
       // Draw trail with gradient color
       for (var i = 1; i < trajData.length; i++) {
@@ -1246,6 +1257,7 @@
 
       graphData.length = 0;
       trajData.length = 0;
+      maxRSeen = r0;
 
       var pos = getMassPos();
       graphData.push({ t: 0, r: r, theta: theta });
