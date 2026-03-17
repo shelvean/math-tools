@@ -1113,24 +1113,6 @@
         bg.beginPath(); bg.moveTo(0, y); bg.lineTo(trajBgCanvas.width, y); bg.stroke();
       }
 
-      // Axes through center
-      bg.strokeStyle = 'rgba(0,0,0,0.2)';
-      bg.lineWidth = 1;
-      bg.beginPath();
-      bg.moveTo(trajBgCanvas.width / 2, 0);
-      bg.lineTo(trajBgCanvas.width / 2, trajBgCanvas.height);
-      bg.stroke();
-      bg.beginPath();
-      bg.moveTo(0, 30);
-      bg.lineTo(trajBgCanvas.width, 30);
-      bg.stroke();
-
-      // Pivot label
-      bg.fillStyle = '#666';
-      bg.font = '11px Arial';
-      bg.textAlign = 'center';
-      bg.fillText('pivot', trajBgCanvas.width / 2, 22);
-
       needsRedrawTrajBg = false;
     }
 
@@ -1141,23 +1123,29 @@
 
       if (trajData.length < 2) return;
 
-      var cx = trajCanvas.width / 2;
-      var pivotYOnTraj = 30;
-
-      // Auto-scale to fit all points (handles mass above and below pivot)
-      var minY = 0, maxY = 0.5, maxAbsX = 0.5;
+      // Compute bounding box of trajectory data (include pivot at 0,0)
+      var minX = 0, maxX = 0, minY = 0, maxY = 0;
       for (var i = 0; i < trajData.length; i++) {
-        var ax = Math.abs(trajData[i].x);
-        var py = trajData[i].y;
-        if (ax > maxAbsX) maxAbsX = ax;
-        if (py > maxY) maxY = py;
-        if (py < minY) minY = py;
+        var dx = trajData[i].x, dy = trajData[i].y;
+        if (dx < minX) minX = dx;
+        if (dx > maxX) maxX = dx;
+        if (dy < minY) minY = dy;
+        if (dy > maxY) maxY = dy;
       }
-      var margin = 20;
-      var scaleDown = (trajCanvas.height - pivotYOnTraj - margin) / (maxY * 1.1 || 0.5);
-      var scaleUp = minY < 0 ? (pivotYOnTraj - margin) / (-minY * 1.1) : Infinity;
-      var scaleX = (trajCanvas.width / 2 - margin) / (maxAbsX * 1.1 || 0.5);
-      var scale = Math.min(scaleDown, scaleUp, scaleX);
+      var rangeX = maxX - minX || 0.1;
+      var rangeY = maxY - minY || 0.1;
+
+      // Scale to fill canvas with margin
+      var margin = 30;
+      var usableW = trajCanvas.width - 2 * margin;
+      var usableH = trajCanvas.height - 2 * margin;
+      var scale = Math.min(usableW / rangeX, usableH / rangeY);
+
+      // Center the bounding box in the canvas
+      var centerDataX = (minX + maxX) / 2;
+      var centerDataY = (minY + maxY) / 2;
+      var offsetX = trajCanvas.width / 2 - centerDataX * scale;
+      var offsetY = trajCanvas.height / 2 - centerDataY * scale;
 
       // Draw trail with gradient color
       for (var i = 1; i < trajData.length; i++) {
@@ -1170,25 +1158,30 @@
         trajCtx.beginPath();
         trajCtx.strokeStyle = 'rgba(' + rr + ',' + gg + ',' + bb + ',' + alpha.toFixed(2) + ')';
         trajCtx.lineWidth = 1.5;
-        trajCtx.moveTo(cx + trajData[i - 1].x * scale, pivotYOnTraj + trajData[i - 1].y * scale);
-        trajCtx.lineTo(cx + trajData[i].x * scale, pivotYOnTraj + trajData[i].y * scale);
+        trajCtx.moveTo(offsetX + trajData[i - 1].x * scale, offsetY + trajData[i - 1].y * scale);
+        trajCtx.lineTo(offsetX + trajData[i].x * scale, offsetY + trajData[i].y * scale);
         trajCtx.stroke();
       }
 
       // Draw current position
       var last = trajData[trajData.length - 1];
-      var lastPx = cx + last.x * scale;
-      var lastPy = pivotYOnTraj + last.y * scale;
+      var lastPx = offsetX + last.x * scale;
+      var lastPy = offsetY + last.y * scale;
       trajCtx.fillStyle = '#e63946';
       trajCtx.beginPath();
       trajCtx.arc(lastPx, lastPy, 5, 0, Math.PI * 2);
       trajCtx.fill();
 
       // Pivot marker
+      var pivotPx = offsetX;
+      var pivotPy = offsetY;
       trajCtx.fillStyle = '#333';
       trajCtx.beginPath();
-      trajCtx.arc(cx, pivotYOnTraj, 4, 0, Math.PI * 2);
+      trajCtx.arc(pivotPx, pivotPy, 4, 0, Math.PI * 2);
       trajCtx.fill();
+      trajCtx.font = '11px Arial';
+      trajCtx.textAlign = 'left';
+      trajCtx.fillText('pivot', pivotPx + 7, pivotPy + 4);
 
       // Scale label
       trajCtx.fillStyle = '#666';
