@@ -1,0 +1,1294 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Laplace Transform Visualizer — interactive signed-area visualization with convergence, shifting theorems, and Gaussian quadrature. WCAG 2.1 AA accessible.">
+  <title>Laplace Transform Visualizer</title>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+
+  <script>
+    window.MathJax = {
+      tex: { inlineMath:[['\\(','\\)']], displayMath:[['\\[','\\]']] },
+      options: { enableExplorer:true, enableAssistiveMml:true,
+        menuOptions:{ settings:{ assistiveMml:true, explorer:true } },
+        skipHtmlTags:['script','noscript','style','textarea','pre','code'] },
+      startup: { pageReady(){ return MathJax.startup.defaultPageReady(); } }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+  <style>
+/* ── tokens ──────────────────────────────────────── */
+:root {
+  --bg:      #f0f2f5;
+  --card:    #ffffff;
+  --sect:    #f8f9fb;
+  --info:    #eff6ff;
+  --inf-b:   #93c5fd;
+  --txt:     #111827;
+  --txt2:    #374151;
+  --muted:   #4b5563;
+  --inf-hd:  #1e3a8a;
+  --bdr:     #9ca3af;
+  --bdr2:    #d1d5db;
+  --focus:   #1d4ed8;
+  --blue:    #1d4ed8;
+  --bl2:     #1e3a8a;
+  --teal:    #0f766e;
+  --vio:     #6d28d9;
+  --ora:     #b45309;
+  --link:    #1e40af;
+  --r:       0.5rem;
+  --r2:      0.75rem;
+  --sh:      0 1px 3px rgba(0,0,0,.10);
+  --sh2:     0 4px 12px rgba(0,0,0,.12);
+}
+.hc {
+  --bg:#fff; --card:#fff; --sect:#f0f0f0; --info:#e8eeff; --inf-b:#00c;
+  --txt:#000; --txt2:#000; --muted:#111; --inf-hd:#00006b;
+  --bdr:#000; --bdr2:#333; --focus:#00f;
+  --blue:#00c; --bl2:#000099; --teal:#005500; --vio:#5500aa; --ora:#7a3000; --link:#00c;
+}
+@media (prefers-contrast: more) {
+  :root {
+    --txt:#000; --txt2:#000; --muted:#111; --bdr:#000;
+    --blue:#00c; --bl2:#000099; --teal:#005500; --link:#00c; --focus:#00f;
+  }
+}
+
+/* ── reset ───────────────────────────────────────── */
+*,*::before,*::after { box-sizing:border-box; }
+body {
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg); color:var(--txt);
+  margin:0; min-height:100vh;
+  display:flex; flex-direction:column; align-items:center;
+  line-height:1.6; font-size:1rem;
+}
+*:focus-visible { outline:3px solid var(--focus); outline-offset:3px; border-radius:2px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+/* ── skip link ───────────────────────────────────── */
+.skip { position:absolute; top:-100%; left:50%; transform:translateX(-50%);
+  background:var(--blue); color:#fff; padding:.75rem 1.5rem;
+  z-index:1000; border-radius:0 0 var(--r) var(--r); font-weight:700; text-decoration:none; }
+.skip:focus { top:0; }
+
+/* ── nav ─────────────────────────────────────────── */
+.nav {
+  position:fixed; top:0; left:0; width:100%; z-index:100;
+  background:var(--card); border-bottom:2px solid var(--bdr); box-shadow:var(--sh);
+}
+.nav-in { max-width:72rem; margin:0 auto; padding:.45rem 1rem; }
+.nav-list { list-style:none; display:flex; justify-content:center; gap:.75rem; margin:0; padding:0; flex-wrap:wrap; }
+.nav-list a { color:var(--link); text-decoration:none; font-weight:700;
+  font-size:1rem; padding:.25rem .5rem; border-radius:.3rem; }
+.nav-list a:hover,.nav-list a:focus-visible { text-decoration:underline; }
+
+/* ── card ─────────────────────────────────────────── */
+.card { background:var(--card); padding:1.5rem; border-radius:var(--r2);
+  max-width:1480px; width:100%; margin:4.5rem auto 2rem; }
+
+/* ── headings ─────────────────────────────────────── */
+h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
+  color:var(--txt); letter-spacing:-.02em; }
+.subtitle { font-size:.9375rem; color:var(--txt2); text-align:center; margin-bottom:1.25rem; }
+
+/* ── info panel ───────────────────────────────────── */
+.info-panel { background:var(--info); border:2px solid var(--inf-b);
+  border-radius:var(--r); margin-bottom:1.25rem; overflow:hidden; }
+.info-btn { width:100%; padding:.875rem 1rem; display:flex; align-items:center;
+  justify-content:space-between; background:transparent; border:none; cursor:pointer;
+  font-size:1rem; font-weight:700; color:var(--inf-hd); text-align:left; }
+.info-btn:hover { background:rgba(0,0,0,.03); }
+.info-icon { font-size:1.25rem; font-weight:700; flex-shrink:0; }
+.info-body { padding:0 1.1rem 1rem; }
+.info-body p { font-size:.9375rem; color:var(--txt2); margin-bottom:.5rem; line-height:1.65; }
+.info-body ul { font-size:.9375rem; color:var(--txt2); margin:0 0 .5rem 1.5rem; }
+.info-body li { margin-bottom:.3rem; line-height:1.65; }
+.info-body h2 { font-size:1rem; font-weight:700; color:var(--txt); margin:.9rem 0 .3rem; }
+.quad-formula {
+  text-align:center; background:rgba(29,78,216,.06); padding:.6rem .5rem;
+  border-radius:var(--r); margin:.5rem 0; border-left:3px solid var(--blue);
+}
+
+/* ── definition bar ───────────────────────────────── */
+.defn { text-align:center; padding:.7rem 1rem;
+  background:linear-gradient(135deg,#eff6ff,#f8faff);
+  border:1px solid #bfdbfe; border-left:4px solid var(--blue);
+  border-radius:var(--r); margin-bottom:1.25rem; }
+
+/* ── controls ─────────────────────────────────────── */
+.controls {
+  display:grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap:.75rem;
+  margin-bottom:1rem;
+  align-items:end;
+}
+@media (max-width:900px) { .controls { grid-template-columns:1fr 1fr; } }
+@media (max-width:560px) { .controls { grid-template-columns:1fr; } }
+
+.ctrl { background:var(--sect); padding:.7rem .875rem;
+  border:2px solid var(--bdr2); border-radius:var(--r); }
+.ctrl label, .ctrl .ctrl-lbl {
+  display:block; font-weight:700; font-size:.9375rem;
+  color:var(--txt2); margin-bottom:.35rem; }
+.ctrl label mjx-container { font-size:1.1em !important; vertical-align:middle; }
+
+/* native select */
+.ctrl select {
+  width:100%; padding:.45rem .6rem;
+  border:2px solid var(--bdr); border-radius:.375rem;
+  font-size:.9375rem; background:var(--card); color:var(--txt);
+  min-height:44px; cursor:pointer;
+}
+.ctrl select:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
+
+/* slider + number pair */
+.s-display {
+  font-size:1.2rem; font-weight:700;
+  font-family:'Georgia','Times New Roman',serif;
+  color:var(--blue); text-align:center; margin-bottom:.3rem; min-height:1.8em;
+}
+.s-display mjx-container { font-size:1.2em !important; color:var(--blue) !important; }
+.spair { display:flex; align-items:center; gap:.4rem; }
+.spair input[type=range] { flex:1; min-height:44px; cursor:pointer; accent-color:var(--blue); }
+.spair input[type=number] { width:52px; flex-shrink:0; min-height:44px;
+  padding:.3rem .3rem; font-size:.9375rem; border:2px solid var(--bdr);
+  border-radius:.375rem; background:var(--card); color:var(--txt); text-align:center; }
+.spair input[type=number]:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
+
+/* param slots */
+#paramSlots { display:contents; }
+#paramSlots .ctrl { /* inherits grid cell */ }
+
+/* ── area bar ─────────────────────────────────────── */
+.abar {
+  display:flex; align-items:stretch; margin-bottom:1rem;
+  background:var(--card); border:2px solid var(--bdr2);
+  border-radius:var(--r); overflow:hidden; box-shadow:var(--sh);
+  flex-wrap:nowrap;
+}
+@media (max-width:700px) { .abar { flex-wrap:wrap; } }
+.acell { flex:1; text-align:center; padding:.55rem .35rem .45rem;
+  border-right:1px solid var(--bdr2); min-width:78px; }
+.acell:last-child { border-right:none; }
+.acell.ap { background:rgba(16,185,129,.05); border-top:3px solid #059669; }
+.acell.an { background:rgba(239,68,68,.05);  border-top:3px solid #dc2626; }
+.acell.am { background:rgba(29,78,216,.06);  border-top:3px solid var(--blue); }
+.acell.ae { background:rgba(180,83,9,.05);   border-top:3px solid var(--ora); }
+.acell.ar { background:rgba(109,40,217,.04); border-top:3px solid var(--vio); }
+.aop { display:flex; align-items:center; justify-content:center;
+  padding:0 .25rem; font-size:1.1rem; color:var(--muted); flex-shrink:0; }
+.albl { font-size:.8125rem; color:var(--muted); margin-bottom:.2rem;
+  min-height:2.2em; display:flex; align-items:center; justify-content:center; }
+.albl mjx-container { font-size:1em !important; vertical-align:middle; }
+.aval { font-size:1.05rem; font-weight:700;
+  font-family:'Georgia','Times New Roman',serif; line-height:1.2; }
+.asub { font-size:.8125rem; color:var(--muted); margin-top:.07rem; }
+.vp { color:#14532d; } .vn { color:#7f1d1d; }
+.vm { color:var(--blue); } .ve { color:var(--ora); } .vr { color:var(--vio); }
+
+/* ── plots grid ───────────────────────────────────── */
+.pgrid { display:grid; grid-template-columns:1fr 1.65fr 1fr;
+  gap:.875rem; margin-bottom:1rem; }
+@media (max-width:1100px) { .pgrid { grid-template-columns:1fr 1fr; } }
+@media (max-width:660px)  { .pgrid { grid-template-columns:1fr; } }
+
+.pwrap { border:2px solid var(--bdr2); border-radius:var(--r);
+  overflow:hidden; background:var(--card); }
+.phdr { padding:.5rem .875rem; display:flex; align-items:center; gap:.5rem;
+  background:var(--sect); border-bottom:1px solid var(--bdr2);
+  font-size:.9375rem; font-weight:700; color:var(--txt2); }
+.pdot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.phdr mjx-container { font-size:1.15em !important; vertical-align:middle; }
+.pplot { height:275px; }
+
+.chips { display:flex; gap:.4rem; padding:.35rem .75rem;
+  background:var(--sect); border-top:1px solid var(--bdr2); flex-wrap:wrap; }
+.chip { display:inline-flex; align-items:center; gap:.3rem;
+  font-size:.875rem; font-weight:600; color:var(--txt2);
+  background:var(--card); border:1px solid var(--bdr2);
+  border-radius:1rem; padding:.2rem .6rem; }
+.chip mjx-container { font-size:1.1em !important; vertical-align:middle; }
+.csw { width:11px; height:11px; border-radius:2px; flex-shrink:0; }
+
+/* ── lower grid ───────────────────────────────────── */
+.lgrid { display:grid; grid-template-columns:1fr 1fr; gap:.875rem; margin-bottom:1rem; }
+@media (max-width:860px) { .lgrid { grid-template-columns:1fr; } }
+
+/* ── formula box ──────────────────────────────────── */
+.fbox { background:var(--info); border:2px solid var(--inf-b);
+  border-radius:var(--r); padding:1.1rem 1.25rem; min-height:110px; }
+.fm-main   { text-align:center; }
+.fm-params { text-align:center; font-size:.9375rem; color:var(--txt2); margin-top:.3rem; }
+.fm-val    { text-align:center; font-size:.9375rem; color:var(--txt2); margin-top:.25rem; }
+.roc-badge { display:inline-block; margin-top:.45rem; padding:.25rem .85rem;
+  background:rgba(29,78,216,.1); border:1px solid rgba(29,78,216,.3);
+  border-radius:1rem; font-size:.875rem; color:var(--blue); font-weight:700; }
+.thm-note { margin-top:.5rem; padding:.55rem .875rem;
+  background:rgba(109,40,217,.06); border-left:3px solid var(--vio);
+  border-radius:0 var(--r) var(--r) 0;
+  font-size:.875rem; color:var(--txt2); line-height:1.65; }
+.thm-note strong { color:var(--vio); }
+
+/* ── convergence ──────────────────────────────────── */
+.sechdr { padding:.55rem .875rem; font-weight:700; font-size:.9375rem;
+  color:var(--inf-hd); background:var(--info);
+  border:2px solid var(--inf-b);
+  border-radius:var(--r) var(--r) 0 0; border-bottom:none; }
+.sechdr mjx-container { font-size:1.1em !important; vertical-align:middle; }
+.secbody { border:2px solid var(--inf-b); border-radius:0 0 var(--r) var(--r); overflow:hidden; }
+#plotConv { height:220px; }
+
+/* ── shifting theorems ────────────────────────────── */
+.thmsec { margin-bottom:1.25rem; }
+.thmgrid { display:grid; grid-template-columns:1fr 1fr; gap:.875rem; margin-top:.6rem; }
+@media (max-width:660px) { .thmgrid { grid-template-columns:1fr; } }
+.thmcard { background:var(--sect); border:1px solid var(--bdr2);
+  border-radius:var(--r); padding:1rem; }
+.thmcard h2 { font-size:1rem; font-weight:800; margin-bottom:.4rem; color:var(--txt); }
+.thmcard h2 mjx-container { font-size:1.1em !important; vertical-align:middle; }
+.thm-formula { text-align:center; background:rgba(29,78,216,.05);
+  border-radius:.375rem; padding:.5rem .25rem; margin:.4rem 0;
+  border-left:3px solid var(--blue); }
+.thmcard p  { font-size:.875rem; color:var(--txt2); margin-bottom:.3rem; line-height:1.6; }
+.thmcard ul { font-size:.875rem; color:var(--txt2); margin:.3rem 0 .5rem 1.25rem; line-height:1.8; }
+.ldbtn { display:inline-flex; align-items:center; padding:.4rem 1rem;
+  background:var(--blue); color:#fff; border:none; border-radius:.375rem;
+  cursor:pointer; font-size:.875rem; font-weight:700; min-height:44px; margin-top:.3rem; }
+.ldbtn:hover,.ldbtn:focus-visible { background:var(--bl2); }
+.ldbtn mjx-container { font-size:1.1em !important; vertical-align:middle; }
+
+/* ── reference table ──────────────────────────────── */
+.tblsec { margin-bottom:1.25rem; }
+.tblhdr { padding:.55rem .875rem; font-weight:700; font-size:.9375rem;
+  color:var(--inf-hd); background:var(--info);
+  border:2px solid var(--inf-b);
+  border-radius:var(--r) var(--r) 0 0; border-bottom:none; }
+.reftbl { width:100%; border-collapse:collapse;
+  border:2px solid var(--inf-b); font-size:.875rem; }
+.reftbl thead tr { background:var(--sect); }
+.reftbl th { padding:.5rem .875rem; text-align:left; font-weight:700;
+  font-size:.875rem; color:var(--txt2); border-bottom:2px solid var(--bdr2); }
+.reftbl th mjx-container { font-size:1.1em !important; vertical-align:middle; }
+.reftbl td { padding:.45rem .875rem; border-bottom:1px solid var(--bdr2); color:var(--txt2); }
+.reftbl td mjx-container { font-size:1.1em !important; vertical-align:middle; }
+.reftbl tr:last-child td { border-bottom:none; }
+.reftbl tr:hover td { background:rgba(29,78,216,.04); }
+.ldbtn-sm { padding:.28rem .65rem; background:var(--blue); color:#fff;
+  border:none; border-radius:.3rem; cursor:pointer;
+  font-size:.875rem; font-weight:700; min-height:36px; }
+.ldbtn-sm:hover,.ldbtn-sm:focus-visible { background:var(--bl2); }
+
+/* ── custom LaTeX listbox ─────────────────────────── */
+.csel-wrap { position:relative; }
+.csel-btn {
+  width:100%; min-height:44px; padding:.4rem .6rem .4rem .7rem;
+  border:2px solid var(--bdr); border-radius:.4rem;
+  background:var(--card); color:var(--txt);
+  display:flex; align-items:center; justify-content:space-between; gap:.4rem;
+  cursor:pointer; font-size:.9375rem; text-align:left;
+}
+.csel-btn:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
+.csel-btn mjx-container { font-size:1.08em !important; vertical-align:middle; pointer-events:none; }
+.csel-arrow { font-size:.8rem; color:var(--muted); flex-shrink:0; }
+.csel-list {
+  display:none; position:absolute; top:calc(100% + 2px); left:0; right:0; z-index:600;
+  background:var(--card); border:2px solid var(--bdr); border-radius:.4rem;
+  box-shadow:var(--sh2); max-height:360px; overflow-y:auto;
+}
+.csel-list.open { display:block; }
+.csel-grp {
+  padding:.3rem .75rem .15rem;
+  font-size:.8125rem; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.04em;
+  border-top:1px solid var(--bdr2);
+}
+.csel-grp:first-child { border-top:none; }
+.csel-opt {
+  padding:.42rem .875rem; min-height:44px; cursor:pointer;
+  display:flex; align-items:center; font-size:.9375rem; color:var(--txt);
+}
+.csel-opt:hover { background:rgba(29,78,216,.07); }
+.csel-opt[aria-selected="true"] { background:rgba(29,78,216,.12); font-weight:600; }
+.csel-opt:focus-visible { outline:3px solid var(--focus); outline-offset:-3px; }
+.csel-opt mjx-container { font-size:1.12em !important; vertical-align:middle; pointer-events:none; }
+
+/* ── contrast toggle ──────────────────────────────── */
+.ctoggle { position:fixed; bottom:1rem; right:1rem; z-index:200;
+  background:var(--txt); color:var(--card); border:2px solid var(--bdr);
+  border-radius:50%; width:48px; height:48px; font-size:1.25rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; box-shadow:var(--sh2); }
+.ctoggle:focus-visible { outline:3px solid var(--focus); }
+
+/* ── footer ───────────────────────────────────────── */
+.footer { margin-top:1.5rem; border-top:2px solid var(--bdr2);
+  padding-top:1rem; text-align:center; color:var(--txt2); font-size:.875rem; }
+.footer a { color:var(--link); }
+
+/* ── responsive ───────────────────────────────────── */
+@media (max-width:640px) {
+  .card { padding:1rem; margin:4.25rem .5rem 1.5rem; }
+  .pplot { height:220px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition:none !important; animation:none !important; }
+}
+  </style>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html" aria-current="page">Diff Eq</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Linear Programming</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main id="main" class="card" role="main">
+
+  <h1>Laplace Transform Visualizer</h1>
+  <p class="subtitle">See \(\mathcal{L}\{f(t)\}(s)\) as a signed area — watch the integrand accumulate, track convergence, and read the exact formula.</p>
+
+  <!-- About -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
+      <span>About This Visualization</span>
+      <span class="info-icon" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <p>This tool makes the Laplace transform <em>visible</em> as a signed area integral.</p>
+
+      <h2>The three plots</h2>
+      <ul>
+        <li><strong>Left — \(f(t)\):</strong> the original function with the decaying weight \(e^{-st}\) overlaid (dashed). Larger \(s\) makes the weight decay faster.</li>
+        <li><strong>Centre — integrand \(f(t)\cdot e^{-st}\):</strong> <span style="color:#14532d;font-weight:600">green areas add</span> to \(F(s)\); <span style="color:#7f1d1d;font-weight:600">red areas subtract</span>. The net signed area equals \(F(s)\).</li>
+        <li><strong>Right — \(F(s)\):</strong> the transform as a function of \(s\). The blue dot marks the current \(s\) value.</li>
+      </ul>
+
+      <h2>Convergence \(A(T)\)</h2>
+      <ul>
+        <li>Shows \(\int_0^T f(t)\,e^{-st}\,dt\) converging to \(F(s)\) as \(T\to\infty\).</li>
+        <li>Increase \(T\) (upper limit control) to improve numerical accuracy.</li>
+      </ul>
+
+      <h2>Numerical method — composite Gaussian quadrature</h2>
+      <p>The integral \(\int_0^T f(t)\,e^{-st}\,dt\) is computed with <strong>composite 10-point Gauss–Legendre quadrature</strong>. The interval \([0,T]\) is divided into subintervals; on each one the integrand is evaluated at 10 Gauss nodes \(\xi_k\) and summed with weights \(w_k\):</p>
+      <div class="quad-formula">
+        \[\int_a^b g(t)\,dt \;\approx\; \tfrac{b-a}{2}\sum_{k=1}^{10} w_k\,g\!\Bigl(\tfrac{a+b}{2}+\tfrac{b-a}{2}\xi_k\Bigr)\]
+      </div>
+      <p>The nodes \(\xi_k\) are the roots of the 10th Legendre polynomial \(P_{10}\) on \([-1,1]\). The rule integrates polynomials of degree \(\le 19\) <em>exactly</em> and converges exponentially for smooth \(f\). Increasing \(T\) improves accuracy for oscillatory or slow-decaying integrands.</p>
+
+      <h2>Shifting theorems</h2>
+      <ul>
+        <li><strong>First (\(s\)-shift):</strong> \(\mathcal{L}\{e^{at}f(t)\} = F(s-a)\).</li>
+        <li><strong>Second (\(t\)-shift):</strong> \(\mathcal{L}\{u_c(t)f(t-c)\} = e^{-cs}F(s)\).</li>
+      </ul>
+
+      <h2>Controls</h2>
+      <ul>
+        <li>Choose a function; adjust \(s\), \(T\), and parameters with sliders or number boxes.</li>
+        <li>Press Enter in any number box to update immediately.</li>
+        <li>Click any Load button in the table to jump to that example.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Definition -->
+  <div class="defn" role="math" aria-label="Laplace transform definition">
+    \[\mathcal{L}\{f(t)\}(s) \;=\; F(s) \;=\; \int_0^{\infty} f(t)\,e^{-st}\,dt\]
+  </div>
+
+  <!-- Controls: 4-column grid -->
+  <div class="controls" role="group" aria-label="Visualization controls">
+
+    <!-- Function selector -->
+    <div class="ctrl" id="funcCtrl">
+      <label id="funcLbl">Function \(f(t)\)</label>
+      <!-- Hidden select keeps value for JS; custom listbox is the visible control -->
+      <select id="funcSel" style="display:none" tabindex="-1" aria-hidden="true">
+        <option value="one" selected>one</option><option value="t">t</option>
+        <option value="t2">t2</option><option value="t3">t3</option>
+        <option value="tn">tn</option><option value="exp">exp</option>
+        <option value="sin">sin</option><option value="cos">cos</option>
+        <option value="heavi">heavi</option>
+        <option value="expsin">expsin</option><option value="expcos">expcos</option>
+      </select>
+      <div class="csel-wrap" id="cselWrap">
+        <button type="button" id="cselBtn" class="csel-btn"
+                role="combobox" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="funcLbl" aria-controls="cselList">
+          <span id="cselDisplay"></span>
+          <span class="csel-arrow" aria-hidden="true">&#9660;</span>
+        </button>
+        <div id="cselList" class="csel-list" role="listbox"
+             aria-labelledby="funcLbl" aria-label="Function examples"></div>
+      </div>
+    </div>
+
+    <!-- Dynamic parameter slots (filled by JS) -->
+    <div id="paramSlots" role="group" aria-label="Function parameters"></div>
+
+    <!-- s control -->
+    <div class="ctrl">
+      <label for="sNum">Value of \(s\)</label>
+      <div class="s-display" id="sBig" aria-live="polite" aria-atomic="true">\(s = 1.00\)</div>
+      <div class="spair">
+        <input type="range" id="sSlider" min="0.1" max="5" step="0.05" value="1" aria-label="s value slider">
+        <input type="number" id="sNum" min="0.1" max="5" step="0.05" value="1" aria-label="s value">
+      </div>
+    </div>
+
+    <!-- T control -->
+    <div class="ctrl">
+      <label for="tNum">Upper limit \(T\)</label>
+      <div class="s-display" id="tBig" aria-live="polite" aria-atomic="true">T = 12</div>
+      <div class="spair">
+        <input type="range" id="tSlider" min="5" max="60" step="1" value="12" aria-label="Upper limit T slider">
+        <input type="number" id="tNum" min="5" max="60" step="1" value="12" aria-label="Upper limit T">
+      </div>
+    </div>
+
+  </div><!-- /controls -->
+
+  <!-- Area bar -->
+  <div class="abar" role="region" aria-label="Integral area breakdown" aria-live="polite" aria-atomic="true">
+    <div class="acell ap">
+      <div class="albl">\(\displaystyle\int_0^T\!\max(g,0)\,dt\)</div>
+      <div class="aval vp" id="aPos">—</div>
+      <div class="asub">positive contribution</div>
+    </div>
+    <div class="aop">\(-\)</div>
+    <div class="acell an">
+      <div class="albl">\(\displaystyle\int_0^T\!|\min(g,0)|\,dt\)</div>
+      <div class="aval vn" id="aNeg">—</div>
+      <div class="asub">negative contribution</div>
+    </div>
+    <div class="aop">\(=\)</div>
+    <div class="acell am">
+      <div class="albl">\(\displaystyle\int_0^T\!f(t)e^{-st}\,dt\)</div>
+      <div class="aval vm" id="aNet">—</div>
+      <div class="asub">numerical net area</div>
+    </div>
+    <div class="aop">\(\approx\)</div>
+    <div class="acell ae">
+      <div class="albl">Exact \(F(s)\)</div>
+      <div class="aval ve" id="aExact">—</div>
+      <div class="asub">closed-form value</div>
+    </div>
+    <div class="aop">\(|\)</div>
+    <div class="acell ar">
+      <div class="albl">Relative error</div>
+      <div class="aval vr" id="aErr">—</div>
+      <div class="asub">\(\bigl|\tfrac{\mathrm{num}-F(s)}{F(s)}\bigr|\)</div>
+    </div>
+  </div>
+
+  <!-- Three plots -->
+  <div class="pgrid" role="region" aria-label="Transform visualization plots">
+
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:#1d4ed8" aria-hidden="true"></span>
+        \(f(t)\) — original function
+      </div>
+      <div id="plotFt" class="pplot" role="img" aria-label="f(t) and exponential weight e^{-st}"></div>
+      <div class="chips">
+        <span class="chip"><span class="csw" style="background:#1d4ed8"></span>\(f(t)\)</span>
+        <span class="chip"><span class="csw" style="background:#7c3aed;opacity:.75"></span>\(e^{-st}\) weight</span>
+      </div>
+    </div>
+
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:#0f766e" aria-hidden="true"></span>
+        \(f(t)\cdot e^{-st}\) — integrand &ensp;(net signed area \(=F(s)\))
+      </div>
+      <div id="plotInt" class="pplot" role="img" aria-label="Integrand: green areas add to F(s), red areas subtract"></div>
+      <div class="chips">
+        <span class="chip"><span class="csw" style="background:rgba(16,185,129,.75)"></span>Adding to \(F(s)\)</span>
+        <span class="chip"><span class="csw" style="background:rgba(239,68,68,.75)"></span>Subtracting from \(F(s)\)</span>
+        <span class="chip"><span class="csw" style="background:#0f766e"></span>\(f(t)\cdot e^{-st}\)</span>
+      </div>
+    </div>
+
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:#c2410c" aria-hidden="true"></span>
+        \(F(s)\) — Laplace transform
+      </div>
+      <div id="plotFs" class="pplot" role="img" aria-label="F(s) with current s marked by a blue dot"></div>
+      <div class="chips">
+        <span class="chip"><span class="csw" style="background:#c2410c"></span>\(F(s)\)</span>
+        <span class="chip"><span class="csw" style="background:#2563eb;border-radius:50%"></span>current \(s\)</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Formula + Convergence -->
+  <div class="lgrid">
+
+    <div class="fbox" id="formulaBox" role="math" aria-live="polite" aria-label="Laplace transform formula and computed values">
+      <div class="fm-main" style="color:var(--muted)">Select a function above to see its Laplace transform.</div>
+    </div>
+
+    <div>
+      <div class="sechdr">
+        Convergence: \(\displaystyle A(T)=\int_0^{T}f(t)\,e^{-st}\,dt\;\longrightarrow\;F(s)\) as \(T\to\infty\)
+      </div>
+      <div class="secbody">
+        <div id="plotConv" role="img" aria-label="A(T) converging to F(s) as T increases"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Shifting theorems -->
+  <div class="thmsec">
+    <div class="sechdr" style="border-radius:var(--r);border-bottom:2px solid var(--inf-b);">Shifting Theorems</div>
+    <div class="thmgrid">
+
+      <div class="thmcard">
+        <h2>First Shifting Theorem (\(s\)-shift)</h2>
+        <div class="thm-formula">
+          \[\mathcal{L}\{e^{at}f(t)\} = F(s-a)\]
+        </div>
+        <p>Multiplying \(f\) by \(e^{at}\) <strong>shifts \(F(s)\) right by \(a\)</strong>; the ROC becomes \(s>a\).</p>
+        <ul>
+          <li>\(\mathcal{L}\{e^{at}\sin\omega t\} = \dfrac{\omega}{(s-a)^2+\omega^2}\)</li>
+          <li>\(\mathcal{L}\{e^{at}\cos\omega t\} = \dfrac{s-a}{(s-a)^2+\omega^2}\)</li>
+          <li>\(\mathcal{L}\{t^n e^{at}\} = \dfrac{n!}{(s-a)^{n+1}}\)</li>
+        </ul>
+        <button class="ldbtn" id="btn1st" type="button">Load \(e^{at}\sin(\omega t)\) example</button>
+      </div>
+
+      <div class="thmcard">
+        <h2>Second Shifting Theorem (\(t\)-shift)</h2>
+        <div class="thm-formula">
+          \[\mathcal{L}\{u_c(t)f(t-c)\} = e^{-cs}F(s)\]
+        </div>
+        <p>Delaying \(f\) by \(c\) (with step \(u_c\)) <strong>multiplies \(F(s)\) by \(e^{-cs}\)</strong>.</p>
+        <ul>
+          <li>\(\mathcal{L}\{u_c(t)\} = \dfrac{e^{-cs}}{s}\)</li>
+          <li>\(\mathcal{L}\{u_c(t)(t-c)\} = \dfrac{e^{-cs}}{s^2}\)</li>
+          <li>\(\mathcal{L}\{u_c(t)\sin\omega(t-c)\} = \dfrac{\omega e^{-cs}}{s^2+\omega^2}\)</li>
+        </ul>
+        <button class="ldbtn" id="btn2nd" type="button">Load \(u_c(t)\) example</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Quick reference table -->
+  <div class="tblsec">
+    <div class="tblhdr">Quick Reference — Common Laplace Transform Pairs</div>
+    <table class="reftbl" role="table" aria-label="Common Laplace transform pairs">
+      <thead>
+        <tr>
+          <th scope="col">\(f(t)\)</th>
+          <th scope="col">\(\mathcal{L}\{f(t)\} = F(s)\)</th>
+          <th scope="col">ROC</th>
+          <th scope="col">Visualize</th>
+        </tr>
+      </thead>
+      <tbody id="tblBody"></tbody>
+    </table>
+  </div>
+
+  <footer class="footer" role="contentinfo">
+    &copy; Shelvean Kapita. Released under the MIT License. Last modified: March 23, 2026.<br>
+    <strong>Accessibility:</strong> WCAG 2.1 AA — keyboard navigation, screen reader support, high-contrast mode, visible focus indicators.
+    Issues? <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.
+  </footer>
+
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode" title="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════ */
+function say(msg) {
+  var el = document.getElementById('live');
+  el.textContent = '';
+  setTimeout(function(){ el.textContent = msg; }, 50);
+}
+function linspace(a, b, n) {
+  var arr = []; for (var i=0;i<n;i++) arr.push(a+(b-a)*i/(n-1)); return arr;
+}
+function factorial(n) { if(n<=1)return 1; var f=1; for(var i=2;i<=n;i++)f*=i; return f; }
+function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+function fmt(v,d) {
+  d=d==null?5:d; if(!isFinite(v))return 'undef.';
+  if(Math.abs(v)<1e-4&&v!==0)return v.toExponential(3); return v.toFixed(d);
+}
+function mjTypeset(nodes) {
+  if(window.MathJax&&MathJax.typesetPromise) MathJax.typesetPromise(nodes).catch(function(){});
+}
+
+/* ═══════════════════════════════════════════════════
+   Function Registry
+═══════════════════════════════════════════════════ */
+var FUNCS = {
+  'one': {
+    dropLatex:'\\(f(t) = 1\\)',
+    latex_f:'1', latex_F:'\\dfrac{1}{s}', tRow:'1', FRow:'\\dfrac{1}{s}', roc:'s>0',
+    f:function(t){ return 1; }, F:function(s){ return s>0?1/s:NaN; },
+    rocStr:function(){ return 's > 0'; }, params:[], tMax:8, thm:null
+  },
+  't': {
+    dropLatex:'\\(f(t) = t\\)',
+    latex_f:'t', latex_F:'\\dfrac{1}{s^2}', tRow:'t', FRow:'\\dfrac{1}{s^2}', roc:'s>0',
+    f:function(t){ return t; }, F:function(s){ return s>0?1/(s*s):NaN; },
+    rocStr:function(){ return 's > 0'; }, params:[], tMax:6, thm:null
+  },
+  't2': {
+    dropLatex:'\\(f(t) = t^2\\)',
+    latex_f:'t^2', latex_F:'\\dfrac{2}{s^3}', tRow:'t^2', FRow:'\\dfrac{2}{s^3}', roc:'s>0',
+    f:function(t){ return t*t; }, F:function(s){ return s>0?2/Math.pow(s,3):NaN; },
+    rocStr:function(){ return 's > 0'; }, params:[], tMax:5, thm:null
+  },
+  't3': {
+    dropLatex:'\\(f(t) = t^3\\)',
+    latex_f:'t^3', latex_F:'\\dfrac{6}{s^4}', tRow:'t^3', FRow:'\\dfrac{6}{s^4}', roc:'s>0',
+    f:function(t){ return t*t*t; }, F:function(s){ return s>0?6/Math.pow(s,4):NaN; },
+    rocStr:function(){ return 's > 0'; }, params:[], tMax:4, thm:null
+  },
+  'tn': {
+    dropLatex:'\\(f(t) = t^n\\) — general \\(n\\)',
+    latex_f:function(p){ return 't^{'+p.n+'}'; },
+    latex_F:function(p){ return '\\dfrac{'+factorial(p.n)+'}{s^{'+(p.n+1)+'}}'; },
+    tRow:'t^n', FRow:'\\dfrac{n!}{s^{n+1}}', roc:'s>0',
+    f:function(t,p){ return Math.pow(t,p.n); },
+    F:function(s,p){ return s>0?factorial(p.n)/Math.pow(s,p.n+1):NaN; },
+    rocStr:function(){ return 's > 0'; },
+    params:[{id:'n',label:'\\(n\\) — power',aria:'n power',min:0,max:6,step:1,val:3,int:true}],
+    tMax:5, thm:null
+  },
+  'exp': {
+    dropLatex:'\\(f(t) = e^{at}\\)',
+    latex_f:'e^{at}', latex_F:'\\dfrac{1}{s-a}', tRow:'e^{at}', FRow:'\\dfrac{1}{s-a}', roc:'s>a',
+    f:function(t,p){ return Math.exp(p.a*t); },
+    F:function(s,p){ return s>p.a?1/(s-p.a):NaN; },
+    rocStr:function(p){ return 's > '+p.a.toFixed(1); },
+    params:[{id:'a',label:'\\(a\\) — rate',aria:'a rate',min:-3,max:1.5,step:0.1,val:-1,int:false}],
+    tMax:10, thm:null
+  },
+  'sin': {
+    dropLatex:'\\(f(t) = \\sin(\\omega t)\\)',
+    latex_f:'\\sin(\\omega t)', latex_F:'\\dfrac{\\omega}{s^2+\\omega^2}',
+    tRow:'\\sin(\\omega t)', FRow:'\\dfrac{\\omega}{s^2+\\omega^2}', roc:'s>0',
+    f:function(t,p){ return Math.sin(p.omega*t); },
+    F:function(s,p){ return p.omega/(s*s+p.omega*p.omega); },
+    rocStr:function(){ return 's > 0'; },
+    params:[{id:'omega',label:'\\(\\omega\\) — frequency',aria:'omega frequency',min:0.5,max:5,step:0.5,val:1,int:false}],
+    tMax:12, thm:null
+  },
+  'cos': {
+    dropLatex:'\\(f(t) = \\cos(\\omega t)\\)',
+    latex_f:'\\cos(\\omega t)', latex_F:'\\dfrac{s}{s^2+\\omega^2}',
+    tRow:'\\cos(\\omega t)', FRow:'\\dfrac{s}{s^2+\\omega^2}', roc:'s>0',
+    f:function(t,p){ return Math.cos(p.omega*t); },
+    F:function(s,p){ return s/(s*s+p.omega*p.omega); },
+    rocStr:function(){ return 's > 0'; },
+    params:[{id:'omega',label:'\\(\\omega\\) — frequency',aria:'omega frequency',min:0.5,max:5,step:0.5,val:1,int:false}],
+    tMax:12, thm:null
+  },
+  'heavi': {
+    dropLatex:'\\(f(t) = u_c(t)\\) — Heaviside step',
+    latex_f:function(p){ return 'u_{'+p.c.toFixed(1)+'}(t)'; },
+    latex_F:function(p){ return '\\dfrac{e^{-'+p.c.toFixed(1)+'s}}{s}'; },
+    tRow:'u_c(t)', FRow:'\\dfrac{e^{-cs}}{s}', roc:'s>0',
+    f:function(t,p){ return t>=p.c?1:0; },
+    F:function(s,p){ return s>0?Math.exp(-p.c*s)/s:NaN; },
+    rocStr:function(){ return 's > 0'; },
+    params:[{id:'c',label:'Delay \\(c\\)',aria:'c delay',min:0,max:5,step:0.5,val:1,int:false}],
+    tMax:9, thm:'second'
+  },
+  'expsin': {
+    dropLatex:'\\(f(t) = e^{at}\\sin(\\omega t)\\) — 1st shift',
+    latex_f:'e^{at}\\sin(\\omega t)',
+    latex_F:'\\dfrac{\\omega}{(s-a)^2+\\omega^2}',
+    tRow:'e^{at}\\sin(\\omega t)', FRow:'\\dfrac{\\omega}{(s-a)^2+\\omega^2}', roc:'s>a',
+    f:function(t,p){ return Math.exp(p.a*t)*Math.sin(p.omega*t); },
+    F:function(s,p){ return p.omega/((s-p.a)*(s-p.a)+p.omega*p.omega); },
+    rocStr:function(p){ return 's > '+p.a.toFixed(1); },
+    params:[
+      {id:'a',    label:'\\(a\\) — rate',     aria:'a rate',          min:-3, max:0,  step:0.1,val:-0.5,int:false},
+      {id:'omega',label:'\\(\\omega\\) — freq',aria:'omega frequency', min:0.5,max:5,  step:0.5,val:1,   int:false}
+    ],
+    tMax:14, thm:'first'
+  },
+  'expcos': {
+    dropLatex:'\\(f(t) = e^{at}\\cos(\\omega t)\\) — 1st shift',
+    latex_f:'e^{at}\\cos(\\omega t)',
+    latex_F:'\\dfrac{s-a}{(s-a)^2+\\omega^2}',
+    tRow:'e^{at}\\cos(\\omega t)', FRow:'\\dfrac{s-a}{(s-a)^2+\\omega^2}', roc:'s>a',
+    f:function(t,p){ return Math.exp(p.a*t)*Math.cos(p.omega*t); },
+    F:function(s,p){ return (s-p.a)/((s-p.a)*(s-p.a)+p.omega*p.omega); },
+    rocStr:function(p){ return 's > '+p.a.toFixed(1); },
+    params:[
+      {id:'a',    label:'\\(a\\) — rate',     aria:'a rate',          min:-3, max:0,  step:0.1,val:-0.5,int:false},
+      {id:'omega',label:'\\(\\omega\\) — freq',aria:'omega frequency', min:0.5,max:5,  step:0.5,val:1,   int:false}
+    ],
+    tMax:14, thm:'first'
+  }
+};
+
+/* ═══════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════ */
+var ST = { id:'sin', s:1.0, T:12, p:{ omega:1, a:-0.5, c:1, n:3 } };
+
+/* ═══════════════════════════════════════════════════
+   Info toggle
+═══════════════════════════════════════════════════ */
+(function(){
+  var btn  = document.getElementById('infoBtn');
+  var body = document.getElementById('infoBody');
+  var icon = btn.querySelector('.info-icon');
+  btn.addEventListener('click', function(){
+    var exp = btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded', String(!exp));
+    body.hidden = exp;
+    icon.innerHTML = exp ? '+' : '&minus;';
+    if (!exp) mjTypeset([body]);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════
+   High-contrast toggle
+═══════════════════════════════════════════════════ */
+document.getElementById('ctog').addEventListener('click', function(){
+  document.documentElement.classList.toggle('hc');
+  var on = document.documentElement.classList.contains('hc');
+  say('High-contrast mode ' + (on?'enabled':'disabled'));
+  redrawAll();
+});
+
+/* ═══════════════════════════════════════════════════
+   Parameter controls (dynamic)
+═══════════════════════════════════════════════════ */
+function resetParams(id) {
+  FUNCS[id].params.forEach(function(pd){ ST.p[pd.id] = pd.val; });
+}
+
+function buildParams(id) {
+  var slot = document.getElementById('paramSlots');
+  slot.innerHTML = '';
+  var fn = FUNCS[id];
+  if (!fn.params.length) {
+    var note = document.createElement('div');
+    note.className = 'ctrl';
+    note.style.cssText = 'display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9375rem;';
+    note.textContent = 'No parameters';
+    slot.appendChild(note);
+    return;
+  }
+  var labelNodes = [];
+  fn.params.forEach(function(pd){
+    var val = ST.p[pd.id] != null ? ST.p[pd.id] : pd.val;
+    var div = document.createElement('div');
+    div.className = 'ctrl';
+    div.innerHTML =
+      '<label for="pN_'+pd.id+'">'+pd.label+'</label>'+
+      '<div class="s-display" id="pDisp_'+pd.id+'" aria-live="polite"></div>'+
+      '<div class="spair">'+
+        '<input type="range" id="pR_'+pd.id+'" min="'+pd.min+'" max="'+pd.max+'" step="'+pd.step+'" value="'+val+'" aria-label="'+pd.aria+' slider">'+
+        '<input type="number" id="pN_'+pd.id+'" min="'+pd.min+'" max="'+pd.max+'" step="'+pd.step+'" value="'+val+'" aria-label="'+pd.aria+'">'+
+      '</div>';
+    slot.appendChild(div);
+    labelNodes.push(div.querySelector('label'));
+
+    // set display
+    var disp = div.querySelector('#pDisp_'+pd.id);
+    disp.textContent = pd.id === 'omega' ? 'ω = '+val : pd.id+' = '+val;
+
+    var range = div.querySelector('#pR_'+pd.id);
+    var num   = div.querySelector('#pN_'+pd.id);
+    function sync(v) {
+      v = pd.int ? Math.round(v) : v;
+      v = clamp(v, pd.min, pd.max);
+      range.value = v; num.value = v; ST.p[pd.id] = v;
+      disp.textContent = pd.id === 'omega' ? 'ω = '+v : pd.id+' = '+v;
+      redrawAll();
+    }
+    range.addEventListener('input', function(){ sync(parseFloat(this.value)); });
+    num.addEventListener('change', function(){ sync(parseFloat(this.value)||pd.val); });
+    num.addEventListener('keydown', function(e){ if(e.key==='Enter'){e.preventDefault();sync(parseFloat(this.value)||pd.val);} });
+  });
+  if (labelNodes.length) mjTypeset(labelNodes);
+}
+
+/* ═══════════════════════════════════════════════════
+   Gauss-Legendre 10-point nodes & weights
+═══════════════════════════════════════════════════ */
+var GN = [-0.9739065285171717,-0.8650633666889845,-0.6794095682990244,-0.4333953941292472,-0.1488743389816312,0.1488743389816312,0.4333953941292472,0.6794095682990244,0.8650633666889845,0.9739065285171717];
+var GW = [0.0666713443086881,0.1494513491505806,0.2190863625159820,0.2692667193099963,0.2955242247147529,0.2955242247147529,0.2692667193099963,0.2190863625159820,0.1494513491505806,0.0666713443086881];
+
+function quadrature(f, a, b, nsub) {
+  var h = (b-a)/nsub, sum = 0;
+  for (var i=0; i<nsub; i++) {
+    var x0 = a+i*h, x1 = x0+h, mid = (x0+x1)/2, hw = h/2, sub = 0;
+    for (var k=0; k<10; k++) sub += GW[k]*f(mid+hw*GN[k]);
+    sum += hw*sub;
+  }
+  return sum;
+}
+
+/* ═══════════════════════════════════════════════════
+   Data computation
+═══════════════════════════════════════════════════ */
+function computeData(N) {
+  N = N||700;
+  var fn = FUNCS[ST.id], s = ST.s, T = ST.T;
+  var tArr = linspace(0, T, N);
+  var dt   = tArr[1]-tArr[0];
+  var fArr=[], wArr=[], gArr=[];
+  for (var i=0;i<N;i++) {
+    var t=tArr[i], fv=fn.f(t,ST.p), w=Math.exp(-s*t), g=fv*w;
+    fArr.push(isFinite(fv)?clamp(fv,-300,300):0);
+    wArr.push(w);
+    gArr.push(isFinite(g)?clamp(g,-300,300):0);
+  }
+  var gPos=gArr.map(function(v){return Math.max(v,0);});
+  var gNeg=gArr.map(function(v){return Math.min(v,0);});
+  var cum=[0], rP=0, rN=0, rS=0;
+  for (var i=1;i<N;i++) {
+    var avg=(gArr[i-1]+gArr[i])*dt/2;
+    rS+=avg; if(avg>=0)rP+=avg; else rN+=Math.abs(avg); cum.push(rS);
+  }
+  return {
+    tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
+    gPos:gPos, gNeg:gNeg, cum:cum,
+    posArea:rP, negArea:rN, netArea:rP-rN,
+    Fs:fn.F(s,ST.p), T:T
+  };
+}
+
+/* ═══════════════════════════════════════════════════
+   Plotly config
+═══════════════════════════════════════════════════ */
+var CFG = {responsive:true,displaylogo:false,displayModeBar:false};
+function lay(xt, yt) {
+  return {
+    margin:{t:12,r:16,b:52,l:58},
+    plot_bgcolor:'#fafafa', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'-apple-system,BlinkMacSystemFont,Arial,sans-serif',size:12,color:'#374151'},
+    xaxis:{title:{text:xt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
+    yaxis:{title:{text:yt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
+    showlegend:false, autosize:true
+  };
+}
+
+function drawFt(d) {
+  Plotly.react('plotFt',[
+    {x:d.tArr,y:d.wArr,type:'scatter',mode:'lines',line:{color:'#7c3aed',width:1.6,dash:'dot'},hovertemplate:'t=%{x:.2f}<br>e<sup>−st</sup>=%{y:.4f}<extra>e⁻ˢᵗ</extra>'},
+    {x:d.tArr,y:d.fArr,type:'scatter',mode:'lines',line:{color:'#1d4ed8',width:2.8},hovertemplate:'t=%{x:.2f}<br>f(t)=%{y:.4f}<extra>f(t)</extra>'}
+  ], lay('$t$','$f(t)$'), CFG);
+}
+
+function drawInt(d) {
+  var Fs = d.Fs;
+  var traces = [
+    {x:d.tArr,y:d.gPos,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(16,185,129,.32)',hoverinfo:'skip'},
+    {x:d.tArr,y:d.gNeg,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(239,68,68,.32)',hoverinfo:'skip'},
+    {x:d.tArr,y:d.gArr,type:'scatter',mode:'lines',line:{color:'#0f766e',width:2.8},hovertemplate:'t=%{x:.2f}<br>g=%{y:.5f}<extra>f(t)·e⁻ˢᵗ</extra>'}
+  ];
+  var layout = lay('$t$','$f(t)\\cdot e^{-st}$');
+  layout.shapes=[{type:'line',x0:0,x1:d.T,y0:0,y1:0,line:{color:'#9ca3af',width:1}}];
+  if (isFinite(Fs)) {
+    layout.annotations=[{
+      x:1, y:1, xref:'paper', yref:'paper',
+      text:'Net area ≈ F('+ST.s.toFixed(2)+') = '+fmt(Fs,4),
+      showarrow:false, xanchor:'right', yanchor:'top',
+      bgcolor:'rgba(255,255,255,.9)', bordercolor:'#d1d5db', borderwidth:1, borderpad:4,
+      font:{size:12,color:'#0f766e'}
+    }];
+  }
+  Plotly.react('plotInt', traces, layout, CFG);
+}
+
+function drawFs() {
+  var fn = FUNCS[ST.id];
+  var sArr = linspace(0.05,6,500);
+  var FArr = sArr.map(function(sv){ var v=fn.F(sv,ST.p); return isFinite(v)?clamp(v,-80,80):null; });
+  var FatS = fn.F(ST.s,ST.p);
+  var layout = lay('$s$','$F(s)$');
+  if (fn.params.some(function(p){return p.id==='a';})) {
+    var av = ST.p['a']||0;
+    if (av>0.08) {
+      layout.shapes=[{type:'rect',x0:0.05,x1:av,y0:-80,y1:80,fillcolor:'rgba(239,68,68,.07)',line:{width:0}}];
+      layout.annotations=[{x:av/2,y:0,text:'outside ROC',showarrow:false,font:{size:11,color:'#dc2626'},bgcolor:'rgba(255,255,255,.82)'}];
+    }
+  }
+  Plotly.react('plotFs',[
+    {x:sArr,y:FArr,type:'scatter',mode:'lines',line:{color:'#c2410c',width:2.8},connectgaps:false,hovertemplate:'s=%{x:.3f}<br>F(s)=%{y:.5f}<extra>F(s)</extra>'},
+    {x:[ST.s],y:[isFinite(FatS)?clamp(FatS,-80,80):null],type:'scatter',mode:'markers',
+     marker:{color:'#2563eb',size:12,symbol:'circle',line:{color:'#1e40af',width:2.5}},
+     hovertemplate:'s='+ST.s.toFixed(3)+'<br>F(s)='+(isFinite(FatS)?FatS.toFixed(5):'undef')+'<extra>current s</extra>'}
+  ], layout, CFG);
+}
+
+function drawConv(d) {
+  var Fs = d.Fs;
+  var traces=[{x:d.tArr,y:d.cum,type:'scatter',mode:'lines',line:{color:'#1d4ed8',width:2.5},
+    hovertemplate:'T=%{x:.2f}<br>A(T)=%{y:.5f}<extra>A(T)</extra>',name:'A(T)'}];
+  if (isFinite(Fs)) {
+    traces.push({x:[d.tArr[0],d.tArr[d.tArr.length-1]],y:[Fs,Fs],
+      type:'scatter',mode:'lines',line:{color:'#c2410c',width:2,dash:'dash'},
+      hovertemplate:'F(s)='+Fs.toFixed(5)+'<extra>Exact F(s)</extra>',name:'F(s)'});
+  }
+  var layout = lay('$T$ (upper limit)','$A(T)$');
+  layout.margin.t=10; layout.height=215;
+  layout.showlegend=true;
+  layout.legend={x:.65,y:.12,bgcolor:'rgba(255,255,255,.9)',bordercolor:'#d1d5db',borderwidth:1,font:{size:11}};
+  if (isFinite(Fs)) {
+    layout.annotations=[{x:d.tArr[d.tArr.length-1],y:Fs,text:'F('+ST.s.toFixed(2)+')='+fmt(Fs,4),
+      showarrow:false,xanchor:'right',yanchor:'bottom',font:{color:'#c2410c',size:12},bgcolor:'rgba(255,255,255,.85)'}];
+  }
+  Plotly.react('plotConv', traces, layout, CFG);
+}
+
+function updateAreaBar(d) {
+  var Fs = d.Fs, relErr;
+  if (isFinite(Fs)&&Math.abs(Fs)>1e-10) { var e=Math.abs((d.netArea-Fs)/Fs); relErr=e<0.0005?e.toExponential(1):e.toFixed(4); }
+  else if (isFinite(Fs)) relErr=Math.abs(d.netArea-Fs).toExponential(2);
+  else relErr='N/A';
+  document.getElementById('aPos').textContent   = d.posArea.toFixed(5);
+  document.getElementById('aNeg').textContent   = d.negArea.toFixed(5);
+  document.getElementById('aNet').textContent   = d.netArea.toFixed(5);
+  document.getElementById('aExact').textContent = isFinite(Fs)?Fs.toFixed(5):'diverges';
+  document.getElementById('aErr').textContent   = relErr;
+}
+
+/* formula box */
+var fmPending = false;
+function updateFormula() {
+  var id=ST.id, fn=FUNCS[id], s=ST.s, Fs=fn.F(s,ST.p), roc=fn.rocStr(ST.p);
+  var lf  = typeof fn.latex_f==='function' ? fn.latex_f(ST.p) : fn.latex_f;
+  var lFs = typeof fn.latex_F==='function' ? fn.latex_F(ST.p) : fn.latex_F;
+  var paramLine='';
+  if (fn.params.length) {
+    var parts=fn.params.map(function(pd){
+      var v=ST.p[pd.id]!=null?ST.p[pd.id]:pd.val;
+      var sym=pd.id==='omega'?'\\omega':pd.id;
+      return sym+'='+(pd.int?v:v.toFixed(1));
+    });
+    paramLine='<div class="fm-params">\\( '+parts.join(',\\quad ')+' \\)</div>';
+  }
+  var valLine = isFinite(Fs) ?
+    '<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')='+lFs+'='+Fs.toFixed(6)+' \\)</div>' :
+    '<div class="fm-val" style="color:#7f1d1d">\\( s='+s.toFixed(2)+'\\): \\(F(s)\\) undefined — outside ROC.</div>';
+  var thmNote='';
+  if (fn.thm==='first') {
+    var bf=id==='expsin'?'\\sin(\\omega t)':'\\cos(\\omega t)';
+    var bFs=id==='expsin'?'\\dfrac{\\omega}{s^2+\\omega^2}':'\\dfrac{s}{s^2+\\omega^2}';
+    var aStr=(ST.p.a||0).toFixed(1);
+    thmNote='<div class="thm-note"><strong>First Shifting Theorem:</strong> since \\(\\mathcal{L}\\{'+bf+'\\}='+bFs+'\\), multiplying by \\(e^{'+aStr+'t}\\) gives \\(\\mathcal{L}\\{'+lf+'\\}='+lFs+'\\).</div>';
+  } else if (fn.thm==='second') {
+    var cStr=(ST.p.c||1).toFixed(1);
+    thmNote='<div class="thm-note"><strong>Second Shifting Theorem:</strong> since \\(\\mathcal{L}\\{1\\}=1/s\\), delaying by \\(c='+cStr+'\\) gives \\(\\mathcal{L}\\{u_{'+cStr+'}(t)\\}=e^{-'+cStr+'s}/s\\).</div>';
+  }
+  var html=
+    '<div class="fm-main">\\[ \\mathcal{L}\\{'+lf+'\\}\\;=\\;\\int_0^{\\infty}'+lf+'\\,e^{-st}\\,dt\\;=\\;'+lFs+' \\]</div>'+
+    paramLine+valLine+
+    '<div><span class="roc-badge">ROC: \\('+roc+'\\)</span></div>'+thmNote;
+  var box=document.getElementById('formulaBox');
+  box.innerHTML=html;
+  if (!fmPending && window.MathJax && MathJax.typesetPromise) {
+    fmPending=true;
+    MathJax.typesetPromise([box]).then(function(){ fmPending=false; }).catch(function(){ fmPending=false; });
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   Master redraw
+═══════════════════════════════════════════════════ */
+var pending=false;
+function redrawAll() {
+  if (pending) return; pending=true;
+  requestAnimationFrame(function(){
+    pending=false;
+    var d=computeData(700);
+    drawFt(d); drawInt(d); drawFs(); drawConv(d);
+    updateAreaBar(d); updateFormula();
+    /* update s and T displays */
+    var sb=document.getElementById('sBig');
+    sb.innerHTML='\\(s='+ST.s.toFixed(2)+'\\)';
+    mjTypeset([sb]);
+    document.getElementById('tBig').textContent='T = '+ST.T;
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   Custom LaTeX listbox
+═══════════════════════════════════════════════════ */
+var CSEL_GROUPS = [
+  { label:'Constants & Polynomials', ids:['one','t','t2','t3','tn'] },
+  { label:'Exponential',             ids:['exp'] },
+  { label:'Trigonometric',           ids:['sin','cos'] },
+  { label:'Heaviside / Step',        ids:['heavi'] },
+  { label:'Exponential \u00d7 Trig (1st shift)', ids:['expsin','expcos'] }
+];
+var cselCurrent = 'sin';
+
+function cselBuild() {
+  var list = document.getElementById('cselList');
+  list.innerHTML = '';
+  CSEL_GROUPS.forEach(function(grp) {
+    var gl = document.createElement('div');
+    gl.className = 'csel-grp';
+    gl.textContent = grp.label;
+    list.appendChild(gl);
+    grp.ids.forEach(function(id) {
+      var opt = document.createElement('div');
+      opt.className  = 'csel-opt';
+      opt.setAttribute('role', 'option');
+      opt.setAttribute('tabindex', '-1');
+      opt.setAttribute('data-id', id);
+      opt.setAttribute('aria-selected', id === cselCurrent ? 'true' : 'false');
+      opt.innerHTML = FUNCS[id].dropLatex;
+      list.appendChild(opt);
+    });
+  });
+}
+
+function cselSetDisplay(id) {
+  var disp = document.getElementById('cselDisplay');
+  disp.innerHTML = FUNCS[id].dropLatex;
+  mjTypeset([disp]);
+}
+
+function cselSelect(id) {
+  cselCurrent = id;
+  cselSetDisplay(id);
+  document.querySelectorAll('#cselList .csel-opt').forEach(function(el) {
+    el.setAttribute('aria-selected', el.getAttribute('data-id') === id ? 'true' : 'false');
+  });
+  document.getElementById('funcSel').value = id;
+}
+
+function cselOpen() {
+  var btn  = document.getElementById('cselBtn');
+  var list = document.getElementById('cselList');
+  list.classList.add('open');
+  btn.setAttribute('aria-expanded', 'true');
+  var sel = list.querySelector('[aria-selected="true"]');
+  if (sel) { sel.focus(); sel.scrollIntoView({ block:'nearest' }); }
+}
+function cselClose() {
+  document.getElementById('cselList').classList.remove('open');
+  document.getElementById('cselBtn').setAttribute('aria-expanded','false');
+}
+function cselToggle() {
+  document.getElementById('cselList').classList.contains('open') ? cselClose() : cselOpen();
+}
+
+function initCsel() {
+  cselBuild();
+  cselSetDisplay('sin');
+  // Typeset all options and display at once
+  mjTypeset([document.getElementById('cselList'), document.getElementById('cselDisplay')]);
+
+  var btn  = document.getElementById('cselBtn');
+  var list = document.getElementById('cselList');
+
+  btn.addEventListener('click',   function(e){ e.stopPropagation(); cselToggle(); });
+  btn.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cselToggle(); }
+    if (e.key === 'Escape')    cselClose();
+    if (e.key === 'ArrowDown') { e.preventDefault(); cselOpen(); }
+  });
+
+  list.addEventListener('click', function(e) {
+    var opt = e.target.closest('.csel-opt');
+    if (!opt) return;
+    var id = opt.getAttribute('data-id');
+    cselSelect(id);
+    cselClose();
+    btn.focus();
+    switchFunc(id);
+  });
+
+  list.addEventListener('keydown', function(e) {
+    var opts  = Array.from(list.querySelectorAll('.csel-opt'));
+    var focus = document.activeElement;
+    var idx   = opts.indexOf(focus);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (idx < opts.length - 1) opts[idx + 1].focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (idx > 0) opts[idx - 1].focus(); else { cselClose(); btn.focus(); }
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (focus && focus.dataset && focus.dataset.id) {
+        cselSelect(focus.dataset.id);
+        cselClose(); btn.focus();
+        switchFunc(focus.dataset.id);
+      }
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      cselClose(); if (e.key === 'Escape') btn.focus();
+    }
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!document.getElementById('cselWrap').contains(e.target)) cselClose();
+  });
+}
+
+function switchFunc(id) {
+  if (!FUNCS[id]) return;
+  ST.id = id;
+  resetParams(id);
+  buildParams(id);
+  var dT = FUNCS[id].tMax;
+  ST.T = dT;
+  document.getElementById('tSlider').value = dT;
+  document.getElementById('tNum').value    = dT;
+  if (FUNCS[id].params.some(function(p){ return p.id==='a'; })) {
+    var av = ST.p['a'] || 0;
+    if (ST.s <= av) {
+      ST.s = Math.min(5, av + 0.5);
+      document.getElementById('sSlider').value = ST.s;
+      document.getElementById('sNum').value    = ST.s;
+    }
+  }
+  redrawAll();
+  say('Function: ' + id);
+}
+
+/* ═══════════════════════════════════════════════════
+   s slider
+═══════════════════════════════════════════════════ */
+document.getElementById('sSlider').addEventListener('input', function(){
+  ST.s=parseFloat(this.value);
+  document.getElementById('sNum').value=ST.s;
+  redrawAll();
+});
+document.getElementById('sNum').addEventListener('change', function(){
+  ST.s=clamp(parseFloat(this.value)||1,0.1,5);
+  document.getElementById('sSlider').value=ST.s;
+  this.value=ST.s;
+  redrawAll();
+});
+document.getElementById('sNum').addEventListener('keydown', function(e){
+  if(e.key==='Enter'){e.preventDefault();this.dispatchEvent(new Event('change'));}
+});
+
+/* ═══════════════════════════════════════════════════
+   T slider
+═══════════════════════════════════════════════════ */
+document.getElementById('tSlider').addEventListener('input', function(){
+  ST.T=parseInt(this.value);
+  document.getElementById('tNum').value=ST.T;
+  document.getElementById('tBig').textContent='T = '+ST.T;
+  redrawAll();
+});
+document.getElementById('tNum').addEventListener('change', function(){
+  ST.T=clamp(parseInt(this.value)||12,5,60);
+  document.getElementById('tSlider').value=ST.T;
+  this.value=ST.T;
+  document.getElementById('tBig').textContent='T = '+ST.T;
+  redrawAll();
+});
+document.getElementById('tNum').addEventListener('keydown', function(e){
+  if(e.key==='Enter'){e.preventDefault();this.dispatchEvent(new Event('change'));}
+});
+
+/* ═══════════════════════════════════════════════════
+   Theorem buttons
+═══════════════════════════════════════════════════ */
+function loadFunc(id) {
+  cselSelect(id);
+  switchFunc(id);
+}
+document.getElementById('btn1st').addEventListener('click', function(){ loadFunc('expsin'); });
+document.getElementById('btn2nd').addEventListener('click', function(){ loadFunc('heavi'); });
+
+/* ═══════════════════════════════════════════════════
+   Quick-reference table
+═══════════════════════════════════════════════════ */
+function buildTable() {
+  var ROWS=[
+    {id:'one',    ft:'1',                    Fs:'\\dfrac{1}{s}',                         roc:'s>0'},
+    {id:'t',      ft:'t',                    Fs:'\\dfrac{1}{s^2}',                       roc:'s>0'},
+    {id:'t2',     ft:'t^2',                  Fs:'\\dfrac{2}{s^3}',                       roc:'s>0'},
+    {id:'t3',     ft:'t^3',                  Fs:'\\dfrac{6}{s^4}',                       roc:'s>0'},
+    {id:'tn',     ft:'t^n',                  Fs:'\\dfrac{n!}{s^{n+1}}',                  roc:'s>0'},
+    {id:'exp',    ft:'e^{at}',               Fs:'\\dfrac{1}{s-a}',                       roc:'s>a'},
+    {id:'sin',    ft:'\\sin(\\omega t)',      Fs:'\\dfrac{\\omega}{s^2+\\omega^2}',       roc:'s>0'},
+    {id:'cos',    ft:'\\cos(\\omega t)',      Fs:'\\dfrac{s}{s^2+\\omega^2}',            roc:'s>0'},
+    {id:'heavi',  ft:'u_c(t)',               Fs:'\\dfrac{e^{-cs}}{s}',                  roc:'s>0'},
+    {id:'expsin', ft:'e^{at}\\sin(\\omega t)',Fs:'\\dfrac{\\omega}{(s-a)^2+\\omega^2}', roc:'s>a'},
+    {id:'expcos', ft:'e^{at}\\cos(\\omega t)',Fs:'\\dfrac{s-a}{(s-a)^2+\\omega^2}',     roc:'s>a'}
+  ];
+  var tb=document.getElementById('tblBody');
+  tb.innerHTML='';
+  ROWS.forEach(function(r){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>\\('+r.ft+'\\)</td><td>\\('+r.Fs+'\\)</td><td>\\('+r.roc+'\\)</td>'+
+      '<td><button class="ldbtn-sm" data-id="'+r.id+'" type="button" aria-label="Load '+r.id+'">Load</button></td>';
+    tb.appendChild(tr);
+  });
+  tb.addEventListener('click', function(e){
+    var btn=e.target.closest('.ldbtn-sm');
+    if(!btn)return;
+    loadFunc(btn.dataset.id);
+  });
+  var tbl=document.querySelector('.reftbl');
+  mjTypeset([tbl]);
+}
+
+/* ═══════════════════════════════════════════════════
+   Init
+═══════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function(){
+  resetParams('sin');
+  buildParams('sin');
+  buildTable();
+
+  function init() {
+    if (window.MathJax && MathJax.typesetPromise) {
+      MathJax.startup.promise.then(function(){
+        MathJax.typesetPromise().then(function(){
+          initCsel();   // build dropdown and typeset options now MathJax is live
+          redrawAll();
+        }).catch(function(){ initCsel(); redrawAll(); });
+      }).catch(function(){ initCsel(); redrawAll(); });
+    } else {
+      setTimeout(init, 100);
+    }
+  }
+  init();
+});
+</script>
+</body>
+</html>
