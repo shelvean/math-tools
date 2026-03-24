@@ -1,0 +1,1215 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Convolution Visualizer — watch f(τ)·g(t−τ) sweep and h(t) build up in real time. Includes a reference table of known convolution pairs. WCAG 2.1 AA accessible.">
+  <meta name="keywords" content="convolution, Laplace transform, differential equations, integral, accessible math tool">
+  <title>Convolution Visualizer</title>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer=window.dataLayer||[];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js',new Date()); gtag('config','G-LEQE004C92');
+  </script>
+
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+
+  <script>
+    window.MathJax={
+      tex:{inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
+      options:{enableExplorer:true,enableAssistiveMml:true,
+        menuOptions:{settings:{assistiveMml:true,explorer:true}},
+        skipHtmlTags:['script','noscript','style','textarea','pre','code']},
+      startup:{pageReady(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+
+  <style>
+/* ── tokens ───────────────────────────── */
+:root{
+  --bg:#f0f2f5; --card:#fff; --sect:#f8f9fb;
+  --info:#eff6ff; --inf-b:#93c5fd; --inf-hd:#1e3a8a;
+  --txt:#111827; --txt2:#374151; --muted:#4b5563;
+  --bdr:#9ca3af; --bdr2:#d1d5db; --focus:#1d4ed8;
+  --blue:#1d4ed8; --bl2:#1e3a8a; --teal:#0f766e;
+  --vio:#6d28d9; --ora:#b45309; --green:#15803d;
+  --link:#1e40af;
+  --r:.5rem; --r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10); --sh2:0 4px 12px rgba(0,0,0,.12);
+  /* semantic colours for the four traces */
+  --cf:#1d4ed8;    /* f(τ)        – blue  */
+  --cg:#c2410c;    /* g(t−τ)      – orange*/
+  --cprod:#0f766e; /* product     – teal  */
+  --ch:#7c3aed;    /* h(t)        – violet*/
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;
+  --txt:#000;--txt2:#000;--muted:#111;--inf-hd:#00006b;
+  --bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--ora:#7a3000;--link:#00c;
+  --cf:#00c;--cg:#993300;--cprod:#005500;--ch:#5500aa;
+}
+@media(prefers-contrast:more){
+  :root{--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;
+    --blue:#00c;--bl2:#000099;--link:#00c;--focus:#00f;}
+}
+
+/* ── reset & base ─────────────────────── */
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;font-size:1rem;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:2px;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+/* ── skip & nav ───────────────────────── */
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;
+  z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;}
+.nav{position:fixed;top:0;left:0;width:100%;z-index:100;
+  background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;
+  font-size:1rem;padding:.25rem .5rem;border-radius:.3rem;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+
+/* ── card & headings ──────────────────── */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:960px;width:100%;margin:4.2rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
+  color:var(--txt);letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* ── info panel ───────────────────────── */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);
+  border-radius:var(--r);margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-icon{font-size:1.25rem;font-weight:700;flex-shrink:0;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p{font-size:.9375rem;color:var(--txt2);margin-bottom:.5rem;line-height:1.65;}
+.info-body ul{font-size:.9375rem;color:var(--txt2);margin:0 0 .5rem 1.5rem;}
+.info-body li{margin-bottom:.3rem;line-height:1.65;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+
+/* ── definition bar ───────────────────── */
+.defn{text-align:center;padding:.7rem 1rem;
+  background:linear-gradient(135deg,#eff6ff,#f8faff);
+  border:1px solid #bfdbfe;border-left:4px solid var(--blue);
+  border-radius:var(--r);margin-bottom:1.25rem;}
+
+/* ── compact controls bar ─────────────── */
+.cbar{
+  display:flex;flex-wrap:wrap;align-items:flex-end;
+  gap:.5rem;margin-bottom:.6rem;
+  background:var(--sect);border:2px solid var(--bdr2);
+  border-radius:var(--r);padding:.5rem .7rem;
+}
+/* pair selector takes most space */
+.cbar-pair{flex:3 1 220px;min-width:180px;}
+/* param slots inline */
+#paramSlots{display:contents;}
+.param-field{flex:0 1 90px;}
+/* t and T fields */
+.cbar-scalar{flex:0 1 80px;}
+/* animation buttons inline */
+.cbar-btns{flex:0 0 auto;display:flex;gap:.35rem;align-items:flex-end;margin-left:auto;}
+
+/* shared field style */
+.cfield{display:flex;flex-direction:column;gap:.18rem;}
+.cfield label,.cfield .clbl{
+  font-size:.8125rem;font-weight:700;color:var(--muted);
+  white-space:nowrap;
+}
+.cfield label mjx-container,.cfield .clbl mjx-container{
+  font-size:1em !important;vertical-align:middle;
+}
+.cfield input[type=number]{
+  width:100%;min-height:36px;padding:.2rem .35rem;
+  font-size:.9375rem;font-weight:600;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);text-align:center;
+}
+.cfield input[type=number]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* animate buttons — compact */
+.abtn{display:inline-flex;align-items:center;justify-content:center;
+  padding:.3rem .65rem;min-height:36px;border:none;border-radius:.375rem;
+  font-size:.875rem;font-weight:700;cursor:pointer;}
+.abtn-play {background:var(--green);color:#fff;}
+.abtn-play:hover,.abtn-play:focus-visible{background:#166534;}
+.abtn-stop {background:var(--ora);color:#fff;}
+.abtn-stop:hover,.abtn-stop:focus-visible{background:#92400e;}
+.abtn-reset{background:var(--muted);color:#fff;}
+.abtn-reset:hover,.abtn-reset:focus-visible{background:#374151;}
+.speed-lbl{font-size:.8125rem;font-weight:600;color:var(--muted);white-space:nowrap;}
+.speed-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
+  font-size:.875rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+
+/* ── h(t) readout bar ─────────────────── */
+.hbar{display:flex;align-items:center;justify-content:center;gap:2rem;flex-wrap:wrap;
+  padding:.65rem 1rem;background:var(--card);border:2px solid var(--bdr2);
+  border-radius:var(--r);margin-bottom:1rem;box-shadow:var(--sh);}
+.hcell{text-align:center;}
+.hlbl{font-size:.875rem;color:var(--muted);margin-bottom:.15rem;}
+.hlbl mjx-container{font-size:1.1em !important;vertical-align:middle;}
+.hval{font-size:1.2rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;
+  color:var(--vio);}
+
+/* ── 3-panel plot layout ─────────────── */
+.pgrid3{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  grid-template-rows:auto auto;
+  gap:.5rem;
+  margin-bottom:.875rem;
+}
+@media(max-width:600px){.pgrid3{grid-template-columns:1fr;}}
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);}
+.pwrap-full{grid-column:1/-1;}   /* spans both columns */
+.phdr{padding:.3rem .65rem;display:flex;align-items:center;gap:.35rem;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);white-space:nowrap;overflow:hidden;}
+.phdr mjx-container{font-size:1.05em !important;vertical-align:middle;}
+.pdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.pplot{height:220px;}     /* top two panels */
+.pplot-wide{height:260px;} /* full-width bottom panel */
+
+/* ── legend chips ─────────────────────── */
+.chips{display:flex;gap:.4rem;padding:.3rem .75rem;
+  background:var(--sect);border-top:1px solid var(--bdr2);flex-wrap:wrap;}
+.chip{display:inline-flex;align-items:center;gap:.3rem;
+  font-size:.875rem;font-weight:600;color:var(--txt2);
+  background:var(--card);border:1px solid var(--bdr2);
+  border-radius:1rem;padding:.2rem .6rem;}
+.chip mjx-container{font-size:1.1em !important;vertical-align:middle;}
+.csw{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+
+/* ── custom LaTeX listbox ─────────────── */
+.csel-wrap{position:relative;}
+.csel-btn{
+  width:100%;min-height:44px;padding:.4rem .6rem .4rem .7rem;
+  border:2px solid var(--bdr);border-radius:.4rem;
+  background:var(--card);color:var(--txt);
+  display:flex;align-items:center;justify-content:space-between;gap:.4rem;
+  cursor:pointer;font-size:.9375rem;text-align:left;
+}
+.csel-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.csel-btn mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+.csel-arrow{font-size:.8rem;color:var(--muted);flex-shrink:0;}
+.csel-list{
+  display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:600;
+  background:var(--card);border:2px solid var(--bdr);border-radius:.4rem;
+  box-shadow:var(--sh2);max-height:340px;overflow-y:auto;
+}
+.csel-list.open{display:block;}
+.csel-grp{
+  padding:.3rem .75rem .15rem;
+  font-size:.8rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em;
+  border-top:1px solid var(--bdr2);
+}
+.csel-grp:first-child{border-top:none;}
+.csel-opt{
+  padding:.38rem .875rem;min-height:40px;cursor:pointer;
+  display:flex;align-items:center;font-size:.875rem;color:var(--txt);
+}
+.csel-opt:hover{background:rgba(29,78,216,.07);}
+.csel-opt[aria-selected="true"]{background:rgba(29,78,216,.12);font-weight:600;}
+.csel-opt:focus-visible{outline:3px solid var(--focus);outline-offset:-3px;}
+.csel-opt mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+
+/* ── contrast toggle & footer ─────────── */
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;
+  background:var(--txt);color:var(--card);border:2px solid var(--bdr);
+  border-radius:50%;width:48px;height:48px;font-size:1.25rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+.footer{margin-top:1.5rem;border-top:2px solid var(--bdr2);
+  padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);}
+
+/* ── responsive & motion ──────────────── */
+@media(max-width:640px){
+  .card{padding:1rem;margin:4.25rem .5rem 1.5rem;}
+  .pplot,.pplot-wide{height:200px;}
+}
+@media(prefers-reduced-motion:reduce){
+  .abtn{transition:none;}
+}
+  </style>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Nav -->
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html" aria-current="page">Diff Eq</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Linear Programming</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main id="main" class="card" role="main">
+
+  <h1>Convolution Visualizer</h1>
+  <p class="subtitle">
+    Watch \(g(t-\tau)\) slide across \(f(\tau)\) as \(t\) grows.
+    The shaded overlap area accumulates into \(h(t)=(f*g)(t)\).
+  </p>
+
+  <!-- About -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
+      <span>About This Visualization</span>
+      <span class="info-icon" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <p>The <strong>convolution</strong> of two causal functions \(f\) and \(g\) is defined as</p>
+      <div class="defn-box">
+        \[(f*g)(t) \;=\; h(t) \;=\; \int_0^{t} f(\tau)\,g(t-\tau)\,d\tau, \qquad t\ge 0.\]
+      </div>
+
+      <h2>The four plots</h2>
+      <ul>
+        <li><strong style="color:#1d4ed8">Top-left — \(f(\tau)\):</strong> the first function, fixed in the \(\tau\) domain.</li>
+        <li><strong style="color:#c2410c">Top-right — \(g(t-\tau)\):</strong> the second function, <em>flipped</em> about \(\tau=0\) and then <em>shifted right by \(t\)</em>. As \(t\) increases it slides to the right, sweeping over \(f\).</li>
+        <li><strong style="color:#0f766e">Bottom-left — product \(f(\tau)\cdot g(t-\tau)\):</strong> the integrand. The green shaded area from \(0\) to \(t\) equals \(h(t)\).</li>
+        <li><strong style="color:#7c3aed">Bottom-right — \(h(t)\):</strong> the convolution, building up as \(t\) increases. The orange dot marks the current value.</li>
+      </ul>
+
+      <h2>Key ideas</h2>
+      <ul>
+        <li>Convolution is commutative: \((f*g)(t) = (g*f)(t)\).</li>
+        <li>In Laplace-transform terms: \(\mathcal{L}\{f*g\} = F(s)\cdot G(s)\). The convolution theorem converts multiplication in \(s\)-space back to a convolution integral in \(t\)-space.</li>
+        <li>The <em>flip-and-slide</em> interpretation: \(g(t-\tau)\) is \(g(\tau)\) reflected about zero and then shifted by \(t\). As \(t\) grows, more of \(f\) is covered.</li>
+        <li>Use the animation button to watch the process unfold automatically. Drag the \(t\) slider for manual control.</li>
+      </ul>
+
+      <h2>Numerical method</h2>
+      <p>Each snapshot uses <strong>composite 10-point Gauss–Legendre quadrature</strong> on \([0,t]\),
+      giving exponential convergence for smooth functions. \(h(t)\) is pre-computed on a fine grid
+      to draw the full result curve.</p>
+    </div>
+  </div>
+
+  <!-- Definition bar -->
+  <div class="defn" role="math" aria-label="Convolution definition">
+    \[(f*g)(t) \;=\; h(t) \;=\; \int_0^{t} f(\tau)\,g(t-\tau)\,d\tau\]
+  </div>
+
+  <!-- Compact controls bar -->
+  <div class="cbar" role="group" aria-label="Convolution controls">
+
+    <!-- Pair selector -->
+    <div class="cbar-pair cfield">
+      <span class="clbl" id="exLbl">Convolution pair \(f * g\)</span>
+      <select id="exSel" style="display:none" tabindex="-1" aria-hidden="true">
+        <option value="11">11</option><option value="t1">t1</option>
+        <option value="tt">tt</option><option value="t2_1">t2_1</option>
+        <option value="t_t2">t_t2</option><option value="ea_eb">ea_eb</option>
+        <option value="ea_ea">ea_ea</option><option value="ea_1">ea_1</option>
+        <option value="ea_t">ea_t</option><option value="sin_1">sin_1</option>
+        <option value="cos_1">cos_1</option><option value="sin_sin">sin_sin</option>
+        <option value="sin_cos">sin_cos</option><option value="ea_sin">ea_sin</option>
+        <option value="ea_cos">ea_cos</option><option value="ua_ub">ua_ub</option>
+        <option value="ua_1" selected>ua_1</option>
+      </select>
+      <div class="csel-wrap" id="cselWrap">
+        <button type="button" id="cselBtn" class="csel-btn"
+                role="combobox" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="exLbl" aria-controls="cselList">
+          <span id="cselDisplay"></span>
+          <span class="csel-arrow" aria-hidden="true">&#9660;</span>
+        </button>
+        <div id="cselList" class="csel-list" role="listbox" aria-labelledby="exLbl"></div>
+      </div>
+    </div>
+
+    <!-- Dynamic parameter inputs (filled by JS) -->
+    <div id="paramSlots" role="group" aria-label="Function parameters"></div>
+
+    <!-- Current t -->
+    <div class="cbar-scalar cfield">
+      <label for="tNum">Current \(t\)</label>
+      <input type="number" id="tNum" min="0" max="8" step="0.05" value="0"
+             aria-label="Current t" style="color:var(--blue);font-weight:700;">
+    </div>
+
+    <!-- Domain end T -->
+    <div class="cbar-scalar cfield">
+      <label for="tmaxNum">Domain \(T\)</label>
+      <input type="number" id="tmaxNum" min="2" max="20" step="0.5" value="8"
+             aria-label="Domain end T" style="color:var(--teal);font-weight:700;">
+    </div>
+
+    <!-- Animation buttons -->
+    <div class="cbar-btns" role="group" aria-label="Animation controls">
+      <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play">▶</button>
+      <button class="abtn abtn-stop"  id="btnStop"  type="button" aria-label="Stop">◼</button>
+      <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset">↺</button>
+      <span class="speed-lbl" id="speedLbl">Speed</span>
+      <select class="speed-sel" id="speedSel" aria-labelledby="speedLbl">
+        <option value="60">Slow</option>
+        <option value="30" selected>Normal</option>
+        <option value="15">Fast</option>
+        <option value="5">Very fast</option>
+      </select>
+    </div>
+
+  </div>
+
+  <!-- h(t) readout -->
+  <div class="hbar" role="region" aria-label="Convolution value" aria-live="polite" aria-atomic="true">
+    <div class="hcell">
+      <div class="hlbl">\(t\)</div>
+      <div class="hval" id="hvt">0.00</div>
+    </div>
+    <div class="hcell">
+      <div class="hlbl">\(h(t) = \int_0^t f(\tau)\,g(t-\tau)\,d\tau\)</div>
+      <div class="hval" id="hvht">0.00000</div>
+    </div>
+    <div class="hcell">
+      <div class="hlbl">Exact \(h(t)\)</div>
+      <div class="hval" id="hvexact" style="color:var(--ora);">0.00000</div>
+    </div>
+    <div class="hcell">
+      <div class="hlbl">Relative error</div>
+      <div class="hval" id="hverr" style="color:var(--vio);font-size:1rem;">—</div>
+    </div>
+  </div>
+
+  <!-- 3-panel plots: [f(τ) & g(t−τ)] | [integrand]  /  [h(t) full-width] -->
+  <div class="pgrid3" role="region" aria-label="Convolution visualization plots">
+
+    <!-- Top-left: f(τ) and g(t−τ) overlaid -->
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--cf)" aria-hidden="true"></span>
+        \(f(\tau)\) and
+        <span class="pdot" style="background:var(--cg);margin-left:.25rem" aria-hidden="true"></span>
+        \(g(t-\tau)\) — overlap
+      </div>
+      <div id="plotFG" class="pplot" role="img"
+           aria-label="f(tau) in blue and g(t minus tau) in orange overlaid; shaded overlap shows where both are nonzero"></div>
+    </div>
+
+    <!-- Top-right: integrand -->
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--cprod)" aria-hidden="true"></span>
+        \(f(\tau)\cdot g(t-\tau)\) — integrand
+      </div>
+      <div id="plotProd" class="pplot" role="img"
+           aria-label="Product of f and g; shaded area equals h(t)"></div>
+    </div>
+
+    <!-- Bottom: h(t) full-width, taller -->
+    <div class="pwrap pwrap-full">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--ch)" aria-hidden="true"></span>
+        \(h(t) = (f * g)(t) = \displaystyle\int_0^t f(\tau)\,g(t-\tau)\,d\tau\) — convolution
+      </div>
+      <div id="plotH" class="pplot-wide" role="img"
+           aria-label="Convolution h(t) tracing out as t increases; blue dot marks current numerical value"></div>
+    </div>
+
+  </div>
+
+  <!-- Formula box -->
+  <div id="formulaBox" class="info-panel" style="padding:1rem 1.25rem;min-height:80px;"
+       role="math" aria-live="polite" aria-label="Convolution formula for current example">
+    <div style="color:var(--muted);text-align:center">Select an example to see the formula.</div>
+  </div>
+
+  <footer class="footer" role="contentinfo">
+    &copy; Shelvean Kapita. Released under the MIT License. Last modified: March 23, 2026.<br>
+    <strong>Accessibility:</strong> WCAG 2.1 AA — keyboard navigation, screen reader support, high-contrast mode, visible focus indicators.
+    Issues? <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.
+  </footer>
+
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════ */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+function linspace(a,b,n){var r=[];for(var i=0;i<n;i++)r.push(a+(b-a)*i/(n-1));return r;}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function fmt(v,d){d=d==null?5:d;if(!isFinite(v))return 'undef.';if(Math.abs(v)<1e-5&&v!==0)return v.toExponential(3);return v.toFixed(d);}
+function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* ── Gauss-Legendre 10-point ── */
+var GN=[-0.9739065285171717,-0.8650633666889845,-0.6794095682990244,-0.4333953941292472,-0.1488743389816312,
+         0.1488743389816312, 0.4333953941292472, 0.6794095682990244, 0.8650633666889845, 0.9739065285171717];
+var GW=[ 0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
+         0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881];
+
+function quadrature(fn,a,b,nsub){
+  if(b<=a)return 0;
+  nsub=nsub||40;
+  var h=(b-a)/nsub,sum=0;
+  for(var i=0;i<nsub;i++){
+    var x0=a+i*h,x1=x0+h,mid=(x0+x1)/2,hw=h/2,s=0;
+    for(var k=0;k<10;k++)s+=GW[k]*fn(mid+hw*GN[k]);
+    sum+=hw*s;
+  }
+  return sum;
+}
+
+/* ═══════════════════════════════════════════════════
+   Example Registry
+   Each entry: f(τ,p), g(τ,p), exact h(t,p),
+               latex strings, param defs, tMax
+═══════════════════════════════════════════════════ */
+var EX = {
+
+  '11': {
+    dropLatex:'\\(1 * 1 = t\\)',
+    lf:'1', lg:'1', lh:'t',
+    desc:'\\(1 * 1 = t\\)',
+    f:function(tau){return 1;},
+    g:function(tau){return 1;},
+    h:function(t){return t;},
+    params:[], tMax:8, yMax:10
+  },
+
+  't1': {
+    dropLatex:'\\(t * 1 = \\tfrac{t^2}{2}\\)',
+    lf:'t', lg:'1', lh:'\\dfrac{t^2}{2}',
+    desc:'\\(t * 1 = \\dfrac{t^2}{2}\\)',
+    f:function(tau){return tau;},
+    g:function(tau){return 1;},
+    h:function(t){return t*t/2;},
+    params:[], tMax:6, yMax:20
+  },
+
+  'tt': {
+    dropLatex:'\\(t * t = \\tfrac{t^3}{6}\\)',
+    lf:'t', lg:'t', lh:'\\dfrac{t^3}{6}',
+    desc:'\\(t * t = \\dfrac{t^3}{6}\\)',
+    f:function(tau){return tau;},
+    g:function(tau){return tau;},
+    h:function(t){return t*t*t/6;},
+    params:[], tMax:5, yMax:20
+  },
+
+  't2_1': {
+    dropLatex:'\\(t^2 * 1 = \\tfrac{t^3}{6}\\)',
+    lf:'t^2', lg:'1', lh:'\\dfrac{t^3}{6}',
+    desc:'\\(t^2 * 1 = \\dfrac{t^3}{6}\\)',
+    f:function(tau){return tau*tau;},
+    g:function(tau){return 1;},
+    h:function(t){return t*t*t/6;},
+    params:[], tMax:4, yMax:15
+  },
+
+  't_t2': {
+    dropLatex:'\\(t * t^2 = \\tfrac{t^4}{24}\\)',
+    lf:'t', lg:'t^2', lh:'\\dfrac{t^4}{24}',
+    desc:'\\(t * t^2 = \\dfrac{t^4}{24}\\)',
+    f:function(tau){return tau;},
+    g:function(tau){return tau*tau;},
+    h:function(t){return Math.pow(t,4)/24;},
+    params:[], tMax:4, yMax:12
+  },
+
+  'ea_eb': {
+    dropLatex:'\\(e^{at} * e^{bt} = \\tfrac{e^{at}-e^{bt}}{a-b}\\quad(a\\ne b)\\)',
+    lf:'e^{at}', lg:'e^{bt}', lh:'\\dfrac{e^{at}-e^{bt}}{a-b}',
+    desc:'\\(e^{at}*e^{bt} = \\dfrac{e^{at}-e^{bt}}{a-b}\\quad(a\\ne b)\\)',
+    f:function(tau,p){return Math.exp(p.a*tau);},
+    g:function(tau,p){return Math.exp(p.b*tau);},
+    h:function(t,p){
+      var a=p.a,b=p.b;
+      if(Math.abs(a-b)<1e-8)return t*Math.exp(a*t);
+      return (Math.exp(a*t)-Math.exp(b*t))/(a-b);
+    },
+    params:[
+      {id:'a',label:'\\(a\\)',aria:'a',min:-2,max:2,step:0.1,val:0.5,int:false},
+      {id:'b',label:'\\(b\\)',aria:'b',min:-2,max:2,step:0.1,val:-0.5,int:false}
+    ],
+    tMax:6, yMax:20
+  },
+
+  'ea_ea': {
+    dropLatex:'\\(e^{at} * e^{at} = t\\,e^{at}\\)',
+    lf:'e^{at}', lg:'e^{at}', lh:'t\\,e^{at}',
+    desc:'\\(e^{at}*e^{at} = t\\,e^{at}\\)',
+    f:function(tau,p){return Math.exp(p.a*tau);},
+    g:function(tau,p){return Math.exp(p.a*tau);},
+    h:function(t,p){return t*Math.exp(p.a*t);},
+    params:[{id:'a',label:'\\(a\\)',aria:'a',min:-2,max:1,step:0.1,val:-0.5,int:false}],
+    tMax:8, yMax:15
+  },
+
+  'ea_1': {
+    dropLatex:'\\(e^{at} * 1 = \\tfrac{e^{at}-1}{a}\\)',
+    lf:'e^{at}', lg:'1', lh:'\\dfrac{e^{at}-1}{a}',
+    desc:'\\(e^{at}*1 = \\dfrac{e^{at}-1}{a}\\)',
+    f:function(tau,p){return Math.exp(p.a*tau);},
+    g:function(tau){return 1;},
+    h:function(t,p){
+      var a=p.a;
+      if(Math.abs(a)<1e-8)return t;
+      return (Math.exp(a*t)-1)/a;
+    },
+    params:[{id:'a',label:'\\(a\\)',aria:'a',min:-3,max:2,step:0.1,val:1,int:false}],
+    tMax:6, yMax:20
+  },
+
+  'ea_t': {
+    dropLatex:'\\(e^{at} * t = \\tfrac{e^{at}-at-1}{a^2}\\)',
+    lf:'e^{at}', lg:'t', lh:'\\dfrac{e^{at}-at-1}{a^2}',
+    desc:'\\(e^{at}*t = \\dfrac{e^{at}-at-1}{a^2}\\)',
+    f:function(tau,p){return Math.exp(p.a*tau);},
+    g:function(tau){return tau;},
+    h:function(t,p){
+      var a=p.a;
+      if(Math.abs(a)<1e-8)return t*t/2;
+      return (Math.exp(a*t)-a*t-1)/(a*a);
+    },
+    params:[{id:'a',label:'\\(a\\)',aria:'a',min:-2,max:2,step:0.1,val:1,int:false}],
+    tMax:5, yMax:15
+  },
+
+  'sin_1': {
+    dropLatex:'\\(\\sin(\\omega t) * 1 = \\tfrac{1-\\cos\\omega t}{\\omega}\\)',
+    lf:'\\sin(\\omega t)', lg:'1', lh:'\\dfrac{1-\\cos(\\omega t)}{\\omega}',
+    desc:'\\(\\sin(\\omega t)*1 = \\dfrac{1-\\cos(\\omega t)}{\\omega}\\)',
+    f:function(tau,p){return Math.sin(p.w*tau);},
+    g:function(tau){return 1;},
+    h:function(t,p){return (1-Math.cos(p.w*t))/p.w;},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}],
+    tMax:10, yMax:3
+  },
+
+  'cos_1': {
+    dropLatex:'\\(\\cos(\\omega t) * 1 = \\tfrac{\\sin\\omega t}{\\omega}\\)',
+    lf:'\\cos(\\omega t)', lg:'1', lh:'\\dfrac{\\sin(\\omega t)}{\\omega}',
+    desc:'\\(\\cos(\\omega t)*1 = \\dfrac{\\sin(\\omega t)}{\\omega}\\)',
+    f:function(tau,p){return Math.cos(p.w*tau);},
+    g:function(tau){return 1;},
+    h:function(t,p){return Math.sin(p.w*t)/p.w;},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}],
+    tMax:10, yMax:2
+  },
+
+  'sin_sin': {
+    dropLatex:'\\(\\sin(\\omega t) * \\sin(\\omega t)\\)',
+    lf:'\\sin(\\omega t)', lg:'\\sin(\\omega t)',
+    lh:'\\dfrac{\\sin(\\omega t)-\\omega t\\cos(\\omega t)}{2\\omega}',
+    desc:'\\(\\sin(\\omega t)*\\sin(\\omega t) = \\dfrac{\\sin(\\omega t)-\\omega t\\cos(\\omega t)}{2\\omega}\\)',
+    f:function(tau,p){return Math.sin(p.w*tau);},
+    g:function(tau,p){return Math.sin(p.w*tau);},
+    h:function(t,p){var w=p.w;return (Math.sin(w*t)-w*t*Math.cos(w*t))/(2*w);},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:3,step:0.5,val:1,int:false}],
+    tMax:10, yMax:4
+  },
+
+  'sin_cos': {
+    dropLatex:'\\(\\sin(\\omega t) * \\cos(\\omega t) = \\tfrac{t\\sin\\omega t}{2}\\)',
+    lf:'\\sin(\\omega t)', lg:'\\cos(\\omega t)',
+    lh:'\\dfrac{t\\sin(\\omega t)}{2}',
+    desc:'\\(\\sin(\\omega t)*\\cos(\\omega t) = \\dfrac{t\\sin(\\omega t)}{2}\\)',
+    f:function(tau,p){return Math.sin(p.w*tau);},
+    g:function(tau,p){return Math.cos(p.w*tau);},
+    h:function(t,p){return t*Math.sin(p.w*t)/2;},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:3,step:0.5,val:1,int:false}],
+    tMax:10, yMax:5
+  },
+
+  'ea_sin': {
+    dropLatex:'\\(e^{at} * \\sin(\\omega t)\\)',
+    lf:'e^{at}', lg:'\\sin(\\omega t)',
+    lh:'\\dfrac{\\omega e^{at}-a\\sin(\\omega t)-\\omega\\cos(\\omega t)}{a^2+\\omega^2}',
+    desc:'\\(e^{at}*\\sin(\\omega t)\\)',
+    f:function(tau,p){return Math.exp(p.a*tau);},
+    g:function(tau,p){return Math.sin(p.w*tau);},
+    h:function(t,p){
+      var a=p.a,w=p.w,d=a*a+w*w;
+      return (w*Math.exp(a*t)-a*Math.sin(w*t)-w*Math.cos(w*t))/d;
+    },
+    params:[
+      {id:'a',label:'\\(a\\)',aria:'a',min:-3,max:0,step:0.1,val:-0.5,int:false},
+      {id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}
+    ],
+    tMax:10, yMax:4
+  },
+
+  'ea_cos': {
+    dropLatex:'\\(e^{at} * \\cos(\\omega t)\\)',
+    lf:'e^{at}', lg:'\\cos(\\omega t)',
+    lh:'\\dfrac{a(e^{at}-\\cos(\\omega t))+\\omega\\sin(\\omega t)}{a^2+\\omega^2}',
+    desc:'\\(e^{at}*\\cos(\\omega t)\\)',
+    f:function(tau,p){return Math.exp(p.a*tau);},
+    g:function(tau,p){return Math.cos(p.w*tau);},
+    h:function(t,p){
+      var a=p.a,w=p.w,d=a*a+w*w;
+      return (a*(Math.exp(a*t)-Math.cos(w*t))+w*Math.sin(w*t))/d;
+    },
+    params:[
+      {id:'a',label:'\\(a\\)',aria:'a',min:-3,max:0,step:0.1,val:-0.5,int:false},
+      {id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}
+    ],
+    tMax:10, yMax:4
+  },
+
+  'ua_ub': {
+    dropLatex:'\\(u_a(t) * u_b(t) = (t-a-b)\\,u_{a+b}(t)\\)<br><span style="font-size:.8em;color:var(--muted);padding-left:.2em">\\(a < b,\\; a,b\\ge 0\\)</span>',
+    lf:'u_a(t)', lg:'u_b(t)',
+    lh:'(t-a-b)\\cdot u_{a+b}(t)',
+    desc:'\\(u_a(t)*u_b(t) = (t-a-b)\\cdot u_{a+b}(t),\\quad a<b\\)',
+    f:function(tau,p){return tau>=p.a?1:0;},
+    g:function(tau,p){return tau>=p.b?1:0;},
+    h:function(t,p){var s=p.a+p.b;return t>=s?t-s:0;},
+    params:[
+      {id:'a',label:'Delay \\(a\\)',aria:'a',min:0,max:4,step:0.5,val:1,int:false},
+      {id:'b',label:'Delay \\(b\\)',aria:'b',min:0,max:4,step:0.5,val:2,int:false}
+    ],
+    tMax:10, yMax:6
+  },
+
+  'ua_1': {
+    dropLatex:'\\(u_a(t) * 1 = u_a(t)(t-a)\\)',
+    lf:'u_a(t)', lg:'1',
+    lh:'u_a(t)(t-a)',
+    desc:'\\(u_a(t)*1 = u_a(t)(t-a)\\)',
+    f:function(tau,p){return tau>=p.a?1:0;},
+    g:function(tau){return 1;},
+    h:function(t,p){return t>=p.a?t-p.a:0;},
+    params:[{id:'a',label:'Delay \\(a\\)',aria:'a',min:0,max:5,step:0.5,val:1,int:false}],
+    tMax:8, yMax:8
+  }
+};
+
+/* ═══════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════ */
+var ST = {
+  exId: 'ua_1',
+  t: 0,
+  tMax: 8,
+  p: { a:1, b:2, w:1 },
+  animating: false
+};
+var animTimer = null;
+
+/* ═══════════════════════════════════════════════════
+   Info panel
+═══════════════════════════════════════════════════ */
+(function(){
+  var btn=document.getElementById('infoBtn');
+  var body=document.getElementById('infoBody');
+  var icon=btn.querySelector('.info-icon');
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    icon.innerHTML=exp?'+':'&minus;';
+    if(!exp)mj([body]);
+  });
+})();
+
+/* high-contrast */
+document.getElementById('ctog').addEventListener('click',function(){
+  document.documentElement.classList.toggle('hc');
+  var on=document.documentElement.classList.contains('hc');
+  say('High-contrast '+(on?'enabled':'disabled'));
+  redrawAll();
+});
+
+/* ═══════════════════════════════════════════════════
+   Parameter controls
+═══════════════════════════════════════════════════ */
+function resetParams(id){
+  EX[id].params.forEach(function(pd){ ST.p[pd.id]=pd.val; });
+}
+
+function buildParams(id){
+  var slot=document.getElementById('paramSlots');
+  slot.innerHTML='';
+  var ex=EX[id];
+  if(!ex.params.length) return;
+  var lblNodes=[];
+  ex.params.forEach(function(pd){
+    var val=ST.p[pd.id]!=null?ST.p[pd.id]:pd.val;
+    var div=document.createElement('div');
+    div.className='param-field cfield';
+    div.innerHTML=
+      '<label for="pN_'+pd.id+'">'+pd.label+'</label>'+
+      '<input type="number" id="pN_'+pd.id+'" min="'+pd.min+'" max="'+pd.max+
+        '" step="'+pd.step+'" value="'+val+'" aria-label="'+pd.aria+'">';
+    slot.appendChild(div);
+    lblNodes.push(div.querySelector('label'));
+    var num=div.querySelector('input');
+    function sync(v){
+      v=pd.int?Math.round(parseFloat(v)||0):parseFloat(v)||0;
+      v=clamp(v,pd.min,pd.max);
+      num.value=v; ST.p[pd.id]=v;
+      precompute(); redrawAll();
+    }
+    num.addEventListener('change',function(){sync(this.value);});
+    num.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();sync(this.value);}});
+  });
+  if(lblNodes.length)mj(lblNodes);
+}
+
+/* ═══════════════════════════════════════════════════
+   Precompute h(t) curve
+═══════════════════════════════════════════════════ */
+var CURVE = { tArr:[], hNum:[], hExact:[], fArr:[], gFlipArr:[] };
+var N_CURVE = 300;
+
+function precompute(){
+  var ex=EX[ST.exId];
+  var tMax=ST.tMax;
+  CURVE.tArr = linspace(0, tMax, N_CURVE);
+  CURVE.hNum   = [];
+  CURVE.hExact = [];
+  CURVE.fArr   = [];
+  CURVE.gFlipArr = [];
+
+  for(var i=0;i<N_CURVE;i++){
+    var t=CURVE.tArr[i];
+    var p=ST.p;
+    // exact
+    CURVE.hExact.push(ex.h(t,p));
+    // numerical via quadrature
+    if(t<1e-9){ CURVE.hNum.push(0); }
+    else{
+      var val=quadrature(function(tau){
+        var fv=ex.f(tau,p), gv=ex.g(t-tau,p);
+        return (isFinite(fv)&&isFinite(gv))?fv*gv:0;
+      }, 0, t, 60);
+      CURVE.hNum.push(isFinite(val)?val:0);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   Plotly config
+═══════════════════════════════════════════════════ */
+var CFG={responsive:true,displaylogo:false,displayModeBar:false};
+function lay(xt,yt,extra){
+  var l={
+    margin:{t:10,r:14,b:46,l:58},
+    plot_bgcolor:'#fafafa', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'-apple-system,BlinkMacSystemFont,Arial,sans-serif',size:12,color:'#374151'},
+    xaxis:{title:{text:xt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
+    yaxis:{title:{text:yt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
+    showlegend:false, autosize:true
+  };
+  if(extra)Object.assign(l,extra);
+  return l;
+}
+
+/* compute a nice y-axis range from a set of value arrays, with padding */
+function yRange(arrays, minSpan) {
+  var lo=Infinity, hi=-Infinity;
+  arrays.forEach(function(arr){
+    arr.forEach(function(v){
+      if(v!=null&&isFinite(v)){ if(v<lo)lo=v; if(v>hi)hi=v; }
+    });
+  });
+  if(!isFinite(lo)||!isFinite(hi)){ return [-1,1]; }
+  if(lo===hi){ lo-=0.5; hi+=0.5; }
+  var span=hi-lo;
+  minSpan=minSpan||0;
+  if(span<minSpan){ var mid=(lo+hi)/2; lo=mid-minSpan/2; hi=mid+minSpan/2; span=minSpan; }
+  var pad=span*0.12;
+  return [lo-pad, hi+pad];
+}
+
+/* helper: tau grid */
+function tauGrid(){
+  return linspace(0, ST.tMax, 400);
+}
+
+/* ── Draw f(τ) and g(t−τ) overlaid ── */
+function drawFG(){
+  var ex=EX[ST.exId], tg=tauGrid(), p=ST.p, t=ST.t;
+
+  var fy=tg.map(function(tau){var v=ex.f(tau,p);return isFinite(v)?v:null;});
+  var gy=tg.map(function(tau){
+    var arg=t-tau;
+    if(arg<-1e-9)return null;
+    var v=ex.g(Math.max(arg,0),p);
+    return isFinite(v)?v:null;
+  });
+
+  /* overlap fill: shade where both f and g are defined (τ in [0,t]) */
+  var overlapY=tg.map(function(tau,i){
+    if(tau>t+1e-9)return null;
+    var fv=fy[i], gv=gy[i];
+    if(fv==null||gv==null)return null;
+    return Math.min(Math.abs(fv),Math.abs(gv))*(fv>=0&&gv>=0?1:fv<0&&gv<0?-1:0);
+  });
+
+  var yr=yRange([fy,gy], 0.5);
+  var layout=lay('$\\tau$','');
+  layout.yaxis.range=yr;
+  layout.showlegend=true;
+  layout.legend={orientation:'h',x:0,y:-0.22,font:{size:10},
+    bgcolor:'rgba(255,255,255,.88)',bordercolor:'#d1d5db',borderwidth:1};
+  layout.shapes=[
+    /* overlap region background */
+    {type:'rect',x0:0,x1:t,y0:yr[0],y1:yr[1],
+     fillcolor:'rgba(124,58,237,.06)',line:{width:0}},
+    /* vertical marker at current t */
+    {type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],
+     line:{color:'rgba(100,100,100,.45)',width:1.5,dash:'dot'}}
+  ];
+  layout.annotations=[{
+    x:t,y:yr[0]+(yr[1]-yr[0])*0.06,xanchor:'left',yanchor:'bottom',
+    text:'t='+t.toFixed(2),showarrow:false,
+    font:{size:10,color:'#555'},bgcolor:'rgba(255,255,255,.8)'
+  }];
+  layout.margin={t:8,r:12,b:60,l:48};
+
+  Plotly.react('plotFG',[
+    /* overlap shading */
+    {x:tg,y:overlapY,type:'scatter',mode:'none',fill:'tozeroy',
+     fillcolor:'rgba(124,58,237,.18)',hoverinfo:'skip',showlegend:false},
+    /* g(t−τ) — behind f */
+    {x:tg,y:gy,type:'scatter',mode:'lines',name:'g(t\u2212\u03c4)',
+     line:{color:'#c2410c',width:2.5},connectgaps:false,
+     hovertemplate:'\u03c4=%{x:.3f}<br>g(t\u2212\u03c4)=%{y:.4f}<extra>g(t\u2212\u03c4)</extra>'},
+    /* f(τ) — on top */
+    {x:tg,y:fy,type:'scatter',mode:'lines',name:'f(\u03c4)',
+     line:{color:'#1d4ed8',width:2.5},connectgaps:false,
+     hovertemplate:'\u03c4=%{x:.3f}<br>f(\u03c4)=%{y:.4f}<extra>f(\u03c4)</extra>'}
+  ],layout,CFG);
+}
+
+/* ── Draw product & shaded area ── */
+function drawProd(){
+  var ex=EX[ST.exId], tg=tauGrid(), p=ST.p, t=ST.t;
+  var prod=tg.map(function(tau){
+    if(tau>t+1e-9)return null;
+    var fv=ex.f(tau,p), arg=t-tau;
+    if(arg<-1e-9)return null;
+    var gv=ex.g(Math.max(arg,0),p);
+    return (isFinite(fv)&&isFinite(gv))?fv*gv:null;
+  });
+  var prodPos=prod.map(function(v){return v!=null?Math.max(v,0):null;});
+  var prodNeg=prod.map(function(v){return v!=null?Math.min(v,0):null;});
+  var hNum=t<1e-9?0:quadrature(function(tau){
+    var fv=ex.f(tau,p), gv=ex.g(t-tau,p);
+    return (isFinite(fv)&&isFinite(gv))?fv*gv:0;
+  },0,t,60);
+  var yr=yRange([prod], 0.5);
+  /* ensure zero is visible */
+  if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
+  var layout=lay('$\\tau$','$f(\\tau)\\cdot g(t-\\tau)$');
+  layout.yaxis.range=yr;
+  layout.shapes=[
+    {type:'line',x0:0,x1:ST.tMax,y0:0,y1:0,line:{color:'#9ca3af',width:1}},
+    {type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],line:{color:'rgba(15,118,110,.55)',width:1.8,dash:'dot'}}
+  ];
+  layout.annotations=[{
+    x:1,y:1,xref:'paper',yref:'paper',
+    text:'h('+t.toFixed(2)+') ≈ '+fmt(hNum,4),
+    showarrow:false,xanchor:'right',yanchor:'top',
+    bgcolor:'rgba(255,255,255,.9)',bordercolor:'#d1d5db',borderwidth:1,borderpad:4,
+    font:{size:12,color:'#0f766e'}
+  }];
+  Plotly.react('plotProd',[
+    {x:tg,y:prodPos,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(15,118,110,.3)',hoverinfo:'skip'},
+    {x:tg,y:prodNeg,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(239,68,68,.3)',hoverinfo:'skip'},
+    {x:tg,y:prod,type:'scatter',mode:'lines',line:{color:'#0f766e',width:2.8},connectgaps:false,
+     hovertemplate:'τ=%{x:.3f}<br>product=%{y:.5f}<extra>f·g</extra>'}
+  ],layout,CFG);
+}
+
+/* ── Draw h(t) ── */
+function drawH(){
+  var ex=EX[ST.exId], t=ST.t;
+  var hExact=CURVE.hExact, tArr=CURVE.tArr;
+  var hNow=t<1e-9?0:quadrature(function(tau){
+    var p=ST.p, fv=ex.f(tau,p), gv=ex.g(t-tau,p);
+    return (isFinite(fv)&&isFinite(gv))?fv*gv:0;
+  },0,t,60);
+  var hNowExact=ex.h(t,ST.p);
+  var yr=yRange([hExact,[hNow]], 0.5);
+  /* always include zero */
+  if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
+  var layout=lay('$t$','$h(t)$',{height:255});
+  layout.yaxis.range=yr;
+  layout.showlegend=true;
+  layout.legend={x:.02,y:.98,bgcolor:'rgba(255,255,255,.88)',bordercolor:'#d1d5db',borderwidth:1,font:{size:10}};
+  layout.shapes=[{type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],
+    line:{color:'rgba(37,99,235,.4)',width:1.5,dash:'dot'}}];
+  Plotly.react('plotH',[
+    {x:tArr,y:hExact,type:'scatter',mode:'lines',name:'Exact h(t)',
+     line:{color:'#7c3aed',width:2.8},connectgaps:false,
+     hovertemplate:'t=%{x:.3f}<br>h=%{y:.5f}<extra>Exact h(t)</extra>'},
+    {x:[t],y:[hNow],type:'scatter',mode:'markers',name:'Numerical (current t)',
+     marker:{color:'#2563eb',size:12,symbol:'circle',line:{color:'#1e40af',width:2.5}},
+     hovertemplate:'t='+t.toFixed(3)+'<br>h≈'+fmt(hNow,5)+'<extra>numerical</extra>'}
+  ],layout,CFG);
+  document.getElementById('hvt').textContent    = t.toFixed(3);
+  document.getElementById('hvht').textContent   = fmt(hNow,5);
+  document.getElementById('hvexact').textContent= isFinite(hNowExact)?fmt(hNowExact,5):'undef.';
+  if(isFinite(hNowExact)&&Math.abs(hNowExact)>1e-9){
+    var err=Math.abs((hNow-hNowExact)/hNowExact);
+    document.getElementById('hverr').textContent= err<1e-4?err.toExponential(2):err.toFixed(4);
+  } else {
+    document.getElementById('hverr').textContent='N/A';
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   Formula box
+═══════════════════════════════════════════════════ */
+var fmPending=false;
+function updateFormula(){
+  var ex=EX[ST.exId];
+  var html=
+    '<div style="text-align:center">\\[ (f*g)(t) \\;=\\; \\int_0^t '+
+    ex.lf+'\\cdot '+ex.lg+'\\big|_{\\tau}\\,d\\tau \\;=\\; '+ex.lh+' \\]</div>'+
+    '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+ex.desc+'</div>';
+  var box=document.getElementById('formulaBox');
+  box.innerHTML=html;
+  if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
+    fmPending=true;
+    MathJax.typesetPromise([box]).then(function(){fmPending=false;}).catch(function(){fmPending=false;});
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   Master redraw
+═══════════════════════════════════════════════════ */
+var pending=false;
+function redrawAll(){
+  if(pending)return; pending=true;
+  requestAnimationFrame(function(){
+    pending=false;
+    drawFG(); drawProd(); drawH(); updateFormula();
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   t input
+═══════════════════════════════════════════════════ */
+document.getElementById('tNum').addEventListener('change',function(){
+  ST.t=clamp(parseFloat(this.value)||0,0,ST.tMax);
+  this.value=ST.t;
+  redrawAll();
+});
+document.getElementById('tNum').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){e.preventDefault();this.dispatchEvent(new Event('change'));}
+});
+
+/* ═══════════════════════════════════════════════════
+   tMax input
+═══════════════════════════════════════════════════ */
+function syncTMax(v){
+  v=clamp(parseFloat(v)||8,2,20);
+  ST.tMax=v;
+  document.getElementById('tmaxNum').value=v;
+  if(ST.t>v){ST.t=v;document.getElementById('tNum').value=v;}
+  document.getElementById('tNum').max=v;
+  precompute(); redrawAll();
+}
+document.getElementById('tmaxNum').addEventListener('change',function(){syncTMax(this.value);});
+document.getElementById('tmaxNum').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){e.preventDefault();syncTMax(this.value);}
+});
+
+/* ═══════════════════════════════════════════════════
+   Animation
+═══════════════════════════════════════════════════ */
+function stopAnim(){
+  ST.animating=false;
+  if(animTimer)clearInterval(animTimer);
+  animTimer=null;
+  say('Animation stopped');
+}
+function startAnim(){
+  if(ST.animating)return;
+  if(ST.t>=ST.tMax){ST.t=0;document.getElementById('tNum').value=0;}
+  ST.animating=true;
+  var ms=parseInt(document.getElementById('speedSel').value)||30;
+  var step=ST.tMax/200;
+  animTimer=setInterval(function(){
+    if(!ST.animating){clearInterval(animTimer);return;}
+    ST.t=Math.min(ST.t+step,ST.tMax);
+    document.getElementById('tNum').value=ST.t.toFixed(2);
+    redrawAll();
+    if(ST.t>=ST.tMax){stopAnim();say('Animation complete');}
+  },ms);
+  say('Animation started');
+}
+document.getElementById('btnPlay').addEventListener('click',startAnim);
+document.getElementById('btnStop').addEventListener('click',stopAnim);
+document.getElementById('btnReset').addEventListener('click',function(){
+  stopAnim();
+  ST.t=0;
+  document.getElementById('tNum').value=0;
+  redrawAll();
+  say('Reset to t = 0');
+});
+
+/* ═══════════════════════════════════════════════════
+   Custom LaTeX listbox for example selector
+═══════════════════════════════════════════════════ */
+var CSEL_GROUPS=[
+  {label:'Heaviside Step',          ids:['ua_ub','ua_1']},
+  {label:'Trigonometric',           ids:['sin_1','cos_1','sin_sin','sin_cos']},
+  {label:'Exponential \u00d7 Trig', ids:['ea_sin','ea_cos']},
+  {label:'Exponential',             ids:['ea_eb','ea_ea','ea_1','ea_t']},
+  {label:'Constant / Polynomial',   ids:['11','t1','tt','t2_1','t_t2']}
+];
+var cselCurrent='ua_1';
+
+function cselBuild(){
+  var list=document.getElementById('cselList');
+  list.innerHTML='';
+  CSEL_GROUPS.forEach(function(grp){
+    var gl=document.createElement('div');
+    gl.className='csel-grp'; gl.textContent=grp.label;
+    list.appendChild(gl);
+    grp.ids.forEach(function(id){
+      var opt=document.createElement('div');
+      opt.className='csel-opt';
+      opt.setAttribute('role','option');
+      opt.setAttribute('tabindex','-1');
+      opt.setAttribute('data-id',id);
+      opt.setAttribute('aria-selected',id===cselCurrent?'true':'false');
+      opt.innerHTML=EX[id].dropLatex;
+      list.appendChild(opt);
+    });
+  });
+}
+function cselSetDisplay(id){
+  var d=document.getElementById('cselDisplay');
+  d.innerHTML=EX[id].dropLatex;
+  mj([d]);
+}
+function cselSelect(id){
+  cselCurrent=id;
+  cselSetDisplay(id);
+  document.querySelectorAll('#cselList .csel-opt').forEach(function(el){
+    el.setAttribute('aria-selected',el.getAttribute('data-id')===id?'true':'false');
+  });
+  document.getElementById('exSel').value=id;
+}
+function cselOpen(){
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  list.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+  var sel=list.querySelector('[aria-selected="true"]');
+  if(sel){sel.focus();sel.scrollIntoView({block:'nearest'});}
+}
+function cselClose(){
+  document.getElementById('cselList').classList.remove('open');
+  document.getElementById('cselBtn').setAttribute('aria-expanded','false');
+}
+function cselToggle(){
+  document.getElementById('cselList').classList.contains('open')?cselClose():cselOpen();
+}
+function initCsel(){
+  cselBuild();
+  cselSetDisplay(cselCurrent);
+  mj([document.getElementById('cselList'),document.getElementById('cselDisplay')]);
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  btn.addEventListener('click',function(e){e.stopPropagation();cselToggle();});
+  btn.addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();cselToggle();}
+    if(e.key==='Escape')cselClose();
+    if(e.key==='ArrowDown'){e.preventDefault();cselOpen();}
+  });
+  list.addEventListener('click',function(e){
+    var opt=e.target.closest('.csel-opt');
+    if(!opt)return;
+    cselSelect(opt.getAttribute('data-id'));
+    cselClose(); btn.focus();
+    switchEx(opt.getAttribute('data-id'));
+  });
+  list.addEventListener('keydown',function(e){
+    var opts=Array.from(list.querySelectorAll('.csel-opt'));
+    var idx=opts.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'){e.preventDefault();if(idx<opts.length-1)opts[idx+1].focus();}
+    else if(e.key==='ArrowUp'){e.preventDefault();if(idx>0)opts[idx-1].focus();else{cselClose();btn.focus();}}
+    else if(e.key==='Enter'||e.key===' '){
+      e.preventDefault();
+      var f=document.activeElement;
+      if(f&&f.dataset&&f.dataset.id){cselSelect(f.dataset.id);cselClose();btn.focus();switchEx(f.dataset.id);}
+    }
+    else if(e.key==='Escape'||e.key==='Tab'){cselClose();if(e.key==='Escape')btn.focus();}
+  });
+  document.addEventListener('click',function(e){
+    if(!document.getElementById('cselWrap').contains(e.target))cselClose();
+  });
+}
+
+function switchEx(id){
+  stopAnim();
+  if(!EX[id])return;
+  ST.exId=id; ST.t=0;
+  resetParams(id);
+  buildParams(id);
+  var dT=EX[id].tMax;
+  ST.tMax=dT;
+  document.getElementById('tNum').value=0;
+  document.getElementById('tNum').max=dT;
+  document.getElementById('tmaxNum').value=dT;
+  precompute(); redrawAll();
+  say('Loaded: '+id);
+}
+
+/* ═══════════════════════════════════════════════════
+   Init
+═══════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded',function(){
+  resetParams('ua_1');
+  buildParams('ua_1');
+  ST.exId='ua_1';
+  ST.tMax=EX['ua_1'].tMax;
+  document.getElementById('tmaxNum').value=ST.tMax;
+  document.getElementById('tNum').max=ST.tMax;
+
+  function init(){
+    if(window.MathJax&&MathJax.typesetPromise){
+      MathJax.startup.promise.then(function(){
+        MathJax.typesetPromise().then(function(){
+          initCsel();
+          precompute();
+          redrawAll();
+        }).catch(function(){initCsel();precompute();redrawAll();});
+      }).catch(function(){initCsel();precompute();redrawAll();});
+    } else {
+      setTimeout(init,100);
+    }
+  }
+  init();
+});
+</script>
+</body>
+</html>
