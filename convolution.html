@@ -141,7 +141,6 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 }
 .cfield input[type=number]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
 
-/* animate buttons — removed from cbar; now in dedicated .abar row */
 /* animation row */
 .abar{
   display:flex;align-items:center;justify-content:center;
@@ -201,7 +200,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .phdr mjx-container{font-size:1.05em !important;vertical-align:middle;}
 .pdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .pplot{height:220px;}
-.pplot-wide{height:220px;}   /* same as top plots */
+.pplot-wide{height:220px;}
 
 /* -- legend chips ----------------------- */
 .chips{display:flex;gap:.4rem;padding:.3rem .75rem;
@@ -383,13 +382,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
   <!-- Prominent animation controls -->
   <div class="abar" role="group" aria-label="Animation controls">
     <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play animation">
-      <span aria-hidden="true">?</span> Play
+      <span aria-hidden="true">&#9654;</span> Play
     </button>
     <button class="abtn abtn-stop"  id="btnStop"  type="button" aria-label="Stop animation">
-      <span aria-hidden="true">?</span> Stop
+      <span aria-hidden="true">&#9632;</span> Stop
     </button>
     <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset to t = 0">
-      <span aria-hidden="true">?</span> Reset
+      <span aria-hidden="true">&#8635;</span> Reset
     </button>
     <div class="abar-speed">
       <label class="speed-lbl" for="speedSel">Speed</label>
@@ -414,7 +413,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     </div>
   </div>
 
-  <!-- 3-panel plots: [f(t) & g(t-t)] | [integrand]  /  [h(t) full-width] -->
+  <!-- 3-panel plots -->
   <div class="pgrid3" role="region" aria-label="Convolution visualization plots">
 
     <!-- Top-left: f(t) and g(t-t) overlaid -->
@@ -439,7 +438,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
            aria-label="Product of f and g; shaded area equals h(t)"></div>
     </div>
 
-    <!-- Bottom: h(t) full-width, taller -->
+    <!-- Bottom: h(t) centered at half-width -->
     <div class="pwrap pwrap-full">
       <div class="phdr">
         <span class="pdot" style="background:var(--ch)" aria-hidden="true"></span>
@@ -499,10 +498,6 @@ function quadrature(fn,a,b,nsub){
 
 /* ---------------------------------------------------
    Example Registry
-   f(t,p)   — f as function of t
-   gt(t,t,p)— g(t-t) written explicitly as function of t
-              returns null outside [0,t] where it is zero
-   h(t,p)   — exact closed-form convolution
 --------------------------------------------------- */
 var EX = {
 
@@ -852,7 +847,6 @@ function lay(xt,yt,extra){
   return l;
 }
 
-/* compute a nice y-axis range from a set of value arrays, with padding */
 function yRange(arrays, minSpan) {
   var lo=Infinity, hi=-Infinity;
   arrays.forEach(function(arr){
@@ -869,7 +863,6 @@ function yRange(arrays, minSpan) {
   return [lo-pad, hi+pad];
 }
 
-/* helper: tau grid */
 function tauGrid(){
   return linspace(0, ST.tMax, 400);
 }
@@ -877,22 +870,16 @@ function tauGrid(){
 /* -- Draw f(t) and g(t-t) overlaid -- */
 function drawFG(){
   var ex=EX[ST.exId], tg=tauGrid(), p=ST.p, t=ST.t;
-
-  /* f(t) over full domain for the fixed blue curve */
   var fy_full=tg.map(function(tau){
-    /* show f over full [0,tMax] so students see the whole function */
     var v=ex.ft(tau,ST.tMax,p); return v;
   });
-  /* f(t) and g(t-t) on [0,t] for overlap shading */
   var fy=tg.map(function(tau){return ex.ft(tau,t,p);});
   var gy=tg.map(function(tau){return ex.gt(tau,t,p);});
-
   var overlapY=tg.map(function(tau,i){
     var fv=fy[i], gv=gy[i];
     if(fv===null||gv===null)return null;
     return Math.min(Math.abs(fv),Math.abs(gv))*(fv>=0&&gv>=0?1:fv<0&&gv<0?-1:0);
   });
-
   var yr=yRange([fy_full,gy], 0.5);
   var layout=lay('$\\tau$','');
   layout.yaxis.range=yr;
@@ -900,10 +887,8 @@ function drawFG(){
   layout.legend={orientation:'h',x:0,y:-0.22,font:{size:10},
     bgcolor:'rgba(255,255,255,.88)',bordercolor:'#d1d5db',borderwidth:1};
   layout.shapes=[
-    /* overlap region background */
     {type:'rect',x0:0,x1:t,y0:yr[0],y1:yr[1],
      fillcolor:'rgba(124,58,237,.06)',line:{width:0}},
-    /* vertical marker at current t */
     {type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],
      line:{color:'rgba(100,100,100,.45)',width:1.5,dash:'dot'}}
   ];
@@ -913,16 +898,12 @@ function drawFG(){
     font:{size:10,color:'#555'},bgcolor:'rgba(255,255,255,.8)'
   }];
   layout.margin={t:8,r:12,b:60,l:48};
-
   Plotly.react('plotFG',[
-    /* overlap shading */
     {x:tg,y:overlapY,type:'scatter',mode:'none',fill:'tozeroy',
      fillcolor:'rgba(124,58,237,.18)',hoverinfo:'skip',showlegend:false},
-    /* g(t-t) — behind f */
     {x:tg,y:gy,type:'scatter',mode:'lines',name:'g(t\u2212\u03c4)',
      line:{color:'#c2410c',width:2.5},connectgaps:false,
      hovertemplate:'\u03c4=%{x:.3f}<br>g(t\u2212\u03c4)=%{y:.4f}<extra>g(t\u2212\u03c4)</extra>'},
-    /* f(t) — on top, full domain */
     {x:tg,y:fy_full,type:'scatter',mode:'lines',name:'f(\u03c4)',
      line:{color:'#1d4ed8',width:2.5},connectgaps:false,
      hovertemplate:'\u03c4=%{x:.3f}<br>f(\u03c4)=%{y:.4f}<extra>f(\u03c4)</extra>'}
@@ -940,7 +921,6 @@ function drawProd(){
   });
   var prodPos=prod.map(function(v){return v!=null?Math.max(v,0):null;});
   var prodNeg=prod.map(function(v){return v!=null?Math.min(v,0):null;});
-  /* use exact closed-form formula for annotation */
   var hExact=ex.h(t,p);
   var yr=yRange([prod], 0.5);
   if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
@@ -965,11 +945,11 @@ function drawProd(){
   ],layout,CFG);
 }
 
-/* -- Draw h(t) — uses exact closed-form formula throughout -- */
+/* -- Draw h(t) -- */
 function drawH(){
   var ex=EX[ST.exId], t=ST.t, p=ST.p;
   var hExact=CURVE.hExact, tArr=CURVE.tArr;
-  var hNow=ex.h(t,p);   /* exact formula at current t */
+  var hNow=ex.h(t,p);
   var yr=yRange([hExact,[hNow]], 0.5);
   if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
   var layout=lay('$t$','$h(t)$',{height:215});
@@ -986,7 +966,6 @@ function drawH(){
      marker:{color:'#2563eb',size:12,symbol:'circle',line:{color:'#1e40af',width:2.5}},
      hovertemplate:'t='+t.toFixed(3)+'<br>h='+fmt(hNow,5)+'<extra>current</extra>'}
   ],layout,CFG);
-  /* readout — all from exact formula */
   document.getElementById('hvt').textContent    = t.toFixed(3);
   document.getElementById('hvht').textContent   = isFinite(hNow)?fmt(hNow,5):'—';
 }
