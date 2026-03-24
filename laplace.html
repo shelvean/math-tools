@@ -640,7 +640,7 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
 
   <footer class="footer" role="contentinfo" style="max-width:1800px;margin:0 auto;padding:1rem 20px;">
     &copy; Shelvean Kapita. All code released under the MIT License. Last Modified: March 9, 2026<br>
-    <strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/" style="color:var(--link);">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu" style="color:var(--link);">kapita@tamu.edu</a>.
+    <strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/" style="color:var(--link);">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="/cdn-cgi/l/email-protection#cca7adbca5b8ad8cb8ada1b9e2a9a8b9" style="color:var(--link);"><span class="__cf_email__" data-cfemail="adc6ccddc4d9ccedd9ccc0d883c8c9d8">[email&#160;protected]</span></a>.
   </footer>
 
 </main>
@@ -649,7 +649,7 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
   <span aria-hidden="true">&#9681;</span>
 </button>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 /* ═══════════════════════════════════════════════════
    Utilities
 ═══════════════════════════════════════════════════ */
@@ -1137,7 +1137,14 @@ function computeData(N) {
   N = N||700;
   var fn = FUNCS[ST.id], s = ST.s, T = ST.T;
   var tArr = linspace(0, T, N);
-  var dt   = tArr[1]-tArr[0];
+
+  /* ── Integrand function used by quadrature ── */
+  var integrand = function(t) {
+    var fv = fn.f(t, ST.p);
+    return (isFinite(fv) && isFinite(fv * Math.exp(-s*t))) ? fv * Math.exp(-s*t) : 0;
+  };
+
+  /* ── Plot arrays (visual only — sample grid is fine) ── */
   var fArr=[], wArr=[], gArr=[];
   for (var i=0;i<N;i++) {
     var t=tArr[i], fv=fn.f(t,ST.p), w=Math.exp(-s*t), g=fv*w;
@@ -1147,15 +1154,45 @@ function computeData(N) {
   }
   var gPos=gArr.map(function(v){return Math.max(v,0);});
   var gNeg=gArr.map(function(v){return Math.min(v,0);});
-  var cum=[0], rP=0, rN=0, rS=0;
+
+  /* ── Convergence curve: segment-by-segment GL quadrature ──
+     Each adjacent pair of sample points is integrated with 2 GL
+     sub-intervals (= 20 evaluations).  Accumulating gives A(T_i)
+     with spectral accuracy on each tiny panel.                 ── */
+  var cum=[0], runSum=0;
   for (var i=1;i<N;i++) {
-    var avg=(gArr[i-1]+gArr[i])*dt/2;
-    rS+=avg; if(avg>=0)rP+=avg; else rN+=Math.abs(avg); cum.push(rS);
+    runSum += quadrature(integrand, tArr[i-1], tArr[i], 2);
+    cum.push(runSum);
   }
+
+  /* ── Area-bar values: integrate to T_eff, not just T ──
+     The integrand decays as e^{-s_eff*t}. We probe it to find
+     T_eff where |integrand| < 1e-8 * peak, then integrate there.
+     This eliminates truncation error as the dominant source. ── */
+  var T_eff = T;
+  var peakAbs = 0;
+  for (var pi=0; pi<50; pi++) {
+    var pv = Math.abs(integrand(pi * T / 49));
+    if (pv > peakAbs) peakAbs = pv;
+  }
+  if (peakAbs > 0) {
+    /* Probe beyond T in steps of T until integrand is tiny or we hit 300 */
+    var probe = T;
+    while (probe < 300) {
+      probe += Math.max(1, T * 0.5);
+      if (Math.abs(integrand(probe)) < peakAbs * 1e-8) { T_eff = probe; break; }
+      T_eff = probe;
+    }
+  }
+  var nsub = Math.max(80, Math.ceil(T_eff * 12));
+  var netArea = quadrature(integrand, 0, T_eff, nsub);
+  var posArea = quadrature(function(t){ return Math.max(integrand(t), 0); }, 0, T_eff, nsub);
+  var negArea = quadrature(function(t){ return Math.max(-integrand(t), 0); }, 0, T_eff, nsub);
+
   return {
     tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
     gPos:gPos, gNeg:gNeg, cum:cum,
-    posArea:rP, negArea:rN, netArea:rP-rN,
+    posArea:posArea, negArea:negArea, netArea:netArea,
     Fs:fn.F(s,ST.p), T:T
   };
 }
