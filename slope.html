@@ -1230,11 +1230,13 @@
         }
 
         var points = [];
-        var MAX_STEPS = 5000;
+        var MAX_STEPS = 20000;
         var TOL = 1e-6;
         var SAFETY = 0.9;
-        var MIN_H = 1e-10;
-        var MAX_H = 0.1;
+        var MIN_H = 1e-12;
+        var MAX_H = 0.5;
+        var yExtent = yMax - yMin;
+        var BLOW_UP = Math.max(1e6, yExtent * 1000);
 
         function integrate(direction) {
           var dir = direction;
@@ -1242,23 +1244,31 @@
 
           var t = t0;
           var y = y0;
-          var h = dir * 0.005;
+          var h = dir * 0.01;
           var steps = 0;
 
-          if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) {
-            localPoints.push({t: t, y: y});
-          }
+          localPoints.push({t: t, y: y});
 
-          while (steps < MAX_STEPS/2) {
+          var tEnd = dir > 0 ? tMax : tMin;
+
+          while (steps < MAX_STEPS / 2) {
+            // Don't step past the domain boundary
+            if (dir > 0 && t + h > tEnd) h = tEnd - t;
+            if (dir < 0 && t + h < tEnd) h = tEnd - t;
+
+            if (Math.abs(h) < MIN_H) break;
+
             var stepAccepted = false;
             var attempt = 0;
             var currentH = h;
 
-            while (!stepAccepted && attempt < 10) {
+            while (!stepAccepted && attempt < 20) {
               var result = dormandPrinceStep(t, y, currentH, f);
 
               if (!isFinite(result.yNext) || result.error === Infinity) {
-                break;
+                currentH *= 0.5;
+                attempt++;
+                continue;
               }
 
               var errRatio = result.error / TOL;
@@ -1269,7 +1279,7 @@
                 hOpt = currentH * 2;
               }
 
-              hOpt = Math.max(MIN_H, Math.min(MAX_H, Math.abs(hOpt))) * Math.sign(hOpt);
+              hOpt = Math.max(MIN_H, Math.min(MAX_H, Math.abs(hOpt))) * dir;
 
               if (errRatio <= 1) {
                 t = t + currentH;
@@ -1277,55 +1287,22 @@
                 h = hOpt;
                 stepAccepted = true;
 
-                if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) {
-                  localPoints.push({t: t, y: y});
-                }
+                localPoints.push({t: t, y: y});
               } else {
                 currentH = hOpt;
                 attempt++;
               }
             }
 
-            if (!stepAccepted) {
-              break;
-            }
+            if (!stepAccepted) break;
 
-            var margin = 0.5;
-            if (t < tMin - margin || t > tMax + margin ||
-                y < yMin - margin || y > yMax + margin) {
-              break;
-            }
+            // Stop if solution blows up
+            if (Math.abs(y) > BLOW_UP) break;
 
-            if (Math.abs(y) > 1e8 || Math.abs(t) > 1e8) {
-              break;
-            }
-
-            if (Math.abs(y) < 1e-4) {
-              if (localPoints.length >= 2) {
-                var lastY = localPoints[localPoints.length - 2].y;
-                if (lastY * y < 0) {
-                  break;
-                }
-              }
-            }
-
-            if (localPoints.length > 10) {
-              var recent = localPoints.slice(-5);
-              var tVals = recent.map(function(p) { return p.t; });
-              var yVals = recent.map(function(p) { return p.y; });
-              var tRange = Math.max.apply(null, tVals) - Math.min.apply(null, tVals);
-              var yRange = Math.max.apply(null, yVals) - Math.min.apply(null, yVals);
-
-              if (tRange < 1e-3 && yRange < 1e-3) {
-                break;
-              }
-            }
+            // Stop if we've reached the domain boundary
+            if ((dir > 0 && t >= tMax) || (dir < 0 && t <= tMin)) break;
 
             steps++;
-
-            if (Math.abs(h) < MIN_H * 10) {
-              break;
-            }
           }
 
           return localPoints;
@@ -1338,9 +1315,10 @@
         if (allPoints.length < 5 && allPoints.length > 0) {
           var simplePoints = [];
           var simpleStep = 0.001;
+          var maxSimple = Math.ceil((tMax - tMin) / simpleStep);
 
           var t = t0, y = y0;
-          for (var i = 0; i < 1000; i++) {
+          for (var i = 0; i < maxSimple; i++) {
             try {
               var slope = f(t, y);
               if (!isFinite(slope)) break;
@@ -1348,11 +1326,9 @@
               t += simpleStep;
               y += simpleStep * slope;
 
-              if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) {
-                simplePoints.push({t: t, y: y});
-              }
+              simplePoints.push({t: t, y: y});
 
-              if (Math.abs(t - t0) > 10 || Math.abs(y) > 1e6) break;
+              if (t >= tMax || Math.abs(y) > BLOW_UP) break;
             } catch(e) {
               break;
             }
@@ -1360,7 +1336,7 @@
 
           t = t0; y = y0;
           var backwardSimple = [];
-          for (var i = 0; i < 1000; i++) {
+          for (var i = 0; i < maxSimple; i++) {
             try {
               var slope = f(t, y);
               if (!isFinite(slope)) break;
@@ -1368,11 +1344,9 @@
               t -= simpleStep;
               y -= simpleStep * slope;
 
-              if (t >= tMin && t <= tMax && y >= yMin && y <= yMax) {
-                backwardSimple.push({t: t, y: y});
-              }
+              backwardSimple.push({t: t, y: y});
 
-              if (Math.abs(t - t0) > 10 || Math.abs(y) > 1e6) break;
+              if (t <= tMin || Math.abs(y) > BLOW_UP) break;
             } catch(e) {
               break;
             }
