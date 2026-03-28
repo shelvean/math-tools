@@ -379,6 +379,7 @@
             <select id="numMasses" aria-label="Select number of masses">
               <option value="2">2 Masses</option>
               <option value="3" selected>3 Masses</option>
+              <option value="4">4 Masses</option>
             </select>
           </div>
           <div class="control-group">
@@ -423,6 +424,13 @@
             </div>
             <input type="number" id="x3Init" value="0.0" step="0.05" aria-label="Initial displacement of mass 3 in meters">
           </div>
+          <div class="control-group mass4-only">
+            <label for="x4Init">x4(0) [m]:</label>
+            <div class="slider-container">
+              <input type="range" id="x4InitSlider" min="-2" max="2" step="0.05" value="0.0" aria-label="Initial displacement of mass 4 slider">
+            </div>
+            <input type="number" id="x4Init" value="0.0" step="0.05" aria-label="Initial displacement of mass 4 in meters">
+          </div>
           <div class="control-group">
             <label for="endTime">End Time (T) [s]:</label>
             <div class="slider-container">
@@ -450,6 +458,10 @@
         <div class="graph-container mass3-only" id="graphContainer3">
           <h2 style="color: #15803d;">x3(t) -- Mass 3</h2>
           <canvas id="graphCanvas3" width="420" height="160" role="img" aria-label="Graph showing displacement versus time for mass 3"></canvas>
+        </div>
+        <div class="graph-container mass4-only" id="graphContainer4">
+          <h2 style="color: #d97706;">x4(t) -- Mass 4</h2>
+          <canvas id="graphCanvas4" width="420" height="160" role="img" aria-label="Graph showing displacement versus time for mass 4"></canvas>
         </div>
       </div>
 
@@ -521,7 +533,8 @@
     const graphCanvases = [
       document.getElementById('graphCanvas1'),
       document.getElementById('graphCanvas2'),
-      document.getElementById('graphCanvas3')
+      document.getElementById('graphCanvas3'),
+      document.getElementById('graphCanvas4')
     ];
     const graphCtxs = graphCanvases.map(c => c.getContext('2d'));
 
@@ -534,7 +547,7 @@
     const SPRING_RADIUS = 15;
     const DISP_SCALE = 50;
     const CENTER_Y = CANVAS_H / 2;
-    const MASS_COLORS = ['#b91c1c', '#1d4ed8', '#15803d'];
+    const MASS_COLORS = ['#b91c1c', '#1d4ed8', '#15803d', '#d97706'];
     const dt = 0.01;
     let graphMaxTime = 60;
     const stepsPerFrame = 10;
@@ -542,12 +555,12 @@
     // ── Simulation state ─────────────────────────────────────────────────
     let numMasses = 3;
     let m = 4, k = 16, c = 0.0;
-    let x  = [1.0, -1.0, 0.0];
-    let vx = [0, 0, 0];
-    let x0 = [1.0, -1.0, 0.0];
+    let x  = [1.0, -1.0, 0.0, 0.0];
+    let vx = [0, 0, 0, 0];
+    let x0 = [1.0, -1.0, 0.0, 0.0];
     let t = 0;
     let isRunning = true, isPaused = false;
-    const graphData = [[], [], []];
+    const graphData = [[], [], [], []];
     let alertBox = null;
 
     // ── Layout (recomputed when numMasses changes) ───────────────────────
@@ -589,12 +602,16 @@
       linkSlider('x1InitSlider',         'x1Init',         updateParams);
       linkSlider('x2InitSlider',         'x2Init',         updateParams);
       linkSlider('x3InitSlider',         'x3Init',         updateParams);
+      linkSlider('x4InitSlider',         'x4Init',         updateParams);
       linkSlider('endTimeSlider',        'endTime',         updateParams);
 
       document.getElementById('numMasses').addEventListener('change', function() {
         numMasses = parseInt(this.value);
         document.querySelectorAll('.mass3-only').forEach(el => {
-          el.style.display = (numMasses === 3) ? '' : 'none';
+          el.style.display = (numMasses >= 3) ? '' : 'none';
+        });
+        document.querySelectorAll('.mass4-only').forEach(el => {
+          el.style.display = (numMasses >= 4) ? '' : 'none';
         });
         needsRedrawSimBg = true;
         computeLayout();
@@ -611,6 +628,7 @@
       x0[0] = parseFloat(document.getElementById('x1Init').value) || 0;
       x0[1] = parseFloat(document.getElementById('x2Init').value) || 0;
       x0[2] = parseFloat(document.getElementById('x3Init').value) || 0;
+      x0[3] = parseFloat(document.getElementById('x4Init').value) || 0;
       graphMaxTime = Math.min(parseFloat(document.getElementById('endTime').value) || 60, 600);
       needsRedrawGraphBg = true;
       updateEquationDisplay();
@@ -623,8 +641,10 @@
       let latex;
       if (numMasses === 2) {
         latex = '\\begin{cases} ' + mStr + '\\ddot{x}_1 + ' + cStr + '\\dot{x}_1 + ' + kStr + '(2x_1 - x_2) = 0 \\\\ ' + mStr + '\\ddot{x}_2 + ' + cStr + '\\dot{x}_2 + ' + kStr + '(2x_2 - x_1) = 0 \\end{cases}';
-      } else {
+      } else if (numMasses === 3) {
         latex = '\\begin{cases} ' + mStr + '\\ddot{x}_1 + ' + cStr + '\\dot{x}_1 + ' + kStr + '(2x_1 - x_2) = 0 \\\\ ' + mStr + '\\ddot{x}_2 + ' + cStr + '\\dot{x}_2 + ' + kStr + '(-x_1 + 2x_2 - x_3) = 0 \\\\ ' + mStr + '\\ddot{x}_3 + ' + cStr + '\\dot{x}_3 + ' + kStr + '(2x_3 - x_2) = 0 \\end{cases}';
+      } else {
+        latex = '\\begin{cases} ' + mStr + '\\ddot{x}_1 + ' + cStr + '\\dot{x}_1 + ' + kStr + '(2x_1 - x_2) = 0 \\\\ ' + mStr + '\\ddot{x}_2 + ' + cStr + '\\dot{x}_2 + ' + kStr + '(-x_1 + 2x_2 - x_3) = 0 \\\\ ' + mStr + '\\ddot{x}_3 + ' + cStr + '\\dot{x}_3 + ' + kStr + '(-x_2 + 2x_3 - x_4) = 0 \\\\ ' + mStr + '\\ddot{x}_4 + ' + cStr + '\\dot{x}_4 + ' + kStr + '(2x_4 - x_3) = 0 \\end{cases}';
       }
       eq.innerHTML = '\\[' + latex + '\\]';
       if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
@@ -1005,7 +1025,7 @@
     function resetSimulation() {
       updateParams();
       computeLayout();
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         x[i]  = x0[i];
         vx[i] = 0;
       }
@@ -1013,6 +1033,7 @@
       graphData[0].length = 0;
       graphData[1].length = 0;
       graphData[2].length = 0;
+      graphData[3].length = 0;
       for (let i = 0; i < numMasses; i++) graphData[i].push({ t, y: x[i] });
       isRunning = true;
       isPaused = false;
@@ -1042,9 +1063,12 @@
 
     // ── Initialisation ───────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function() {
-      // Show/hide mass-3 controls based on default selection
+      // Show/hide mass-3 and mass-4 controls based on default selection
       document.querySelectorAll('.mass3-only').forEach(el => {
-        el.style.display = (numMasses === 3) ? '' : 'none';
+        el.style.display = (numMasses >= 3) ? '' : 'none';
+      });
+      document.querySelectorAll('.mass4-only').forEach(el => {
+        el.style.display = (numMasses >= 4) ? '' : 'none';
       });
 
       setupInputLinks();
