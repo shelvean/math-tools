@@ -350,7 +350,9 @@
         <p>This interactive tool visualizes a coupled horizontal mass-spring-damper system. Identical masses are connected by identical springs to each other and to fixed walls on either side.</p>
         <p style="text-align:center;">\[ M\ddot{\mathbf{x}} + C\dot{\mathbf{x}} + K\mathbf{x} = \mathbf{0} \]</p>
         <p>where \(K\) is the tridiagonal stiffness matrix coupling the masses through the springs.</p>
-        <h2>Normal Modes</h2>
+        <h2>Single Mass (Resonance)</h2>
+        <p>With 1 mass connected to both walls by springs of constant \(k\), the equation of motion is \(m\ddot{x} + c\dot{x} + 2kx = 0\). The natural frequency is \(\omega_0 = \sqrt{2k/m}\), and the mass oscillates at this <strong>resonance frequency</strong>. With the defaults (\(m=4,\; k=16\)), \(\omega_0 = 2\sqrt{2} \approx 2.83\) rad/s.</p>
+        <h2>Normal Modes (2 and 3 Masses)</h2>
         <p>The coupled system exhibits <em>N</em> distinct normal modes of oscillation. For 2 masses:</p>
         <ul>
           <li><strong>In-phase mode</strong> (\(\omega_1 = \sqrt{k/m}\)): both masses move together</li>
@@ -377,8 +379,9 @@
           <div class="control-group">
             <label for="numMasses">Number of Masses:</label>
             <select id="numMasses" aria-label="Select number of masses">
+              <option value="1" selected>1 Mass</option>
               <option value="2">2 Masses</option>
-              <option value="3" selected>3 Masses</option>
+              <option value="3">3 Masses</option>
             </select>
           </div>
           <div class="control-group">
@@ -409,7 +412,7 @@
             </div>
             <input type="number" id="x1Init" value="1.0" step="0.05" aria-label="Initial displacement of mass 1 in meters">
           </div>
-          <div class="control-group">
+          <div class="control-group mass2-plus">
             <label for="x2Init">x2(0) [m]:</label>
             <div class="slider-container">
               <input type="range" id="x2InitSlider" min="-2" max="2" step="0.05" value="-1.0" aria-label="Initial displacement of mass 2 slider">
@@ -443,7 +446,7 @@
           <h2 style="color: #b91c1c;">x1(t) -- Mass 1</h2>
           <canvas id="graphCanvas1" width="420" height="160" role="img" aria-label="Graph showing displacement versus time for mass 1"></canvas>
         </div>
-        <div class="graph-container" id="graphContainer2">
+        <div class="graph-container mass2-plus" id="graphContainer2">
           <h2 style="color: #1d4ed8;">x2(t) -- Mass 2</h2>
           <canvas id="graphCanvas2" width="420" height="160" role="img" aria-label="Graph showing displacement versus time for mass 2"></canvas>
         </div>
@@ -459,7 +462,8 @@
         <p>This interactive tool visualizes a coupled horizontal mass-spring-damper system. Identical masses are connected by identical springs to each other and to fixed walls on either side.</p>
         <p style="text-align:center;">\[ M\ddot{\mathbf{x}} + C\dot{\mathbf{x}} + K\mathbf{x} = \mathbf{0} \]</p>
         <p>where \(K\) is the tridiagonal stiffness matrix coupling the masses through the springs.</p>
-        <p><strong>Normal modes:</strong> The coupled system exhibits <em>N</em> distinct normal modes of oscillation. For 2 masses:</p>
+        <p><strong>Single mass (resonance):</strong> With 1 mass, the natural frequency is \(\omega_0 = \sqrt{2k/m}\). The mass oscillates at this resonance frequency. With the defaults, \(\omega_0 = 2\sqrt{2}\approx 2.83\) rad/s.</p>
+        <p><strong>Normal modes:</strong> With 2+ masses, the coupled system exhibits <em>N</em> distinct normal modes. For 2 masses:</p>
         <ul style="margin-left:1.5rem; line-height:1.6; color: var(--text-secondary); font-size: 0.95rem;">
           <li><strong>In-phase mode</strong> (\(\omega_1 = \sqrt{k/m}\)): both masses move together</li>
           <li><strong>Out-of-phase mode</strong> (\(\omega_2 = \sqrt{3k/m}\)): masses move in opposite directions</li>
@@ -540,11 +544,11 @@
     const stepsPerFrame = 10;
 
     // ── Simulation state ─────────────────────────────────────────────────
-    let numMasses = 3;
+    let numMasses = 1;
     let m = 4, k = 16, c = 0.0;
-    let x  = [1.0, -1.0, 0.0];
+    let x  = [1.0, 0, 0];
     let vx = [0, 0, 0];
-    let x0 = [1.0, -1.0, 0.0];
+    let x0 = [1.0, 0, 0];
     let t = 0;
     let isRunning = true, isPaused = false;
     const graphData = [[], [], []];
@@ -593,8 +597,11 @@
 
       document.getElementById('numMasses').addEventListener('change', function() {
         numMasses = parseInt(this.value);
+        document.querySelectorAll('.mass2-plus').forEach(el => {
+          el.style.display = (numMasses >= 2) ? '' : 'none';
+        });
         document.querySelectorAll('.mass3-only').forEach(el => {
-          el.style.display = (numMasses === 3) ? '' : 'none';
+          el.style.display = (numMasses >= 3) ? '' : 'none';
         });
         needsRedrawSimBg = true;
         computeLayout();
@@ -621,7 +628,9 @@
       if (!eq) return;
       const mStr = m.toFixed(1), cStr = c.toFixed(1), kStr = k.toFixed(1);
       let latex;
-      if (numMasses === 2) {
+      if (numMasses === 1) {
+        latex = mStr + '\\ddot{x}_1 + ' + cStr + '\\dot{x}_1 + ' + (2 * k).toFixed(1) + '\\,x_1 = 0';
+      } else if (numMasses === 2) {
         latex = '\\begin{cases} ' + mStr + '\\ddot{x}_1 + ' + cStr + '\\dot{x}_1 + ' + kStr + '(2x_1 - x_2) = 0 \\\\ ' + mStr + '\\ddot{x}_2 + ' + cStr + '\\dot{x}_2 + ' + kStr + '(2x_2 - x_1) = 0 \\end{cases}';
       } else {
         latex = '\\begin{cases} ' + mStr + '\\ddot{x}_1 + ' + cStr + '\\dot{x}_1 + ' + kStr + '(2x_1 - x_2) = 0 \\\\ ' + mStr + '\\ddot{x}_2 + ' + cStr + '\\dot{x}_2 + ' + kStr + '(-x_1 + 2x_2 - x_3) = 0 \\\\ ' + mStr + '\\ddot{x}_3 + ' + cStr + '\\dot{x}_3 + ' + kStr + '(2x_3 - x_2) = 0 \\end{cases}';
@@ -1042,9 +1051,12 @@
 
     // ── Initialisation ───────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function() {
-      // Show/hide mass-3 controls based on default selection
+      // Show/hide mass-2/mass-3 controls based on default selection
+      document.querySelectorAll('.mass2-plus').forEach(el => {
+        el.style.display = (numMasses >= 2) ? '' : 'none';
+      });
       document.querySelectorAll('.mass3-only').forEach(el => {
-        el.style.display = (numMasses === 3) ? '' : 'none';
+        el.style.display = (numMasses >= 3) ? '' : 'none';
       });
 
       setupInputLinks();
