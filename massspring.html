@@ -353,14 +353,11 @@ var simBG=null, graphBG=null, alertBox=null;
 
 /* ── Scale: fit spring + static extension + oscillation in canvas ── */
 function computeScale(){
+  /* Pin static-equilibrium pixel to canvas vertical midpoint */
   var staticExt=(k>0)?m*g/k:0;
-  /* available pixels from support bottom to ground, leaving 10 px margin */
-  var avail=GROUND_Y-SUP_BOT-10;
-  /* needed in metres: rest length + static sag + initial displacement + 0.4 m buffer */
-  var needed=L0+staticExt+Math.max(Math.abs(y0),0.5)+0.4;
-  pxPerM=avail/needed;
-  /* clamp so spring is not absurdly large for small L0 */
-  pxPerM=Math.min(pxPerM,130);
+  var midY=canvas.height/2;           /* 300 px for a 600-px canvas */
+  pxPerM=(midY-SUP_BOT)/(L0+staticExt);
+  pxPerM=Math.min(Math.max(pxPerM,20),200); /* safety clamp */
 }
 
 /* ── Solvers ── */
@@ -440,8 +437,9 @@ function createSimBG(){
 }
 
 function drawSpring(startY,endY){
-  /* ~3.2 coils per metre of rest length; matches 8 coils at default L0=2.5 m */
-  var coils=Math.max(4,Math.min(20,Math.round(3.2*L0)));
+  /* 1 coil per ~25 px of rest-spring pixel length; adapts to any L0/scale */
+  var springPx=L0*pxPerM;
+  var coils=Math.max(4,Math.min(20,Math.round(springPx/25)));
   var total=endY-startY,radius=springRadius,segs=20,pts=[];
   for(var i=0;i<=coils*segs;i++){
     var prog=i/(coils*segs),yp=startY+prog*total,ang=prog*Math.PI*2*coils;
