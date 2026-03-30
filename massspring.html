@@ -160,9 +160,11 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
     </button>
     <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
       <h2>Governing Equation</h2>
-      <p>The simulation models a mass \(m\) on a spring of stiffness \(k\) with viscous damping \(c\), released from initial displacement \(y_0\) and velocity \(v_0\) with no external forcing:</p>
+      <p>The simulation models a mass \(m\) attached to a spring with natural (rest) length \(L_0\) [m] and stiffness \(k\), subject to viscous damping \(c\). Let \(x\) denote the total extension of the spring from the fixed support. The forces acting on the mass are the spring restoring force \(-k(x-L_0)\), viscous damping \(-c\dot{x}\), and gravity \(mg\) (downward). Newton's second law gives the full equation of motion:</p>
+      <div class="defn-box">\[m\ddot{x}+c\dot{x}+k(x-L_0)=mg.\]</div>
+      <p>The static equilibrium extension satisfies \(k(x_{\rm eq}-L_0)=mg\), so \(x_{\rm eq}=L_0+mg/k\). Defining the displacement from static equilibrium \(y=x-x_{\rm eq}\) and noting \(\ddot{y}=\ddot{x}\), the equation reduces to the homogeneous form</p>
       <div class="defn-box">\[m\ddot{y}+c\dot{y}+ky=0,\qquad y(0)=y_0,\quad\dot{y}(0)=v_0.\]</div>
-      <p>The displacement \(y\) is measured from the static equilibrium position (gravity is absorbed into the reference point; changing gravity shifts only the visual equilibrium marker, not the oscillation dynamics).</p>
+      <p>The rest length \(L_0\) does not appear in the reduced equation — it sets the visual scale of the simulation and, together with \(m\), \(g\), and \(k\), determines the equilibrium position shown by the dashed line. Larger \(L_0\) provides more canvas space for large-amplitude oscillations.</p>
 
       <h2>Characteristic Equation and Eigenvalues</h2>
       <p>Substituting \(y=e^{\lambda t}\) yields the characteristic equation \(m\lambda^2+c\lambda+k=0\), with roots</p>
@@ -193,7 +195,8 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 
       <h2>How to Use</h2>
       <ul>
-        <li>Adjust \(m,c,k\) and initial conditions using sliders or the value boxes. The live equation updates automatically.</li>
+        <li>Adjust \(m,c,k,L_0\) and initial conditions using sliders or the value boxes. The live equation updates automatically.</li>
+        <li>Increase \(L_0\) to lengthen the spring and allow larger initial displacements \(y_0\).</li>
         <li>Click <strong>Reset</strong> to restart from the current parameters. Use <strong>Pause/Resume</strong> to freeze the animation.</li>
         <li>Watch the displacement graph to distinguish the three regimes — decaying oscillations (underdamped), smooth exponential decay (critically/overdamped).</li>
         <li>Try \(c=0\) for pure simple harmonic motion, or increase \(c\) until \(c^2=4mk\) for critical damping.</li>
@@ -240,8 +243,15 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
           </div>
           <div class="sl-block">
             <div class="sl-row">
+              <label class="sl-lbl" for="restLength">Rest length \(L_0\) [m]</label>
+              <input type="range" id="restLengthSlider" min="0.5" max="5" step="0.1" value="2.5" aria-label="Spring rest length slider">
+              <input type="number" id="restLength" class="sl-num" value="2.5" step="0.1" min="0.5" aria-label="Spring rest length value">
+            </div>
+          </div>
+          <div class="sl-block">
+            <div class="sl-row">
               <label class="sl-lbl" for="initialDisplacement">Initial displacement \(y_0\) [m]</label>
-              <input type="range" id="initialDisplacementSlider" min="-2" max="2" step="0.05" value="1.5" aria-label="Initial displacement slider">
+              <input type="range" id="initialDisplacementSlider" min="-4" max="4" step="0.05" value="1.5" aria-label="Initial displacement slider">
               <input type="number" id="initialDisplacement" class="sl-num" value="1.5" step="0.05" aria-label="Initial displacement value">
             </div>
           </div>
@@ -257,6 +267,13 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
               <label class="sl-lbl" for="gravity">Gravity \(g\) [m/s²]</label>
               <input type="range" id="gravitySlider" min="0" max="20" step="0.1" value="9.81" aria-label="Gravity slider">
               <input type="number" id="gravity" class="sl-num" value="9.81" step="0.1" aria-label="Gravity value">
+            </div>
+          </div>
+          <div class="sl-block">
+            <div class="sl-row">
+              <label class="sl-lbl" for="endTime">End time \(T\) [s]</label>
+              <input type="range" id="endTimeSlider" min="10" max="300" step="10" value="60" aria-label="End time slider">
+              <input type="number" id="endTime" class="sl-num" value="60" step="10" min="10" aria-label="End time value">
             </div>
           </div>
         </div>
@@ -316,16 +333,35 @@ var ctx=canvas.getContext('2d');
 var graphCanvas=document.getElementById('graphCanvas');
 var graphCtx=graphCanvas.getContext('2d');
 
-var m=4,k=36,c=0.3,y0=1.5,v0=0,g=9.81;
-var y=y0,v=v0,t=0;
-var dt=0.01,graphMaxTime=60;
-var isRunning=true,isPaused=false;
+/* ── Physics state ── */
+var m=4, k=36, c=0.3, y0=1.5, v0=0, g=9.81, L0=2.5;
+var y=y0, v=v0, t=0;
+var dt=0.01, graphMaxTime=60, T=60;
+var isRunning=true, isPaused=false;
 var graphData=[];
-var STIFF=5,firstStep=true,prevState=null,currentState=null;
+var STIFF=5, firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
-var springLength=200,springCoils=8,springRadius=15,ballRadius=20;
+
+/* ── Visual geometry (all in pixels) ── */
+var SUP_BOT=60;           /* y-pixel of support bottom (fixed) */
+var GROUND_Y=545;         /* y-pixel of ground (fixed)         */
+var pxPerM=80;            /* pixels per metre — recomputed at reset */
+var springRadius=15, ballRadius=20;
+/* springCoils is computed dynamically in drawSpring() from L0 */
 var cxCanvas=canvas.width/2;
-var simBG=null,graphBG=null,alertBox=null;
+var simBG=null, graphBG=null, alertBox=null;
+
+/* ── Scale: fit spring + static extension + oscillation in canvas ── */
+function computeScale(){
+  var staticExt=(k>0)?m*g/k:0;
+  /* available pixels from support bottom to ground, leaving 10 px margin */
+  var avail=GROUND_Y-SUP_BOT-10;
+  /* needed in metres: rest length + static sag + initial displacement + 0.4 m buffer */
+  var needed=L0+staticExt+Math.max(Math.abs(y0),0.5)+0.4;
+  pxPerM=avail/needed;
+  /* clamp so spring is not absurdly large for small L0 */
+  pxPerM=Math.min(pxPerM,130);
+}
 
 /* ── Solvers ── */
 function isStiff(c_v){return(c_v*c_v-4*m*k)>STIFF&&(c_v*c_v-4*m*k)>0;}
@@ -349,7 +385,7 @@ function verlet(c_v){
   var ny=y+v*dt+0.5*a*dt*dt;
   var na=(-c_v*v-k*ny)/m;
   var nv=v+0.5*(a+na)*dt;
-  y=isNaN(ny)?y:ny;v=isNaN(nv)?v:nv;
+  y=isNaN(ny)?y:ny; v=isNaN(nv)?v:nv;
 }
 
 function updatePhysics(){
@@ -358,10 +394,18 @@ function updatePhysics(){
   if(isStiff(c_v)){
     if(firstStep){var ns=backwardEuler(currentState,dt,m,c_v,k);prevState=currentState;currentState=ns;firstStep=false;}
     else{var ns2=bdf2(prevState,currentState,dt,m,c_v,k);prevState=currentState;currentState=ns2;}
-    y=currentState[0];v=currentState[1];
+    y=currentState[0]; v=currentState[1];
   }else{verlet(c_v);}
   t+=dt;
-  if(y>4||y<-2.7){isRunning=false;showAlert('Displacement exceeded bounds.');say('Simulation stopped: displacement exceeded maximum.');}
+
+  /* bounds check in pixel space so it scales with L0 */
+  var staticExt=(k>0)?m*g/k:0;
+  var massY=SUP_BOT+(L0+staticExt+y)*pxPerM;
+  if(massY>GROUND_Y+ballRadius||massY<SUP_BOT){
+    isRunning=false;
+    showAlert('Displacement exceeded canvas bounds. Try reducing \u007cy\u2080\u007c or increasing L\u2080.');
+    say('Simulation stopped: displacement exceeded canvas bounds.');
+  }
 }
 
 /* ── Equation display ── */
@@ -372,16 +416,18 @@ function updateEq(){
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
 }
 
-/* ── Sim background ── */
+/* ── Sim background (static structural elements only) ── */
 function createSimBG(){
   simBG=document.createElement('canvas');simBG.width=canvas.width;simBG.height=canvas.height;
   var bg=simBG.getContext('2d');
   var grad=bg.createLinearGradient(0,0,0,canvas.height);
   grad.addColorStop(0,'#E3F2FD');grad.addColorStop(1,'#BBDEFB');
   bg.fillStyle=grad;bg.fillRect(0,0,canvas.width,canvas.height);
+  /* ground */
   bg.fillStyle='#795548';bg.fillRect(0,canvas.height-50,canvas.width,50);
   bg.strokeStyle='#6D4C41';bg.lineWidth=2;
   for(var i=0;i<canvas.width;i+=20){bg.beginPath();bg.moveTo(i,canvas.height-50);bg.lineTo(i,canvas.height);bg.stroke();}
+  /* support block */
   var sw=120,sh=40,sx=cxCanvas-sw/2,sy=20;
   var sg=bg.createLinearGradient(sx,sy,sx,sy+sh);
   sg.addColorStop(0,'#B0B0B0');sg.addColorStop(0.5,'#909090');sg.addColorStop(1,'#707070');
@@ -390,13 +436,13 @@ function createSimBG(){
   bg.fillStyle='#404040';
   for(var j=0;j<3;j++){var hx=sx+20+j*40,hy=sy+sh/2;bg.beginPath();bg.arc(hx,hy,4,0,2*Math.PI);bg.fill();}
   bg.fillStyle='#303030';bg.beginPath();bg.arc(cxCanvas,sy+sh,5,0,2*Math.PI);bg.fill();
-  bg.strokeStyle='rgba(0,0,0,.3)';bg.setLineDash([5,5]);bg.lineWidth=1;
-  bg.beginPath();bg.moveTo(50,sy+sh+springLength);bg.lineTo(canvas.width-50,sy+sh+springLength);bg.stroke();
-  bg.setLineDash([]);
+  /* NOTE: equilibrium dashed line is now drawn dynamically in drawSim() */
 }
 
 function drawSpring(startY,endY){
-  var total=endY-startY,coils=springCoils,radius=springRadius,segs=20,pts=[];
+  /* ~3.2 coils per metre of rest length; matches 8 coils at default L0=2.5 m */
+  var coils=Math.max(4,Math.min(20,Math.round(3.2*L0)));
+  var total=endY-startY,radius=springRadius,segs=20,pts=[];
   for(var i=0;i<=coils*segs;i++){
     var prog=i/(coils*segs),yp=startY+prog*total,ang=prog*Math.PI*2*coils;
     pts.push({x:cxCanvas+radius*Math.cos(ang),y:yp});
@@ -417,8 +463,26 @@ function drawMass(massY){
 function drawSim(){
   if(!simBG)createSimBG();
   ctx.drawImage(simBG,0,0);
-  var supBot=20+40,disp=y*80,springEnd=supBot+springLength+disp;
-  drawSpring(supBot,springEnd);drawMass(springEnd);
+
+  /* equilibrium position in pixels (depends on m, g, k, L0, pxPerM — all dynamic) */
+  var staticExt=(k>0)?m*g/k:0;
+  var eqY =SUP_BOT+(L0+staticExt)*pxPerM;   /* static equilibrium (y=0) */
+  var massY=eqY+y*pxPerM;                    /* current mass position    */
+
+  /* draw equilibrium dashed line */
+  ctx.save();
+  ctx.strokeStyle='rgba(0,0,0,.35)';
+  ctx.setLineDash([6,5]);
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(46,eqY);
+  ctx.lineTo(canvas.width-46,eqY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  drawSpring(SUP_BOT,massY);
+  drawMass(massY);
 }
 
 /* ── Graph ── */
@@ -478,13 +542,17 @@ function showAlert(msg){
 
 /* ── Read params ── */
 function readParams(){
-  m=parseFloat(document.getElementById('mass').value)||4;
-  k=parseFloat(document.getElementById('springConstant').value)||36;
+  m =parseFloat(document.getElementById('mass').value)||4;
+  k =parseFloat(document.getElementById('springConstant').value)||36;
   var uc=parseFloat(document.getElementById('damping').value)||0;
-  c=uc===0?1e-7:uc;
+  c =uc===0?1e-7:uc;
+  L0=parseFloat(document.getElementById('restLength').value)||2.5;
   y0=parseFloat(document.getElementById('initialDisplacement').value)||0;
   v0=parseFloat(document.getElementById('initialVelocity').value)||0;
-  g=parseFloat(document.getElementById('gravity').value)||9.81;
+  g =parseFloat(document.getElementById('gravity').value)||9.81;
+  T =parseFloat(document.getElementById('endTime').value)||60;
+  graphMaxTime=T;
+  computeScale();
 }
 
 /* ── Reset ── */
@@ -492,13 +560,13 @@ function resetSimulation(){
   readParams();updateEq();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});
   isRunning=true;isPaused=false;firstStep=true;prevState=[y,v];currentState=[y,v];
-  document.getElementById('pauseButton').textContent='Pause';
+  document.getElementById('pauseButton').textContent='\u23EF Pause';
   drawSim();drawGraph();
   if(alertBox){document.body.removeChild(alertBox);alertBox=null;}
   say('Simulation reset.');
 }
 
-/* ── Animation ── */
+/* ── Animation loop ── */
 function animate(){
   if(isRunning&&!isPaused){
     for(var i=0;i<stepsPerFrame;i++){
@@ -522,13 +590,17 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('massSlider','mass');
   linkSlider('springConstantSlider','springConstant');
   linkSlider('dampingSlider','damping');
+  linkSlider('restLengthSlider','restLength');
   linkSlider('initialDisplacementSlider','initialDisplacement');
   linkSlider('initialVelocitySlider','initialVelocity');
   linkSlider('gravitySlider','gravity');
+  linkSlider('endTimeSlider','endTime');
 
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
   document.getElementById('pauseButton').addEventListener('click',function(){
-    isPaused=!isPaused;this.textContent=isPaused?'Resume':'Pause';say(isPaused?'Paused':'Resumed');
+    isPaused=!isPaused;
+    this.textContent=isPaused?'\u25B6 Resume':'\u23EF Pause';
+    say(isPaused?'Paused':'Resumed');
   });
 
   document.getElementById('infoBtn').addEventListener('click',function(){
