@@ -147,6 +147,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
 .abtn-running{background:var(--red)!important;}
 .abtn-running:hover{background:#b91c1c!important;}
+.abtn:disabled{opacity:.55;cursor:not-allowed;}
 
 /* Speed selector */
 .speed-row{display:flex;align-items:center;gap:.75rem;font-size:.875rem;flex-wrap:wrap;
@@ -255,13 +256,17 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 
       <h2>Numerical Method</h2>
       <p>
-        All trajectories are integrated using a classical 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> method with fixed time step \(\Delta t=0.005\) and 30,000 steps (total time \(t=150\)). The color axis encodes normalized time from start (blue/violet) to end (red).
+        Static trajectories use a classical 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> method with
+        fixed step \(\Delta t=0.005\) and 30,000 steps (total time \(t=150\)).
+        Animate \(\rho\) frames use 10,000 steps (total time \(t=50\)) — enough to fill both lobes —
+        and are <strong>precomputed in full before playback begins</strong>, so the animation runs smoothly at any FPS.
+        The Jet colorbar shows actual simulation time (e.g.&nbsp;\(t=0\) to \(t=150\) for static, \(t=0\) to \(t=50\) for animation).
       </p>
 
       <h2>How to Use</h2>
       <ul>
         <li>Adjust \(\sigma,\rho,\beta\) and initial conditions \((x_0,y_0,z_0)\) using the sliders or type directly in the value boxes.</li>
-        <li>Click <strong>Animate \(\rho\)</strong> to sweep from \(\rho_\text{start}\) to \(\rho_\text{end}\), watching the attractor shape change. Click again to stop.</li>
+        <li>Click <strong>Animate \(\rho\)</strong> to precompute and play the sweep from \(\rho_\text{start}\) to \(\rho_\text{end}\). The button shows precompute progress; click again at any time to stop.</li>
         <li>Click <strong>Transient Chaos</strong> to set \(\rho=22\) and animate a single trajectory exhibiting long transient chaotic behaviour before settling.</li>
         <li>Click <strong>Launch Particles</strong> to compare two trajectories separated by \(\varepsilon\) in the \(x\)-direction — select Slow/Medium/Fast to control animation speed.</li>
         <li>Click <strong>Reset \(\rho\)</strong> to return \(\rho\) to 20 and redraw the static attractor.</li>
@@ -392,6 +397,16 @@ function parseInp(s){
 }
 function debounce(fn,w){var t;return function(){clearTimeout(t);t=setTimeout(function(){fn.apply(this,arguments);},w);};}
 
+/* ── Step counts ──────────────────────────────────────────────────────────────
+   STATIC_N : used for the main static plot and particle/transient animations.
+              dt=0.005 → t_end = 150. Gives the fully detailed attractor.
+   ANIM_N   : used for each precomputed ρ-sweep frame.
+              dt=0.005 → t_end = 50. Fast to compute; enough to fill both lobes.
+   ──────────────────────────────────────────────────────────────────────────── */
+var DT       = 0.005;
+var STATIC_N = 30000;   // t_end = 150
+var ANIM_N   = 10000;   // t_end = 50
+
 /* ── Parameters ── */
 var PARAMS=[
   {id:'sigma', label:'\\sigma',   min:1,   max:20,  step:0.01,      value:10},
@@ -402,39 +417,89 @@ var PARAMS=[
   {id:'z0',    label:'z_0',       min:-20, max:50,  step:1e-10,     value:20},
 ];
 
-/* ── Lorenz RK4 ── */
+/* ── Lorenz RK4 ───────────────────────────────────────────────────────────────
+   N is optional; defaults to STATIC_N.
+   ta[i] is normalised to [0,1] via i/(N-1) so the colorbar endpoints map
+   exactly to t=0 and t=(N-1)*DT without clipping at either end.
+   ──────────────────────────────────────────────────────────────────────────── */
 function lorenz(x,y,z,sigma,rho,beta){return[sigma*(y-x),x*(rho-z)-y,x*y-beta*z];}
-function solveLorenz(sigma,rho,beta,x0,y0,z0){
-  var dt=0.005,N=30000;
+function solveLorenz(sigma,rho,beta,x0,y0,z0,N){
+  N=N||STATIC_N;
   var xa=new Array(N),ya=new Array(N),za=new Array(N),ta=new Array(N);
   var x=x0,y=y0,z=z0;
+  var norm=N>1?N-1:1;
   for(var i=0;i<N;i++){
     var k1=lorenz(x,y,z,sigma,rho,beta);
-    var k2=lorenz(x+k1[0]*dt/2,y+k1[1]*dt/2,z+k1[2]*dt/2,sigma,rho,beta);
-    var k3=lorenz(x+k2[0]*dt/2,y+k2[1]*dt/2,z+k2[2]*dt/2,sigma,rho,beta);
-    var k4=lorenz(x+k3[0]*dt,y+k3[1]*dt,z+k3[2]*dt,sigma,rho,beta);
-    x+=(k1[0]+2*k2[0]+2*k3[0]+k4[0])*dt/6;
-    y+=(k1[1]+2*k2[1]+2*k3[1]+k4[1])*dt/6;
-    z+=(k1[2]+2*k2[2]+2*k3[2]+k4[2])*dt/6;
-    xa[i]=x;ya[i]=y;za[i]=z;ta[i]=i/N;
+    var k2=lorenz(x+k1[0]*DT/2,y+k1[1]*DT/2,z+k1[2]*DT/2,sigma,rho,beta);
+    var k3=lorenz(x+k2[0]*DT/2,y+k2[1]*DT/2,z+k2[2]*DT/2,sigma,rho,beta);
+    var k4=lorenz(x+k3[0]*DT,y+k3[1]*DT,z+k3[2]*DT,sigma,rho,beta);
+    x+=(k1[0]+2*k2[0]+2*k3[0]+k4[0])*DT/6;
+    y+=(k1[1]+2*k2[1]+2*k3[1]+k4[1])*DT/6;
+    z+=(k1[2]+2*k2[2]+2*k3[2]+k4[2])*DT/6;
+    xa[i]=x;ya[i]=y;za[i]=z;ta[i]=i/norm;
   }
   return{x:xa,y:ya,z:za,t:ta};
 }
 
+/* ── Colorbar helper ──────────────────────────────────────────────────────────
+   Shows actual simulation time on the Jet colorbar (t=0, t=mid, t=end),
+   preventing the "Start/Mid/End" labels from being ambiguous across different N.
+   ──────────────────────────────────────────────────────────────────────────── */
+function makeColorbar(N){
+  N=N||STATIC_N;
+  var tEnd=Math.round((N-1)*DT);  // actual last time value
+  var tMid=Math.round(tEnd/2);
+  return{
+    title:{text:'t',side:'right'},
+    thickness:14,
+    len:0.75,
+    tickvals:[0,0.5,1],
+    ticktext:['t\u2009=\u20090','t\u2009=\u2009'+tMid,'t\u2009=\u2009'+tEnd],
+    tickfont:{size:11}
+  };
+}
+
+/* ── Jet trace factory ────────────────────────────────────────────────────────
+   Single source of truth for all Jet-coloured line traces.
+   cauto:false + explicit cmin/cmax ensures the full Jet palette [blue→red]
+   is always used regardless of the actual range of ta values,
+   eliminating the colour "jumps" that occur when Plotly auto-scales.
+   ──────────────────────────────────────────────────────────────────────────── */
+function makeJetTrace(tr,width,N){
+  return{
+    x:tr.x,y:tr.y,z:tr.z,
+    type:'scatter3d',mode:'lines',
+    line:{
+      color:tr.t,
+      colorscale:'Jet',
+      width:width||2,
+      cauto:false,   // CRITICAL: prevents per-frame colour rescaling
+      cmin:0,
+      cmax:1,
+      showscale:true,
+      colorbar:makeColorbar(N)
+    }
+  };
+}
+
 /* ── Layout helper ── */
 function make3DLayout(title){
-  var bg=document.documentElement.classList.contains('hc')?'#fff':'#f9fafb';
+  var hc=document.documentElement.classList.contains('hc');
+  var bg=hc?'#fff':'#f9fafb';
   return{
-    title:{text:title,font:{size:13,color:document.documentElement.classList.contains('hc')?'#000':'#374151'}},
+    title:{text:title,font:{size:13,color:hc?'#000':'#374151'}},
     scene:{
       xaxis:{title:'X',gridcolor:'#a0a0a0',linecolor:'#000'},
       yaxis:{title:'Y',gridcolor:'#a0a0a0',linecolor:'#000'},
       zaxis:{title:'Z',gridcolor:'#a0a0a0',linecolor:'#000'},
-      camera:{eye:{x:2.18,y:0,z:0}},bgcolor:bg
+      camera:{eye:{x:2.18,y:0,z:0}},
+      bgcolor:bg
     },
     margin:{t:40,b:10,l:0,r:0},
-    paper_bgcolor:bg,font:{color:document.documentElement.classList.contains('hc')?'#000':'#333'},
-    hovermode:false,uirevision:'true'
+    paper_bgcolor:bg,
+    font:{color:hc?'#000':'#333'},
+    hovermode:false,
+    uirevision:'camera'   // preserves camera angle between react() calls
   };
 }
 
@@ -445,7 +510,7 @@ function readParams(){
   return v;
 }
 
-/* ── Update plot ── */
+/* ── Update static plot ── */
 var updatePlot=debounce(function(rhoOverride){
   var v=readParams();
   if(rhoOverride!=null){
@@ -453,16 +518,15 @@ var updatePlot=debounce(function(rhoOverride){
     var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
     if(rs)rs.value=rhoOverride;if(ri)ri.value=fmtSig(rhoOverride);
   }
-  var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0);
-  Plotly.react('plot',[{
-    x:tr.x,y:tr.y,z:tr.z,type:'scatter3d',mode:'lines',
-    line:{color:tr.t,colorscale:'Jet',width:2,showscale:true,cmin:0,cmax:1,
-      colorbar:{title:'Time',thickness:12,tickvals:[0,.5,1],ticktext:['Start','Mid','End']}}
-  }],make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v.rho)+')'));
+  var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,STATIC_N);
+  Plotly.react('plot',
+    [makeJetTrace(tr,2,STATIC_N)],
+    make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v.rho)+')')
+  );
   say('Plot updated. \u03C1 = '+fmtSig(v.rho));
 },100);
 
-/* ── Particle animation ── */
+/* ── Particle animation state ── */
 var PA={rafId:null,running:false,idx:0,t1:null,t2:null,mode:null,renderFn:null};
 
 function stopParticles(){
@@ -496,8 +560,8 @@ function launchParticles(){
   stopParticles();
   var v=readParams();
   var eps=parseFloat(document.getElementById('epsilonInput').value)||1e-9;
-  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0);
-  PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0);
+  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,STATIC_N);
+  PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,STATIC_N);
   PA.idx=0;PA.running=true;PA.mode='particles';PA.renderFn=renderParticleFrame;
   var lb=document.getElementById('launchBtn');lb.textContent='Stop';lb.classList.add('abtn-running');
   say('Particle animation started.');startAnimLoop();
@@ -508,7 +572,7 @@ function launchTransientChaos(){
   var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
   if(rs)rs.value=22;if(ri)ri.value='22';
   var v=readParams();v.rho=22;
-  PA.t1=solveLorenz(v.sigma,22,v.beta,v.x0,v.y0,v.z0);
+  PA.t1=solveLorenz(v.sigma,22,v.beta,v.x0,v.y0,v.z0,STATIC_N);
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='transient';PA.renderFn=renderTransientFrame;
   var tb=document.getElementById('transientBtn');tb.textContent='Stop';tb.classList.add('abtn-running');
   say('Transient chaos animation started.');startAnimLoop();
@@ -517,25 +581,76 @@ function launchTransientChaos(){
 function renderParticleFrame(idx){
   var t1=PA.t1,t2=PA.t2;
   var rho=parseFloat(document.getElementById('rho').value);
-  var t=(idx*0.005).toFixed(1);
+  var t=(idx*DT).toFixed(1);
   Plotly.react('plot',[
-    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),type:'scatter3d',mode:'lines',name:'Traj 1',line:{color:'#2196F3',width:3},showlegend:true},
-    {x:t2.x.slice(0,idx+1),y:t2.y.slice(0,idx+1),z:t2.z.slice(0,idx+1),type:'scatter3d',mode:'lines',name:'Traj 2',line:{color:'#F44336',width:3},showlegend:true},
-    {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],type:'scatter3d',mode:'markers',marker:{size:6,color:'#0D47A1'},showlegend:false},
-    {x:[t2.x[idx]],y:[t2.y[idx]],z:[t2.z[idx]],type:'scatter3d',mode:'markers',marker:{size:6,color:'#B71C1C'},showlegend:false}
-  ],Object.assign(make3DLayout('Sensitive Dependence (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'),{showlegend:true,legend:{x:.02,y:.98,bgcolor:'rgba(255,255,255,.8)'}}));
+    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
+     type:'scatter3d',mode:'lines',name:'Traj 1',
+     line:{color:'#2196F3',width:3},showlegend:true},
+    {x:t2.x.slice(0,idx+1),y:t2.y.slice(0,idx+1),z:t2.z.slice(0,idx+1),
+     type:'scatter3d',mode:'lines',name:'Traj 2',
+     line:{color:'#F44336',width:3},showlegend:true},
+    {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
+     type:'scatter3d',mode:'markers',marker:{size:6,color:'#0D47A1'},showlegend:false},
+    {x:[t2.x[idx]],y:[t2.y[idx]],z:[t2.z[idx]],
+     type:'scatter3d',mode:'markers',marker:{size:6,color:'#B71C1C'},showlegend:false}
+  ],Object.assign(make3DLayout('Sensitive Dependence (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'),
+    {showlegend:true,legend:{x:.02,y:.98,bgcolor:'rgba(255,255,255,.8)'}}));
 }
 
 function renderTransientFrame(idx){
   var t1=PA.t1;
   var rho=parseFloat(document.getElementById('rho').value);
-  var t=(idx*0.005).toFixed(1);
+  var t=(idx*DT).toFixed(1);
+  // Slice colour array to match xyz slice so Jet maps correctly over elapsed time
   Plotly.react('plot',[
-    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),type:'scatter3d',mode:'lines',
-     line:{color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,cmin:0,cmax:1,showscale:true,
-       colorbar:{title:'Time',thickness:12,tickvals:[0,.5,1],ticktext:['Start','Mid','End']}},showlegend:false},
-    {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
+    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
+     type:'scatter3d',mode:'lines',
+     line:{color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
+           cauto:false,cmin:0,cmax:1,showscale:true,colorbar:makeColorbar(STATIC_N)},
+     showlegend:false},
+    {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
+     type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
   ],make3DLayout('Transient Chaos (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
+}
+
+/* ── Rho animation state ─────────────────────────────────────────────────────
+   Separate from PA so both systems can coexist without shared state.
+   ──────────────────────────────────────────────────────────────────────────── */
+var RhoAnim={
+  timerId:null,   // setTimeout id during playback
+  frames:null,    // precomputed [{rho, tr}, …]
+  cancelled:false,
+  computing:false
+};
+
+function stopRhoAnim(){
+  RhoAnim.cancelled=true;
+  if(RhoAnim.timerId){clearTimeout(RhoAnim.timerId);RhoAnim.timerId=null;}
+  RhoAnim.frames=null;
+  RhoAnim.computing=false;
+  var btn=document.getElementById('animateBtn');
+  if(btn){btn.textContent='Animate \u03C1';btn.classList.remove('abtn-running');btn.disabled=false;}
+}
+
+/* ── Precompute rho frames asynchronously ────────────────────────────────────
+   One setTimeout(0) between each frame keeps the UI responsive: the progress
+   counter updates while computing, and clicking Stop cancels immediately.
+   ──────────────────────────────────────────────────────────────────────────── */
+function precomputeRhoFrames(rhoVals,v,onProgress,onDone){
+  var frames=[];
+  var i=0;
+  function next(){
+    if(RhoAnim.cancelled)return;
+    if(i>=rhoVals.length){onDone(frames);return;}
+    frames.push({
+      rho:rhoVals[i],
+      tr:solveLorenz(v.sigma,rhoVals[i],v.beta,v.x0,v.y0,v.z0,ANIM_N)
+    });
+    onProgress(i+1,rhoVals.length);
+    i++;
+    setTimeout(next,0);
+  }
+  setTimeout(next,0);
 }
 
 /* ── Build param grid ── */
@@ -563,12 +678,12 @@ document.addEventListener('DOMContentLoaded',function(){
     var inp=document.getElementById(p.id+'Val');
     if(!slider||!inp)return;
     slider.addEventListener('input',function(){
-      stopParticles();
+      stopParticles();stopRhoAnim();
       inp.value=fmtSig(parseFloat(this.value));
       updatePlot();
     });
     inp.addEventListener('change',function(){
-      stopParticles();
+      stopParticles();stopRhoAnim();
       var v=parseInp(this.value);
       if(isNaN(v))v=p.value;
       v=Math.max(parseFloat(p.min),Math.min(parseFloat(p.max),v));
@@ -577,51 +692,105 @@ document.addEventListener('DOMContentLoaded',function(){
     });
   });
 
-  /* Animate rho */
-  var animId=null;
+  /* ── Animate rho ─────────────────────────────────────────────────────────
+     Phase 1: Precompute all ANIM_N-step trajectories for every ρ in the
+              sweep range. Button shows "Computing… (k/N)".
+     Phase 2: Play back the precomputed frames at the requested FPS.
+              Button shows "Stop Animation".
+     Clicking the button at any phase stops immediately.
+     ────────────────────────────────────────────────────────────────────── */
   document.getElementById('animateBtn').addEventListener('click',function(){
     stopParticles();
-    if(animId){clearTimeout(animId);animId=null;this.textContent='Animate \u03C1';say('Rho animation stopped.');return;}
-    this.textContent='Stop Animation';say('Rho animation started.');
-    var fps=parseInt(document.getElementById('fps').value)||3;
+
+    // If already computing or playing → stop
+    if(RhoAnim.computing||RhoAnim.timerId!==null||RhoAnim.frames!==null){
+      stopRhoAnim();
+      say('Rho animation stopped.');
+      return;
+    }
+
+    var fps=Math.max(1,parseInt(document.getElementById('fps').value)||3);
     var delay=1000/fps;
     var rhoStart=parseFloat(document.getElementById('rhoStart').value)||18;
-    var rhoEnd=parseFloat(document.getElementById('rhoEnd').value)||23;
+    var rhoEnd  =parseFloat(document.getElementById('rhoEnd').value)||23;
     if(rhoStart>rhoEnd){var tmp=rhoStart;rhoStart=rhoEnd;rhoEnd=tmp;}
-    var v=readParams();var cur=rhoStart;
-    var me=this;
-    function tick(){
-      if(cur>rhoEnd+0.0001){clearTimeout(animId);animId=null;me.textContent='Animate \u03C1';say('Rho animation complete.');return;}
-      var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
-      if(rs)rs.value=cur;if(ri)ri.value=fmtSig(cur);
-      var tr=solveLorenz(v.sigma,cur,v.beta,v.x0,v.y0,v.z0);
-      Plotly.react('plot',[{x:tr.x,y:tr.y,z:tr.z,type:'scatter3d',mode:'lines',
-        line:{color:tr.t,colorscale:'Jet',width:4,showscale:true,cmin:0,cmax:1,
-          colorbar:{title:'Time',thickness:12,tickvals:[0,.5,1],ticktext:['Start','Mid','End']}}}],
-        make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(cur)+')'));
-      cur=Math.round((cur+0.1)*10)/10;
-      animId=setTimeout(tick,delay);
+
+    // Build ρ value sequence (steps of 0.1, robust floating-point)
+    var rhoVals=[];
+    var steps=Math.round((rhoEnd-rhoStart)/0.1)+1;
+    for(var k=0;k<steps;k++){
+      rhoVals.push(parseFloat((rhoStart+k*0.1).toFixed(6)));
     }
-    tick();
+
+    var v=readParams();
+    var me=this;
+    RhoAnim.cancelled=false;
+    RhoAnim.computing=true;
+    me.textContent='Computing\u2026 (0\u2009/\u2009'+rhoVals.length+')';
+    me.classList.add('abtn-running');
+    say('Precomputing '+rhoVals.length+' frames for \u03C1 sweep\u2026');
+
+    precomputeRhoFrames(rhoVals,v,
+      /* onProgress */ function(done,total){
+        if(!RhoAnim.cancelled){
+          me.textContent='Computing\u2026 ('+done+'\u2009/\u2009'+total+')';
+        }
+      },
+      /* onDone */ function(frames){
+        if(RhoAnim.cancelled){
+          me.textContent='Animate \u03C1';
+          me.classList.remove('abtn-running');
+          me.disabled=false;
+          return;
+        }
+        RhoAnim.computing=false;
+        RhoAnim.frames=frames;
+        me.textContent='Stop Animation';
+        say('Playing '+frames.length+' precomputed frames.');
+
+        var frameIdx=0;
+        function tick(){
+          if(RhoAnim.cancelled||!RhoAnim.frames||frameIdx>=RhoAnim.frames.length){
+            RhoAnim.timerId=null;
+            RhoAnim.frames=null;
+            me.textContent='Animate \u03C1';
+            me.classList.remove('abtn-running');
+            me.disabled=false;
+            if(!RhoAnim.cancelled)say('Rho animation complete.');
+            return;
+          }
+          var frame=RhoAnim.frames[frameIdx++];
+          var cur=frame.rho;
+          var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
+          if(rs)rs.value=cur;if(ri)ri.value=fmtSig(cur);
+          Plotly.react('plot',
+            [makeJetTrace(frame.tr,3,ANIM_N)],
+            make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(cur)+')')
+          );
+          RhoAnim.timerId=setTimeout(tick,delay);
+        }
+        tick();
+      }
+    );
   });
 
   /* Transient chaos */
   document.getElementById('transientBtn').addEventListener('click',function(){
-    if(animId){clearTimeout(animId);animId=null;document.getElementById('animateBtn').textContent='Animate \u03C1';}
+    stopRhoAnim();
     if(PA.running&&PA.mode==='transient')stopParticles();
     else launchTransientChaos();
   });
 
   /* Launch particles */
   document.getElementById('launchBtn').addEventListener('click',function(){
-    if(animId){clearTimeout(animId);animId=null;document.getElementById('animateBtn').textContent='Animate \u03C1';}
+    stopRhoAnim();
     if(PA.running)stopParticles();
     else launchParticles();
   });
 
   /* Reset rho */
   document.getElementById('resetRhoBtn').addEventListener('click',function(){
-    stopParticles();
+    stopParticles();stopRhoAnim();
     var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
     if(rs)rs.value=20;if(ri)ri.value='20';
     updatePlot();say('Rho reset to 20.');
