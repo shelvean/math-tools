@@ -361,7 +361,12 @@ function allocate(usable,n,layout,lhSeats){
      the minimum pairwise distance — spreading students as far apart
      as possible both horizontally and vertically.
      Runs in O(n·m) time.  Three independent random seeds are tried;
-     the best result (highest achieved minimum distance) is kept. */
+     the best result (highest achieved minimum distance) is kept.
+     Front-row bias: a fractional bonus < 0.5 is added for seats closer
+     to the front (higher row index).  Since all real distance differences
+     are integers ≥ 1, this bonus never overrides a genuine spacing
+     advantage — it only breaks ties in favour of the front of the room. */
+  var nRows=layout.rows.length;
   function greedyRun(seedIdx){
     var avail=pool.slice();
     var sel=[avail.splice(seedIdx,1)[0]];
@@ -369,10 +374,12 @@ function allocate(usable,n,layout,lhSeats){
     var minD={};
     avail.forEach(function(s){minD[s]=mdist(s,sel[0]);});
     while(sel.length<n&&avail.length){
-      /* Pick the seat farthest from its nearest neighbour in the selected set */
+      /* Score = min-distance (primary) + front-row bias (tiebreaker only) */
       var best=-1,bi=0;
       for(var i=0;i<avail.length;i++){
-        if(minD[avail[i]]>best){best=minD[avail[i]];bi=i;}
+        var s=avail[i];
+        var sc=minD[s]+0.5*coords[s].r/(nRows-1||1);
+        if(sc>best){best=sc;bi=i;}
       }
       var pick=avail.splice(bi,1)[0];
       sel.push(pick);
