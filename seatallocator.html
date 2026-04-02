@@ -337,37 +337,74 @@ function pickByPosition(entries,k,phase){
 }
 
 function allocate(usable,n,layout,lhSeats){
-  var usableSet=new Set(usable);
-  var colMap=buildColMap(layout,usableSet);
-  var rows=layout.rows.filter(function(r){return colMap[r]&&colMap[r].length>0;});
-  var base=Math.floor(n/rows.length), extra=n%rows.length;
-  var selected=[];
-  /* One random anchor per press — each row gets a phase offset derived by
-     stepping through the golden ratio so consecutive rows land in maximally
-     different column regions (no two rows share the same phase). */
-  var globalShift=Math.random();
-  var golden=0.6180339887;
-  rows.forEach(function(r,i){
-    var entries=colMap[r];
-    var need=Math.min(base+(i<extra?1:0),entries.length);
-    if(!need) return;
-    /* phase for row i: golden-ratio sequence + random anchor, mod 1 */
-    var phase=((i*golden+globalShift)%1+1)%1;
-    var picks=pickByPosition(entries,need,phase);
-    selected=selected.concat(picks);
+  /* Pool: regular seats first; append LH only if still short */
+  var pool=usable.slice();
+  if(pool.length<n&&lhSeats) lhSeats.forEach(function(s){pool.push(s);});
+
+  var usableSet=new Set(pool);
+
+  /* Room width (columns) — used to normalise all seat positions to [0,1]
+     so golden-ratio phase offsets shift by a consistent ABSOLUTE column
+     amount across every row, preventing vertical column stacking. */
+  var maxW=0;
+  layout.rows.forEach(function(r){
+    maxW=Math.max(maxW,(layout.grid[r]||[]).length);
   });
-  /* top-up from regular seats if rounding left a shortfall */
-  if(selected.length<n){
-    usable.forEach(function(s){
-      if(selected.length<n&&selected.indexOf(s)<0) selected.push(s);
+
+  /* Per-row seat lists with normalised column position */
+  var rowSeats={};
+  layout.rows.forEach(function(r){
+    rowSeats[r]=[];
+    (layout.grid[r]||[]).forEach(function(cell,ci){
+      if(cell.type!=='seat') return;
+      var id=r+cell.num;
+      if(usableSet.has(id)) rowSeats[r].push({id:id,nc:ci/maxW});
     });
-  }
-  /* last resort: fill remaining slots from left-handed seats */
-  if(selected.length<n&&lhSeats&&lhSeats.length){
-    lhSeats.forEach(function(s){
-      if(selected.length<n&&selected.indexOf(s)<0) selected.push(s);
-    });
-  }
+  });
+
+  var activeRows=layout.rows.filter(function(r){return rowSeats[r].length>0;});
+
+  /* Distribute n seats proportionally across rows by row capacity */
+  var totalPool=pool.length;
+  var rawK=activeRows.map(function(r){return n*rowSeats[r].length/totalPool;});
+  var counts=rawK.map(Math.floor);
+  var deficit=n-counts.reduce(function(a,b){return a+b;},0);
+  rawK.map(function(x,i){return{i:i,f:x-Math.floor(x)};})
+      .sort(function(a,b){return b.f-a.f;})
+      .slice(0,deficit)
+      .forEach(function(o){counts[o.i]++;});
+
+  /* Golden-ratio phase per row + one random global shift per press.
+     Using room-normalised coordinates means every row's phase shift
+     maps to the same absolute column offset → no vertical stacking. */
+  var G=0.6180339887, shift=Math.random();
+  var selected=[];
+
+  activeRows.forEach(function(r,i){
+    var seats=rowSeats[r], k=counts[i];
+    if(!k) return;
+    var phase=((i*G+shift)%1+1)%1;
+    var chosen=[],used={};
+    for(var j=0;j<k;j++){
+      /* Target normalised column position, spread evenly within [0,1) */
+      var target=((j+phase)/k)%1;
+      var best=null,bestD=Infinity;
+      seats.forEach(function(s){
+        if(used[s.id]) return;
+        /* Circular distance so wrap-around targets still find the nearest seat */
+        var d=Math.abs(s.nc-target); d=Math.min(d,1-d);
+        if(d<bestD){bestD=d;best=s;}
+      });
+      if(best){chosen.push(best.id);used[best.id]=true;}
+    }
+    chosen.forEach(function(id){selected.push(id);});
+  });
+
+  /* Safety top-up */
+  pool.forEach(function(s){
+    if(selected.length<n&&selected.indexOf(s)<0) selected.push(s);
+  });
+
   shuffle(selected);
   return selected.slice(0,n);
 }
