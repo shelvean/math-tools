@@ -723,22 +723,55 @@ document.addEventListener('DOMContentLoaded',function(){
 
     drawAxisLabels(tMin,tMax,yMin,yMax,xScale,yScale);
 
-    /* Solution curves */
+    /* Solution curves with directional arrowheads */
     solutions.forEach(function(sol){
+      ctx.save();
       ctx.strokeStyle=sol.color;
-      ctx.lineWidth=window.innerWidth<640?1.5:2.2;
+      ctx.lineWidth=window.innerWidth<640?1.5:2;
       ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash([]);
+      ctx.globalAlpha=0.85;
+      /* Build visible canvas-coord points and draw curve */
+      var cpts=[];
       ctx.beginPath();
       var started=false;
       sol.points.forEach(function(p){
         var cx=PADDING+(p.t-tMin)*xScale;
         var cy=canvas.height-PADDING-(p.y-yMin)*yScale;
         if(p.t>=tMin&&p.t<=tMax&&p.y>=yMin&&p.y<=yMax){
+          cpts.push({cx:cx,cy:cy});
           if(!started){ctx.moveTo(cx,cy);started=true;}
           else ctx.lineTo(cx,cy);
         }else if(started){ctx.stroke();ctx.beginPath();started=false;}
       });
       if(started)ctx.stroke();
+
+      /* Directional arrowheads — adaptive spacing, max 8, min 60px separation */
+      if(cpts.length>1){
+        var totalLen=0;
+        for(var i=1;i<cpts.length;i++){var ddx=cpts[i].cx-cpts[i-1].cx,ddy=cpts[i].cy-cpts[i-1].cy;totalLen+=Math.sqrt(ddx*ddx+ddy*ddy);}
+        var maxArr=8,arrowSp=Math.max(100,totalLen/(maxArr+1)),arrowSz=5.5;
+        ctx.fillStyle=sol.color;ctx.globalAlpha=0.92;
+        var accum=arrowSp*0.45,placed=[];
+        for(var i=1;i<cpts.length;i++){
+          var ddx=cpts[i].cx-cpts[i-1].cx,ddy=cpts[i].cy-cpts[i-1].cy;
+          var seg=Math.sqrt(ddx*ddx+ddy*ddy);if(seg<0.5)continue;
+          accum+=seg;
+          if(accum>=arrowSp){
+            var ax=cpts[i].cx,ay=cpts[i].cy;
+            var tooClose=false;
+            for(var k=0;k<placed.length;k++){var ex=ax-placed[k].x,ey=ay-placed[k].y;if(ex*ex+ey*ey<3600){tooClose=true;break;}}
+            if(tooClose)continue;
+            accum=0;placed.push({x:ax,y:ay});
+            var ang=Math.atan2(ddy,ddx);
+            ctx.beginPath();
+            ctx.moveTo(ax+arrowSz*Math.cos(ang),ay+arrowSz*Math.sin(ang));
+            ctx.lineTo(ax-arrowSz*Math.cos(ang-Math.PI/3.2),ay-arrowSz*Math.sin(ang-Math.PI/3.2));
+            ctx.lineTo(ax-arrowSz*Math.cos(ang+Math.PI/3.2),ay-arrowSz*Math.sin(ang+Math.PI/3.2));
+            ctx.closePath();ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
 
       if(showInitPt&&sol.initialPoint){
         var ip=sol.initialPoint;
