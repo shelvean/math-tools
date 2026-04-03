@@ -465,41 +465,44 @@ function clearComputed(){['a','b','c','d'].forEach(function(id){document.getElem
 /* ── Classification ── */
 function classifyEquilibrium(a,b,c,d){
   var tr=a+d,det=a*d-b*c,disc=tr*tr-4*det;
-  if(a===0&&b===0&&c===0&&d===0)return{type:'Plane of Equilibria',stability:'Neutrally Stable',description:'Every point is an equilibrium'};
-  if(Math.abs(det)<1e-10)return{type:'Line of Equilibria',stability:'Mixed',description:'Continuous line of equilibrium points'};
-  if(disc>0){
+  /* Zero matrix — every point is an equilibrium */
+  if(a===0&&b===0&&c===0&&d===0)return{type:'Plane of Equilibria',stability:'Neutrally Stable',description:'A = 0; every point is an equilibrium'};
+  /* Singular matrix — at least one zero eigenvalue */
+  if(Math.abs(det)<1e-10){
+    if(tr<-1e-10)return{type:'Non-isolated Equilibria',stability:'Stable',description:'\u03bb\u2081 = 0, \u03bb\u2082 < 0; line of equilibria'};
+    if(tr>1e-10)return{type:'Non-isolated Equilibria',stability:'Unstable',description:'\u03bb\u2081 = 0, \u03bb\u2082 > 0; line of equilibria'};
+    return{type:'Non-isolated Equilibria',stability:'Neutrally Stable',description:'\u03bb\u2081 = \u03bb\u2082 = 0; line or plane of equilibria'};
+  }
+  /* Two distinct real eigenvalues */
+  if(disc>1e-10){
     var l1=(tr+Math.sqrt(disc))/2,l2=(tr-Math.sqrt(disc))/2;
-    if(l1*l2<0)return{type:'Saddle Point',stability:'Unstable',description:'One stable and one unstable direction'};
-    if(l1<0&&l2<0){
-      if(Math.abs(l1-l2)<1e-10)return{type:'Star Node',stability:'Stable',description:'Repeated negative eigenvalues'};
-      if(b===0&&c===0)return{type:'Proper Node',stability:'Stable',description:'Diagonal, distinct negative eigenvalues'};
-      return{type:'Stable Node',stability:'Stable',description:'Distinct negative eigenvalues'};
-    }
-    if(Math.abs(l1-l2)<1e-10)return{type:'Star Node',stability:'Unstable',description:'Repeated positive eigenvalues'};
-    if(b===0&&c===0)return{type:'Proper Node',stability:'Unstable',description:'Diagonal, distinct positive eigenvalues'};
-    return{type:'Unstable Node',stability:'Unstable',description:'Distinct positive eigenvalues'};
+    if(l1*l2<0)return{type:'Saddle Point',stability:'Unstable',description:'Real eigenvalues of opposite sign'};
+    if(l1<0&&l2<0)return{type:'Stable Node',stability:'Asymptotically Stable',description:'\u03bb\u2081, \u03bb\u2082 < 0 real and distinct'};
+    return{type:'Unstable Node',stability:'Unstable',description:'\u03bb\u2081, \u03bb\u2082 > 0 real and distinct'};
   }
-  if(disc<0){
+  /* Complex conjugate eigenvalues */
+  if(disc<-1e-10){
     var re=tr/2;
-    if(Math.abs(re)<1e-10)return{type:'Center',stability:'Neutrally Stable',description:'Purely imaginary eigenvalues'};
-    if(re<0)return{type:'Stable Spiral',stability:'Stable',description:'Complex eigenvalues, negative real part'};
-    return{type:'Unstable Spiral',stability:'Unstable',description:'Complex eigenvalues, positive real part'};
+    if(Math.abs(re)<1e-10)return{type:'Center',stability:'Stable (Lyapunov)',description:'Purely imaginary eigenvalues \u03b1 = 0'};
+    if(re<0)return{type:'Spiral Sink',stability:'Asymptotically Stable',description:'Complex eigenvalues with Re(\u03bb) < 0'};
+    return{type:'Spiral Source',stability:'Unstable',description:'Complex eigenvalues with Re(\u03bb) > 0'};
   }
+  /* Repeated real eigenvalue (disc ≈ 0), λ = tr/2 */
   var lam=tr/2;
-  var isDiag=(b===0&&c===0)||(Math.abs(a-d)<1e-10&&Math.abs(b)<1e-10&&Math.abs(c)<1e-10);
-  if(isDiag){
-    if(lam<0)return{type:'Star Node',stability:'Stable',description:'Repeated negative eigenvalue, diagonalizable'};
-    if(lam>0)return{type:'Star Node',stability:'Unstable',description:'Repeated positive eigenvalue, diagonalizable'};
-    return{type:'Line of Equilibria',stability:'Neutrally Stable',description:'Zero eigenvalue repeated'};
+  var isScalar=(Math.abs(b)<1e-10&&Math.abs(c)<1e-10&&Math.abs(a-d)<1e-10);
+  if(isScalar){
+    if(lam<-1e-10)return{type:'Star Node (Proper)',stability:'Asymptotically Stable',description:'Repeated \u03bb < 0, A = \u03bbI; straight-line trajectories'};
+    if(lam>1e-10)return{type:'Star Node (Proper)',stability:'Unstable',description:'Repeated \u03bb > 0, A = \u03bbI; straight-line trajectories'};
+    return{type:'Non-isolated Equilibria',stability:'Neutrally Stable',description:'\u03bb = 0 repeated, A = 0'};
   }
-  if(lam<0)return{type:'Defective Node',stability:'Stable',description:'Repeated negative eigenvalue, non-diagonalizable'};
-  if(lam>0)return{type:'Defective Node',stability:'Unstable',description:'Repeated positive eigenvalue, non-diagonalizable'};
-  return{type:'Nilpotent',stability:'Unstable',description:'Zero eigenvalue, non-diagonalizable'};
+  if(lam<-1e-10)return{type:'Improper Node (Defective)',stability:'Asymptotically Stable',description:'Repeated \u03bb < 0, one eigenvector; tangent trajectories'};
+  if(lam>1e-10)return{type:'Improper Node (Defective)',stability:'Unstable',description:'Repeated \u03bb > 0, one eigenvector; tangent trajectories'};
+  return{type:'Nilpotent',stability:'Unstable',description:'\u03bb = 0 repeated, not diagonalizable'};
 }
 
 function updateBadge(){
   var M=getM(),cl=classifyEquilibrium(M.a,M.b,M.c,M.d);
-  var bg={'Stable':'#15803d','Neutrally Stable':'#0f766e','Unstable':'#dc2626','Mixed':'#4b5563'}[cl.stability]||'#6d28d9';
+  var bg={'Asymptotically Stable':'#15803d','Stable':'#15803d','Stable (Lyapunov)':'#0f766e','Neutrally Stable':'#0f766e','Unstable':'#dc2626'}[cl.stability]||'#6d28d9';
   var bd=document.getElementById('classBadge');
   bd.style.background=bg;
   bd.innerHTML='<span class="ct">'+cl.type+'</span><span class="cs">'+cl.stability+'</span><span class="cd">'+cl.description+'</span>';
