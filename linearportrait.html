@@ -307,7 +307,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <!-- Opacity -->
     <div class="cfield cfield-xs">
       <label for="arrowOpacity">Opacity</label>
-      <input type="number" id="arrowOpacity" value="0.60" min="0.05" max="1" step="0.05">
+      <input type="number" id="arrowOpacity" value="0.45" min="0.05" max="1" step="0.05">
     </div>
 
     <!-- Field colour -->
@@ -531,20 +531,19 @@ function rk4(x,y,a,b,c,d,h){
 
 /* ── Trajectory computation ── */
 function computeCenterTraj(x0,y0,a,b,c,d){
-  var pts=[],h=0.01,steps=600;
-  var x=x0,y=y0,t=0;
-  for(var i=0;i<steps;i++){
+  /* For centers, compute the period from eigenvalues and trace one full orbit */
+  var tr=a+d,det=a*d-b*c;
+  var omega=Math.sqrt(Math.max(det-tr*tr/4,0.01));
+  var period=2*Math.PI/omega;
+  var steps=800;
+  var h=period/steps;
+  var pts=[],x=x0,y=y0,t=0;
+  for(var i=0;i<=steps;i++){
     if(!inBounds(x,y))break;
     pts.push({cx:s2cx(x),cy:s2cy(y),sx:x,sy:y,t:t});
     var n=rk4(x,y,a,b,c,d,h);x=n.x;y=n.y;t+=h;
   }
-  x=x0;y=y0;t=0;var bk=[];
-  for(var i=0;i<steps;i++){
-    var n=rk4(x,y,a,b,c,d,-h);x=n.x;y=n.y;t-=h;
-    if(!inBounds(x,y))break;
-    bk.unshift({cx:s2cx(x),cy:s2cy(y),sx:x,sy:y,t:t});
-  }
-  return bk.concat(pts);
+  return pts;
 }
 
 async function computeTraj(x0,y0){
@@ -778,7 +777,16 @@ function drawPortraitAndReset(){
 
 /* ── Init strategic trajectories for examples ── */
 async function loadStrategicTrajs(){
-  var pts=[{x:0,y:2},{x:2,y:0},{x:0,y:-2},{x:-2,y:0},{x:1.5,y:1.5},{x:-1.5,y:1.5},{x:1.5,y:-1.5},{x:-1.5,y:-1.5}];
+  var M=getM(),cl=classifyEquilibrium(M.a,M.b,M.c,M.d);
+  var pts;
+  if(cl.type==='Center'){
+    /* 8 concentric closed orbits at evenly-spaced radii along y-axis */
+    var rMax=Math.min(SX_MAX,SY_MAX)*0.92;
+    pts=[];
+    for(var k=1;k<=8;k++){var r=rMax*k/8;pts.push({x:0,y:r});}
+  } else {
+    pts=[{x:0,y:2},{x:2,y:0},{x:0,y:-2},{x:-2,y:0},{x:1.5,y:1.5},{x:-1.5,y:1.5},{x:1.5,y:-1.5},{x:-1.5,y:-1.5}];
+  }
   userPoints=pts.map(function(p){return{x:p.x,y:p.y};});
   trajectories=[];
   for(var i=0;i<userPoints.length;i++)trajectories.push(await computeTraj(userPoints[i].x,userPoints[i].y));
