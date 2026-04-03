@@ -714,20 +714,31 @@ function drawTraj(pts,xMin,xMax,yMin,yMax){
   trajCtx.stroke();
 
   /* Directional arrowheads along the trajectory */
-  var arrowSpacing=55;/* pixels between arrows */
-  var arrowSize=6;
+  /* Compute total arc length to set sensible spacing */
+  var totalLen=0;
+  for(var i=1;i<cpts.length;i++){var dx=cpts[i].cx-cpts[i-1].cx,dy=cpts[i].cy-cpts[i-1].cy;totalLen+=Math.sqrt(dx*dx+dy*dy);}
+  var maxArrows=8;/* never more than this many arrows per trajectory */
+  var arrowSpacing=Math.max(100,totalLen/(maxArrows+1));/* adaptive spacing */
+  var arrowSize=5.5;
   trajCtx.fillStyle=color;
-  trajCtx.globalAlpha=0.9;
-  var accum=arrowSpacing*0.6;/* start first arrow slightly in */
+  trajCtx.globalAlpha=0.92;
+  var accum=arrowSpacing*0.45;/* start first arrow slightly in */
+  var placed=[];/* track placed positions to avoid crowding */
+  var minSep=60;/* minimum pixel distance between any two arrows */
   for(var i=1;i<cpts.length;i++){
     var dx=cpts[i].cx-cpts[i-1].cx,dy=cpts[i].cy-cpts[i-1].cy;
     var seg=Math.sqrt(dx*dx+dy*dy);
     if(seg<0.5)continue;
     accum+=seg;
     if(accum>=arrowSpacing){
-      accum=0;
-      var ang=Math.atan2(dy,dx);
       var ax=cpts[i].cx,ay=cpts[i].cy;
+      /* Check minimum separation from all previously placed arrows */
+      var tooClose=false;
+      for(var k=0;k<placed.length;k++){var ddx=ax-placed[k].x,ddy=ay-placed[k].y;if(ddx*ddx+ddy*ddy<minSep*minSep){tooClose=true;break;}}
+      if(tooClose)continue;
+      accum=0;
+      placed.push({x:ax,y:ay});
+      var ang=Math.atan2(dy,dx);
       trajCtx.beginPath();
       trajCtx.moveTo(ax+arrowSize*Math.cos(ang),ay+arrowSize*Math.sin(ang));
       trajCtx.lineTo(ax-arrowSize*Math.cos(ang-Math.PI/3.2),ay-arrowSize*Math.sin(ang-Math.PI/3.2));
