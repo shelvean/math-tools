@@ -307,7 +307,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <!-- Opacity -->
     <div class="cfield cfield-xs">
       <label for="arrowOpacity">Opacity</label>
-      <input type="number" id="arrowOpacity" value="0.30" min="0.05" max="1" step="0.05">
+      <input type="number" id="arrowOpacity" value="0.60" min="0.05" max="1" step="0.05">
     </div>
 
     <!-- Field colour -->
@@ -591,7 +591,7 @@ function h2rgba(hex,alpha){
 }
 
 /* ── Draw phase portrait ── */
-var COLORS=['#dc2626','#ea580c','#ca8a04','#16a34a','#0891b2','#7c3aed','#db2777','#4b5563'];
+var COLORS=['#1d4ed8','#dc2626','#059669','#9333ea','#ea580c','#0891b2','#be185d','#4b5563'];
 
 function drawPortrait(){
   var canvas=document.getElementById('phCanvas');
@@ -604,50 +604,66 @@ function drawPortrait(){
   var showGrid=document.getElementById('showGrid').checked;
   var showInit=document.getElementById('showInitialPoint').checked;
 
-  ctx.fillStyle=isHC()?'#fff':'#f9fafb';ctx.fillRect(0,0,CW,CH);
+  ctx.fillStyle=isHC()?'#fff':'#ffffff';ctx.fillRect(0,0,CW,CH);
 
   var xs=xScale(),ys=yScale(),xo=xOff();
   var dw=CW-2*PAD,dh=CH-2*PAD;
   var step=Math.min(dw/arrowCount,dh/arrowCount);
 
-  /* Grid */
+  /* Grid — two-level: subtle minor + slightly stronger major */
   if(showGrid){
-    ctx.strokeStyle=isHC()?'rgba(0,0,0,.12)':'rgba(200,200,200,.3)';ctx.lineWidth=0.5;ctx.setLineDash([]);
-    var ts=niceStep(SX_MAX-SX_MIN);
+    var ts=niceStep(SX_MAX-SX_MIN),ys2=niceStep(SY_MAX-SY_MIN);
+    ctx.setLineDash([]);
+    /* Minor grid */
+    ctx.strokeStyle=isHC()?'rgba(0,0,0,.06)':'rgba(0,0,0,.04)';ctx.lineWidth=0.5;
+    for(var t=Math.ceil(SX_MIN/(ts/2))*(ts/2);t<=SX_MAX+1e-9;t+=ts/2){var px=s2cx(t);ctx.beginPath();ctx.moveTo(px,xo);ctx.lineTo(px,CH-xo);ctx.stroke();}
+    for(var yv=Math.ceil(SY_MIN/(ys2/2))*(ys2/2);yv<=SY_MAX+1e-9;yv+=ys2/2){var py=s2cy(yv);ctx.beginPath();ctx.moveTo(xo,py);ctx.lineTo(CW-xo,py);ctx.stroke();}
+    /* Major grid */
+    ctx.strokeStyle=isHC()?'rgba(0,0,0,.14)':'rgba(0,0,0,.08)';ctx.lineWidth=0.7;
     for(var t=Math.ceil(SX_MIN/ts)*ts;t<=SX_MAX+1e-9;t+=ts){var px=s2cx(t);ctx.beginPath();ctx.moveTo(px,xo);ctx.lineTo(px,CH-xo);ctx.stroke();}
-    var ys2=niceStep(SY_MAX-SY_MIN);
     for(var yv=Math.ceil(SY_MIN/ys2)*ys2;yv<=SY_MAX+1e-9;yv+=ys2){var py=s2cy(yv);ctx.beginPath();ctx.moveTo(xo,py);ctx.lineTo(CW-xo,py);ctx.stroke();}
   }
 
-  /* Direction field */
-  var rgba=h2rgba(fcolor,opacity);
-  ctx.strokeStyle=rgba;ctx.lineWidth=0.8;ctx.setLineDash([]);
-  ctx.beginPath();var arrows=[];
+  /* Direction field — tapered arrows with magnitude-normalised sizing */
+  ctx.setLineDash([]);
+  var r0=parseInt(fcolor.slice(1,3),16),g0=parseInt(fcolor.slice(3,5),16),b0=parseInt(fcolor.slice(5,7),16);
+  var fieldArrows=[];var maxMag=0;
   var mnX=xo,mxX=CW-xo,mnY=xo,mxY=CH-xo;
   for(var px=mnX+step/2;px<mxX;px+=step){
     for(var py=mnY+step/2;py<mxY;py+=step){
       var sx=c2sx(px),sy=c2sy(py);
-      var dx=a*sx+b*sy,dy=c*sx+d*sy,len=Math.sqrt(dx*dx+dy*dy);
-      if(len===0)continue;
-      var dcx=dx*xs,dcy=-dy*ys,lc=Math.sqrt(dcx*dcx+dcy*dcy);
-      var ndx=dcx/lc,ndy=dcy/lc;
-      var dl=Math.max(20*arrowScale*(0.3+0.7*Math.min(1,len/3)),5);
-      ctx.moveTo(px-ndx*dl/2,py-ndy*dl/2);ctx.lineTo(px+ndx*dl/2,py+ndy*dl/2);
-      arrows.push({ex:px+ndx*dl/2,ey:py+ndy*dl/2,ndx:ndx,ndy:ndy,dl:dl});
+      var dx=a*sx+b*sy,dy=c*sx+d*sy,mag=Math.sqrt(dx*dx+dy*dy);
+      if(mag===0)continue;
+      if(mag>maxMag)maxMag=mag;
+      fieldArrows.push({px:px,py:py,dx:dx,dy:dy,mag:mag});
     }
   }
-  ctx.stroke();
-  ctx.fillStyle=rgba;
-  arrows.forEach(function(ar){
-    var hs=Math.min(8,ar.dl/3+2),ang=Math.atan2(ar.ndy,ar.ndx);
-    ctx.beginPath();ctx.moveTo(ar.ex,ar.ey);
-    ctx.lineTo(ar.ex-hs*Math.cos(ang-.52),ar.ey-hs*Math.sin(ang-.52));
-    ctx.lineTo(ar.ex-hs*Math.cos(ang+.52),ar.ey-hs*Math.sin(ang+.52));
+  var refMag=maxMag||1;
+  fieldArrows.forEach(function(ar){
+    var nf=Math.min(ar.mag/refMag,1),sf=Math.sqrt(nf);
+    var dl=20*arrowScale*(0.55+0.45*sf);
+    var dcx=ar.dx/ar.mag,dcy=-ar.dy/ar.mag;
+    var headLen=Math.max(dl*0.35,5),headHW=headLen*0.5;
+    var shaftLen=dl-headLen*0.4;
+    var baseW=1.0+0.8*sf,tipW=baseW*0.3;
+    var ppx=-dcy,ppy=dcx;
+    var tx=ar.px-dcx*shaftLen/2,ty=ar.py-dcy*shaftLen/2;
+    var hx=ar.px+dcx*shaftLen/2,hy=ar.py+dcy*shaftLen/2;
+    var alpha=opacity*(0.7+0.3*sf);
+    ctx.fillStyle='rgba('+r0+','+g0+','+b0+','+alpha+')';
+    ctx.beginPath();
+    ctx.moveTo(tx+ppx*baseW,ty+ppy*baseW);
+    ctx.lineTo(hx+ppx*tipW,hy+ppy*tipW);
+    ctx.lineTo(hx+ppx*headHW,hy+ppy*headHW);
+    ctx.lineTo(hx+dcx*headLen,hy+dcy*headLen);
+    ctx.lineTo(hx-ppx*headHW,hy-ppy*headHW);
+    ctx.lineTo(hx-ppx*tipW,hy-ppy*tipW);
+    ctx.lineTo(tx-ppx*baseW,ty-ppy*baseW);
     ctx.closePath();ctx.fill();
   });
 
   /* Axes */
-  ctx.strokeStyle=isHC()?'#000':'#333';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.strokeStyle=isHC()?'#000':'#1f2937';ctx.lineWidth=1.5;ctx.lineCap='round';ctx.setLineDash([]);
   if(SX_MIN<=0&&SX_MAX>=0){var ax=s2cx(0);ctx.beginPath();ctx.moveTo(ax,xo);ctx.lineTo(ax,CH-xo);ctx.stroke();}
   if(SY_MIN<=0&&SY_MAX>=0){var ay=s2cy(0);ctx.beginPath();ctx.moveTo(xo,ay);ctx.lineTo(CW-xo,ay);ctx.stroke();}
 
@@ -669,21 +685,51 @@ function drawPortrait(){
   ctx.fillText('x',CW-xo+18,CH-xo-5);
   ctx.save();ctx.translate(xo-18,CH/2);ctx.rotate(-Math.PI/2);ctx.textBaseline='middle';ctx.fillText('y',0,0);ctx.restore();
 
-  /* Trajectories */
+  /* Trajectories with directional arrowheads */
   trajectories.forEach(function(traj,idx){
     if(traj.length<2)return;
-    ctx.strokeStyle=COLORS[idx%COLORS.length];ctx.lineWidth=2.2;
+    var color=COLORS[idx%COLORS.length];
+    ctx.save();
+    ctx.strokeStyle=color;ctx.lineWidth=2;
     ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash([]);
+    ctx.globalAlpha=0.85;
     ctx.beginPath();ctx.moveTo(traj[0].cx,traj[0].cy);
     for(var i=1;i<traj.length;i++)ctx.lineTo(traj[i].cx,traj[i].cy);
     ctx.stroke();
+
+    /* Directional arrowheads — adaptive spacing, max 8, min 60px separation */
+    var totalLen=0;
+    for(var i=1;i<traj.length;i++){var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;totalLen+=Math.sqrt(ddx*ddx+ddy*ddy);}
+    var maxArr=8,arrowSp=Math.max(100,totalLen/(maxArr+1)),arrowSz=5.5;
+    ctx.fillStyle=color;ctx.globalAlpha=0.92;
+    var accum=arrowSp*0.45,placed=[];
+    for(var i=1;i<traj.length;i++){
+      var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;
+      var seg=Math.sqrt(ddx*ddx+ddy*ddy);if(seg<0.5)continue;
+      accum+=seg;
+      if(accum>=arrowSp){
+        var ax=traj[i].cx,ay=traj[i].cy;
+        var tooClose=false;
+        for(var k=0;k<placed.length;k++){var ex=ax-placed[k].x,ey=ay-placed[k].y;if(ex*ex+ey*ey<3600){tooClose=true;break;}}
+        if(tooClose)continue;
+        accum=0;placed.push({x:ax,y:ay});
+        var ang=Math.atan2(ddy,ddx);
+        ctx.beginPath();
+        ctx.moveTo(ax+arrowSz*Math.cos(ang),ay+arrowSz*Math.sin(ang));
+        ctx.lineTo(ax-arrowSz*Math.cos(ang-Math.PI/3.2),ay-arrowSz*Math.sin(ang-Math.PI/3.2));
+        ctx.lineTo(ax-arrowSz*Math.cos(ang+Math.PI/3.2),ay-arrowSz*Math.sin(ang+Math.PI/3.2));
+        ctx.closePath();ctx.fill();
+      }
+    }
+    ctx.restore();
   });
 
-  /* Initial points */
+  /* Initial points — white-filled with coloured border */
   if(showInit){
     userPoints.forEach(function(pt,idx){
-      ctx.fillStyle=COLORS[idx%COLORS.length];ctx.strokeStyle=isHC()?'#000':'#fff';ctx.lineWidth=1.5;
-      ctx.beginPath();ctx.arc(s2cx(pt.x),s2cy(pt.y),5.5,0,2*Math.PI);ctx.fill();ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.fillStyle='#fff';ctx.strokeStyle=COLORS[idx%COLORS.length];ctx.lineWidth=1.8;
+      ctx.beginPath();ctx.arc(s2cx(pt.x),s2cy(pt.y),4,0,2*Math.PI);ctx.fill();ctx.stroke();
     });
   }
 
