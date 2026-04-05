@@ -1,0 +1,746 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Financial Calculator — PV, FV, PMT, APR, amortization, continuous compounding. WCAG 2.1 AA/AAA accessible.">
+  <title>FinanceCalc Pro — PV, FV, PMT, Amortization</title>
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+      options: { enableExplorer: true, enableAssistiveMml: true,
+        menuOptions: { settings: { assistiveMml: true, explorer: true } } }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <style>
+/* ── tokens ── */
+:root {
+  --bg: #f0f2f5; --card: #fff; --sect: #f8f9fb;
+  --info: #eff6ff; --inf-b: #93c5fd; --inf-hd: #1e3a8a;
+  --txt: #111827; --txt2: #374151; --muted: #4b5563;
+  --bdr: #6b7280; --bdr2: #d1d5db; --focus: #1d4ed8;
+  --blue: #1d4ed8; --bl2: #1e3a8a; --teal: #0f766e;
+  --green: #15803d; --red: #b91c1c; --ora: #92400e;
+  --vio: #6d28d9; --link: #1e40af;
+  --r: .5rem; --r2: .75rem;
+  --sh: 0 1px 3px rgba(0,0,0,.10); --sh2: 0 4px 12px rgba(0,0,0,.12);
+}
+.hc {
+  --bg: #fff; --card: #fff; --sect: #f0f0f0; --info: #e8eeff; --inf-b: #00c;
+  --txt: #000; --txt2: #000; --muted: #111; --inf-hd: #00006b;
+  --bdr: #000; --bdr2: #333; --focus: #00f;
+  --blue: #00c; --bl2: #000099; --teal: #005500; --green: #006600;
+  --red: #cc0000; --ora: #7a3000; --vio: #5500aa; --link: #00c;
+}
+@media(prefers-contrast:more) {
+  :root { --txt:#000; --txt2:#000; --muted:#111; --bdr:#000; --blue:#00c; --bl2:#000099; --link:#00c; --focus:#00f;
+    --ora:#7a3000; --vio:#4400aa; --teal:#003d36; --green:#003d1a; --red:#9b0000; }
+}
+
+/* ── reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  background: var(--bg); color: var(--txt); margin: 0; min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center;
+  line-height: 1.6; font-size: 1rem; padding: 1rem;
+}
+*:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.hidden { display: none !important; }
+
+/* ── card ── */
+.card {
+  background: var(--card); padding: 1.1rem 1.25rem; border-radius: var(--r2);
+  max-width: 900px; width: 100%; margin: 0 auto; box-shadow: var(--sh);
+}
+header { display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 2px solid var(--bdr2); }
+.logo { display: flex; align-items: center; gap: .6rem; }
+.logo-icon { width: 40px; height: 40px; background: var(--blue); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; font-size: 20px; }
+h1 { font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--txt); letter-spacing: -.02em; }
+.btn-theme { padding: .5rem .75rem; background: var(--sect); border: 2px solid var(--bdr);
+  border-radius: var(--r); cursor: pointer; font-size: .875rem; font-weight: 600;
+  color: var(--txt); display: flex; align-items: center; gap: .4rem; min-height: 44px; }
+.btn-theme:hover { background: var(--bdr2); }
+
+/* ── mode toggle ── */
+.mode-toggle { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.mode-btn { flex: 1; padding: .75rem; border: 2px solid var(--bdr2); border-radius: var(--r);
+  background: transparent; cursor: pointer; text-align: center; font-size: .9rem;
+  color: var(--txt); transition: all .15s; font-weight: 600; min-height: 44px; }
+.mode-btn.active { border-color: var(--blue); background: var(--info); }
+.mode-btn:hover:not(.active) { background: var(--sect); }
+
+/* ── control bar (from cobweb) ── */
+.cbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem;
+  margin-bottom: .6rem; background: var(--sect); border: 2px solid var(--bdr2);
+  border-radius: var(--r); padding: .5rem .7rem; }
+.cfield { display: flex; flex-direction: column; gap: .18rem; flex: 1 1 140px; min-width: 120px; }
+.cfield.wide { flex: 2 1 200px; }
+.cfield.narrow { flex: 0 1 100px; min-width: 90px; }
+.cfield label { font-size: .8125rem; font-weight: 700; color: var(--txt2);
+  text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+.cfield input, .cfield select {
+  width: 100%; min-height: 40px; padding: .35rem .5rem;
+  font-size: .9375rem; font-weight: 600; border: 2px solid var(--bdr);
+  border-radius: var(--r); background: var(--card); color: var(--txt); }
+.cfield input:focus, .cfield select:focus { border-color: var(--blue); }
+.cfield input[type=number] { text-align: center; color: var(--blue); }
+.input-wrap { position: relative; }
+.input-wrap .prefix { position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); font-size: .875rem; font-weight: 600; pointer-events: none; }
+.input-wrap input.has-prefix { padding-left: 1.5rem; text-align: left; color: var(--txt); }
+.term-row { display: flex; gap: .4rem; }
+.term-row input { flex: 1; }
+.term-row select { width: 90px; flex-shrink: 0; }
+
+/* ── compound row ── */
+.compound-row { display: flex; gap: .4rem; align-items: stretch; }
+.compound-row select { flex: 1; }
+.btn-cont { min-height: 40px; padding: .4rem .75rem; border: 2px solid var(--bdr);
+  border-radius: var(--r); background: var(--sect); cursor: pointer;
+  font-size: .8125rem; font-weight: 700; color: var(--txt); white-space: nowrap; }
+.btn-cont[aria-pressed="true"] { background: var(--teal); color: #fff; border-color: var(--teal); }
+
+/* ── result box ── */
+.result-box { background: linear-gradient(135deg, var(--info), var(--sect));
+  border: 2px solid var(--blue); border-radius: var(--r2); padding: 1rem;
+  text-align: center; margin-bottom: 1rem; }
+.result-label { font-size: .75rem; color: var(--txt2); text-transform: uppercase;
+  letter-spacing: .5px; margin: 0 0 .25rem; font-weight: 700; }
+.result-value { font-size: 2rem; font-weight: 800; color: var(--blue); margin: 0;
+  font-variant-numeric: tabular-nums; }
+.result-extra { font-size: .875rem; color: var(--muted); margin: .25rem 0 0; }
+
+/* ── stats grid ── */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-bottom: 1rem; }
+.stat { background: var(--sect); border-radius: var(--r); padding: .6rem; text-align: center;
+  border: 1px solid var(--bdr2); }
+.stat-label { font-size: .65rem; color: var(--muted); text-transform: uppercase; margin: 0 0 .15rem;
+  font-weight: 700; letter-spacing: .3px; }
+.stat-value { font-size: 1rem; font-weight: 700; margin: 0; font-variant-numeric: tabular-nums; }
+.stat-value.cost { color: var(--ora); }
+.stat-value.earn { color: var(--green); }
+
+/* ── info panel (from cobweb) ── */
+.info-panel { background: var(--info); border: 2px solid var(--inf-b);
+  border-radius: var(--r); margin-bottom: .75rem; overflow: hidden; }
+.info-btn { width: 100%; padding: .75rem 1rem; display: flex; align-items: center;
+  justify-content: space-between; background: transparent; border: none; cursor: pointer;
+  font-size: 1rem; font-weight: 700; color: var(--inf-hd); text-align: left; }
+.info-btn:hover { background: rgba(0,0,0,.03); }
+.info-icon { font-size: 1.25rem; font-weight: 700; flex-shrink: 0; }
+.info-body { padding: 0 1.1rem 1rem; }
+.info-body p { font-size: .9375rem; color: var(--txt2); margin: 0 0 .5rem; line-height: 1.65; }
+.info-body h2 { font-size: 1rem; font-weight: 700; color: var(--txt); margin: .9rem 0 .3rem; }
+
+/* ── formula cards ── */
+.formula-card { background: var(--sect); border-radius: var(--r); padding: .75rem 1rem;
+  margin-bottom: .6rem; border-left: 3px solid var(--blue); }
+.formula-card h3 { margin: 0 0 .3rem; font-size: .875rem; color: var(--blue); font-weight: 700; }
+.formula-card p { margin: 0 0 .5rem; font-size: .8125rem; color: var(--txt2); line-height: 1.6; }
+.formula-card .math { font-size: 1rem; margin: .4rem 0; text-align: center; }
+.formula-card.continuous { border-left-color: var(--teal); }
+.formula-card.continuous h3 { color: var(--teal); }
+
+/* ── variable grid ── */
+.var-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .3rem .75rem;
+  font-size: .8125rem; padding: .75rem; background: var(--info); border-radius: var(--r);
+  border: 1px solid var(--inf-b); margin-top: .5rem; }
+.var-grid dt { font-weight: 700; display: inline; color: var(--blue); }
+.var-grid dd { margin: 0; display: inline; color: var(--txt2); }
+
+/* ── statement box ── */
+.statement { background: var(--card); border-radius: var(--r); padding: .875rem;
+  font-family: ui-monospace, 'SF Mono', monospace; font-size: .8125rem;
+  line-height: 1.75; white-space: pre-wrap; border: 2px solid var(--bdr2); color: var(--txt); }
+
+/* ── table ── */
+.table-wrap { overflow-x: auto; max-height: 280px; overflow-y: auto;
+  border: 2px solid var(--bdr2); border-radius: var(--r); }
+table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+th, td { padding: .5rem .6rem; text-align: right; border-bottom: 1px solid var(--bdr2); }
+th { background: var(--sect); font-weight: 700; position: sticky; top: 0;
+  text-transform: uppercase; font-size: .7rem; color: var(--muted); letter-spacing: .3px; }
+th:first-child, td:first-child { text-align: left; }
+tbody tr:nth-child(even) { background: var(--sect); }
+td.principal { color: var(--green); }
+td.interest { color: var(--ora); }
+
+/* ── compounding info ── */
+.comp-info { font-size: .8125rem; color: var(--txt2); text-align: center;
+  padding: .5rem; background: var(--sect); border-radius: var(--r);
+  border: 1px solid var(--bdr2); margin-bottom: .75rem; }
+.comp-info strong { color: var(--blue); }
+
+/* ── footer ── */
+footer { margin-top: 1.25rem; padding-top: .75rem; border-top: 2px solid var(--bdr2);
+  text-align: center; color: var(--muted); font-size: .8125rem; }
+
+/* ── high contrast toggle ── */
+.ctoggle { position: fixed; bottom: 1rem; right: 1rem; z-index: 200;
+  background: var(--txt); color: var(--card); border: 2px solid var(--bdr);
+  border-radius: 50%; width: 48px; height: 48px; font-size: 1.25rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; box-shadow: var(--sh2); }
+.ctoggle:focus-visible { outline: 3px solid var(--focus); }
+
+@media (max-width: 640px) {
+  .card { padding: .875rem; }
+  .stats { grid-template-columns: 1fr; }
+  .var-grid { grid-template-columns: 1fr; }
+  .cfield { min-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+  </style>
+</head>
+<body>
+  <div role="status" aria-live="polite" aria-atomic="true" class="sr-only" id="live"></div>
+
+  <main class="card" role="main">
+    <header>
+      <div class="logo">
+        <span class="logo-icon" aria-hidden="true">📊</span>
+        <h1>FinanceCalc Pro</h1>
+      </div>
+      <button type="button" class="btn-theme" id="theme-btn" aria-pressed="false" aria-label="Toggle dark mode">
+        <span id="theme-icon">🌙</span><span id="theme-text">Dark</span>
+      </button>
+    </header>
+
+    <!-- Mode Toggle -->
+    <div class="mode-toggle" role="radiogroup" aria-label="Calculation mode">
+      <button type="button" class="mode-btn active" data-mode="loan" role="radio" aria-checked="true">
+        🏠 Loan Payment
+      </button>
+      <button type="button" class="mode-btn" data-mode="savings" role="radio" aria-checked="false">
+        💰 Savings &amp; Investment
+      </button>
+    </div>
+
+    <!-- Controls Row 1 -->
+    <div class="cbar" role="group" aria-label="Calculator inputs">
+      <div class="cfield">
+        <label for="solve">Solve For</label>
+        <select id="solve"></select>
+      </div>
+      <div class="cfield" id="pv-grp">
+        <label for="pv" id="pv-lbl">Loan Amount</label>
+        <div class="input-wrap">
+          <span class="prefix">$</span>
+          <input type="number" id="pv" class="has-prefix" value="100000" step="any">
+        </div>
+      </div>
+      <div class="cfield hidden" id="fv-grp">
+        <label for="fv">Target Future Value</label>
+        <div class="input-wrap">
+          <span class="prefix">$</span>
+          <input type="number" id="fv" class="has-prefix" value="500000" step="any">
+        </div>
+      </div>
+      <div class="cfield narrow" id="rate-grp">
+        <label for="rate">Rate (%)</label>
+        <input type="number" id="rate" value="6.5" step="0.01">
+      </div>
+    </div>
+
+    <!-- Controls Row 2 -->
+    <div class="cbar" role="group" aria-label="Term and payment inputs">
+      <div class="cfield" id="term-grp">
+        <label for="term">Term</label>
+        <div class="term-row">
+          <input type="number" id="term" value="30" step="any">
+          <select id="term-unit">
+            <option value="years">Years</option>
+            <option value="periods">Periods</option>
+          </select>
+        </div>
+      </div>
+      <div class="cfield hidden" id="pmt-grp">
+        <label for="pmt" id="pmt-lbl">Payment Amount</label>
+        <div class="input-wrap">
+          <span class="prefix">$</span>
+          <input type="number" id="pmt" class="has-prefix" value="500" step="any">
+        </div>
+      </div>
+      <div class="cfield">
+        <label for="compound">Compounding</label>
+        <div class="compound-row">
+          <select id="compound">
+            <option value="1">Annual</option>
+            <option value="2">Semi-annual</option>
+            <option value="4">Quarterly</option>
+            <option value="12" selected>Monthly</option>
+            <option value="52">Weekly</option>
+            <option value="365">Daily</option>
+          </select>
+          <button type="button" class="btn-cont" id="cont-btn" aria-pressed="false"
+                  aria-label="Toggle continuous compounding">\(e^{rt}\)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div class="result-box" role="region" aria-live="polite">
+      <p class="result-label" id="res-lbl">Monthly Payment</p>
+      <p class="result-value" id="res-val">$0.00</p>
+      <p class="result-extra" id="res-extra"></p>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="comp-info">
+      <strong>Compounding:</strong> <span id="comp-info">Monthly</span> &nbsp;·&nbsp;
+      <strong>Effective Annual Rate:</strong> <span id="eff-rate">6.72%</span>
+    </div>
+
+    <!-- Summary Statement -->
+    <div class="info-panel">
+      <button type="button" id="stmt-btn" class="info-btn" aria-expanded="true" aria-controls="stmt-body">
+        <span>Summary Statement</span>
+        <span class="info-icon" aria-hidden="true">&minus;</span>
+      </button>
+      <div id="stmt-body" class="info-body">
+        <div class="statement" id="statement" role="article"></div>
+      </div>
+    </div>
+
+    <!-- Amortization Schedule -->
+    <div class="info-panel">
+      <button type="button" id="amort-btn" class="info-btn" aria-expanded="false" aria-controls="amort-body">
+        <span>Amortization Schedule</span>
+        <span class="info-icon" aria-hidden="true">+</span>
+      </button>
+      <div id="amort-body" class="info-body" hidden>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable schedule">
+          <table>
+            <thead id="tbl-head"></thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+        <p id="tbl-note" style="text-align:center;font-size:.75rem;color:var(--muted);margin-top:.5rem;display:none;">
+          Showing first 360 periods
+        </p>
+      </div>
+    </div>
+
+    <!-- About & Formulas -->
+    <div class="info-panel">
+      <button type="button" id="about-btn" class="info-btn" aria-expanded="false" aria-controls="about-body">
+        <span>About &amp; Formulas</span>
+        <span class="info-icon" aria-hidden="true">+</span>
+      </button>
+      <div id="about-body" class="info-body" hidden>
+
+        <div class="formula-card">
+          <h3>Present Value (PV)</h3>
+          <p>The current worth of a future sum or stream of payments, discounted at a given interest rate. For loans, PV is the principal borrowed. For investments, it is your initial deposit.</p>
+          <div class="math">\[PV = \dfrac{FV}{(1+r)^n}\]</div>
+          <div class="math">\[PV_{\text{annuity}} = PMT \times \dfrac{1-(1+r)^{-n}}{r}\]</div>
+        </div>
+
+        <div class="formula-card">
+          <h3>Future Value (FV)</h3>
+          <p>The projected value of an investment at a future date, assuming constant interest and compounding. Shows how money grows over time.</p>
+          <div class="math">\[FV = PV \times \left(1+\dfrac{r}{n}\right)^{nt}\]</div>
+          <div class="math">\[FV_{\text{deposits}} = PV(1+r)^n + PMT \times \dfrac{(1+r)^n-1}{r}\]</div>
+        </div>
+
+        <div class="formula-card">
+          <h3>Payment (PMT)</h3>
+          <p>The fixed amount paid or deposited each period. For loans, this amortizes the debt. For savings, it is your regular contribution toward a goal.</p>
+          <div class="math">\[PMT = PV \times \dfrac{r(1+r)^n}{(1+r)^n-1}\]</div>
+        </div>
+
+        <div class="formula-card">
+          <h3>Number of Periods (N)</h3>
+          <p>The total count of payment or compounding intervals to pay off a loan or reach a target. For a 30-year monthly mortgage, N = 360.</p>
+          <div class="math">\[N = \dfrac{\ln\left(\dfrac{PMT}{PMT - PV \cdot r}\right)}{\ln(1+r)}\]</div>
+        </div>
+
+        <div class="formula-card">
+          <h3>Annual Percentage Rate (APR) &amp; Yield (APY)</h3>
+          <p>APR is the nominal yearly rate. APY (Effective Annual Rate) reflects true yearly return after compounding.</p>
+          <div class="math">\[APY = \left(1+\dfrac{r}{n}\right)^n - 1\]</div>
+        </div>
+
+        <div class="formula-card continuous">
+          <h3>Continuous Compounding</h3>
+          <p>The theoretical limit as compounding frequency approaches infinity. Uses Euler's constant \(e \approx 2.71828\), representing maximum possible growth.</p>
+          <div class="math">\[FV = PV \times e^{rt}\]</div>
+          <div class="math">\[\lim_{n\to\infty}\left(1+\dfrac{r}{n}\right)^n = e^r\]</div>
+          <p style="font-size:.75rem;margin-top:.5rem;"><strong>Example:</strong> $1,000 at 10% for 1 year → Monthly: $1,104.71 · Daily: $1,105.16 · Continuous: $1,105.17</p>
+        </div>
+
+        <div class="formula-card">
+          <h3>Amortization</h3>
+          <p>Each payment splits between interest (charged on remaining balance) and principal (reducing the debt). Early payments are mostly interest.</p>
+          <div class="math">\[\text{Interest} = \text{Balance} \times r\]</div>
+          <div class="math">\[\text{Principal} = PMT - \text{Interest}\]</div>
+        </div>
+
+        <dl class="var-grid">
+          <div><dt>PV</dt> <dd>= Present Value (principal or initial amount)</dd></div>
+          <div><dt>FV</dt> <dd>= Future Value (ending balance)</dd></div>
+          <div><dt>PMT</dt> <dd>= Payment per period (regular contribution)</dd></div>
+          <div><dt>r</dt> <dd>= Periodic interest rate (annual rate ÷ n)</dd></div>
+          <div><dt>n</dt> <dd>= Compounding periods per year</dd></div>
+          <div><dt>t</dt> <dd>= Time in years (loan or investment term)</dd></div>
+          <div><dt>N</dt> <dd>= Total number of periods (n × t)</dd></div>
+          <div><dt>e</dt> <dd>= Euler's number ≈ 2.71828 (continuous growth base)</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <footer role="contentinfo">
+      WCAG 2.1 AA/AAA Compliant · MathJax with Assistive MathML
+    </footer>
+  </main>
+
+  <button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+    <span aria-hidden="true">◐</span>
+  </button>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+function say(m){ const e=$('#live'); e.textContent=''; setTimeout(()=>e.textContent=m,50); }
+
+const state = {
+  dark: false, mode: 'loan', solve: 'PMT', cont: false,
+  pv: 100000, fv: 500000, rate: 6.5, term: 30, unit: 'years', comp: 12, pmt: 500,
+  res: {}
+};
+
+// Theme
+$('#theme-btn').onclick = () => {
+  state.dark = !state.dark;
+  document.body.dataset.theme = state.dark ? 'dark' : '';
+  $('#theme-btn').setAttribute('aria-pressed', state.dark);
+  $('#theme-icon').textContent = state.dark ? '☀️' : '🌙';
+  $('#theme-text').textContent = state.dark ? 'Light' : 'Dark';
+  // Apply dark theme tokens
+  if (state.dark) {
+    document.documentElement.style.setProperty('--bg', '#0f172a');
+    document.documentElement.style.setProperty('--card', '#1e293b');
+    document.documentElement.style.setProperty('--sect', '#334155');
+    document.documentElement.style.setProperty('--info', '#1e3a5f');
+    document.documentElement.style.setProperty('--inf-b', '#3b82f6');
+    document.documentElement.style.setProperty('--inf-hd', '#93c5fd');
+    document.documentElement.style.setProperty('--txt', '#f1f5f9');
+    document.documentElement.style.setProperty('--txt2', '#cbd5e1');
+    document.documentElement.style.setProperty('--muted', '#94a3b8');
+    document.documentElement.style.setProperty('--bdr', '#475569');
+    document.documentElement.style.setProperty('--bdr2', '#475569');
+    document.documentElement.style.setProperty('--focus', '#60a5fa');
+    document.documentElement.style.setProperty('--blue', '#3b82f6');
+    document.documentElement.style.setProperty('--bl2', '#60a5fa');
+    document.documentElement.style.setProperty('--teal', '#14b8a6');
+    document.documentElement.style.setProperty('--green', '#22c55e');
+    document.documentElement.style.setProperty('--red', '#f87171');
+    document.documentElement.style.setProperty('--ora', '#fbbf24');
+    document.documentElement.style.setProperty('--vio', '#a78bfa');
+    document.documentElement.style.setProperty('--link', '#93c5fd');
+  } else {
+    // Reset to light
+    document.documentElement.style.setProperty('--bg', '#f0f2f5');
+    document.documentElement.style.setProperty('--card', '#fff');
+    document.documentElement.style.setProperty('--sect', '#f8f9fb');
+    document.documentElement.style.setProperty('--info', '#eff6ff');
+    document.documentElement.style.setProperty('--inf-b', '#93c5fd');
+    document.documentElement.style.setProperty('--inf-hd', '#1e3a8a');
+    document.documentElement.style.setProperty('--txt', '#111827');
+    document.documentElement.style.setProperty('--txt2', '#374151');
+    document.documentElement.style.setProperty('--muted', '#4b5563');
+    document.documentElement.style.setProperty('--bdr', '#6b7280');
+    document.documentElement.style.setProperty('--bdr2', '#d1d5db');
+    document.documentElement.style.setProperty('--focus', '#1d4ed8');
+    document.documentElement.style.setProperty('--blue', '#1d4ed8');
+    document.documentElement.style.setProperty('--bl2', '#1e3a8a');
+    document.documentElement.style.setProperty('--teal', '#0f766e');
+    document.documentElement.style.setProperty('--green', '#15803d');
+    document.documentElement.style.setProperty('--red', '#b91c1c');
+    document.documentElement.style.setProperty('--ora', '#92400e');
+    document.documentElement.style.setProperty('--vio', '#6d28d9');
+    document.documentElement.style.setProperty('--link', '#1e40af');
+  }
+  if(window.MathJax?.typesetPromise) MathJax.typesetPromise();
+};
+
+// High contrast
+$('#ctog').onclick = () => {
+  document.documentElement.classList.toggle('hc');
+  say('High contrast ' + (document.documentElement.classList.contains('hc') ? 'on' : 'off'));
+};
+
+// Mode toggle
+$$('.mode-btn').forEach(btn => {
+  btn.onclick = () => {
+    $$('.mode-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-checked','false'); });
+    btn.classList.add('active');
+    btn.setAttribute('aria-checked','true');
+    state.mode = btn.dataset.mode;
+    updateUI(); calc();
+  };
+});
+
+// Continuous
+$('#cont-btn').onclick = () => {
+  state.cont = !state.cont;
+  $('#cont-btn').setAttribute('aria-pressed', state.cont);
+  $('#compound').disabled = state.cont;
+  calc();
+};
+
+// Inputs
+$('#solve').onchange = e => { state.solve = e.target.value; updateUI(); calc(); };
+$('#pv').oninput = e => { state.pv = +e.target.value || 0; calc(); };
+$('#fv').oninput = e => { state.fv = +e.target.value || 0; calc(); };
+$('#rate').oninput = e => { state.rate = +e.target.value || 0; calc(); };
+$('#term').oninput = e => { state.term = +e.target.value || 0; calc(); };
+$('#term-unit').onchange = e => { state.unit = e.target.value; calc(); };
+$('#pmt').oninput = e => { state.pmt = +e.target.value || 0; calc(); };
+$('#compound').onchange = e => { state.comp = +e.target.value; calc(); };
+
+// Collapsible panels
+function setupPanel(btnId, bodyId) {
+  const btn = $('#'+btnId), body = $('#'+bodyId), icon = btn.querySelector('.info-icon');
+  btn.onclick = () => {
+    const exp = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', !exp);
+    body.hidden = exp;
+    icon.innerHTML = exp ? '+' : '&minus;';
+    if(!exp && window.MathJax?.typesetPromise) MathJax.typesetPromise([body]);
+  };
+}
+setupPanel('stmt-btn', 'stmt-body');
+setupPanel('amort-btn', 'amort-body');
+setupPanel('about-btn', 'about-body');
+
+function updateUI() {
+  const { mode, solve } = state;
+  const solveEl = $('#solve');
+
+  if (mode === 'loan') {
+    solveEl.innerHTML = '<option value="PMT">Payment (PMT)</option><option value="PV">Principal (PV)</option><option value="RATE">Interest Rate</option><option value="N">Periods (N)</option>';
+    $('#pv-lbl').textContent = 'Loan Amount';
+    $('#pmt-lbl').textContent = 'Payment Amount';
+  } else {
+    solveEl.innerHTML = '<option value="FV">Future Value (FV)</option><option value="PV">Initial Deposit (PV)</option><option value="PMT">Regular Deposit</option><option value="N">Periods (N)</option>';
+    $('#pv-lbl').textContent = 'Initial Deposit';
+    $('#pmt-lbl').textContent = 'Regular Deposit';
+  }
+  solveEl.value = solveEl.querySelector(`option[value="${solve}"]`) ? solve : solveEl.options[0].value;
+  state.solve = solveEl.value;
+
+  $('#pv-grp').classList.toggle('hidden', state.solve === 'PV');
+  $('#fv-grp').classList.toggle('hidden', !(mode === 'savings' && (state.solve === 'PV' || state.solve === 'PMT' || state.solve === 'N')));
+  $('#rate-grp').classList.toggle('hidden', state.solve === 'RATE');
+  $('#term-grp').classList.toggle('hidden', state.solve === 'N');
+  $('#pmt-grp').classList.toggle('hidden', !(state.solve === 'PV' || state.solve === 'RATE' || state.solve === 'N' || (mode === 'savings' && state.solve !== 'PMT')));
+}
+
+function fmt(v) { return isNaN(v) ? '$0.00' : '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+function calc() {
+  const { mode, solve, cont, pv, fv, rate, term, unit, comp, pmt } = state;
+  const r0 = rate / 100, n = comp;
+  const N = unit === 'years' ? term * n : term;
+  const yrs = unit === 'years' ? term : term / n;
+  const r = r0 / n;
+  let res = { schedule: [], N, yrs, n, r, r0 };
+
+  if (mode === 'loan') {
+    if (solve === 'PMT') {
+      const er = cont ? Math.exp(r0/n)-1 : r;
+      res.pmt = r === 0 ? pv/N : pv * (er * Math.pow(1+er,N)) / (Math.pow(1+er,N)-1);
+      res.pv = pv; res.totalPay = res.pmt * N; res.totalInt = res.totalPay - pv;
+    } else if (solve === 'PV') {
+      const er = cont ? Math.exp(r0/n)-1 : r;
+      res.pv = r === 0 ? pmt * N : pmt * (1 - Math.pow(1+er,-N)) / er;
+      res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - res.pv;
+    } else if (solve === 'RATE') {
+      let g = 0.005;
+      for (let i = 0; i < 100; i++) {
+        const f = pv * (g * Math.pow(1+g,N)) / (Math.pow(1+g,N)-1) - pmt;
+        const df = pv * (Math.pow(1+g,N)*(1-N*g) + N*g*Math.pow(1+g,N-1)) / Math.pow(Math.pow(1+g,N)-1,2);
+        const ng = g - f/df; if (Math.abs(ng-g) < 1e-9) break; g = ng;
+      }
+      res.rate = g * n * 100; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - pv;
+    } else if (solve === 'N') {
+      res.n_calc = r === 0 ? pv/pmt : Math.log(pmt/(pmt-pv*r)) / Math.log(1+r);
+      res.nYrs = res.n_calc / n; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * res.n_calc; res.totalInt = res.totalPay - pv;
+    }
+    // Schedule
+    if (res.pmt && solve !== 'N') {
+      let bal = res.pv || pv;
+      const pr = cont ? Math.exp(r0/n)-1 : r;
+      for (let i = 1; i <= Math.min(N,360); i++) {
+        const int = bal * pr, prin = res.pmt - int;
+        bal = Math.max(0, bal - prin);
+        res.schedule.push({i, pay: res.pmt, prin, int, bal});
+      }
+    }
+  } else {
+    // Savings
+    if (solve === 'FV') {
+      const pmtV = pmt;
+      if (cont) {
+        const pvFV = pv * Math.exp(r0 * yrs);
+        const er = Math.exp(r0/n)-1;
+        res.fv = pvFV + pmtV * (Math.pow(1+er,N)-1) / er;
+      } else {
+        const pvFV = pv * Math.pow(1+r,N);
+        res.fv = pvFV + (r===0 ? pmtV*N : pmtV * (Math.pow(1+r,N)-1)/r);
+      }
+      res.pv = pv; res.pmt = pmtV; res.totalDep = pv + pmtV*N; res.totalInt = res.fv - res.totalDep;
+    } else if (solve === 'PV') {
+      const er = cont ? Math.exp(r0/n)-1 : r;
+      const fvPmt = r===0 ? pmt*N : pmt * (Math.pow(1+er,N)-1)/er;
+      res.pv = cont ? (fv - fvPmt)/Math.exp(r0*yrs) : (fv - fvPmt)/Math.pow(1+r,N);
+      res.fv = fv; res.pmt = pmt; res.totalDep = res.pv + pmt*N; res.totalInt = fv - res.totalDep;
+    } else if (solve === 'PMT') {
+      const er = cont ? Math.exp(r0/n)-1 : r;
+      const pvFV = cont ? pv * Math.exp(r0*yrs) : pv * Math.pow(1+r,N);
+      res.pmt = r===0 ? (fv-pvFV)/N : (fv-pvFV)*er / (Math.pow(1+er,N)-1);
+      res.pv = pv; res.fv = fv; res.totalDep = pv + res.pmt*N; res.totalInt = fv - res.totalDep;
+    } else if (solve === 'N') {
+      const er = cont ? Math.exp(r0/n)-1 : r;
+      let nGuess = 120;
+      for (let i = 0; i < 100; i++) {
+        const fvCalc = pv * Math.pow(1+er, nGuess) + (er === 0 ? pmt * nGuess : pmt * (Math.pow(1+er, nGuess) - 1) / er);
+        const fvDeriv = pv * Math.log(1+er) * Math.pow(1+er, nGuess) + (er === 0 ? pmt : pmt * Math.log(1+er) * Math.pow(1+er, nGuess) / er);
+        const nNew = nGuess - (fvCalc - fv) / fvDeriv;
+        if (Math.abs(nNew - nGuess) < 0.0001) break;
+        nGuess = nNew;
+      }
+      res.n_calc = Math.max(0, nGuess);
+      res.nYrs = res.n_calc / n;
+      res.pv = pv; res.fv = fv; res.pmt = pmt;
+      res.totalDep = pv + pmt * res.n_calc;
+      res.totalInt = fv - res.totalDep;
+    }
+    // Schedule
+    let bal = res.pv || pv;
+    const pr = cont ? Math.exp(r0/n)-1 : r;
+    const pmtV = res.pmt || pmt;
+    const schedN = solve === 'N' ? Math.min(res.n_calc, 360) : Math.min(N, 360);
+    for (let i = 1; i <= schedN; i++) {
+      const int = bal * pr;
+      bal += int + pmtV;
+      res.schedule.push({i, dep: pmtV, int, bal});
+    }
+  }
+
+  state.res = res;
+  render();
+}
+
+function render() {
+  const { mode, solve, cont, res, comp, rate } = state;
+
+  // Result
+  let lbl, val, extra = '';
+  if (mode === 'loan') {
+    if (solve === 'PMT') { lbl = 'Monthly Payment'; val = fmt(res.pmt); }
+    else if (solve === 'PV') { lbl = 'Loan Amount'; val = fmt(res.pv); }
+    else if (solve === 'RATE') { lbl = 'Interest Rate'; val = (res.rate||0).toFixed(4)+'%'; }
+    else { lbl = 'Periods Required'; val = (res.n_calc||0).toFixed(1); extra = `(${(res.nYrs||0).toFixed(2)} years)`; }
+  } else {
+    if (solve === 'FV') { lbl = 'Future Value'; val = fmt(res.fv); }
+    else if (solve === 'PV') { lbl = 'Initial Deposit'; val = fmt(res.pv); }
+    else if (solve === 'PMT') { lbl = 'Required Deposit'; val = fmt(res.pmt); }
+    else { lbl = 'Periods Required'; val = (res.n_calc||0).toFixed(1); extra = `(${(res.nYrs||0).toFixed(2)} years)`; }
+  }
+  $('#res-lbl').textContent = lbl;
+  $('#res-val').textContent = val;
+  $('#res-extra').textContent = extra;
+  $('#live').textContent = `${lbl}: ${val}`;
+
+  // Stats
+  let stats = '';
+  if (mode === 'loan') {
+    stats = `<div class="stat"><p class="stat-label">Principal</p><p class="stat-value">${fmt(res.pv||state.pv)}</p></div>
+             <div class="stat"><p class="stat-label">Total Interest</p><p class="stat-value cost">${fmt(Math.abs(res.totalInt))}</p></div>
+             <div class="stat"><p class="stat-label">Total Cost</p><p class="stat-value">${fmt(Math.abs(res.totalPay))}</p></div>`;
+  } else {
+    stats = `<div class="stat"><p class="stat-label">Total Deposits</p><p class="stat-value">${fmt(Math.abs(res.totalDep))}</p></div>
+             <div class="stat"><p class="stat-label">Interest Earned</p><p class="stat-value earn">${fmt(Math.abs(res.totalInt))}</p></div>
+             <div class="stat"><p class="stat-label">Future Value</p><p class="stat-value">${fmt(Math.abs(res.fv||state.fv))}</p></div>`;
+  }
+  $('#stats').innerHTML = stats;
+
+  // Compounding info
+  const names = {1:'Annual',2:'Semi-annual',4:'Quarterly',12:'Monthly',52:'Weekly',365:'Daily'};
+  $('#comp-info').innerHTML = cont ? 'Continuous \\(e^{rt}\\)' : names[comp] || comp+'×/yr';
+  const eff = cont ? (Math.exp(rate/100)-1)*100 : (Math.pow(1+rate/100/comp,comp)-1)*100;
+  $('#eff-rate').textContent = eff.toFixed(4)+'%';
+
+  // Statement
+  const compText = cont ? 'continuous compounding' : `${comp} compounding periods per year`;
+  const periods = solve === 'N' ? Math.round(res.n_calc||0) : Math.round(res.N);
+  const years = solve === 'N' ? (res.nYrs||0) : res.yrs;
+  let stmt = '';
+  if (mode === 'loan') {
+    stmt = `LOAN ANALYSIS
+
+Principal: ${fmt(res.pv||state.pv)}
+APR: ${res.rate ? res.rate.toFixed(4) : state.rate}%
+Term: ${years.toFixed(2)} years (${periods} periods)
+Compounding: ${compText}
+
+RESULTS
+Payment: ${fmt(res.pmt||state.pmt)}
+Total Payments: ${fmt(Math.abs(res.totalPay))}
+Total Interest: ${fmt(Math.abs(res.totalInt))}
+
+You will pay ${fmt(res.pmt||state.pmt)} per period for ${periods} periods, totaling ${fmt(Math.abs(res.totalPay))}, of which ${fmt(Math.abs(res.totalInt))} is interest.`;
+  } else {
+    stmt = `SAVINGS ANALYSIS
+
+Initial Deposit: ${fmt(Math.abs(res.pv||state.pv))}
+Annual Rate: ${state.rate}%
+Term: ${years.toFixed(2)} years (${periods} periods)
+Regular Deposit: ${fmt(Math.abs(res.pmt||state.pmt))}
+Compounding: ${compText}
+
+RESULTS
+Future Value: ${fmt(Math.abs(res.fv||state.fv))}
+Total Deposits: ${fmt(Math.abs(res.totalDep))}
+Interest Earned: ${fmt(Math.abs(res.totalInt))}
+
+Starting with ${fmt(Math.abs(res.pv||state.pv))} and depositing ${fmt(Math.abs(res.pmt||state.pmt))} each period, your investment grows to ${fmt(Math.abs(res.fv||state.fv))} after ${years.toFixed(2)} years.`;
+  }
+  $('#statement').textContent = stmt;
+
+  // Table
+  if (mode === 'loan') {
+    $('#tbl-head').innerHTML = '<tr><th>Period</th><th>Payment</th><th>Principal</th><th>Interest</th><th>Balance</th></tr>';
+    $('#tbl-body').innerHTML = res.schedule.map(r =>
+      `<tr><td>${r.i}</td><td>${fmt(r.pay)}</td><td class="principal">${fmt(r.prin)}</td><td class="interest">${fmt(r.int)}</td><td>${fmt(r.bal)}</td></tr>`
+    ).join('');
+  } else {
+    $('#tbl-head').innerHTML = '<tr><th>Period</th><th>Deposit</th><th>Interest</th><th>Balance</th></tr>';
+    $('#tbl-body').innerHTML = res.schedule.map(r =>
+      `<tr><td>${r.i}</td><td>${fmt(Math.abs(r.dep))}</td><td class="principal">${fmt(Math.abs(r.int))}</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
+    ).join('');
+  }
+  $('#tbl-note').style.display = res.schedule.length >= 360 ? 'block' : 'none';
+
+  if (window.MathJax?.typesetPromise) MathJax.typesetPromise();
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+  updateUI();
+  calc();
+});
+</script>
+</body>
+</html>
