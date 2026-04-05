@@ -1,95 +1,59 @@
 #!/usr/bin/env python3
-"""Generate label pages for math-tools site."""
+"""Generate label pages by parsing actual tag assignments from hub HTML files."""
 
 import os, re
+from collections import OrderedDict
 
-# All tools grouped by source page
-# Each entry: (tool_name, tool_href, [tags], source_page_href, source_page_label)
+BASE = '/home/user/math-tools'
+LABELS_DIR = os.path.join(BASE, 'labels')
 
-tools = [
-    # === projects.html (Diff Eq) ===
-    ("Direction Field", "slope.html", ["First-Order", "Slope Field"], "projects.html", "Diff Eq"),
-    ("Phase Line Plot", "phaseline.html", ["First-Order", "Autonomous", "Stability"], "projects.html", "Diff Eq"),
-    ("Mass-Spring-Damping Simulator", "massspring.html", ["Second-Order", "Oscillations", "Damping"], "projects.html", "Diff Eq"),
-    ("Multiple Degree of Freedom Mass Spring", "massspring-horizontal.html", ["Systems", "Normal Modes", "Coupled"], "projects.html", "Diff Eq"),
-    ("Damped Pendulum Simulator", "pendulum_simulator.html", ["Second-Order", "Nonlinear", "Pendulum"], "projects.html", "Diff Eq"),
-    ("Elastic (Spring) Pendulum", "elastic_pendulum.html", ["Nonlinear", "Coupled", "Lagrangian"], "projects.html", "Diff Eq"),
-    ("Coupled Pendula with Spring", "coupled.html", ["Coupled", "Normal Modes", "Beats"], "projects.html", "Diff Eq"),
-    ("Forced Vibrations and Resonance", "forcing.html", ["Second-Order", "Forced", "Resonance"], "projects.html", "Diff Eq"),
-    ("Fourier Series Approximation", "fourier.html", ["Series", "Periodic", "Approximation"], "projects.html", "Diff Eq"),
-    ("Laplace Transform Visualizer", "laplace.html", ["Integral Transforms", "Convergence", "Shifting Theorems"], "projects.html", "Diff Eq"),
-    ("Convolution Visualizer", "convolution.html", ["Integral Transforms", "Flip & Slide", "Heaviside"], "projects.html", "Diff Eq"),
-    ("Linear Phase Portraits", "linearportrait.html", ["Systems", "Eigenvalues", "Phase Plane"], "projects.html", "Diff Eq"),
-    ("Nonlinear Phase Portraits", "nonlinearphaseportraits.html", ["Nonlinear", "Nullclines", "Vector Field"], "projects.html", "Diff Eq"),
-    ("Lotka-Volterra Model", "lotkavolterra.html", ["Systems", "Ecology", "Predator-Prey"], "projects.html", "Diff Eq"),
-    ("Lotka-Volterra with Carrying Capacity", "lvcarrying.html", ["Systems", "Logistic", "Ecology"], "projects.html", "Diff Eq"),
-    ("Lorenz System", "lorenzsystem.html", ["Chaos", "3D", "Attractor"], "projects.html", "Diff Eq"),
-    ("Multi-Pendulum Simulator", "multi_pendulum.html", ["Chaos", "Lagrangian", "Pendulum"], "projects.html", "Diff Eq"),
-    ("Particle in a Cubic Potential", "potential.html", ["Potential", "Phase Space", "Nonlinear"], "projects.html", "Diff Eq"),
-    ("Particle in a Double Well Potential", "double_potential.html", ["Potential", "Bistability", "Symmetric"], "projects.html", "Diff Eq"),
-    ("Newton's Law of Cooling", "cooling.html", ["First-Order", "Heat Transfer", "Exponential Decay"], "projects.html", "Diff Eq"),
-    ("Bifurcation Diagram", "bifurcation.html", ["Discrete Dynamics", "Period-Doubling", "Feigenbaum", "Chaos"], "projects.html", "Diff Eq"),
-    ("Pendulum Wave", "pendulum-wave.html", ["Pendulum", "Wave Patterns", "Emergent Behavior", "3D View"], "projects.html", "Diff Eq"),
-
-    # === linear.html (Linear Algebra) ===
-    ("Geometry of Linear Systems", "geometry2d.html", ["Visualization", "Foundations"], "linear.html", "Linear Algebra"),
-    ("2D Matrix Transformation Visualizer", "transformations2d.html", ["Visualization", "Transformations"], "linear.html", "Linear Algebra"),
-    ("2D SVD Visualization", "svd2d.html", ["Visualization", "Decomposition"], "linear.html", "Linear Algebra"),
-    ("Coordinate Transform Visualizer", "changebasisviz.html", ["Visualization", "Transformations"], "linear.html", "Linear Algebra"),
-    ("Matrix Product", "prod.html", ["Foundations", "Computation"], "linear.html", "Linear Algebra"),
-    ("Determinant and Trace", "determinants.html", ["Foundations", "Computation"], "linear.html", "Linear Algebra"),
-    ("Reduced Row Echelon Form Solver (RREF)", "rrefsolver.html", ["Foundations", "Row Reduction"], "linear.html", "Linear Algebra"),
-    ("Matrix Inverse", "inversematrix.html", ["Foundations", "Computation"], "linear.html", "Linear Algebra"),
-    ("Elementary Matrices", "elementary.html", ["Foundations", "Row Reduction"], "linear.html", "Linear Algebra"),
-    ("Row Echelon Form Solver (REF)", "refsolver.html", ["Foundations", "Row Reduction"], "linear.html", "Linear Algebra"),
-    ("Change of Coordinates (Transition Matrix)", "changebasis.html", ["Transformations", "Computation"], "linear.html", "Linear Algebra"),
-    ("Similarity Transforms", "lineartransform.html", ["Transformations", "Computation"], "linear.html", "Linear Algebra"),
-    ("Gram-Schmidt Orthogonalization", "gramschmidtorthogonal.html", ["Foundations", "Computation"], "linear.html", "Linear Algebra"),
-    ("Matrix Diagonalization", "diag.html", ["Eigenvalues", "Decomposition"], "linear.html", "Linear Algebra"),
-    ("Cholesky Factorization", "choleskyfactors.html", ["Decomposition", "Factorization"], "linear.html", "Linear Algebra"),
-    ("Four Fundamental Subspaces", "ffs.html", ["Foundations", "Subspaces"], "linear.html", "Linear Algebra"),
-    ("A = CR Factorization", "cr.html", ["Decomposition", "Factorization"], "linear.html", "Linear Algebra"),
-    ("Magic Factorization", "magicfactors.html", ["Decomposition", "Factorization"], "linear.html", "Linear Algebra"),
-    ("Linear Equation Solver", "linearequation.html", ["Foundations", "Row Reduction"], "linear.html", "Linear Algebra"),
-    ("Matrix Inverse or Pseudo-Inverse", "generalizedinverse.html", ["Foundations", "Computation"], "linear.html", "Linear Algebra"),
-    ("PA = LU Factorization", "lufactor.html", ["Decomposition", "Factorization"], "linear.html", "Linear Algebra"),
-    ("QR Factorization", "qrfactor.html", ["Decomposition", "Factorization"], "linear.html", "Linear Algebra"),
-    ("Least Squares Solver using QR Factorization", "leastsquaresqr.html", ["Least Squares", "Decomposition"], "linear.html", "Linear Algebra"),
-    ("Least Squares Solver using Normal Equations", "leastsquaresnormaleqns.html", ["Least Squares", "Computation"], "linear.html", "Linear Algebra"),
-    ("Least Squares Solver using SVD", "leastsquaressvd.html", ["Least Squares", "Decomposition"], "linear.html", "Linear Algebra"),
-    ("Eigenvalues and Eigenvectors", "eigenvalues-eigenvectors.html", ["Eigenvalues", "Computation"], "linear.html", "Linear Algebra"),
-    ("Singular Value Decomposition (SVD)", "svdcompute.html", ["Decomposition", "Factorization"], "linear.html", "Linear Algebra"),
-
-    # === numerical.html (Numerical Methods) ===
-    ("Bisection Method", "bisection.html", ["Root Finding", "Bracketing"], "numerical.html", "Numerical Methods"),
-    ("Newton's Method Visualizer", "newton.html", ["Root Finding", "Iterative"], "numerical.html", "Numerical Methods"),
-    ("Fixed Point Iteration", "cobweb.html", ["Root Finding", "Fixed Points", "Iterative"], "numerical.html", "Numerical Methods"),
-    ("Polynomial Interpolation", "interpolation.html", ["Interpolation", "Polynomial"], "numerical.html", "Numerical Methods"),
-    ("Polynomial Least Squares Data Fitting", "leastsquaresdata.html", ["Least Squares", "Data Fitting"], "numerical.html", "Numerical Methods"),
-    ("Rational Function Least Squares Data Fitting", "leastsquaresrational.html", ["Least Squares", "Rational Function"], "numerical.html", "Numerical Methods"),
-    ("Finite Difference Generator", "finitediff.html", ["Finite Differences", "Derivatives"], "numerical.html", "Numerical Methods"),
-
-    # === optim.html (Linear Programming) ===
-    ("Method of Corners (Graphical Method)", "corners.html", ["Graphical", "Feasible Region", "Optimization"], "optim.html", "Linear Programming"),
-
-    # === pdftools.html (PDF Tools) ===
-    ("PDF & Image Merger", "pdf_manager.html", ["Merge", "Images"], "pdftools.html", "PDF Tools"),
-    ("PDF Organizer", "pdf_sort.html", ["Reorder", "Delete"], "pdftools.html", "PDF Tools"),
-    ("PDF Darken", "pdf_dark.html", ["Enhance", "Scans"], "pdftools.html", "PDF Tools"),
-    ("Office to PDF Viewer", "office2pdf.html", ["DOCX", "XLSX"], "pdftools.html", "PDF Tools"),
+# Hub pages to scan: (filename, display_name)
+HUB_PAGES = [
+    ('projects.html', 'Diff Eq'),
+    ('linear.html', 'Linear Algebra'),
+    ('numerical.html', 'Numerical Methods'),
+    ('optim.html', 'Linear Programming'),
+    ('pdftools.html', 'PDF Tools'),
 ]
 
-# Build label -> tools mapping
-from collections import OrderedDict
-label_tools = {}
-for name, href, tags, source_href, source_label in tools:
-    for tag in tags:
-        if tag not in label_tools:
-            label_tools[tag] = []
-        label_tools[tag].append((name, href, source_href, source_label))
+def extract_tools(filepath, source_label):
+    """Parse a hub HTML file and extract all tool cards with their tags."""
+    with open(filepath, 'r') as f:
+        html = f.read()
+
+    tools = []
+    # Find all tool-card articles
+    card_pattern = re.compile(
+        r'<article class="tool-card".*?</article>',
+        re.DOTALL
+    )
+    for card_match in card_pattern.finditer(html):
+        card = card_match.group()
+
+        # Extract tool name from h2
+        h2 = re.search(r'<h2[^>]*>(.*?)</h2>', card, re.DOTALL)
+        if not h2:
+            continue
+        name = re.sub(r'<[^>]+>', '', h2.group(1)).strip()
+
+        # Extract tool link
+        link = re.search(r'<a href="([^"]+)" class="card-link"', card)
+        if not link:
+            continue
+        href = link.group(1)
+
+        # Extract tags
+        tags = re.findall(r'class="tag">([^<]+)</a>', card)
+        # Also handle span tags (in case any remain)
+        tags += re.findall(r'class="tag">([^<]+)</span>', card)
+        # Decode HTML entities
+        tags = [t.replace('&amp;', '&') for t in tags]
+
+        tools.append((name, href, tags))
+
+    return tools
 
 def slug(label):
-    """Convert label to filename-safe slug."""
     return re.sub(r'[^a-z0-9]+', '-', label.lower()).strip('-')
 
 def escape(s):
@@ -358,16 +322,34 @@ def generate_page(label, tool_list):
 </html>'''
 
 
-# Generate all label pages
-outdir = '/home/user/math-tools/labels'
+# ── Main ──
+label_tools = {}
+
+for hub_file, source_label in HUB_PAGES:
+    filepath = os.path.join(BASE, hub_file)
+    tools = extract_tools(filepath, source_label)
+    print(f"  {hub_file}: found {len(tools)} tools")
+    for name, href, tags in tools:
+        for tag in tags:
+            if tag not in label_tools:
+                label_tools[tag] = []
+            label_tools[tag].append((name, href, hub_file, source_label))
+
+# Remove old label files
+for f in os.listdir(LABELS_DIR):
+    if f.endswith('.html'):
+        os.remove(os.path.join(LABELS_DIR, f))
+
+# Generate new ones
 generated = []
-for label, tool_list in sorted(label_tools.items()):
+for label in sorted(label_tools.keys()):
+    tool_list = label_tools[label]
     filename = slug(label) + '.html'
-    filepath = os.path.join(outdir, filename)
+    filepath = os.path.join(LABELS_DIR, filename)
     html = generate_page(label, tool_list)
     with open(filepath, 'w') as f:
         f.write(html)
     generated.append((label, filename, len(tool_list)))
     print(f"  {filename:40s}  {label:25s}  ({len(tool_list)} tools)")
 
-print(f"\nGenerated {len(generated)} label pages in {outdir}/")
+print(f"\nGenerated {len(generated)} label pages in {LABELS_DIR}/")
