@@ -378,11 +378,19 @@ footer { margin-top: 1.25rem; padding-top: .75rem; border-top: 2px solid var(--b
           <p style="font-size:.75rem;margin-top:.5rem;"><strong>Example:</strong> $1,000 at 10% for 1 year → Monthly: $1,104.71 · Daily: $1,105.16 · Continuous: $1,105.17</p>
         </div>
 
-        <div class="formula-card">
-          <h3>Amortization</h3>
-          <p>Each payment splits between interest (charged on remaining balance) and principal (reducing the debt). Early payments are mostly interest.</p>
-          <div class="math">\[\text{Interest} = \text{Balance} \times r\]</div>
-          <div class="math">\[\text{Principal} = PMT - \text{Interest}\]</div>
+        <div class="formula-card" style="border-left-color: var(--ora);">
+          <h3 style="color: var(--ora);">Amortization (Loans)</h3>
+          <p>At period 0, the loan is disbursed — you receive the principal (PV), no payment due yet. At the end of period 1, interest is charged only on PV; your payment covers this interest first, with the remainder reducing principal. Each subsequent period, interest is charged on the prior ending balance.</p>
+          <div class="math">\[\text{Interest}_k = \text{Balance}_{k-1} \times r\]</div>
+          <div class="math">\[\text{Principal}_k = PMT - \text{Interest}_k\]</div>
+          <div class="math">\[\text{Balance}_k = \text{Balance}_{k-1} - \text{Principal}_k\]</div>
+        </div>
+
+        <div class="formula-card" style="border-left-color: var(--green);">
+          <h3 style="color: var(--green);">Growth Schedule (Savings)</h3>
+          <p>At period 0, the initial deposit (PV) is made — no interest yet. At the end of period 1, interest is earned only on PV; then the first regular deposit is added. Each subsequent period, interest is earned on the prior ending balance before that period's deposit is added.</p>
+          <div class="math">\[\text{Interest}_k = \text{Balance}_{k-1} \times r\]</div>
+          <div class="math">\[\text{Balance}_k = \text{Balance}_{k-1} + \text{Interest}_k + PMT\]</div>
         </div>
 
         <dl class="var-grid">
@@ -581,6 +589,8 @@ function calc() {
     if (res.pmt && solve !== 'N') {
       let bal = res.pv || pv;
       const pr = cont ? Math.exp(r0/n)-1 : r;
+      // Period 0: loan disbursed, no payment yet
+      res.schedule.push({i: 0, pay: 0, prin: bal, int: 0, bal, isInit: true});
       for (let i = 1; i <= Math.min(N,360); i++) {
         const int = bal * pr, prin = res.pmt - int;
         bal = Math.max(0, bal - prin);
@@ -631,6 +641,8 @@ function calc() {
     const pr = cont ? Math.exp(r0/n)-1 : r;
     const pmtV = res.pmt || pmt;
     const schedN = solve === 'N' ? Math.min(res.n_calc, 360) : Math.min(N, 360);
+    // Period 0: initial deposit made, no interest yet
+    res.schedule.push({i: 0, dep: bal, int: 0, bal});
     for (let i = 1; i <= schedN; i++) {
       const int = bal * pr;
       bal += int + pmtV;
@@ -723,12 +735,16 @@ Starting with ${fmt(Math.abs(res.pv||state.pv))} and depositing ${fmt(Math.abs(r
   if (mode === 'loan') {
     $('#tbl-head').innerHTML = '<tr><th>Period</th><th>Payment</th><th>Principal</th><th>Interest</th><th>Balance</th></tr>';
     $('#tbl-body').innerHTML = res.schedule.map(r =>
-      `<tr><td>${r.i}</td><td>${fmt(r.pay)}</td><td class="principal">${fmt(r.prin)}</td><td class="interest">${fmt(r.int)}</td><td>${fmt(r.bal)}</td></tr>`
+      r.isInit 
+        ? `<tr><td>${r.i}</td><td>—</td><td title="Loan disbursed">${fmt(r.prin)}</td><td>—</td><td>${fmt(r.bal)}</td></tr>`
+        : `<tr><td>${r.i}</td><td>${fmt(r.pay)}</td><td class="principal">${fmt(r.prin)}</td><td class="interest">${fmt(r.int)}</td><td>${fmt(r.bal)}</td></tr>`
     ).join('');
   } else {
     $('#tbl-head').innerHTML = '<tr><th>Period</th><th>Deposit</th><th>Interest</th><th>Balance</th></tr>';
     $('#tbl-body').innerHTML = res.schedule.map(r =>
-      `<tr><td>${r.i}</td><td>${fmt(Math.abs(r.dep))}</td><td class="principal">${fmt(Math.abs(r.int))}</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
+      r.i === 0
+        ? `<tr><td>${r.i}</td><td title="Initial deposit">${fmt(Math.abs(r.dep))}</td><td>—</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
+        : `<tr><td>${r.i}</td><td>${fmt(Math.abs(r.dep))}</td><td class="principal">${fmt(Math.abs(r.int))}</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
     ).join('');
   }
   $('#tbl-note').style.display = res.schedule.length >= 360 ? 'block' : 'none';
