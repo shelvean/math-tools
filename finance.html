@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -318,6 +319,17 @@ footer a { color: var(--link); text-decoration: underline; }
           <option value="continuous">Continuous</option>
         </select>
       </div>
+      <div class="cfield">
+        <label for="ppy" id="ppy-lbl">Payments/Year</label>
+        <select id="ppy">
+          <option value="1">Annual</option>
+          <option value="2">Semi-annual</option>
+          <option value="4">Quarterly</option>
+          <option value="12" selected>Monthly</option>
+          <option value="26">Bi-weekly</option>
+          <option value="52">Weekly</option>
+        </select>
+      </div>
       <div class="cfield narrow">
         <label for="timing">Timing</label>
         <select id="timing">
@@ -337,7 +349,7 @@ footer a { color: var(--link); text-decoration: underline; }
     <div class="stats" id="stats"></div>
 
     <div class="comp-info">
-      <strong>Compounding:</strong> <span id="comp-info">Monthly</span> &nbsp;·&nbsp;
+      <span id="comp-info">Compounding: Monthly · Payments: Monthly · End of period</span> &nbsp;·&nbsp;
       <strong>Effective Annual Rate:</strong> <span id="eff-rate">6.72%</span>
     </div>
 
@@ -468,7 +480,7 @@ function say(m){ const e=$('#live'); e.textContent=''; setTimeout(()=>e.textCont
 
 const state = {
   dark: false, mode: 'loan', solve: 'PMT', cont: false, timing: 'end',
-  pv: 100000, fv: 500000, rate: 6.5, term: 30, unit: 'years', comp: 12, pmt: 500,
+  pv: 100000, fv: 500000, rate: 6.5, term: 30, unit: 'years', comp: 12, ppy: 12, pmt: 500,
   res: {}
 };
 
@@ -564,6 +576,7 @@ $('#compound').onchange = e => {
   calc();
 };
 $('#timing').onchange = e => { state.timing = e.target.value; calc(); };
+$('#ppy').onchange = e => { state.ppy = +e.target.value; calc(); };
 
 // Collapsible panels
 function setupPanel(btnId, bodyId) {
@@ -606,23 +619,25 @@ function updateUI() {
 function fmt(v) { return isNaN(v) ? '$0.00' : '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
 function calc() {
-  const { mode, solve, cont, pv, fv, rate, term, unit, comp, pmt, timing } = state;
-  const r0 = rate / 100, n = comp;
-  const N = unit === 'years' ? term * n : term;
-  const yrs = unit === 'years' ? term : term / n;
-  const r = r0 / n;
-  const er = cont ? Math.exp(r0/n)-1 : r;
+  const { mode, solve, cont, pv, fv, rate, term, unit, comp, ppy, pmt, timing } = state;
+  const r0 = rate / 100;
+  const N = unit === 'years' ? term * ppy : term; // total payment periods
+  const yrs = unit === 'years' ? term : term / ppy;
+  // Effective rate per payment period
+  const er = cont 
+    ? Math.exp(r0/ppy) - 1 
+    : Math.pow(1 + r0/comp, comp/ppy) - 1;
   const isBegin = timing === 'begin';
   const adj = isBegin ? (1 + er) : 1; // annuity due adjustment
-  let res = { schedule: [], N, yrs, n, r, r0 };
+  let res = { schedule: [], N, yrs, ppy, comp, er, r0 };
 
   if (mode === 'loan') {
     if (solve === 'PMT') {
-      const pmtOrd = r === 0 ? pv/N : pv * (er * Math.pow(1+er,N)) / (Math.pow(1+er,N)-1);
+      const pmtOrd = er === 0 ? pv/N : pv * (er * Math.pow(1+er,N)) / (Math.pow(1+er,N)-1);
       res.pmt = isBegin ? pmtOrd / adj : pmtOrd;
       res.pv = pv; res.totalPay = res.pmt * N; res.totalInt = res.totalPay - pv;
     } else if (solve === 'PV') {
-      const pvOrd = r === 0 ? pmt * N : pmt * (1 - Math.pow(1+er,-N)) / er;
+      const pvOrd = er === 0 ? pmt * N : pmt * (1 - Math.pow(1+er,-N)) / er;
       res.pv = isBegin ? pvOrd * adj : pvOrd;
       res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - res.pv;
     } else if (solve === 'RATE') {
@@ -633,11 +648,11 @@ function calc() {
         const df = pv * (Math.pow(1+g,N)*(1-N*g) + N*g*Math.pow(1+g,N-1)) / Math.pow(Math.pow(1+g,N)-1,2);
         const ng = g - f/df; if (Math.abs(ng-g) < 1e-9) break; g = ng;
       }
-      res.rate = g * n * 100; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - pv;
+      res.rate = g * ppy * 100; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - pv;
     } else if (solve === 'N') {
-      const pmtEff = isBegin ? pmt * (1+r) : pmt;
-      res.n_calc = r === 0 ? pv/pmtEff : Math.log(pmtEff/(pmtEff-pv*r)) / Math.log(1+r);
-      res.nYrs = res.n_calc / n; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * res.n_calc; res.totalInt = res.totalPay - pv;
+      const pmtEff = isBegin ? pmt * (1+er) : pmt;
+      res.n_calc = er === 0 ? pv/pmtEff : Math.log(pmtEff/(pmtEff-pv*er)) / Math.log(1+er);
+      res.nYrs = res.n_calc / ppy; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * res.n_calc; res.totalInt = res.totalPay - pv;
     }
     // Schedule
     if (res.pmt && solve !== 'N') {
@@ -666,17 +681,10 @@ function calc() {
     // Savings
     if (solve === 'FV') {
       const pmtV = pmt;
-      let fvOrd;
-      if (cont) {
-        const pvFV = pv * Math.exp(r0 * yrs);
-        fvOrd = pvFV + pmtV * (Math.pow(1+er,N)-1) / er;
-      } else {
-        const pvFV = pv * Math.pow(1+r,N);
-        fvOrd = pvFV + (r===0 ? pmtV*N : pmtV * (Math.pow(1+r,N)-1)/r);
-      }
+      const pvFV = cont ? pv * Math.exp(r0 * yrs) : pv * Math.pow(1+er,N);
+      let fvOrd = pvFV + (er===0 ? pmtV*N : pmtV * (Math.pow(1+er,N)-1)/er);
       // For begin: the PMT portion gets extra period of growth
-      if (isBegin && r !== 0) {
-        const pvFV = cont ? pv * Math.exp(r0 * yrs) : pv * Math.pow(1+er,N);
+      if (isBegin && er !== 0) {
         const pmtFV = pmtV * (Math.pow(1+er,N)-1) / er * (1+er);
         res.fv = pvFV + pmtFV;
       } else {
@@ -684,13 +692,13 @@ function calc() {
       }
       res.pv = pv; res.pmt = pmtV; res.totalDep = pv + pmtV*N; res.totalInt = res.fv - res.totalDep;
     } else if (solve === 'PV') {
-      const fvPmtOrd = r===0 ? pmt*N : pmt * (Math.pow(1+er,N)-1)/er;
+      const fvPmtOrd = er===0 ? pmt*N : pmt * (Math.pow(1+er,N)-1)/er;
       const fvPmt = isBegin ? fvPmtOrd * (1+er) : fvPmtOrd;
       res.pv = cont ? (fv - fvPmt)/Math.exp(r0*yrs) : (fv - fvPmt)/Math.pow(1+er,N);
       res.fv = fv; res.pmt = pmt; res.totalDep = res.pv + pmt*N; res.totalInt = fv - res.totalDep;
     } else if (solve === 'PMT') {
       const pvFV = cont ? pv * Math.exp(r0*yrs) : pv * Math.pow(1+er,N);
-      const pmtOrd = r===0 ? (fv-pvFV)/N : (fv-pvFV)*er / (Math.pow(1+er,N)-1);
+      const pmtOrd = er===0 ? (fv-pvFV)/N : (fv-pvFV)*er / (Math.pow(1+er,N)-1);
       res.pmt = isBegin ? pmtOrd / (1+er) : pmtOrd;
       res.pv = pv; res.fv = fv; res.totalDep = pv + res.pmt*N; res.totalInt = fv - res.totalDep;
     } else if (solve === 'N') {
@@ -704,7 +712,7 @@ function calc() {
         nGuess = nNew;
       }
       res.n_calc = Math.max(0, nGuess);
-      res.nYrs = res.n_calc / n;
+      res.nYrs = res.n_calc / ppy;
       res.pv = pv; res.fv = fv; res.pmt = pmt;
       res.totalDep = pv + pmt * res.n_calc;
       res.totalInt = fv - res.totalDep;
@@ -743,19 +751,21 @@ function calc() {
 }
 
 function render() {
-  const { mode, solve, cont, res, comp, rate, timing } = state;
+  const { mode, solve, cont, res, comp, ppy, rate, timing } = state;
+  const ppyNames = {1:'Annual',2:'Semi-annual',4:'Quarterly',12:'Monthly',26:'Bi-weekly',52:'Weekly'};
 
   // Result
   let lbl, val, extra = '';
+  const pmtFreq = ppyNames[ppy] || ppy+'×/yr';
   if (mode === 'loan') {
-    if (solve === 'PMT') { lbl = 'Monthly Payment'; val = fmt(res.pmt); }
+    if (solve === 'PMT') { lbl = `${pmtFreq} Payment`; val = fmt(res.pmt); }
     else if (solve === 'PV') { lbl = 'Loan Amount'; val = fmt(res.pv); }
     else if (solve === 'RATE') { lbl = 'Interest Rate'; val = (res.rate||0).toFixed(4)+'%'; }
     else { lbl = 'Periods Required'; val = (res.n_calc||0).toFixed(1); extra = `(${(res.nYrs||0).toFixed(2)} years)`; }
   } else {
     if (solve === 'FV') { lbl = 'Future Value'; val = fmt(res.fv); }
     else if (solve === 'PV') { lbl = 'Initial Deposit'; val = fmt(res.pv); }
-    else if (solve === 'PMT') { lbl = 'Required Deposit'; val = fmt(res.pmt); }
+    else if (solve === 'PMT') { lbl = `${pmtFreq} Deposit`; val = fmt(res.pmt); }
     else { lbl = 'Periods Required'; val = (res.n_calc||0).toFixed(1); extra = `(${(res.nYrs||0).toFixed(2)} years)`; }
   }
   $('#res-lbl').textContent = lbl;
@@ -777,15 +787,19 @@ function render() {
   $('#stats').innerHTML = stats;
 
   // Compounding info
-  const names = {1:'Annual',2:'Semi-annual',4:'Quarterly',12:'Monthly',52:'Weekly',365:'Daily'};
+  const compNames = {1:'Annual',2:'Semi-annual',4:'Quarterly',12:'Monthly',52:'Weekly',365:'Daily'};
   const timingText = timing === 'begin' ? 'Beginning' : 'End';
-  $('#comp-info').innerHTML = cont ? 'Continuous' : names[comp] || comp+'×/yr';
-  $('#comp-info').innerHTML += ` · ${timingText} of period`;
+  const compText = cont ? 'Continuous' : compNames[comp] || comp+'×/yr';
+  $('#comp-info').innerHTML = `Compounding: ${compText} · ${mode === 'loan' ? 'Payments' : 'Deposits'}: ${pmtFreq} · ${timingText} of period`;
   const eff = cont ? (Math.exp(rate/100)-1)*100 : (Math.pow(1+rate/100/comp,comp)-1)*100;
   $('#eff-rate').textContent = eff.toFixed(4)+'%';
 
+  // Update ppy label based on mode
+  $('#ppy-lbl').textContent = mode === 'loan' ? 'Payments/Year' : 'Deposits/Year';
+
   // Statement
-  const compText = cont ? 'continuous compounding' : `${comp} compounding periods per year`;
+  const compStmt = cont ? 'continuous compounding' : `${comp} compounding periods per year`;
+  const ppyStmt = mode === 'loan' ? `${ppy} payments per year` : `${ppy} deposits per year`;
   const timingDesc = timing === 'begin' ? 'beginning of each period (annuity due)' : 'end of each period (ordinary annuity)';
   const periods = solve === 'N' ? Math.round(res.n_calc||0) : Math.round(res.N);
   const years = solve === 'N' ? (res.nYrs||0) : res.yrs;
@@ -796,7 +810,8 @@ function render() {
 Principal: ${fmt(res.pv||state.pv)}
 APR: ${res.rate ? res.rate.toFixed(4) : state.rate}%
 Term: ${years.toFixed(2)} years (${periods} periods)
-Compounding: ${compText}
+Compounding: ${compStmt}
+Payments: ${ppyStmt}
 Payment Timing: ${timingDesc}
 
 RESULTS
@@ -812,7 +827,8 @@ Initial Deposit: ${fmt(Math.abs(res.pv||state.pv))}
 Annual Rate: ${state.rate}%
 Term: ${years.toFixed(2)} years (${periods} periods)
 Regular Deposit: ${fmt(Math.abs(res.pmt||state.pmt))}
-Compounding: ${compText}
+Compounding: ${compStmt}
+Deposits: ${ppyStmt}
 Deposit Timing: ${timingDesc}
 
 RESULTS
