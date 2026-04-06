@@ -121,14 +121,6 @@ h1 { font-size: 1.5rem; font-weight: 800; margin: 0; color: var(--txt); letter-s
 .term-row input { flex: 1; }
 .term-row select { width: 90px; flex-shrink: 0; }
 
-/* ── compound row ── */
-.compound-row { display: flex; gap: .4rem; align-items: stretch; }
-.compound-row select { flex: 1; }
-.btn-cont { min-height: 40px; padding: .4rem .75rem; border: 2px solid var(--bdr);
-  border-radius: var(--r); background: var(--sect); cursor: pointer;
-  font-size: .8125rem; font-weight: 700; color: var(--txt); white-space: nowrap; }
-.btn-cont[aria-pressed="true"] { background: var(--teal); color: #fff; border-color: var(--teal); }
-
 /* ── result box ── */
 .result-box { background: linear-gradient(135deg, var(--info), var(--sect));
   border: 2px solid var(--blue); border-radius: var(--r2); padding: 1rem;
@@ -308,18 +300,22 @@ footer a { color: var(--link); text-decoration: underline; }
       </div>
       <div class="cfield">
         <label for="compound">Compounding</label>
-        <div class="compound-row">
-          <select id="compound">
-            <option value="1">Annual</option>
-            <option value="2">Semi-annual</option>
-            <option value="4">Quarterly</option>
-            <option value="12" selected>Monthly</option>
-            <option value="52">Weekly</option>
-            <option value="365">Daily</option>
-          </select>
-          <button type="button" class="btn-cont" id="cont-btn" aria-pressed="false"
-                  aria-label="Toggle continuous compounding">\(e^{rt}\)</button>
-        </div>
+        <select id="compound">
+          <option value="1">Annual</option>
+          <option value="2">Semi-annual</option>
+          <option value="4">Quarterly</option>
+          <option value="12" selected>Monthly</option>
+          <option value="52">Weekly</option>
+          <option value="365">Daily</option>
+          <option value="continuous">Continuous (e^rt)</option>
+        </select>
+      </div>
+      <div class="cfield narrow">
+        <label for="timing">Timing</label>
+        <select id="timing">
+          <option value="end" selected>End</option>
+          <option value="begin">Begin</option>
+        </select>
       </div>
     </div>
 
@@ -444,9 +440,9 @@ footer a { color: var(--link); text-decoration: underline; }
     </div>
 
     <footer role="contentinfo">
-      &copy; Shelvean Kapita. Released under the MIT License. Last modified: April 5, 2026.<br>
+      &copy; Shelvean Kapita. Released under the MIT License. Last modified: April 6, 2026.<br>
       <strong>Accessibility:</strong> WCAG 2.1 AA/AAA &mdash; keyboard navigation, screen reader support, high-contrast mode, visible focus indicators.
-      Issues? <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.
+      Issues? <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="d4bfb5a4bda0b594a0b5b9a1fab1b0a1">[email&#160;protected]</a>
     </footer>
   </main>
 
@@ -454,13 +450,13 @@ footer a { color: var(--link); text-decoration: underline; }
     <span aria-hidden="true">◐</span>
   </button>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 function say(m){ const e=$('#live'); e.textContent=''; setTimeout(()=>e.textContent=m,50); }
 
 const state = {
-  dark: false, mode: 'loan', solve: 'PMT', cont: false,
+  dark: false, mode: 'loan', solve: 'PMT', cont: false, timing: 'end',
   pv: 100000, fv: 500000, rate: 6.5, term: 30, unit: 'years', comp: 12, pmt: 500,
   res: {}
 };
@@ -537,14 +533,6 @@ $$('.mode-btn').forEach(btn => {
   };
 });
 
-// Continuous
-$('#cont-btn').onclick = () => {
-  state.cont = !state.cont;
-  $('#cont-btn').setAttribute('aria-pressed', state.cont);
-  $('#compound').disabled = state.cont;
-  calc();
-};
-
 // Inputs
 $('#solve').onchange = e => { state.solve = e.target.value; updateUI(); calc(); };
 $('#pv').oninput = e => { state.pv = +e.target.value || 0; calc(); };
@@ -553,7 +541,18 @@ $('#rate').oninput = e => { state.rate = +e.target.value || 0; calc(); };
 $('#term').oninput = e => { state.term = +e.target.value || 0; calc(); };
 $('#term-unit').onchange = e => { state.unit = e.target.value; calc(); };
 $('#pmt').oninput = e => { state.pmt = +e.target.value || 0; calc(); };
-$('#compound').onchange = e => { state.comp = +e.target.value; calc(); };
+$('#compound').onchange = e => {
+  const val = e.target.value;
+  if (val === 'continuous') {
+    state.cont = true;
+    state.comp = 12; // default for internal calc
+  } else {
+    state.cont = false;
+    state.comp = +val;
+  }
+  calc();
+};
+$('#timing').onchange = e => { state.timing = e.target.value; calc(); };
 
 // Collapsible panels
 function setupPanel(btnId, bodyId) {
@@ -596,75 +595,99 @@ function updateUI() {
 function fmt(v) { return isNaN(v) ? '$0.00' : '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
 function calc() {
-  const { mode, solve, cont, pv, fv, rate, term, unit, comp, pmt } = state;
+  const { mode, solve, cont, pv, fv, rate, term, unit, comp, pmt, timing } = state;
   const r0 = rate / 100, n = comp;
   const N = unit === 'years' ? term * n : term;
   const yrs = unit === 'years' ? term : term / n;
   const r = r0 / n;
+  const er = cont ? Math.exp(r0/n)-1 : r;
+  const isBegin = timing === 'begin';
+  const adj = isBegin ? (1 + er) : 1; // annuity due adjustment
   let res = { schedule: [], N, yrs, n, r, r0 };
 
   if (mode === 'loan') {
     if (solve === 'PMT') {
-      const er = cont ? Math.exp(r0/n)-1 : r;
-      res.pmt = r === 0 ? pv/N : pv * (er * Math.pow(1+er,N)) / (Math.pow(1+er,N)-1);
+      const pmtOrd = r === 0 ? pv/N : pv * (er * Math.pow(1+er,N)) / (Math.pow(1+er,N)-1);
+      res.pmt = isBegin ? pmtOrd / adj : pmtOrd;
       res.pv = pv; res.totalPay = res.pmt * N; res.totalInt = res.totalPay - pv;
     } else if (solve === 'PV') {
-      const er = cont ? Math.exp(r0/n)-1 : r;
-      res.pv = r === 0 ? pmt * N : pmt * (1 - Math.pow(1+er,-N)) / er;
+      const pvOrd = r === 0 ? pmt * N : pmt * (1 - Math.pow(1+er,-N)) / er;
+      res.pv = isBegin ? pvOrd * adj : pvOrd;
       res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - res.pv;
     } else if (solve === 'RATE') {
       let g = 0.005;
       for (let i = 0; i < 100; i++) {
-        const f = pv * (g * Math.pow(1+g,N)) / (Math.pow(1+g,N)-1) - pmt;
+        const pmtAdj = isBegin ? pmt * (1+g) : pmt;
+        const f = pv * (g * Math.pow(1+g,N)) / (Math.pow(1+g,N)-1) - pmtAdj;
         const df = pv * (Math.pow(1+g,N)*(1-N*g) + N*g*Math.pow(1+g,N-1)) / Math.pow(Math.pow(1+g,N)-1,2);
         const ng = g - f/df; if (Math.abs(ng-g) < 1e-9) break; g = ng;
       }
       res.rate = g * n * 100; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * N; res.totalInt = res.totalPay - pv;
     } else if (solve === 'N') {
-      res.n_calc = r === 0 ? pv/pmt : Math.log(pmt/(pmt-pv*r)) / Math.log(1+r);
+      const pmtEff = isBegin ? pmt * (1+r) : pmt;
+      res.n_calc = r === 0 ? pv/pmtEff : Math.log(pmtEff/(pmtEff-pv*r)) / Math.log(1+r);
       res.nYrs = res.n_calc / n; res.pv = pv; res.pmt = pmt; res.totalPay = pmt * res.n_calc; res.totalInt = res.totalPay - pv;
     }
     // Schedule
     if (res.pmt && solve !== 'N') {
       let bal = res.pv || pv;
-      const pr = cont ? Math.exp(r0/n)-1 : r;
-      // Period 0: loan disbursed, no payment yet
-      res.schedule.push({i: 0, pay: 0, prin: bal, int: 0, bal, isInit: true});
-      for (let i = 1; i <= Math.min(N,360); i++) {
-        const int = bal * pr, prin = res.pmt - int;
-        bal = Math.max(0, bal - prin);
-        res.schedule.push({i, pay: res.pmt, prin, int, bal});
+      const pr = er;
+      
+      if (isBegin) {
+        // Begin: payment at start of each period
+        for (let i = 1; i <= Math.min(N, 360); i++) {
+          const int = (i === 1) ? 0 : bal * pr; // no interest on first payment
+          const prin = res.pmt - int;
+          bal = Math.max(0, bal - prin);
+          res.schedule.push({i, pay: res.pmt, prin, int, bal});
+        }
+      } else {
+        // End: payment at end of each period
+        for (let i = 1; i <= Math.min(N, 360); i++) {
+          const int = bal * pr;
+          const prin = res.pmt - int;
+          bal = Math.max(0, bal - prin);
+          res.schedule.push({i, pay: res.pmt, prin, int, bal});
+        }
       }
     }
   } else {
     // Savings
     if (solve === 'FV') {
       const pmtV = pmt;
+      let fvOrd;
       if (cont) {
         const pvFV = pv * Math.exp(r0 * yrs);
-        const er = Math.exp(r0/n)-1;
-        res.fv = pvFV + pmtV * (Math.pow(1+er,N)-1) / er;
+        fvOrd = pvFV + pmtV * (Math.pow(1+er,N)-1) / er;
       } else {
         const pvFV = pv * Math.pow(1+r,N);
-        res.fv = pvFV + (r===0 ? pmtV*N : pmtV * (Math.pow(1+r,N)-1)/r);
+        fvOrd = pvFV + (r===0 ? pmtV*N : pmtV * (Math.pow(1+r,N)-1)/r);
+      }
+      // For begin: the PMT portion gets extra period of growth
+      if (isBegin && r !== 0) {
+        const pvFV = cont ? pv * Math.exp(r0 * yrs) : pv * Math.pow(1+er,N);
+        const pmtFV = pmtV * (Math.pow(1+er,N)-1) / er * (1+er);
+        res.fv = pvFV + pmtFV;
+      } else {
+        res.fv = fvOrd;
       }
       res.pv = pv; res.pmt = pmtV; res.totalDep = pv + pmtV*N; res.totalInt = res.fv - res.totalDep;
     } else if (solve === 'PV') {
-      const er = cont ? Math.exp(r0/n)-1 : r;
-      const fvPmt = r===0 ? pmt*N : pmt * (Math.pow(1+er,N)-1)/er;
-      res.pv = cont ? (fv - fvPmt)/Math.exp(r0*yrs) : (fv - fvPmt)/Math.pow(1+r,N);
+      const fvPmtOrd = r===0 ? pmt*N : pmt * (Math.pow(1+er,N)-1)/er;
+      const fvPmt = isBegin ? fvPmtOrd * (1+er) : fvPmtOrd;
+      res.pv = cont ? (fv - fvPmt)/Math.exp(r0*yrs) : (fv - fvPmt)/Math.pow(1+er,N);
       res.fv = fv; res.pmt = pmt; res.totalDep = res.pv + pmt*N; res.totalInt = fv - res.totalDep;
     } else if (solve === 'PMT') {
-      const er = cont ? Math.exp(r0/n)-1 : r;
-      const pvFV = cont ? pv * Math.exp(r0*yrs) : pv * Math.pow(1+r,N);
-      res.pmt = r===0 ? (fv-pvFV)/N : (fv-pvFV)*er / (Math.pow(1+er,N)-1);
+      const pvFV = cont ? pv * Math.exp(r0*yrs) : pv * Math.pow(1+er,N);
+      const pmtOrd = r===0 ? (fv-pvFV)/N : (fv-pvFV)*er / (Math.pow(1+er,N)-1);
+      res.pmt = isBegin ? pmtOrd / (1+er) : pmtOrd;
       res.pv = pv; res.fv = fv; res.totalDep = pv + res.pmt*N; res.totalInt = fv - res.totalDep;
     } else if (solve === 'N') {
-      const er = cont ? Math.exp(r0/n)-1 : r;
       let nGuess = 120;
       for (let i = 0; i < 100; i++) {
-        const fvCalc = pv * Math.pow(1+er, nGuess) + (er === 0 ? pmt * nGuess : pmt * (Math.pow(1+er, nGuess) - 1) / er);
-        const fvDeriv = pv * Math.log(1+er) * Math.pow(1+er, nGuess) + (er === 0 ? pmt : pmt * Math.log(1+er) * Math.pow(1+er, nGuess) / er);
+        const pmtMult = isBegin ? (1+er) : 1;
+        const fvCalc = pv * Math.pow(1+er, nGuess) + (er === 0 ? pmt * nGuess : pmt * pmtMult * (Math.pow(1+er, nGuess) - 1) / er);
+        const fvDeriv = pv * Math.log(1+er) * Math.pow(1+er, nGuess) + (er === 0 ? pmt : pmt * pmtMult * Math.log(1+er) * Math.pow(1+er, nGuess) / er);
         const nNew = nGuess - (fvCalc - fv) / fvDeriv;
         if (Math.abs(nNew - nGuess) < 0.0001) break;
         nGuess = nNew;
@@ -677,15 +700,30 @@ function calc() {
     }
     // Schedule
     let bal = res.pv || pv;
-    const pr = cont ? Math.exp(r0/n)-1 : r;
+    const pr = er;
     const pmtV = res.pmt || pmt;
     const schedN = solve === 'N' ? Math.min(res.n_calc, 360) : Math.min(N, 360);
-    // Period 0: initial deposit made, no interest yet
-    res.schedule.push({i: 0, dep: bal, int: 0, bal});
-    for (let i = 1; i <= schedN; i++) {
-      const int = bal * pr;
-      bal += int + pmtV;
-      res.schedule.push({i, dep: pmtV, int, bal});
+    
+    if (isBegin) {
+      // Begin: deposit at start of each period
+      // Period 1: PV already there, add first PMT at start, then interest accrues
+      bal = bal + pmtV; // first deposit added immediately
+      const int1 = bal * pr;
+      bal += int1;
+      res.schedule.push({i: 1, dep: pmtV, int: int1, bal});
+      for (let i = 2; i <= schedN; i++) {
+        bal += pmtV; // deposit at start of period
+        const int = bal * pr;
+        bal += int;
+        res.schedule.push({i, dep: pmtV, int, bal});
+      }
+    } else {
+      // End: deposit at end of each period
+      for (let i = 1; i <= schedN; i++) {
+        const int = bal * pr;
+        bal += int + pmtV;
+        res.schedule.push({i, dep: pmtV, int, bal});
+      }
     }
   }
 
@@ -694,7 +732,7 @@ function calc() {
 }
 
 function render() {
-  const { mode, solve, cont, res, comp, rate } = state;
+  const { mode, solve, cont, res, comp, rate, timing } = state;
 
   // Result
   let lbl, val, extra = '';
@@ -729,12 +767,15 @@ function render() {
 
   // Compounding info
   const names = {1:'Annual',2:'Semi-annual',4:'Quarterly',12:'Monthly',52:'Weekly',365:'Daily'};
+  const timingText = timing === 'begin' ? 'Beginning' : 'End';
   $('#comp-info').innerHTML = cont ? 'Continuous \\(e^{rt}\\)' : names[comp] || comp+'×/yr';
+  $('#comp-info').innerHTML += ` · ${timingText} of period`;
   const eff = cont ? (Math.exp(rate/100)-1)*100 : (Math.pow(1+rate/100/comp,comp)-1)*100;
   $('#eff-rate').textContent = eff.toFixed(4)+'%';
 
   // Statement
   const compText = cont ? 'continuous compounding' : `${comp} compounding periods per year`;
+  const timingDesc = timing === 'begin' ? 'beginning of each period (annuity due)' : 'end of each period (ordinary annuity)';
   const periods = solve === 'N' ? Math.round(res.n_calc||0) : Math.round(res.N);
   const years = solve === 'N' ? (res.nYrs||0) : res.yrs;
   let stmt = '';
@@ -745,13 +786,14 @@ Principal: ${fmt(res.pv||state.pv)}
 APR: ${res.rate ? res.rate.toFixed(4) : state.rate}%
 Term: ${years.toFixed(2)} years (${periods} periods)
 Compounding: ${compText}
+Payment Timing: ${timingDesc}
 
 RESULTS
 Payment: ${fmt(res.pmt||state.pmt)}
 Total Payments: ${fmt(Math.abs(res.totalPay))}
 Total Interest: ${fmt(Math.abs(res.totalInt))}
 
-You will pay ${fmt(res.pmt||state.pmt)} per period for ${periods} periods, totaling ${fmt(Math.abs(res.totalPay))}, of which ${fmt(Math.abs(res.totalInt))} is interest.`;
+You will pay ${fmt(res.pmt||state.pmt)} at the ${timing === 'begin' ? 'beginning' : 'end'} of each period for ${periods} periods, totaling ${fmt(Math.abs(res.totalPay))}, of which ${fmt(Math.abs(res.totalInt))} is interest.`;
   } else {
     stmt = `SAVINGS ANALYSIS
 
@@ -760,13 +802,14 @@ Annual Rate: ${state.rate}%
 Term: ${years.toFixed(2)} years (${periods} periods)
 Regular Deposit: ${fmt(Math.abs(res.pmt||state.pmt))}
 Compounding: ${compText}
+Deposit Timing: ${timingDesc}
 
 RESULTS
 Future Value: ${fmt(Math.abs(res.fv||state.fv))}
 Total Deposits: ${fmt(Math.abs(res.totalDep))}
 Interest Earned: ${fmt(Math.abs(res.totalInt))}
 
-Starting with ${fmt(Math.abs(res.pv||state.pv))} and depositing ${fmt(Math.abs(res.pmt||state.pmt))} each period, your investment grows to ${fmt(Math.abs(res.fv||state.fv))} after ${years.toFixed(2)} years.`;
+Starting with ${fmt(Math.abs(res.pv||state.pv))} and depositing ${fmt(Math.abs(res.pmt||state.pmt))} at the ${timing === 'begin' ? 'beginning' : 'end'} of each period, your investment grows to ${fmt(Math.abs(res.fv||state.fv))} after ${years.toFixed(2)} years.`;
   }
   $('#statement').textContent = stmt;
 
@@ -774,16 +817,12 @@ Starting with ${fmt(Math.abs(res.pv||state.pv))} and depositing ${fmt(Math.abs(r
   if (mode === 'loan') {
     $('#tbl-head').innerHTML = '<tr><th>Period</th><th>Payment</th><th>Principal</th><th>Interest</th><th>Balance</th></tr>';
     $('#tbl-body').innerHTML = res.schedule.map(r =>
-      r.isInit 
-        ? `<tr><td>${r.i}</td><td>—</td><td title="Loan disbursed">${fmt(r.prin)}</td><td>—</td><td>${fmt(r.bal)}</td></tr>`
-        : `<tr><td>${r.i}</td><td>${fmt(r.pay)}</td><td class="principal">${fmt(r.prin)}</td><td class="interest">${fmt(r.int)}</td><td>${fmt(r.bal)}</td></tr>`
+      `<tr><td>${r.i}</td><td>${fmt(r.pay)}</td><td class="principal">${fmt(r.prin)}</td><td class="interest">${r.int === 0 ? '$0.00' : fmt(r.int)}</td><td>${fmt(r.bal)}</td></tr>`
     ).join('');
   } else {
     $('#tbl-head').innerHTML = '<tr><th>Period</th><th>Deposit</th><th>Interest</th><th>Balance</th></tr>';
     $('#tbl-body').innerHTML = res.schedule.map(r =>
-      r.i === 0
-        ? `<tr><td>${r.i}</td><td title="Initial deposit">${fmt(Math.abs(r.dep))}</td><td>—</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
-        : `<tr><td>${r.i}</td><td>${fmt(Math.abs(r.dep))}</td><td class="principal">${fmt(Math.abs(r.int))}</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
+      `<tr><td>${r.i}</td><td>${fmt(Math.abs(r.dep))}</td><td class="principal">${fmt(Math.abs(r.int))}</td><td>${fmt(Math.abs(r.bal))}</td></tr>`
     ).join('');
   }
   $('#tbl-note').style.display = res.schedule.length >= 360 ? 'block' : 'none';
