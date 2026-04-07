@@ -671,13 +671,18 @@ function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
   return bwd.concat([{x:x0,y:y0,t:0}],fwd);
 }
 
-/* ── RK4 solver ── */
+/* ── RK4 solver (adaptive step) ── */
 function computeTrajectory(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var nonneg=document.getElementById('nonneg').checked;
-  var dt=0.03,maxSteps=35000,pts=[{x:x0,y:y0,t:0}],scope={x:0,y:0};
+  var dtMax=0.02,dtMin=0.002,maxSteps=80000,pts=[{x:x0,y:y0,t:0}],scope={x:0,y:0};
+  var dS=Math.max(xMax-xMin,yMax-yMin);
   function step(x,y,t,sign){
     scope.x=x;scope.y=y;
     var k1x=f.evaluate(scope),k1y=g.evaluate(scope);
+    var spd=Math.sqrt(k1x*k1x+k1y*k1y);
+    /* Adaptive step: smaller when flow is fast or domain is small */
+    var dt=spd>0.1?Math.min(dtMax,0.08*dS/spd):dtMax;
+    if(dt<dtMin)dt=dtMin;
     scope.x=x+k1x*dt/2*sign;scope.y=y+k1y*dt/2*sign;
     var k2x=f.evaluate(scope),k2y=g.evaluate(scope);
     scope.x=x+k2x*dt/2*sign;scope.y=y+k2y*dt/2*sign;
@@ -686,15 +691,15 @@ function computeTrajectory(f,g,x0,y0,xMin,xMax,yMin,yMax){
     var k4x=f.evaluate(scope),k4y=g.evaluate(scope);
     return{x:x+(k1x+2*k2x+2*k3x+k4x)/6*dt*sign,
            y:y+(k1y+2*k2y+2*k3y+k4y)/6*dt*sign,
-           t:t+dt*sign,spd:Math.sqrt(k1x*k1x+k1y*k1y)};
+           t:t+dt*sign,spd:spd};
   }
   var x=x0,y=y0,t=0;
   for(var i=0;i<maxSteps;i++){
-    try{var r=step(x,y,t,1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(pts.length>10&&r.spd<1e-4)break;pts.push({x:x,y:y,t:t});if(pts.length>2000)break;}catch(e){break;}
+    try{var r=step(x,y,t,1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(pts.length>10&&r.spd<1e-4)break;pts.push({x:x,y:y,t:t});if(pts.length>5000)break;}catch(e){break;}
   }
   x=x0;y=y0;t=0;var bk=[];
   for(var i=0;i<maxSteps;i++){
-    try{var r=step(x,y,t,-1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(bk.length>10&&r.spd<1e-4)break;bk.unshift({x:x,y:y,t:t});if(bk.length>1000)break;}catch(e){break;}
+    try{var r=step(x,y,t,-1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(bk.length>10&&r.spd<1e-4)break;bk.unshift({x:x,y:y,t:t});if(bk.length>2500)break;}catch(e){break;}
   }
   return bk.concat(pts);
 }
