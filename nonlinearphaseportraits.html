@@ -347,6 +347,22 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <option value="#000000">Black</option>
       </select>
     </div>
+    <div class="cfield cfield-sm"><label for="meshSize">Step size</label>
+      <select id="meshSize">
+        <option value="coarse">Coarse</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fine">Fine</option>
+        <option value="veryfine">Very fine</option>
+      </select>
+    </div>
+    <div class="cfield cfield-sm"><label for="numSteps">Max steps</label>
+      <select id="numSteps">
+        <option value="few">Few</option>
+        <option value="normal" selected>Normal</option>
+        <option value="many">Many</option>
+        <option value="veryMany">Very many</option>
+      </select>
+    </div>
     <div class="cfield cfield-chk"><input type="checkbox" id="nonneg" checked><label for="nonneg">Nonneg \((x,y\ge0)\)</label></div>
   </div>
 
@@ -658,9 +674,12 @@ function solveStage(f,g,x,y,h,gh,J,bx,by,gkx,gky){
 }
 function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var nonneg=document.getElementById('nonneg').checked;
+  var steps=STEP_PARAMS[document.getElementById('numSteps').value]||STEP_PARAMS.normal;
+  var meshKey=document.getElementById('meshSize').value;
+  var tolScale=meshKey==='coarse'?10:meshKey==='fine'?0.1:meshKey==='veryfine'?0.01:1;
   var gamma=SDIRK_GAMMA,scope={x:0,y:0};
   var dS=Math.max(xMax-xMin,yMax-yMin),dm=dS*0.05;
-  var atol=1e-5,rtol=1e-3,hMin=1e-14,hMax=dS*0.05,maxSteps=500000,maxPts=5000;
+  var atol=1e-5*tolScale,rtol=1e-3*tolScale,hMin=1e-14,hMax=dS*0.05,maxSteps=steps.maxIter,maxPts=steps.maxPts;
   function estH(x,y){
     scope.x=x;scope.y=y;var fx,fy;try{fx=f.evaluate(scope);fy=g.evaluate(scope);}catch(e){return hMax;}
     var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
@@ -703,10 +722,28 @@ function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
   return bwd.concat([{x:x0,y:y0,t:0}],fwd);
 }
 
+/* ── Mesh / step parameters ── */
+var MESH_PARAMS={
+  coarse:   {dtMax:0.04, dtMin:0.005},
+  normal:   {dtMax:0.02, dtMin:0.002},
+  fine:     {dtMax:0.01, dtMin:0.001},
+  veryfine: {dtMax:0.005,dtMin:0.0005}
+};
+var STEP_PARAMS={
+  few:      {maxPts:2000, maxBack:1000, maxIter:40000},
+  normal:   {maxPts:5000, maxBack:2500, maxIter:80000},
+  many:     {maxPts:12000,maxBack:6000, maxIter:200000},
+  veryMany: {maxPts:25000,maxBack:12500,maxIter:500000}
+};
+
 /* ── RK4 solver (adaptive step) ── */
 function computeTrajectory(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var nonneg=document.getElementById('nonneg').checked;
-  var dtMax=0.02,dtMin=0.002,maxSteps=80000,pts=[{x:x0,y:y0,t:0}],scope={x:0,y:0};
+  var mesh=MESH_PARAMS[document.getElementById('meshSize').value]||MESH_PARAMS.normal;
+  var steps=STEP_PARAMS[document.getElementById('numSteps').value]||STEP_PARAMS.normal;
+  var dtMax=mesh.dtMax,dtMin=mesh.dtMin,maxSteps=steps.maxIter;
+  var maxPtsFwd=steps.maxPts,maxPtsBwd=steps.maxBack;
+  var pts=[{x:x0,y:y0,t:0}],scope={x:0,y:0};
   var dS=Math.max(xMax-xMin,yMax-yMin);
   function step(x,y,t,sign){
     scope.x=x;scope.y=y;
@@ -727,11 +764,11 @@ function computeTrajectory(f,g,x0,y0,xMin,xMax,yMin,yMax){
   }
   var x=x0,y=y0,t=0;
   for(var i=0;i<maxSteps;i++){
-    try{var r=step(x,y,t,1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(pts.length>10&&r.spd<1e-4)break;pts.push({x:x,y:y,t:t});if(pts.length>5000)break;}catch(e){break;}
+    try{var r=step(x,y,t,1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(pts.length>10&&r.spd<1e-4)break;pts.push({x:x,y:y,t:t});if(pts.length>maxPtsFwd)break;}catch(e){break;}
   }
   x=x0;y=y0;t=0;var bk=[];
   for(var i=0;i<maxSteps;i++){
-    try{var r=step(x,y,t,-1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(bk.length>10&&r.spd<1e-4)break;bk.unshift({x:x,y:y,t:t});if(bk.length>2500)break;}catch(e){break;}
+    try{var r=step(x,y,t,-1);x=r.x;y=r.y;t=r.t;if(nonneg){x=Math.max(0,x);y=Math.max(0,y);}if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;if(bk.length>10&&r.spd<1e-4)break;bk.unshift({x:x,y:y,t:t});if(bk.length>maxPtsBwd)break;}catch(e){break;}
   }
   return bk.concat(pts);
 }
