@@ -461,15 +461,45 @@ var EXAMPLES={
   selkov:       {f:'-x + 0.08*y + x^2*y',g:'0.6 - 0.08*y - x^2*y',xmin:0,xmax:2,ymin:0,ymax:3,nonneg:true},
   hopf:         {f:'y*(x - 1)',g:'-x + y*(1 - 2*x)',xmin:-2,xmax:2,ymin:-2,ymax:2},
   unstable_lc:  {f:'y + x*(x^2 + y^2 - 1)',g:'-x + y*(x^2 + y^2 - 1)',xmin:-2,xmax:2,ymin:-1.5,ymax:1.5},
-  pplane:       {f:'2*x - y + 3*(x^2 - y^2) + 2*x*y',g:'x - 3*y - 3*(x^2 - y^2) + 3*x*y',xmin:-2,xmax:4,ymin:-4,ymax:2},
+  pplane:       {f:'2x - y + 3(x^2 - y^2) + 2xy',g:'x - 3y - 3(x^2 - y^2) + 3xy',xmin:-2,xmax:4,ymin:-4,ymax:2},
 };
+
+/* ── Implicit multiplication pre-processor ── */
+/* Insert '*' so that e.g. 2xy → 2*x*y, x(… → x*(…, )x → )*x */
+var _implFns=/^(sin|cos|tan|cot|sec|csc|arcsin|arccos|arctan|sinh|cosh|tanh|log|ln|exp|sqrt|abs|sign|max|min)$/;
+function addImplicitMul(expr){
+  /* Tokenise into numbers, words (funcs/vars), operators/parens */
+  var tokens=expr.match(/([0-9]*\.?[0-9]+|[a-zA-Z_]+|\S)/g);
+  if(!tokens)return expr;
+  var out=tokens[0];
+  for(var i=1;i<tokens.length;i++){
+    var p=tokens[i-1],c=tokens[i];
+    var pNum=/^[0-9]/.test(p), pWord=/^[a-zA-Z_]/.test(p), pClose=p===')';
+    var cNum=/^[0-9]/.test(c), cWord=/^[a-zA-Z_]/.test(c), cOpen=c==='(';
+    var pIsFunc=pWord&&_implFns.test(p);
+    var needMul=false;
+    /* number followed by variable or (: 2x, 2( */
+    if(pNum&&(cWord||cOpen))needMul=true;
+    /* variable followed by variable: xy */
+    else if(pWord&&!pIsFunc&&cWord)needMul=true;
+    /* variable followed by number: x2 (rare but valid) */
+    else if(pWord&&!pIsFunc&&cNum)needMul=true;
+    /* variable (non-func) followed by (: x( */
+    else if(pWord&&!pIsFunc&&cOpen)needMul=true;
+    /* ) followed by variable, number, or (: )x, )2, )( */
+    else if(pClose&&(cWord||cNum||cOpen))needMul=true;
+    if(needMul)out+='*';
+    out+=c;
+  }
+  return out;
+}
 
 /* ── Draw direction field ── */
 function drawPhasePlane(clearTrajs){
   if(clearTrajs)clearTrajectories();
   fieldCtx.fillStyle=isHC()?'#fff':'#ffffff';fieldCtx.fillRect(0,0,fieldCanvas.width,fieldCanvas.height);
-  var f=document.getElementById('fInput').value;
-  var g=document.getElementById('gInput').value;
+  var f=addImplicitMul(document.getElementById('fInput').value);
+  var g=addImplicitMul(document.getElementById('gInput').value);
   try{fCompiled=math.compile(f);gCompiled=math.compile(g);}
   catch(e){fieldCtx.fillStyle='#ef4444';fieldCtx.font='15px Arial';fieldCtx.fillText('Expression error: '+e.message,12,40);return;}
   var xMin=+document.getElementById('xMin').value,xMax=+document.getElementById('xMax').value;
