@@ -171,9 +171,7 @@
     }
     .vector-grid input:focus { border-color: var(--primary); outline: none; }
 
-    .matrix-brackets { display: flex; align-items: center; justify-content: center; gap: 4px; }
-    .bracket { font-size: 3rem; font-weight: 200; color: var(--bracket-color); line-height: 1; }
-    .bracket-sm { font-size: 2.4rem; }
+    .matrix-brackets { display: flex; align-items: center; justify-content: center; }
 
     .btn {
       display: inline-flex; align-items: center; justify-content: center;
@@ -348,26 +346,22 @@
         <div class="panel-card">
           <h2>Matrix $A$</h2>
           <div class="matrix-brackets">
-            <span class="bracket">[</span>
             <div class="matrix-grid">
               <input type="number" id="a00" value="1" step="0.5" aria-label="A row 1 col 1">
               <input type="number" id="a01" value="2" step="0.5" aria-label="A row 1 col 2">
               <input type="number" id="a10" value="2" step="0.5" aria-label="A row 2 col 1">
               <input type="number" id="a11" value="1" step="0.5" aria-label="A row 2 col 2">
             </div>
-            <span class="bracket">]</span>
           </div>
         </div>
 
         <div class="panel-card">
           <h2>Vector $\mathbf{x}$</h2>
           <div class="matrix-brackets">
-            <span class="bracket bracket-sm">[</span>
             <div class="vector-grid">
               <input type="number" id="x0" value="1" step="0.5" aria-label="x component 1">
               <input type="number" id="x1" value="2" step="0.5" aria-label="x component 2">
             </div>
-            <span class="bracket bracket-sm">]</span>
           </div>
         </div>
 
@@ -728,24 +722,42 @@ function drawArrowVec(x1,y1,x2,y2,color,lw,dashed){
   var c1=toCanvas(x1,y1),c2=toCanvas(x2,y2);
   var dx=c2[0]-c1[0],dy=c2[1]-c1[1],len=Math.sqrt(dx*dx+dy*dy);
   if(len<2)return;
-  var ux=dx/len,uy=dy/len,hl=Math.min(14,len*0.3);
+  var ux=dx/len,uy=dy/len,hl=Math.min(13,len*0.25),hw=hl*0.38;
   ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=lw;
+  ctx.lineCap='round';
   if(dashed)ctx.setLineDash([6,4]);
-  ctx.beginPath();ctx.moveTo(c1[0],c1[1]);ctx.lineTo(c2[0],c2[1]);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(c1[0],c1[1]);ctx.lineTo(c2[0]-ux*hl*0.5,c2[1]-uy*hl*0.5);ctx.stroke();
   ctx.setLineDash([]);
   ctx.beginPath();ctx.moveTo(c2[0],c2[1]);
-  ctx.lineTo(c2[0]-ux*hl-uy*hl*0.4,c2[1]-uy*hl+ux*hl*0.4);
-  ctx.lineTo(c2[0]-ux*hl+uy*hl*0.4,c2[1]-uy*hl-ux*hl*0.4);
+  ctx.lineTo(c2[0]-ux*hl-uy*hw,c2[1]-uy*hl+ux*hw);
+  ctx.lineTo(c2[0]-ux*hl+uy*hw,c2[1]-uy*hl-ux*hw);
   ctx.closePath();ctx.fill();ctx.restore();
+}
+
+function drawPillLabel(text,px,py,color,fontSize){
+  fontSize=fontSize||13;
+  ctx.save();
+  ctx.font='600 '+fontSize+'px system-ui';
+  var tw=ctx.measureText(text).width;
+  var padX=6,padY=3,r=5;
+  var rx=px-padX,ry=py-fontSize+1-padY,rw=tw+2*padX,rh=fontSize+2*padY+2;
+  ctx.fillStyle='rgba(255,255,255,0.92)';
+  ctx.beginPath();
+  ctx.moveTo(rx+r,ry);ctx.lineTo(rx+rw-r,ry);ctx.quadraticCurveTo(rx+rw,ry,rx+rw,ry+r);
+  ctx.lineTo(rx+rw,ry+rh-r);ctx.quadraticCurveTo(rx+rw,ry+rh,rx+rw-r,ry+rh);
+  ctx.lineTo(rx+r,ry+rh);ctx.quadraticCurveTo(rx,ry+rh,rx,ry+rh-r);
+  ctx.lineTo(rx,ry+r);ctx.quadraticCurveTo(rx,ry,rx+r,ry);
+  ctx.closePath();ctx.fill();
+  ctx.strokeStyle=color;ctx.lineWidth=1.2;ctx.globalAlpha=0.35;ctx.stroke();
+  ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(text,px,py);
+  ctx.restore();
 }
 
 function drawEigenvectors(){
   if(!document.getElementById('show-eigen').checked)return;
   var eig=eigenvalues2(state.A);
   if(!eig.real){
-    ctx.save();ctx.font='bold 12px system-ui';ctx.fillStyle='#6d28d9';
-    ctx.fillText('Complex eigenvalues: no real eigenvectors',15,25);
-    ctx.restore();
+    drawPillLabel('Complex eigenvalues: no real eigenvectors',15,25,'#6d28d9',12);
     return;
   }
   var vecs=eigenvectors2(state.A,eig);
@@ -782,30 +794,23 @@ function drawEigenvectors(){
       ctx.moveTo(p1[0],p1[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke();ctx.setLineDash([]);
       drawArrowVec(0,0,u[0]*2,u[1]*2,colors[i],2,false);
       var lp=toCanvas(u[0]*2.2,u[1]*2.2);
-      ctx.font='bold 12px system-ui';ctx.fillStyle=colors[i];
-      ctx.fillText('e'+(i+1),lp[0]+6,lp[1]-(i===0?8:-14));
+      drawPillLabel('e'+(i+1),lp[0]+6,lp[1]-(i===0?8:-14),colors[i],12);
     }
-    ctx.font='bold 12px system-ui';ctx.fillStyle='#6d28d9';
-    ctx.fillText('Every vector is an eigenvector (\u03BB = '+fmtShort(eig.l1)+')',15,25);
+    drawPillLabel('Every vector is an eigenvector (\u03BB = '+fmtShort(eig.l1)+')',15,25,'#6d28d9',12);
   } else {
     var count=isDefective?1:2;
     for(var i=0;i<count;i++){
       var v=vecs[i], u=unitDir(v);
-      // Dashed line through origin
       ctx.strokeStyle=colors[i];ctx.lineWidth=1.5;ctx.setLineDash([6,4]);
       ctx.beginPath();var p1=toCanvas(-u[0]*ext,-u[1]*ext),p2=toCanvas(u[0]*ext,u[1]*ext);
       ctx.moveTo(p1[0],p1[1]);ctx.lineTo(p2[0],p2[1]);ctx.stroke();ctx.setLineDash([]);
-      // Arrow (fixed length 2)
       drawArrowVec(0,0,u[0]*2,u[1]*2,colors[i],2,false);
-      // Label with integer components
       var lp=toCanvas(u[0]*2.2,u[1]*2.2);
-      ctx.font='bold 12px system-ui';ctx.fillStyle=colors[i];
       var label='v'+(i+1)+' = '+vecLabel(v)+', \u03BB = '+fmtShort(lambdas[i]);
-      ctx.fillText(label,lp[0]+6,lp[1]-(i===0?8:-14));
+      drawPillLabel(label,lp[0]+6,lp[1]-(i===0?8:-14),colors[i],12);
     }
     if(isDefective){
-      ctx.font='bold 12px system-ui';ctx.fillStyle='#6d28d9';
-      ctx.fillText('Defective: only 1 independent eigenvector (\u03BB = '+fmtShort(eig.l1)+')',15,25);
+      drawPillLabel('Defective: only 1 independent eigenvector (\u03BB = '+fmtShort(eig.l1)+')',15,25,'#6d28d9',12);
     }
   }
   ctx.restore();
@@ -838,26 +843,21 @@ function draw(){
 
   // Draw x (input)
   drawArrowVec(0,0,x[0],x[1],cssVar('--color-x'),2.5,false);
-  ctx.save();ctx.font='bold 14px system-ui';ctx.fillStyle=cssVar('--color-x');
   var lp1=toCanvas(x[0],x[1]);
-  ctx.fillText('x',lp1[0]+8,lp1[1]-8);ctx.restore();
+  drawPillLabel('x',lp1[0]+8,lp1[1]-8,cssVar('--color-x'),14);
 
   // Draw Ax (output, animated)
   drawArrowVec(0,0,curAx[0],curAx[1],cssVar('--color-ax'),2.5,false);
-  ctx.save();ctx.font='bold 14px system-ui';ctx.fillStyle=cssVar('--color-ax');
   var lp2=toCanvas(curAx[0],curAx[1]);
-  ctx.fillText('Ax',lp2[0]+8,lp2[1]-8);ctx.restore();
+  drawPillLabel('Ax',lp2[0]+8,lp2[1]-8,cssVar('--color-ax'),14);
 
   // Eigenvector detection via parallelism (works for -I, scalar matrices, etc.)
   if(t>=0.99){
     var lambda=checkEigenvector(state.A,x);
     if(lambda!==null){
-      ctx.save();
-      ctx.font='bold 13px system-ui';ctx.fillStyle='#6d28d9';
       var mx=(x[0]+Ax[0])/2, my=(x[1]+Ax[1])/2;
       var pp=toCanvas(mx,my);
-      ctx.fillText('Ax = '+fmtShort(lambda)+'\u00B7x  \u2190 eigenvector!',pp[0]+12,pp[1]+18);
-      ctx.restore();
+      drawPillLabel('Ax = '+fmtShort(lambda)+'\u00B7x  \u2190 eigenvector!',pp[0]+12,pp[1]+18,'#6d28d9',13);
     }
   }
 }

@@ -114,8 +114,7 @@
     .tab-btn:hover:not(.active) { color:var(--text); background:var(--border); }
 
     /* Matrix inputs */
-    .matrix-input-wrap { display:flex; align-items:center; justify-content:center; gap:5px; margin:8px 0 4px; }
-    .bracket-sym { font-size:3.2rem; font-weight:100; color:var(--text-muted); line-height:1; }
+    .matrix-input-wrap { display:flex; align-items:center; justify-content:center; margin:8px 0 4px; }
     .mg2 { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
     .mg3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px; }
     .mcell {
@@ -258,14 +257,12 @@
       <div class="panel-card" id="panel-mat2">
         <h2>Matrix <em>A</em> (2&times;2)</h2>
         <div class="matrix-input-wrap">
-          <span class="bracket-sym" aria-hidden="true">[</span>
           <div class="mg2" role="group" aria-label="2×2 matrix" id="grid2d">
             <input type="number" step="any" id="a11" class="mcell" value="2" aria-label="Row 1 col 1" oninput="onMat2Change()">
             <input type="number" step="any" id="a12" class="mcell" value="1" aria-label="Row 1 col 2" oninput="onMat2Change()">
             <input type="number" step="any" id="a21" class="mcell" value="1" aria-label="Row 2 col 1" oninput="onMat2Change()">
             <input type="number" step="any" id="a22" class="mcell" value="2" aria-label="Row 2 col 2" oninput="onMat2Change()">
           </div>
-          <span class="bracket-sym" aria-hidden="true">]</span>
         </div>
         <p class="col-hint">Columns: <span style="color:var(--color-v1);font-weight:700;">v₁</span> and <span style="color:var(--color-v2);font-weight:700;">v₂</span></p>
       </div>
@@ -274,7 +271,6 @@
       <div class="panel-card" id="panel-mat3" style="display:none">
         <h2>Matrix <em>A</em> (3&times;3)</h2>
         <div class="matrix-input-wrap">
-          <span class="bracket-sym" aria-hidden="true">[</span>
           <div class="mg3" role="group" aria-label="3×3 matrix" id="grid3d">
             <input type="number" step="any" id="b11" class="mcell" value="2" aria-label="R1C1" oninput="onMat3Change()">
             <input type="number" step="any" id="b12" class="mcell" value="0" aria-label="R1C2" oninput="onMat3Change()">
@@ -286,7 +282,6 @@
             <input type="number" step="any" id="b32" class="mcell" value="0" aria-label="R3C2" oninput="onMat3Change()">
             <input type="number" step="any" id="b33" class="mcell" value="2" aria-label="R3C3" oninput="onMat3Change()">
           </div>
-          <span class="bracket-sym" aria-hidden="true">]</span>
         </div>
         <p class="col-hint">Columns: <span style="color:var(--color-v1);font-weight:700;">v₁</span>, <span style="color:var(--color-v2);font-weight:700;">v₂</span>, <span style="color:var(--color-v3);font-weight:700;">v₃</span></p>
       </div>
@@ -602,20 +597,30 @@ function drawVec2D(x1,y1,x2,y2,color,lw,dashed) {
   const {x,y} = sc();
   const dx=x2-x1, dy=y2-y1, len=Math.sqrt(dx*dx+dy*dy);
   if (len < 0.001) return;
-  const ah=0.22, ang=Math.PI/6, theta=Math.atan2(dy,dx);
-  const p1x=x2-ah*Math.cos(theta-ang), p1y=y2-ah*Math.sin(theta-ang);
-  const p2x=x2-ah*Math.cos(theta+ang), p2y=y2-ah*Math.sin(theta+ang);
-  const d=`M${x(x1)},${y(y1)}L${x(x2)},${y(y2)}M${x(x2)},${y(y2)}L${x(p1x)},${y(p1y)}M${x(x2)},${y(y2)}L${x(p2x)},${y(p2y)}`;
-  gMain.append('path').attr('d',d).attr('stroke',color).attr('stroke-width',lw||2.5).attr('fill','none').attr('stroke-linecap','round').attr('stroke-dasharray',dashed?'6,4':'none');
+  const ah=0.22, hw=0.08, theta=Math.atan2(dy,dx);
+  const ux=Math.cos(theta), uy=Math.sin(theta);
+  // Shaft (stop short of arrowhead base)
+  const sx=x2-ah*ux, sy=y2-ah*uy;
+  const shaft=`M${x(x1)},${y(y1)}L${x(sx)},${y(sy)}`;
+  gMain.append('path').attr('d',shaft).attr('stroke',color).attr('stroke-width',lw||2.5).attr('fill','none').attr('stroke-linecap','round').attr('stroke-dasharray',dashed?'6,4':'none');
+  // Filled arrowhead
+  if(!dashed){
+    const bx=x2-ah*ux, by=y2-ah*uy;
+    const nx=-uy, ny=ux;
+    const tri=`M${x(x2)},${y(y2)}L${x(bx+hw*nx)},${y(by+hw*ny)}L${x(bx-hw*nx)},${y(by-hw*ny)}Z`;
+    gMain.append('path').attr('d',tri).attr('fill',color).attr('stroke','none');
+  }
 }
 
 function addLabel2D(mx,my,html,color,dx=10,dy=-14) {
   const {x,y} = sc();
   const fo = gLab.append('foreignObject').attr('x',x(mx)+dx-18).attr('y',y(my)+dy-14).attr('width',90).attr('height',34);
   fo.append('xhtml:div')
-    .style('color',color).style('font-size','14px').style('font-weight','bold')
-    .style('background','rgba(255,255,255,.9)').style('padding','2px 5px')
-    .style('border-radius','4px').style('white-space','nowrap')
+    .style('color',color).style('font-size','13px').style('font-weight','700')
+    .style('background','rgba(255,255,255,.92)').style('padding','2px 7px')
+    .style('border-radius','5px').style('white-space','nowrap')
+    .style('border','1.2px solid '+color+'40')
+    .style('display','inline-block')
     .html(html);
 }
 
@@ -840,6 +845,23 @@ function mkCoordAxis(from,to,color){
   return new THREE.ArrowHelper(d,new THREE.Vector3(...from),len,color,.18,.08);
 }
 
+function mkAxisLabel(text,position,color){
+  const c=document.createElement('canvas');
+  c.width=64;c.height=64;
+  const cx=c.getContext('2d');
+  cx.fillStyle='rgba(255,255,255,0.85)';
+  cx.beginPath();cx.arc(32,32,22,0,Math.PI*2);cx.fill();
+  cx.strokeStyle=color;cx.lineWidth=2;cx.globalAlpha=0.4;cx.stroke();cx.globalAlpha=1;
+  cx.font='bold 30px system-ui';cx.textAlign='center';cx.textBaseline='middle';
+  cx.fillStyle=color;cx.fillText(text,32,33);
+  const tex=new THREE.CanvasTexture(c);
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false});
+  const sprite=new THREE.Sprite(mat);
+  sprite.position.set(position[0],position[1],position[2]);
+  sprite.scale.set(0.5,0.5,1);
+  return sprite;
+}
+
 function draw3D(){
   if(!S3.initialized)return;
   clearScene();
@@ -857,12 +879,15 @@ function draw3D(){
   else                  { faceHex=0xef4444; edgeHex=0xb91c1c; }
   const fop = Math.abs(d)<1e-9 ? .09 : .15;
 
-  // Coordinate axes (thin, reference)
+  // Coordinate axes (thin, reference) with x, y, z labels
   if(document.getElementById('chk-axes-3d').checked){
     const axLen=1.6;
     const ax=mkCoordAxis([0,0,0],[axLen,0,0],0xef4444); if(ax)scn3.add(ax);
     const ay=mkCoordAxis([0,0,0],[0,axLen,0],0x22c55e); if(ay)scn3.add(ay);
     const az=mkCoordAxis([0,0,0],[0,0,axLen],0x3b82f6); if(az)scn3.add(az);
+    scn3.add(mkAxisLabel('x',[axLen+0.3,0,0],'#ef4444'));
+    scn3.add(mkAxisLabel('y',[0,axLen+0.3,0],'#22c55e'));
+    scn3.add(mkAxisLabel('z',[0,0,axLen+0.3],'#3b82f6'));
   }
 
   // Unit cube ghost
