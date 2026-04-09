@@ -44,13 +44,13 @@
 /* Windows High Contrast / forced-colours */
 @media(forced-colors:active){
   *:focus-visible{outline:3px solid Highlight!important;outline-offset:2px!important;box-shadow:none!important;}
-  .abtn,.pbtn{border:2px solid ButtonText!important;forced-color-adjust:none;}
-  .abtn-go,.abtn-pause,.pbtn[aria-pressed=true]{background:ButtonText!important;color:ButtonFace!important;}
+  .abtn,.pbtn,.sbtn{border:2px solid ButtonText!important;forced-color-adjust:none;}
+  .abtn-go,.abtn-pause,.pbtn[aria-pressed=true],.sbtn[aria-checked=true]{background:ButtonText!important;color:ButtonFace!important;}
   input[type=range]::-webkit-slider-thumb{background:ButtonText!important;forced-color-adjust:none;}
   input[type=range]::-moz-range-thumb{background:ButtonText!important;}
   input[type=range]::-webkit-slider-runnable-track,
   input[type=range]::-moz-range-track{background:ButtonBorder!important;}
-  .sl-num,.speed-wrap select{border:2px solid ButtonBorder!important;background:ButtonFace!important;color:ButtonText!important;}
+  .sl-num{border:2px solid ButtonBorder!important;background:ButtonFace!important;color:ButtonText!important;}
   .pdot,.solver-dot{forced-color-adjust:none;}
   .regime-badge{border:2px solid ButtonText!important;background:ButtonFace!important;color:ButtonText!important;}
   a{color:LinkText!important;} a:visited{color:VisitedText!important;}
@@ -160,10 +160,13 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
 .abtn-pause{background:var(--muted);color:#fff;border-color:var(--muted);}.abtn-pause:hover{background:#374151;}
 .abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 2px #fff,0 0 0 5px var(--focus);}
 .abtn:disabled,.abtn[aria-disabled=true]{opacity:.6;cursor:not-allowed;}
-/* Speed select */
+/* Speed buttons */
 .speed-wrap{display:flex;align-items:center;gap:.4rem;font-size:.8125rem;font-weight:700;color:var(--txt2);}
-.speed-wrap select{min-height:44px;padding:.1rem .5rem;border:2px solid var(--bdr);
-  border-radius:.35rem;font-size:.8125rem;font-weight:600;background:var(--card);color:var(--txt);}
+.speed-btns{display:flex;gap:.25rem;flex-wrap:wrap;}
+.sbtn{padding:.25rem .5rem;min-height:36px;min-width:36px;border:2px solid var(--bdr2);border-radius:.35rem;
+  background:var(--card);color:var(--txt);font-size:.8125rem;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s;}
+.sbtn:hover{background:var(--info);border-color:var(--blue);color:var(--blue);}
+.sbtn[aria-checked=true]{background:var(--blue);color:#fff;border-color:var(--blue);}
 /* Layout */
 .main-layout{display:flex;gap:1.25rem;align-items:flex-start;}
 .col-left{flex:0 0 370px;}
@@ -369,15 +372,15 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
           &#9646;&#9646; Pause
         </button>
         <div class="speed-wrap">
-          <label for="speedSel">Speed:</label>
-          <select id="speedSel" aria-label="Animation playback speed">
-            <option value="0.25">¼×</option>
-            <option value="0.5">½×</option>
-            <option value="1">1×</option>
-            <option value="2" selected>2×</option>
-            <option value="4">4×</option>
-            <option value="8">8×</option>
-          </select>
+          <span class="speed-lbl" id="speedLbl">Speed:</span>
+          <span id="speedBtns" class="speed-btns" role="radiogroup" aria-label="Animation playback speed">
+            <button type="button" class="sbtn" data-speed="0.25" role="radio" aria-checked="false" aria-label="Quarter speed">\(\tfrac{1}{4}\!\times\)</button>
+            <button type="button" class="sbtn" data-speed="0.5"  role="radio" aria-checked="false" aria-label="Half speed">\(\tfrac{1}{2}\!\times\)</button>
+            <button type="button" class="sbtn" data-speed="1"    role="radio" aria-checked="false" aria-label="Normal speed">\(1\!\times\)</button>
+            <button type="button" class="sbtn" data-speed="2"    role="radio" aria-checked="true"  aria-label="Double speed">\(2\!\times\)</button>
+            <button type="button" class="sbtn" data-speed="4"    role="radio" aria-checked="false" aria-label="Quadruple speed">\(4\!\times\)</button>
+            <button type="button" class="sbtn" data-speed="8"    role="radio" aria-checked="false" aria-label="Eight times speed">\(8\!\times\)</button>
+          </span>
         </div>
       </div>
       <p class="kbd-hint" aria-label="Keyboard shortcuts">
@@ -1285,7 +1288,7 @@ function readParams(){
     mu:    Math.max(0, parseFloat(document.getElementById('muVal').value)||0),
     x0:    parseFloat(document.getElementById('x0Val').value)||0,
     v0:    parseFloat(document.getElementById('v0Val').value)||0,
-    speed: parseFloat(document.getElementById('speedSel').value)||1
+    speed: parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1
   };
 }
 
@@ -1394,9 +1397,14 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('x0Slider','x0Val');
   linkSlider('v0Slider','v0Val');
 
-  document.getElementById('speedSel').addEventListener('change',function(){
-    if(sol) dtPerFrame=computeDtPerFrame(sol, parseFloat(this.value));
-    say('Speed set to '+this.options[this.selectedIndex].text+'.');
+  document.querySelectorAll('.sbtn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      document.querySelectorAll('.sbtn').forEach(function(b){ b.setAttribute('aria-checked','false'); });
+      this.setAttribute('aria-checked','true');
+      var spd=parseFloat(this.dataset.speed)||1;
+      if(sol) dtPerFrame=computeDtPerFrame(sol, spd);
+      say('Speed set to '+this.textContent.trim()+'.');
+    });
   });
 
   document.getElementById('resetBtn').addEventListener('click', resetSimulation);
@@ -1449,9 +1457,9 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 
   if(window.MathJax&&MathJax.typesetPromise)
-    MathJax.typesetPromise(Array.from(document.querySelectorAll('.pbtn'))).catch(function(){});
+    MathJax.typesetPromise(Array.from(document.querySelectorAll('.pbtn,.sbtn'))).catch(function(){});
 
-  updateRegimeBadge(1); updateEqDisplay(1); updatePresetButtons(1);
+  updateRegimeBadge(5); updateEqDisplay(5); updatePresetButtons(5);
 
   /* Placeholder canvases */
   simCtx.fillStyle='#E8F4FD'; simCtx.fillRect(0,0,simCanvas.width,simCanvas.height);
