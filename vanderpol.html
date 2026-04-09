@@ -475,7 +475,7 @@ var STIFF_THRESHOLD = 5;
 
 /* ── State ── */
 var sol = null;
-var animIdx = 0, animFrac = 0.0, advance = 2.0;
+var animIdx = 0, animTime = 0.0, dtPerFrame = 0.02;
 var isPaused = false, isRunning = false;
 var trail = [], TRAIL_LEN = 90;
 var graphBG = null, phaseBG = null;
@@ -609,13 +609,11 @@ function masterSolve(mu, x0, v0){
   return {pts:pts, rawSteps:raw.length, solver:solverLabel, T:T, mu:mu, x0:x0, v0:v0};
 }
 
-function computeAdvance(solObj, userMult){
-  var mu=solObj.mu, T=solObj.T, n=solObj.pts.length;
-  var period = (mu<0.05) ? 2*Math.PI : (mu<2) ? 6.5 : 1.614*mu;
-  var periods = T/period;
-  var ptsPerPeriod = n/periods;
-  var TARGET_FRAMES_PER_PERIOD = 8*60;
-  var base = Math.max(0.5, ptsPerPeriod/TARGET_FRAMES_PER_PERIOD);
+function computeDtPerFrame(solObj, userMult){
+  /* Target: ~8 seconds of wall-clock time per oscillation period at 60 fps */
+  var period = estimatePeriod(solObj.mu);
+  var TARGET_WALL_SECONDS = 8;
+  var base = period / (TARGET_WALL_SECONDS * 60);
   return base * userMult;
 }
 
@@ -1305,8 +1303,8 @@ function resetSimulation(){
     var elapsed=((performance.now()-t0)/1000).toFixed(2);
     gbg=buildGraphBG(sol);
     pbg=buildPhaseBG(sol);
-    advance=computeAdvance(sol, p.speed);
-    animIdx=0; animFrac=0; trail=[]; isRunning=true; srFrameCount=0;
+    dtPerFrame=computeDtPerFrame(sol, p.speed);
+    animIdx=0; animTime=0; trail=[]; isRunning=true; srFrameCount=0;
 
     /* Auto-pause when user prefers reduced motion */
     if(prefersReducedMotion){ isPaused=true; updatePauseButton(); }
@@ -1334,9 +1332,11 @@ function resetSimulation(){
 function animate(){
   if(isRunning&&!isPaused&&sol&&sol.pts.length){
     var p=readParams();
-    animFrac+=advance*(p.speed);
-    while(animFrac>=1){ animFrac-=1; animIdx=Math.min(animIdx+1, sol.pts.length-1); }
-    var pt=sol.pts[animIdx];
+    animTime += dtPerFrame * p.speed;
+    /* Advance animIdx to match current simulation time */
+    var pts = sol.pts;
+    while(animIdx < pts.length - 1 && pts[animIdx + 1].t <= animTime) animIdx++;
+    var pt = pts[animIdx];
     trail.push({x:pt.x, v:pt.v});
     if(trail.length>TRAIL_LEN) trail.shift();
     drawSim(pt, trail, sol);
@@ -1346,7 +1346,7 @@ function animate(){
     /* Update SR data ~every 60 frames (≈1 s at 60 fps) */
     srFrameCount++;
     if(srFrameCount%60===0) updateSRData(pt, sol);
-    if(animIdx>=sol.pts.length-1){ animIdx=0; animFrac=0; trail=[]; }
+    if(animIdx>=pts.length-1){ animIdx=0; animTime=0; trail=[]; }
   }
   requestAnimationFrame(animate);
 }
@@ -1380,7 +1380,7 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('v0Slider','v0Val');
 
   document.getElementById('speedSel').addEventListener('change',function(){
-    if(sol) advance=computeAdvance(sol, parseFloat(this.value));
+    if(sol) dtPerFrame=computeDtPerFrame(sol, parseFloat(this.value));
     say('Speed set to '+this.options[this.selectedIndex].text+'.');
   });
 
