@@ -28,7 +28,6 @@ TOOL_MAP = {
     'double_potential.html': ('projects.html', 'Differential Equations'),
     'cooling.html': ('projects.html', 'Differential Equations'),
     'bifurcation.html': ('projects.html', 'Differential Equations'),
-    'pendulum-wave.html': ('projects.html', 'Differential Equations'),
     'pendulum_wave.html': ('projects.html', 'Differential Equations'),
     'pend.html': ('projects.html', 'Differential Equations'),
     'slopev1.html': ('projects.html', 'Differential Equations'),
