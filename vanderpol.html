@@ -314,9 +314,9 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
           <div class="sl-block" role="group" aria-labelledby="lbl-x0">
             <div class="sl-row">
               <span id="lbl-x0" class="sl-lbl">Initial displacement \(x_0\)</span>
-              <input type="range" id="x0Slider" min="-4" max="4" step="0.1" value="0.5"
+              <input type="range" id="x0Slider" min="-4" max="4" step="0.1" value="2"
                      aria-labelledby="lbl-x0">
-              <input type="number" id="x0Val" class="sl-num" value="0.5" step="0.1"
+              <input type="number" id="x0Val" class="sl-num" value="2" step="0.1"
                      aria-labelledby="lbl-x0">
             </div>
           </div>
@@ -610,10 +610,15 @@ function masterSolve(mu, x0, v0){
 }
 
 function computeDtPerFrame(solObj, userMult){
-  /* Target: ~8 seconds of wall-clock time per oscillation period at 60 fps */
+  /* Target: ~8 seconds of wall-clock time per oscillation period at 60 fps.
+     For large μ the rapid transitions last ~O(1) sim-seconds, so cap dtPerFrame
+     to ensure those transitions span enough animation frames to look smooth. */
   var period = estimatePeriod(solObj.mu);
   var TARGET_WALL_SECONDS = 8;
   var base = period / (TARGET_WALL_SECONDS * 60);
+  /* Cap: never advance more than 0.15 sim-seconds per frame so rapid
+     transitions (~1-2 s of sim time) get at least 7-13 frames */
+  base = Math.min(base, 0.15);
   return base * userMult;
 }
 
@@ -1087,26 +1092,30 @@ function buildGraphBG(solObj){
   return {bg:graphBG, xMin:xMin, xMax:xMax, pad:pad};
 }
 
-function drawGraph(solObj, idx, gbg){
+function drawGraph(solObj, idx, gbg, iPt){
   graphCtx.drawImage(gbg.bg,0,0);
   if(!solObj||!solObj.pts.length) return;
   var pts=solObj.pts, T=solObj.T;
   var W=graphCanvas.width, H=graphCanvas.height;
   var pad=gbg.pad;
+  var pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
   var lg=graphCtx.createLinearGradient(pad.l,0,W-pad.r,0);
   lg.addColorStop(0,'#6366f1'); lg.addColorStop(1,'#4f46e5');
   graphCtx.strokeStyle=lg; graphCtx.lineWidth=2; graphCtx.lineJoin='round';
   graphCtx.beginPath();
   for(var i=0;i<=idx;i++){
-    var px2=pad.l+pts[i].t/T*(W-pad.l-pad.r);
-    var py2=H-pad.b-(pts[i].x-gbg.xMin)/(gbg.xMax-gbg.xMin)*(H-pad.t-pad.b);
+    var px2=pad.l+pts[i].t/T*pw;
+    var py2=H-pad.b-(pts[i].x-gbg.xMin)/(gbg.xMax-gbg.xMin)*ph;
     i===0?graphCtx.moveTo(px2,py2):graphCtx.lineTo(px2,py2);
   }
+  /* Extend to interpolated point */
+  var cp = iPt || pts[idx];
+  var cpx=pad.l+cp.t/T*pw, cpy=H-pad.b-(cp.x-gbg.xMin)/(gbg.xMax-gbg.xMin)*ph;
+  graphCtx.lineTo(cpx, cpy);
   graphCtx.stroke();
-  var curX=pad.l+pts[idx].t/T*(W-pad.l-pad.r);
   graphCtx.strokeStyle='rgba(220,38,38,.7)'; graphCtx.lineWidth=1.5;
   graphCtx.setLineDash([3,3]);
-  graphCtx.beginPath(); graphCtx.moveTo(curX,pad.t); graphCtx.lineTo(curX,H-pad.b); graphCtx.stroke();
+  graphCtx.beginPath(); graphCtx.moveTo(cpx,pad.t); graphCtx.lineTo(cpx,H-pad.b); graphCtx.stroke();
   graphCtx.setLineDash([]);
 }
 
@@ -1170,7 +1179,7 @@ function buildPhaseBG(solObj){
   return {bg:phaseBG, xMin:xMin, xMax:xMax, vMin:vMin, vMax:vMax, pad:pad};
 }
 
-function drawPhase(solObj, idx, pbg){
+function drawPhase(solObj, idx, pbg, iPt){
   phaseCtx.drawImage(pbg.bg,0,0);
   if(!solObj||!solObj.pts.length) return;
   var pts=solObj.pts;
@@ -1188,12 +1197,15 @@ function drawPhase(solObj, idx, pbg){
     var c=toCanvas(pts[i].x,pts[i].v);
     i===0?phaseCtx.moveTo(c[0],c[1]):phaseCtx.lineTo(c[0],c[1]);
   }
+  /* Extend to interpolated point */
+  var cp0 = iPt || pts[idx];
+  var cc=toCanvas(cp0.x, cp0.v);
+  phaseCtx.lineTo(cc[0], cc[1]);
   phaseCtx.stroke();
-  var cp=toCanvas(pts[idx].x,pts[idx].v);
-  phaseCtx.beginPath(); phaseCtx.arc(cp[0],cp[1],6,0,2*Math.PI);
-  phaseCtx.fillStyle=massColor(pts[idx].x); phaseCtx.fill();
+  phaseCtx.beginPath(); phaseCtx.arc(cc[0],cc[1],6,0,2*Math.PI);
+  phaseCtx.fillStyle=massColor(cp0.x); phaseCtx.fill();
   phaseCtx.strokeStyle='#fff'; phaseCtx.lineWidth=2;
-  phaseCtx.beginPath(); phaseCtx.arc(cp[0],cp[1],6,0,2*Math.PI); phaseCtx.stroke();
+  phaseCtx.beginPath(); phaseCtx.arc(cc[0],cc[1],6,0,2*Math.PI); phaseCtx.stroke();
 }
 
 /* ════════════════════════════════════════════════════
@@ -1335,18 +1347,21 @@ function animate(){
     animTime += dtPerFrame * p.speed;
     /* Advance animIdx to match current simulation time */
     var pts = sol.pts;
-    while(animIdx < pts.length - 1 && pts[animIdx + 1].t <= animTime) animIdx++;
-    var pt = pts[animIdx];
+    while(animIdx < pts.length - 2 && pts[animIdx + 1].t < animTime) animIdx++;
+    /* Interpolate between bracketing points for smooth motion */
+    var p0 = pts[animIdx], p1 = pts[Math.min(animIdx + 1, pts.length - 1)];
+    var frac = (p1.t > p0.t) ? Math.min(1, Math.max(0, (animTime - p0.t) / (p1.t - p0.t))) : 0;
+    var pt = {t: p0.t + frac*(p1.t - p0.t), x: p0.x + frac*(p1.x - p0.x), v: p0.v + frac*(p1.v - p0.v)};
     trail.push({x:pt.x, v:pt.v});
     if(trail.length>TRAIL_LEN) trail.shift();
     drawSim(pt, trail, sol);
-    drawGraph(sol, animIdx, gbg);
-    drawPhase(sol, animIdx, pbg);
+    drawGraph(sol, animIdx, gbg, pt);
+    drawPhase(sol, animIdx, pbg, pt);
     updateStatusLine(pt);
     /* Update SR data ~every 60 frames (≈1 s at 60 fps) */
     srFrameCount++;
     if(srFrameCount%60===0) updateSRData(pt, sol);
-    if(animIdx>=pts.length-1){ animIdx=0; animTime=0; trail=[]; }
+    if(animIdx>=pts.length-2 && frac>=1){ animIdx=0; animTime=0; trail=[]; }
   }
   requestAnimationFrame(animate);
 }
