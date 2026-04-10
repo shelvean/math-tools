@@ -180,6 +180,17 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .abtn-step{background:var(--vio);color:#fff;} .abtn-step:hover,.abtn-step:focus-visible{background:#5b21b6;}
 .abtn-all{background:var(--teal);color:#fff;} .abtn-all:hover,.abtn-all:focus-visible{background:#0c5f58;}
 .abtn-reset{background:var(--muted);color:#fff;} .abtn-reset:hover,.abtn-reset:focus-visible{background:#374151;}
+.abtn-sweep{background:linear-gradient(135deg,#7c3aed 0%,#1d4ed8 100%);color:#fff;
+  font-size:1rem;padding:.55rem 1.35rem;min-width:120px;letter-spacing:.02em;
+  box-shadow:0 2px 8px rgba(124,58,237,.35);}
+.abtn-sweep:hover,.abtn-sweep:focus-visible{background:linear-gradient(135deg,#6d28d9 0%,#1e3a8a 100%);}
+.abtn-sweep[aria-pressed="true"]{background:linear-gradient(135deg,#dc2626 0%,#92400e 100%);box-shadow:0 2px 8px rgba(220,38,38,.35);}
+.sweep-divider{width:2px;height:36px;background:var(--bdr2);border-radius:1px;flex-shrink:0;margin:0 .15rem;}
+.sweep-steps{display:flex;align-items:center;gap:.3rem;}
+.sweep-steps label{font-size:.8rem;font-weight:700;color:var(--txt2);white-space:nowrap;}
+.sweep-steps input{width:58px;min-height:32px;padding:.15rem .3rem;font-size:.875rem;font-weight:600;
+  border:2px solid var(--bdr2);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;}
+.sweep-steps input:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
 .speed-wrap{display:flex;align-items:center;gap:.35rem;margin-left:.25rem;}
 .speed-lbl{font-size:.875rem;font-weight:600;color:var(--txt2);white-space:nowrap;}
 .speed-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
@@ -477,6 +488,17 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 
   <!-- Animation bar -->
   <div class="abar" role="group" aria-label="Animation controls">
+    <button class="abtn abtn-sweep" id="btnSweep" type="button"
+            aria-label="Sweep: animate through all parameter values showing the full cobweb at each step"
+            aria-pressed="false">
+      <span aria-hidden="true">&#9670;</span> Sweep <span id="sweepParamLbl">r</span>
+    </button>
+    <div class="sweep-steps">
+      <label for="sweepStepsNum">Steps</label>
+      <input type="number" id="sweepStepsNum" min="20" max="500" step="10" value="100"
+             aria-label="Number of parameter steps for sweep">
+    </div>
+    <div class="sweep-divider" aria-hidden="true"></div>
     <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play animation" aria-pressed="false"><span aria-hidden="true">&#9654;</span> Play</button>
     <button class="abtn abtn-stop"  id="btnStop"  type="button" aria-label="Stop animation"><span aria-hidden="true">&#9632;</span> Stop</button>
     <button class="abtn abtn-step"  id="btnStep"  type="button" aria-label="Step one segment"><span aria-hidden="true">&#9654;&#124;</span> Step</button>
@@ -546,7 +568,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
         <span class="pdot" style="background:var(--blue)" aria-hidden="true"></span>
         Orbit — \(x_n\) vs. \(n\)
       </div>
-      <div id="plotOrbit" style="height:calc(100% - 38px);min-height:240px;"
+      <div id="plotOrbit" style="min-height:320px;width:100%;"
            role="img" aria-label="Orbit time series"></div>
     </div>
   </div>
@@ -756,6 +778,8 @@ var ST = {
   orbit: [],
   animating: false,
   animTimer: null,
+  sweeping: false,
+  sweepTimer: null,
   view: {xMin:-0.05,xMax:1.05,yMin:-0.05,yMax:1.05},
   defaultView: {xMin:-0.05,xMax:1.05,yMin:-0.05,yMax:1.05}
 };
@@ -1020,24 +1044,31 @@ function render(){
    Orbit plot
 ===================================================== */
 var plotPending=false;
+var plotInited=false;
 function drawOrbit(){
   if(plotPending)return;plotPending=true;
   requestAnimationFrame(function(){
     plotPending=false;
     var orbit=ST.orbit;var nDraw=Math.min(ST.nDraw+1,orbit.length);
     var ns=[],xs=[];for(var i=0;i<nDraw;i++){ns.push(i);xs.push(orbit[i]);}
-    Plotly.react('plotOrbit',[
-      {x:ns,y:xs,type:'scatter',mode:'lines+markers',
+    var traces=[{x:ns,y:xs,type:'scatter',mode:'lines+markers',
        line:{color:'#1d4ed8',width:1.8},marker:{color:'#1d4ed8',size:4},
-       hovertemplate:'n=%{x}<br>x\u2099=%{y:.6f}<extra></extra>'}
-    ],{
+       hovertemplate:'n=%{x}<br>x\u2099=%{y:.6f}<extra></extra>'}];
+    var layout={
       margin:{t:10,r:14,b:48,l:52},
       plot_bgcolor:'#fafafa',paper_bgcolor:'rgba(0,0,0,0)',
       font:{family:'-apple-system,Arial,sans-serif',size:11,color:'#374151'},
       xaxis:{title:{text:'n',font:{size:12}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af'},
       yaxis:{title:{text:'x\u2099',font:{size:12}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af'},
       showlegend:false,autosize:true
-    },{responsive:true,displaylogo:false,displayModeBar:false});
+    };
+    var config={responsive:true,displaylogo:false,displayModeBar:false};
+    if(!plotInited){
+      Plotly.newPlot('plotOrbit',traces,layout,config);
+      plotInited=true;
+    } else {
+      Plotly.react('plotOrbit',traces,layout,config);
+    }
   });
 }
 
@@ -1118,6 +1149,68 @@ function updateFormula(){
 }
 
 /* =====================================================
+   Sweep animation — step through full parameter range
+===================================================== */
+function getSweepParamName(){
+  var id=MAPS[ST.mapId].paramDef.id;
+  return id==='mu'?'&mu;':id==='a'?'a':'r';
+}
+function syncParamUI(v){
+  var rng=document.getElementById('paramRange');if(rng){rng.value=v;rng.setAttribute('aria-valuetext',v.toFixed(3));}
+  var num=document.getElementById('paramNum');if(num)num.value=v;
+  document.querySelectorAll('.preset-btn').forEach(function(b){
+    b.setAttribute('aria-pressed',Math.abs(parseFloat(b.dataset.val)-v)<1e-4?'true':'false');
+  });
+}
+function stopSweep(){
+  ST.sweeping=false;
+  if(ST.sweepTimer)clearInterval(ST.sweepTimer);ST.sweepTimer=null;
+  var btn=document.getElementById('btnSweep');
+  if(btn){
+    btn.setAttribute('aria-pressed','false');
+    btn.innerHTML='<span aria-hidden="true">&#9670;</span> Sweep <span id="sweepParamLbl">'+getSweepParamName()+'</span>';
+  }
+}
+function startSweep(){
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    say('Sweep skipped: your accessibility settings prefer reduced motion.');return;
+  }
+  /* toggle off if already sweeping */
+  if(ST.sweeping){stopSweep();say('Sweep stopped');return;}
+  stopAnim();
+  ST.sweeping=true;
+  var btn=document.getElementById('btnSweep');
+  if(btn){btn.setAttribute('aria-pressed','true');btn.innerHTML='<span aria-hidden="true">&#9632;</span> Stop Sweep';}
+  var m=getMapFn();var pd=m.paramDef;
+  var nSteps=Math.max(20,Math.min(500,parseInt(document.getElementById('sweepStepsNum').value)||100));
+  var sweepStep=(pd.max-pd.min)/nSteps;
+  /* always restart from min */
+  ST.param=pd.min;
+  /* derive frame interval from speed selector — sweep is faster per step since orbit is pre-built */
+  var basems=parseInt(document.getElementById('speedSel').value)||700;
+  var ms=Math.max(50,Math.round(basems*0.35));
+  ST.sweepTimer=setInterval(function(){
+    if(!ST.sweeping)return;
+    ST.param=Math.min(pd.max, parseFloat((ST.param+sweepStep).toFixed(8)));
+    /* tent map: skip μ≈1 (degenerate — every x≤0.5 is a fixed point) */
+    if(ST.mapId==='tent'&&Math.abs(ST.param-1)<sweepStep*0.6)return;
+    syncParamUI(ST.param);
+    buildOrbit();
+    ST.nDraw=totalSegs(); /* always show the FULL cobweb */
+    render();
+    drawOrbit();
+    updateReadout();        /* readout + regime bar */
+    /* skip expensive MathJax formula update during sweep; run once on finish */
+    if(ST.param>=pd.max-1e-9){
+      stopSweep();
+      updateFormula();
+      say('Sweep complete — '+pd.id+'='+pd.max.toFixed(3));
+    }
+  },ms);
+  say('Sweeping '+pd.id+' from '+pd.min+' to '+pd.max+' in '+nSteps+' steps');
+}
+
+/* =====================================================
    Animation
 ===================================================== */
 function stopAnim(){
@@ -1142,11 +1235,12 @@ function startAnim(){
   },ms);
   say('Animation started');
 }
+document.getElementById('btnSweep').addEventListener('click',startSweep);
 document.getElementById('btnPlay').addEventListener('click',startAnim);
-document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Stopped');});
-document.getElementById('btnStep').addEventListener('click',function(){stopAnim();if(ST.nDraw<totalSegs())ST.nDraw++;render();drawOrbit();updateReadout();say('Segment '+ST.nDraw+' of '+totalSegs());});
-document.getElementById('btnAll').addEventListener('click',function(){stopAnim();ST.nDraw=totalSegs();render();drawOrbit();updateReadout();say('All segments shown');});
-document.getElementById('btnReset').addEventListener('click',function(){stopAnim();ST.nDraw=0;render();drawOrbit();updateReadout();say('Reset');});
+document.getElementById('btnStop').addEventListener('click',function(){stopAnim();stopSweep();say('Stopped');});
+document.getElementById('btnStep').addEventListener('click',function(){stopAnim();stopSweep();if(ST.nDraw<totalSegs())ST.nDraw++;render();drawOrbit();updateReadout();say('Segment '+ST.nDraw+' of '+totalSegs());});
+document.getElementById('btnAll').addEventListener('click',function(){stopAnim();stopSweep();ST.nDraw=totalSegs();render();drawOrbit();updateReadout();say('All segments shown');});
+document.getElementById('btnReset').addEventListener('click',function(){stopAnim();stopSweep();ST.nDraw=0;render();drawOrbit();updateReadout();say('Reset');});
 
 /* =====================================================
    Parameter control (slider + number)
@@ -1234,11 +1328,16 @@ function switchMap(mapId){
   ST.mapId=mapId;
   ST.param=m.paramDef.val;
   ST.x0=m.x0;ST.N=m.N;
+  /* stop any running sweep or anim */
+  stopAnim();stopSweep();
   /* update tab UI */
   Object.keys(MAPS).forEach(function(id){
     var tb=document.getElementById(MAPS[id].tabId);
     if(tb)tb.setAttribute('aria-selected',id===mapId?'true':'false');
   });
+  /* update sweep button label */
+  var sb=document.getElementById('btnSweep');
+  if(sb)sb.innerHTML='<span aria-hidden="true">&#9670;</span> Sweep <span id="sweepParamLbl">'+getSweepParamName()+'</span>';
   /* update definition */
   var defEl=document.getElementById('defnEq');
   defEl.innerHTML=m.defnLatex;
