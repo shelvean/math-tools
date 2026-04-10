@@ -344,6 +344,16 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
             <button type="button" class="sbtn" data-speed="2"    role="radio" aria-checked="true"  aria-label="Double speed">2&times;</button>
           </span>
         </div>
+        <div class="speed-wrap">
+          <span id="stepLbl">Step:</span>
+          <span id="stepBtns" class="speed-btns" role="radiogroup" aria-label="Solver step size">
+            <button type="button" class="sbtn stepbtn" data-step="100"  role="radio" aria-checked="false" aria-label="Coarse step size">Coarse</button>
+            <button type="button" class="sbtn stepbtn" data-step="10"   role="radio" aria-checked="false" aria-label="Medium step size">Medium</button>
+            <button type="button" class="sbtn stepbtn" data-step="1"    role="radio" aria-checked="true"  aria-label="Normal step size">Normal</button>
+            <button type="button" class="sbtn stepbtn" data-step="0.1"  role="radio" aria-checked="false" aria-label="Fine step size">Fine</button>
+            <button type="button" class="sbtn stepbtn" data-step="0.01" role="radio" aria-checked="false" aria-label="Very fine step size">Very fine</button>
+          </span>
+        </div>
       </div>
       <p class="kbd-hint" aria-label="Keyboard shortcuts"><kbd>Space</kbd> pause / resume &ensp;<kbd>R</kbd> reset</p>
 
@@ -433,8 +443,9 @@ function rk45Step(p,t,x,v,h){
   return {x:xN,v:vN,err:Math.sqrt(0.5*(ex*ex+ev*ev))};
 }
 
-function solveDuffing(p,x0,v0,T){
-  var atol=1e-7,rtol=1e-5;
+function solveDuffing(p,x0,v0,T,tolMul){
+  if(!tolMul)tolMul=1;
+  var atol=1e-7*tolMul,rtol=1e-5*tolMul;
   var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;
   var hMax=Math.min(T/50,Tf/30,0.08),hMin=1e-10;
   var x=x0,v=v0,t=0,pts=[{t:0,x:x0,v:v0}];
@@ -454,8 +465,8 @@ function solveDuffing(p,x0,v0,T){
 
 function autoEndTime(p){var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;var n=(p.alpha<0&&p.beta>0&&p.gamma>0.2)?60:35;return Math.min(600,Math.max(60,n*Tf));}
 
-function masterSolve(p,x0,v0){
-  var T=autoEndTime(p),raw=solveDuffing(p,x0,v0,T);
+function masterSolve(p,x0,v0,tolMul){
+  var T=autoEndTime(p),raw=solveDuffing(p,x0,v0,T,tolMul);
   var label='RK45 (Dormand\u2013Prince), '+raw.length.toLocaleString()+' steps';
   var MAX=12000,pts=raw;
   if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var i=0;i<raw.length;i+=s)pts.push(raw[Math.floor(i)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
@@ -716,7 +727,7 @@ function updatePresetButtons(p){
 function updatePauseButton(){var btn=document.getElementById('pauseBtn');btn.textContent=isPaused?'\u25b6 Resume':'\u23f8 Pause';btn.setAttribute('aria-pressed',String(isPaused));btn.setAttribute('aria-label',isPaused?'Resume the animation (keyboard shortcut: Space)':'Pause the animation (keyboard shortcut: Space)');}
 function updateStatusLine(pt){document.getElementById('statusLine').textContent='t = '+pt.t.toFixed(3)+'  |  x = '+(pt.x>=0?'+':'')+pt.x.toFixed(4)+'  |  \u1e8b = '+(pt.v>=0?'+':'')+pt.v.toFixed(4);}
 function updateSRData(pt,solObj){var p=solObj.p,r=getRegime(p),Tf=p.omega>0.01?2*Math.PI/p.omega:0,el=document.getElementById('simData');if(!el)return;el.textContent='Time: '+pt.t.toFixed(1)+' s. x: '+(pt.x>=0?'+':'')+pt.x.toFixed(3)+'. v: '+(pt.v>=0?'+':'')+pt.v.toFixed(3)+'. Regime: '+r.lbl+'.';}
-function readParams(){return {p:{delta:Math.max(0,parseFloat(document.getElementById('deltaVal').value)||0),alpha:parseFloat(document.getElementById('alphaVal').value)||0,beta:parseFloat(document.getElementById('betaVal').value)||0,gamma:Math.max(0,parseFloat(document.getElementById('gammaVal').value)||0),omega:Math.max(0.01,parseFloat(document.getElementById('omegaVal').value)||1)},x0:parseFloat(document.getElementById('x0Val').value)||0,v0:parseFloat(document.getElementById('v0Val').value)||0,speed:parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1};}
+function readParams(){return {p:{delta:Math.max(0,parseFloat(document.getElementById('deltaVal').value)||0),alpha:parseFloat(document.getElementById('alphaVal').value)||0,beta:parseFloat(document.getElementById('betaVal').value)||0,gamma:Math.max(0,parseFloat(document.getElementById('gammaVal').value)||0),omega:Math.max(0.01,parseFloat(document.getElementById('omegaVal').value)||1)},x0:parseFloat(document.getElementById('x0Val').value)||0,v0:parseFloat(document.getElementById('v0Val').value)||0,speed:parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1,tolMul:parseFloat((document.querySelector('.stepbtn[aria-checked=true]')||{dataset:{}}).dataset.step)||1};}
 
 /* ════ RESET ════ */
 function resetSimulation(){
@@ -727,7 +738,7 @@ function resetSimulation(){
   document.getElementById('solverText').textContent='Computing\u2026';document.getElementById('solverDot').style.background='#f59e0b';
   say('Computing. Regime: '+getRegime(p).lbl+'.');
   setTimeout(function(){
-    var t0=performance.now();sol=masterSolve(p,q.x0,q.v0);var elapsed=((performance.now()-t0)/1000).toFixed(2);
+    var t0=performance.now();sol=masterSolve(p,q.x0,q.v0,q.tolMul);var elapsed=((performance.now()-t0)/1000).toFixed(2);
     initTrailCanvases(sol);
     dtPerFrame=computeDtPerFrame(sol,q.speed);
     animIdx=0;animTime=0;trail=[];isRunning=true;srFrameCount=0;
@@ -775,7 +786,8 @@ function onPC(){var q=readParams();updateRegimeBadge(q.p);updateEqDisplay(q.p);u
 
 document.addEventListener('DOMContentLoaded',function(){
   linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');
-  document.querySelectorAll('.sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol,parseFloat(this.dataset.speed)||1);say('Speed set.');});});
+  document.querySelectorAll('#speedBtns .sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('#speedBtns .sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol,parseFloat(this.dataset.speed)||1);say('Speed set.');});});
+  document.querySelectorAll('.stepbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.stepbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');say('Step size set. Press Reset to apply.');});});
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
   document.getElementById('pauseBtn').addEventListener('click',function(){isPaused=!isPaused;updatePauseButton();say(isPaused?'Paused.':'Resumed.');});
   document.querySelectorAll('.pbtn').forEach(function(btn){
