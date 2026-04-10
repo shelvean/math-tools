@@ -465,12 +465,20 @@ function solveDuffing(p,x0,v0,T,tolMul){
 
 function autoEndTime(p){var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;var n=(p.alpha<0&&p.beta>0&&p.gamma>0.2)?60:35;return Math.min(600,Math.max(60,n*Tf));}
 
+function computeWallMax(p,x0){
+  var W=document.getElementById('simCanvas').width,WALL_W=28,BLOCK_HW=34;
+  var trackW=W-2*WALL_W;
+  var maxAmp=Math.max(2.5,Math.abs(x0)+0.5);
+  if(p.alpha<0&&p.beta>0){var xeq=Math.sqrt(-p.alpha/p.beta);maxAmp=Math.max(maxAmp,xeq*1.7);}
+  var pxPerUnit=(trackW*0.40)/maxAmp;
+  return (trackW/2-BLOCK_HW)/pxPerUnit;
+}
 function masterSolve(p,x0,v0,tolMul){
   var T=autoEndTime(p),raw=solveDuffing(p,x0,v0,T,tolMul);
   var label='RK45 (Dormand\u2013Prince), '+raw.length.toLocaleString()+' steps';
   var MAX=12000,pts=raw;
   if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var i=0;i<raw.length;i+=s)pts.push(raw[Math.floor(i)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
-  return {pts:pts,rawSteps:raw.length,solver:label,T:T,p:p,x0:x0,v0:v0};
+  return {pts:pts,rawSteps:raw.length,solver:label,T:T,p:p,x0:x0,v0:v0,xWallMax:computeWallMax(p,x0)};
 }
 
 function computeDtPerFrame(solObj,spd){
@@ -762,6 +770,12 @@ function animate(){
     var p0=pts[animIdx],p1=pts[Math.min(animIdx+1,pts.length-1)];
     var frac=p1.t>p0.t?Math.min(1,Math.max(0,(animTime-p0.t)/(p1.t-p0.t))):0;
     var pt={t:p0.t+frac*(p1.t-p0.t),x:p0.x+frac*(p1.x-p0.x),v:p0.v+frac*(p1.v-p0.v)};
+    if(sol.xWallMax&&Math.abs(pt.x)>sol.xWallMax){
+      isPaused=true;updatePauseButton();
+      var msg='\u26a0 Position exceeded wall boundary (x = '+pt.x.toFixed(3)+'). Simulation paused.';
+      document.getElementById('statusLine').textContent=msg;
+      say(msg);
+    }
     trail.push({x:pt.x,v:pt.v});if(trail.length>TRAIL_LEN)trail.shift();
     drawSim(pt,trail,sol);
     drawGraphFrame(sol,animIdx,pt);
