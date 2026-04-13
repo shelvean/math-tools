@@ -228,7 +228,7 @@
       .action-item { border-right: none; border-bottom: 1px solid var(--border-color); }
       .action-item:last-child { border-bottom: none; }
     }
-  
+
 /* ===== Back link ===== */
 .back-link{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
   color:#4338ca;text-decoration:none;margin:0.5rem 0 0.5rem 1rem;transition:transform .2s;}
@@ -296,7 +296,7 @@
         </ul>
         <p><strong>Generalized Eigenvectors:</strong></p>
         <ul>
-          <li>When a matrix is <strong>defective</strong><a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> (lacks enough eigenvectors to span the space), generalized eigenvectors \(\mathbf{w}\) satisfy \((A - \lambda I)^k\mathbf{w} = \mathbf{0}\) for some \(k > 1\)</li>
+          <li>When a matrix is <strong>defective</strong><a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> (lacks enough eigenvectors to span the space), generalized eigenvectors \(\mathbf{w}\) satisfy \((A - \lambda I)\mathbf{w} = \mathbf{v}\) where \(\mathbf{v}\) is an eigenvector (Jordan chain condition)</li>
           <li>Generalized eigenvectors complete the basis when geometric multiplicity is less than algebraic multiplicity</li>
         </ul>
         <p><strong>This calculator</strong> finds eigenvalues with algebraic multiplicities, eigenvectors scaled for clean display (surd form, fractions), and generalized eigenvectors when needed. Complex eigenvectors are displayed in \(a + bi\) form.</p>
@@ -354,7 +354,7 @@
     <footer class="footer" role="contentinfo">
       &copy; 2026 Shelvean Kapita: kapita@tamu.edu<br>
       All code released under the MIT License.<br>
-      Last modified: March 8, 2026<br>
+      Last modified: April 13, 2026<br>
       <strong>Accessibility:</strong> This tool is designed to meet
       <a href="https://www.w3.org/TR/WCAG21/" style="color:var(--link-color);">WCAG 2.1 AA</a> standards.
       It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators.
@@ -498,16 +498,12 @@ function parseComplex(str) {
   str = str.trim();
   if (str === '') return math.complex(0, 0);
 
-  // Handle simple imaginary cases
   if (str === 'i') return math.complex(0, 1);
   if (str === '-i') return math.complex(0, -1);
   if (str === '+i') return math.complex(0, 1);
 
-  // Check if the string contains 'i' (indicating a complex number)
   if (str.includes('i')) {
-    // Handle cases where it's just a pure imaginary number (like "2i", "-3i")
     if (!str.includes('+') && !str.includes('-', 1)) {
-      // Extract the numeric part
       let imagPart = str.replace('i', '');
       if (imagPart === '' || imagPart === '+') imagPart = '1';
       if (imagPart === '-') imagPart = '-1';
@@ -519,8 +515,6 @@ function parseComplex(str) {
         console.error("Error parsing imaginary part:", str, e);
       }
     } else {
-      // Handle cases with both real and imaginary parts (like "1+2i", "3-4i")
-      // Use a more robust regex to capture all cases
       const complexRegex = /^([+-]?\d*\.?\d*)([+-]\d*\.?\d*)i$/;
       const match = str.match(complexRegex);
 
@@ -528,10 +522,7 @@ function parseComplex(str) {
         let realPart = match[1] || '0';
         let imagPart = match[2] || '+1';
 
-        // Handle cases where real part is empty but has sign
         if (realPart === '+' || realPart === '-') realPart += '0';
-
-        // Handle cases where imaginary coefficient is just a sign
         if (imagPart === '+' || imagPart === '-') imagPart += '1';
 
         try {
@@ -545,7 +536,6 @@ function parseComplex(str) {
     }
   }
 
-  // Fallback to math.evaluate for other expressions
   try {
     let evaluated = math.evaluate(str);
     if (typeof evaluated === 'number') {
@@ -612,7 +602,6 @@ function computeRREF(origMatrix) {
           console.error(`Error in RREF division at row ${r}, col ${j}:`, e);
           matrix[r][j] = zero;
         }
-        // Round to avoid floating point errors
         if (typeof matrix[r][j] === 'number') {
           matrix[r][j] = Math.abs(matrix[r][j]) < 1e-10 ? 0 : matrix[r][j];
         } else {
@@ -632,7 +621,6 @@ function computeRREF(origMatrix) {
             console.error(`Error in RREF subtraction at row ${i}, col ${j}:`, e);
             matrix[i][j] = zero;
           }
-          // Round to avoid floating point errors
           if (typeof matrix[i][j] === 'number') {
             matrix[i][j] = Math.abs(matrix[i][j]) < 1e-10 ? 0 : matrix[i][j];
           } else {
@@ -712,6 +700,49 @@ function computeNullSpace(A) {
 }
 
 // ============================================================
+//  SOLVE LINEAR SYSTEM  M x = b
+//  Returns a particular solution (free variables set to 0),
+//  or null if the system is inconsistent.
+// ============================================================
+function solveLinear(M, b) {
+  if (!M || M.length === 0) return null;
+  const m = M.length;
+  const n = M[0].length;
+  // Build augmented matrix
+  const aug = [];
+  for (let i = 0; i < m; i++) {
+    aug.push(M[i].slice().concat([b[i]]));
+  }
+  const { result: R } = computeRREF(aug);
+  // Consistency check: any row [0 ... 0 | nonzero] ?
+  for (let i = 0; i < m; i++) {
+    let allZero = true;
+    for (let j = 0; j < n; j++) {
+      if (math.abs(R[i][j]) > 1e-7) { allZero = false; break; }
+    }
+    if (allZero && math.abs(R[i][n]) > 1e-7) return null;
+  }
+  // Find pivot columns (restricted to coefficient block)
+  const coefBlock = R.map(r => r.slice(0, n));
+  const pivots = getPivotColumns(coefBlock);
+  // Particular solution: free variables = 0, pivot variables = RHS
+  const isComplex = typeof M[0][0] !== 'number';
+  const zero = isComplex ? math.complex(0, 0) : 0;
+  const x = new Array(n).fill(zero);
+  for (let k = 0; k < pivots.length; k++) {
+    x[pivots[k]] = R[k][n];
+  }
+  return x;
+}
+
+function isZeroVector(v) {
+  for (let i = 0; i < v.length; i++) {
+    if (math.abs(v[i]) > 1e-7) return false;
+  }
+  return true;
+}
+
+// ============================================================
 //  FRACTION / SURD UTILITIES
 // ============================================================
 function gcd(a, b) {
@@ -774,15 +805,14 @@ function decimalToSurd(num, tolerance = 1e-6) {
   if (Math.abs(num) < 1e-12) return null;
   let sign = Math.sign(num);
   num = Math.abs(num);
-  const maxB = 100; // Limit for b in a*sqrt(b)
-  const coefficients = [1, 0.5, 2, 0.25, 0.3333333333, 0.6666666667, 1.5]; // Common a values (1, 1/2, 2, 1/4, 1/3, 2/3, 3/2)
+  const maxB = 100;
+  const coefficients = [1, 0.5, 2, 0.25, 0.3333333333, 0.6666666667, 1.5];
   for (let a of coefficients) {
     for (let b = 1; b <= maxB; b++) {
       let sqrtB = isPerfectSquare(b);
       let value = sqrtB ? a * sqrtB : a * Math.sqrt(b);
       if (Math.abs(num - value) < tolerance) {
         if (sqrtB) {
-          // Perfect square: return simplified integer or fraction
           let newA = a * sqrtB;
           let frac = floatToFraction(newA);
           if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
@@ -824,7 +854,6 @@ function formatForLatex(val, isEigenvalueOrVector = false) {
     }
     let fraction = floatToFraction(val);
     let isFraction = Math.abs(val - fraction.numer / fraction.denom) < 1e-6;
-    // Only show fraction if numerator and denominator are both less than 10
     if ((isShortDecimal(val) || isFraction) && Math.abs(fraction.numer) < 10 && fraction.denom < 10) {
       if (fraction.denom === 1) return fraction.numer.toString();
       return `\\dfrac{${fraction.numer}}{${fraction.denom}}`;
@@ -836,7 +865,6 @@ function formatForLatex(val, isEigenvalueOrVector = false) {
     let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
     let reFrac = floatToFraction(re);
     let imFrac = floatToFraction(Math.abs(im));
-    // Only show fraction if numerator and denominator are both less than 10
     let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
     let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
     let rePart, imPart;
@@ -888,7 +916,6 @@ function matrixToLatex(M) {
       if (Math.abs(im) < 1e-12) return false;
       let reFrac = floatToFraction(re);
       let imFrac = floatToFraction(im);
-      // Only show fraction if numerator and denominator are both less than 10
       let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
       let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
       return isReFraction || isImFraction;
@@ -910,133 +937,169 @@ function matrixToLatex(M) {
 
 // ============================================================
 //  VECTOR TO LATEX
+//
+//  Two modes:
+//   (a) Normal call:  vectorToLatex(v)
+//       Applies pretty-printing heuristics (scale to smallest entry,
+//       clear fractions, simplify by GCD, flip sign) and returns
+//       { latex, scaledVector, multiplier } where multiplier is the
+//       single scalar alpha such that displayed = alpha * v.
+//   (b) Locked call:  vectorToLatex(v, forcedMultiplier)
+//       Skips heuristics, uses displayed = forcedMultiplier * v.
+//       This is used for generalized eigenvectors in a Jordan chain,
+//       so the whole chain shares one scale and the relation
+//       (A - lambda*I) w_{k+1} = w_k is preserved on screen.
 // ============================================================
-function vectorToLatex(v) {
+function vectorToLatex(v, forcedMultiplier) {
   if (!v || v.length === 0) {
     console.error("Empty or invalid vector in vectorToLatex");
-    return { latex: '\\begin{bmatrix} 0 \\end{bmatrix}', scaledVector: [0] };
+    return { latex: '\\begin{bmatrix} 0 \\end{bmatrix}', scaledVector: [0], multiplier: 1 };
   }
   const rows = v.length;
-  // Determine if vector is complex (has non-zero imaginary part)
-  let isComplexVector = v.some(x => typeof x !== 'number' && Math.abs(x.im) > 1e-12);
-  let scaleEntry;
-  if (isComplexVector) {
-    // Collect non-zero magnitudes for complex entries
-    let nonZero = [];
-    v.forEach(x => {
-      let mag = math.abs(x);
-      if (mag > 1e-12) {
-        nonZero.push({ mag, entry: x });
-      }
-    });
-    if (nonZero.length === 0) {
-      console.warn("Zero vector encountered in vectorToLatex");
-      return { latex: matrixToLatex([v]), scaledVector: v };
+
+  let adjustedV;
+  let multiplier;
+
+  if (forcedMultiplier !== undefined && forcedMultiplier !== null) {
+    // -------- Locked-scale path (chain partner) --------
+    try {
+      adjustedV = v.map(x => math.multiply(x, forcedMultiplier));
+    } catch (e) {
+      console.error("Error applying forced multiplier in vectorToLatex:", e);
+      adjustedV = v.slice();
     }
-    // Find entry with smallest non-zero magnitude
-    let minItem = nonZero.reduce((min, item) => item.mag < min.mag ? item : min, nonZero[0]);
-    scaleEntry = minItem.entry;
-  } else {
-    // Collect non-positive non-zero real numbers (treating -0 as 0)
-    let nonPositive = [];
-    v.forEach(x => {
-      let realVal = typeof x === 'number' ? x : x.re;
-      if (Math.abs(realVal) > 1e-12 && realVal <= 0) {
-        nonPositive.push({ val: realVal, mag: Math.abs(realVal) });
+    // Zero out tiny numerical noise
+    adjustedV = adjustedV.map(x => {
+      if (typeof x === 'number') {
+        return Math.abs(x) < 1e-10 ? 0 : x;
+      } else {
+        let re = Math.abs(x.re) < 1e-10 ? 0 : x.re;
+        let im = Math.abs(x.im) < 1e-10 ? 0 : x.im;
+        return math.complex(re, im);
       }
     });
-    if (nonPositive.length === 0) {
-      // If no non-positive, use smallest magnitude non-zero
+    multiplier = forcedMultiplier;
+  } else {
+    // -------- Heuristic path (eigenvector / chain base) --------
+    // Start with alpha = 1; accumulate every scalar operation we apply.
+    multiplier = 1;
+
+    // Step 1: pick scale entry
+    let isComplexVector = v.some(x => typeof x !== 'number' && Math.abs(x.im) > 1e-12);
+    let scaleEntry;
+    if (isComplexVector) {
       let nonZero = [];
       v.forEach(x => {
-        let realVal = typeof x === 'number' ? x : x.re;
-        if (Math.abs(realVal) > 1e-12) {
-          nonZero.push({ val: realVal, mag: Math.abs(realVal) });
-        }
+        let mag = math.abs(x);
+        if (mag > 1e-12) nonZero.push({ mag, entry: x });
       });
       if (nonZero.length === 0) {
         console.warn("Zero vector encountered in vectorToLatex");
-        return { latex: matrixToLatex([v]), scaledVector: v };
+        return { latex: matrixToLatex([v]), scaledVector: v, multiplier: 1 };
       }
       let minItem = nonZero.reduce((min, item) => item.mag < min.mag ? item : min, nonZero[0]);
-      scaleEntry = minItem.val;
+      scaleEntry = minItem.entry;
     } else {
-      let minItem = nonPositive.reduce((min, item) => item.mag < min.mag ? item : min, nonPositive[0]);
-      scaleEntry = minItem.val;
-    }
-  }
-  // Scale the vector
-  let adjustedV = [];
-  try {
-    adjustedV = v.map(x => math.divide(x, scaleEntry));
-  } catch (e) {
-    console.error("Error scaling vector in vectorToLatex:", e);
-    return { latex: matrixToLatex([v]), scaledVector: v };
-  }
-  // Fraction to integer logic
-  let denoms = [];
-  adjustedV.forEach(x => {
-    let re = typeof x === 'number' ? x : x.re;
-    let im = typeof x === 'number' ? 0 : x.im;
-    // Only consider fractions if numerator and denominator are both less than 10
-    if (Math.abs(re - Math.round(re)) > 1e-12 && (isShortDecimal(re) || Math.abs(re - floatToFraction(re).numer / floatToFraction(re).denom) < 1e-6)) {
-      let frac = floatToFraction(re);
-      if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
-        denoms.push(frac.denom);
-      }
-    }
-    if (Math.abs(im - Math.round(im)) > 1e-12 && (isShortDecimal(im) || Math.abs(im - floatToFraction(im).numer / floatToFraction(im).denom) < 1e-6)) {
-      let frac = floatToFraction(im);
-      if (Math.abs(frac.numer) < 10 && frac.denom < 10) {
-        denoms.push(frac.denom);
-      }
-    }
-  });
-  if (denoms.length > 0) {
-    let lcmDenom = denoms.reduce((a, b) => lcm(a, b), 1);
-    try {
-      adjustedV = adjustedV.map(x => math.multiply(x, lcmDenom));
-      let gcdVal = 0;
-      adjustedV.forEach(x => {
-        let re = Math.round(typeof x === 'number' ? x : x.re);
-        let im = Math.round(typeof x === 'number' ? 0 : x.im);
-        if (Math.abs(re) > 0.5) gcdVal = gcd(gcdVal, Math.abs(re));
-        if (Math.abs(im) > 0.5) gcdVal = gcd(gcdVal, Math.abs(im));
+      let nonPositive = [];
+      v.forEach(x => {
+        let realVal = typeof x === 'number' ? x : x.re;
+        if (Math.abs(realVal) > 1e-12 && realVal <= 0) {
+          nonPositive.push({ val: realVal, mag: Math.abs(realVal) });
+        }
       });
-      if (gcdVal > 1) {
-        adjustedV = adjustedV.map(x => math.divide(x, gcdVal));
+      if (nonPositive.length === 0) {
+        let nonZero = [];
+        v.forEach(x => {
+          let realVal = typeof x === 'number' ? x : x.re;
+          if (Math.abs(realVal) > 1e-12) nonZero.push({ val: realVal, mag: Math.abs(realVal) });
+        });
+        if (nonZero.length === 0) {
+          console.warn("Zero vector encountered in vectorToLatex");
+          return { latex: matrixToLatex([v]), scaledVector: v, multiplier: 1 };
+        }
+        let minItem = nonZero.reduce((min, item) => item.mag < min.mag ? item : min, nonZero[0]);
+        scaleEntry = minItem.val;
+      } else {
+        let minItem = nonPositive.reduce((min, item) => item.mag < min.mag ? item : min, nonPositive[0]);
+        scaleEntry = minItem.val;
       }
+    }
+
+    try {
+      adjustedV = v.map(x => math.divide(x, scaleEntry));
+      // alpha accumulates 1 / scaleEntry
+      multiplier = math.divide(multiplier, scaleEntry);
     } catch (e) {
-      console.error("Error in fraction conversion in vectorToLatex:", e);
+      console.error("Error scaling vector in vectorToLatex:", e);
+      return { latex: matrixToLatex([v]), scaledVector: v, multiplier: 1 };
+    }
+
+    // Step 2: clear fractions by LCM of denominators
+    let denoms = [];
+    adjustedV.forEach(x => {
+      let re = typeof x === 'number' ? x : x.re;
+      let im = typeof x === 'number' ? 0 : x.im;
+      if (Math.abs(re - Math.round(re)) > 1e-12 && (isShortDecimal(re) || Math.abs(re - floatToFraction(re).numer / floatToFraction(re).denom) < 1e-6)) {
+        let frac = floatToFraction(re);
+        if (Math.abs(frac.numer) < 10 && frac.denom < 10) denoms.push(frac.denom);
+      }
+      if (Math.abs(im - Math.round(im)) > 1e-12 && (isShortDecimal(im) || Math.abs(im - floatToFraction(im).numer / floatToFraction(im).denom) < 1e-6)) {
+        let frac = floatToFraction(im);
+        if (Math.abs(frac.numer) < 10 && frac.denom < 10) denoms.push(frac.denom);
+      }
+    });
+    if (denoms.length > 0) {
+      let lcmDenom = denoms.reduce((a, b) => lcm(a, b), 1);
+      try {
+        adjustedV = adjustedV.map(x => math.multiply(x, lcmDenom));
+        multiplier = math.multiply(multiplier, lcmDenom);
+        let gcdVal = 0;
+        adjustedV.forEach(x => {
+          let re = Math.round(typeof x === 'number' ? x : x.re);
+          let im = Math.round(typeof x === 'number' ? 0 : x.im);
+          if (Math.abs(re) > 0.5) gcdVal = gcd(gcdVal, Math.abs(re));
+          if (Math.abs(im) > 0.5) gcdVal = gcd(gcdVal, Math.abs(im));
+        });
+        if (gcdVal > 1) {
+          adjustedV = adjustedV.map(x => math.divide(x, gcdVal));
+          multiplier = math.divide(multiplier, gcdVal);
+        }
+      } catch (e) {
+        console.error("Error in fraction conversion in vectorToLatex:", e);
+      }
+    }
+
+    // Step 3: sign adjustment
+    let positiveCount = 0;
+    let negativeCount = 0;
+    adjustedV.forEach(x => {
+      let re = typeof x === 'number' ? x : x.re;
+      let im = typeof x === 'number' ? 0 : x.im;
+      if (Math.abs(re) > 1e-12) {
+        if (re > 0) positiveCount++;
+        if (re < 0) negativeCount++;
+      }
+      if (Math.abs(im) > 1e-12) {
+        if (im > 0) positiveCount++;
+        if (im < 0) negativeCount++;
+      }
+    });
+    if (negativeCount > positiveCount) {
+      adjustedV = adjustedV.map(x => math.multiply(x, -1));
+      multiplier = math.multiply(multiplier, -1);
+    }
+    let canNegate = adjustedV.every(x => {
+      let re = typeof x === 'number' ? x : x.re;
+      let im = typeof x === 'number' ? 0 : x.im;
+      return (Math.abs(re) < 1e-12 || re <= 0) && (Math.abs(im) < 1e-12 || im <= 0);
+    });
+    if (canNegate) {
+      adjustedV = adjustedV.map(x => math.multiply(x, -1));
+      multiplier = math.multiply(multiplier, -1);
     }
   }
-  // Sign adjustment
-  let positiveCount = 0;
-  let negativeCount = 0;
-  adjustedV.forEach(x => {
-    let re = typeof x === 'number' ? x : x.re;
-    let im = typeof x === 'number' ? 0 : x.im;
-    if (Math.abs(re) > 1e-12) {
-      if (re > 0) positiveCount++;
-      if (re < 0) negativeCount++;
-    }
-    if (Math.abs(im) > 1e-12) {
-      if (im > 0) positiveCount++;
-      if (im < 0) negativeCount++;
-    }
-  });
-  if (negativeCount > positiveCount) {
-    adjustedV = adjustedV.map(x => math.multiply(x, -1));
-  }
-  let canNegate = adjustedV.every(x => {
-    let re = typeof x === 'number' ? x : x.re;
-    let im = typeof x === 'number' ? 0 : x.im;
-    return (Math.abs(re) < 1e-12 || re <= 0) && (Math.abs(im) < 1e-12 || im <= 0);
-  });
-  if (canNegate) {
-    adjustedV = adjustedV.map(x => math.multiply(x, -1));
-  }
-  // Check for fractions in vector
+
+  // ---- Build LaTeX from adjustedV ----
   let hasFractions = adjustedV.some(val => {
     if (typeof val === 'number') {
       return isShortDecimal(val) || (Math.abs(val - Math.round(val)) > 1e-12 && Math.abs(val - floatToFraction(val).numer / floatToFraction(val).denom) < 1e-6);
@@ -1046,13 +1109,12 @@ function vectorToLatex(v) {
       if (Math.abs(im) < 1e-12) return false;
       let reFrac = floatToFraction(re);
       let imFrac = floatToFraction(im);
-      // Only show fraction if numerator and denominator are both less than 10
       let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
       let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
       return isReFraction || isImFraction;
     }
   });
-  // Build LaTeX
+
   let latex = "\\begin{bmatrix}";
   for (let i = 0; i < rows; i++) {
     latex += formatForLatex(adjustedV[i], true);
@@ -1061,25 +1123,12 @@ function vectorToLatex(v) {
     }
   }
   latex += "\\end{bmatrix}";
-  return { latex, scaledVector: adjustedV };
+  return { latex, scaledVector: adjustedV, multiplier };
 }
 
 // ============================================================
 //  HELPER FUNCTIONS
 // ============================================================
-function isComplexFraction(val) {
-  if (typeof val !== 'object' || val.re === undefined || val.im !== undefined) return false;
-  let re = Math.abs(val.re) < 1e-12 ? 0 : val.re;
-  let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
-  if (Math.abs(im) < 1e-12) return false;
-  let reFrac = floatToFraction(re);
-  let imFrac = floatToFraction(im);
-  // Only show fraction if numerator and denominator are both less than 10
-  let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
-  let isImFraction = Math.abs(Math.abs(im) - imFrac.numer / imFrac.denom) < 1e-6 && Math.abs(imFrac.numer) < 10 && imFrac.denom < 10;
-  return isReFraction || isImFraction;
-}
-
 function getKey(val) {
   if (typeof val === 'number') {
     return Math.abs(val) < 1e-7 ? '0' : val.toFixed(10);
@@ -1099,66 +1148,105 @@ function isZeroValue(val) {
 }
 
 // ============================================================
-//  COMPUTE EIGENVECTORS
+//  COMPUTE EIGENVECTORS  (with true Jordan chain construction)
+//
+//  For a real eigenvalue lambda:
+//    1. Compute eigenspace basis {v_1, ..., v_g} = ker(A - lambda I).
+//    2. For each chain headed by v_k, repeatedly solve
+//         (A - lambda I) w = (top of chain)
+//       to extend the chain upward, until the total number of
+//       vectors reaches the algebraic multiplicity.
+//    3. Return the chain vectors flattened, each tagged with
+//       { vec, chainId, chainPos }. chainPos == 0 is the eigenvector;
+//       chainPos > 0 are generalized (Jordan) partners that satisfy
+//       (A - lambda I) w_{k+1} = w_k exactly.
+//
+//  For a complex eigenvalue, use math.eigs() as before and return
+//  the vectors tagged as position 0 (no chain partners).
 // ============================================================
 function computeEigenvectors(A, lambda, algMultiplicity, isComplex) {
   const n = A.length;
-  let eigenvectors = [];
-  let geometricMultiplicity = 0;
+
   if (isComplex) {
-    // Use math.eigs for complex eigenvalues
+    let vectors = [];
     try {
       const A_math = math.matrix(A);
       const result = math.eigs(A_math);
       const evs = result.eigenvectors;
       for (let ev of evs) {
-        if (Math.abs(math.subtract(ev.value, lambda).re) < 1e-7 && Math.abs(math.subtract(ev.value, lambda).im) < 1e-7) {
+        const diff = math.subtract(ev.value, lambda);
+        const dRe = typeof diff === 'number' ? diff : diff.re;
+        const dIm = typeof diff === 'number' ? 0 : diff.im;
+        if (Math.abs(dRe) < 1e-7 && Math.abs(dIm) < 1e-7) {
           let vec = ev.vector.toArray().flat();
-          if (vec.every(v => isZeroValue(v))) {
-            console.warn("Zero eigenvector skipped for eigenvalue:", lambda);
-            continue;
-          }
-          eigenvectors.push(vec);
+          if (vec.every(v => isZeroValue(v))) continue;
+          vectors.push({ vec, chainId: vectors.length, chainPos: 0 });
         }
       }
-      geometricMultiplicity = eigenvectors.length;
     } catch (e) {
       console.error(`Failed to compute eigenvectors for complex eigenvalue ${lambda}:`, e);
       return { vectors: [], geometricMultiplicity: 0 };
     }
-  } else {
-    // Compute generalized eigenvectors for real eigenvalues
-    let currentMatrix = math.identity(n);
-    for (let k = 1; k <= algMultiplicity; k++) {
-      let A_minus_lambdaI = A.map((row, i) => row.map((val, j) => {
-        let result = i === j ? math.subtract(val, lambda) : val;
-        return typeof result === 'number' ? result : math.complex(result.re, result.im);
-      }));
-      let tempMatrix;
-      try {
-        tempMatrix = k === 1 ? math.matrix(A_minus_lambdaI) : math.multiply(currentMatrix, math.matrix(A_minus_lambdaI));
-      } catch (e) {
-        console.error(`Matrix multiplication failed at k=${k}:`, e);
-        return { vectors: eigenvectors, geometricMultiplicity };
-      }
-      currentMatrix = tempMatrix.toArray ? tempMatrix.toArray() : tempMatrix;
-      let nullspaceResult = computeNullSpace(currentMatrix);
-      let newVectors = nullspaceResult.basis;
-      newVectors.forEach(vec => {
-        let isIndependent = true;
-        if (eigenvectors.length > 0) {
-          let testMatrix = eigenvectors.map(ev => ev.slice());
-          testMatrix.push(vec.slice());
-          let rank = computeRREF(testMatrix).pivotRows.length;
-          if (rank <= eigenvectors.length) isIndependent = false;
-        }
-        if (isIndependent) eigenvectors.push(vec);
-      });
-      if (k === 1) geometricMultiplicity = eigenvectors.length;
-      if (eigenvectors.length >= algMultiplicity) break;
-    }
+    return {
+      vectors: vectors.slice(0, algMultiplicity),
+      geometricMultiplicity: Math.min(vectors.length, algMultiplicity)
+    };
   }
-  return { vectors: eigenvectors.slice(0, algMultiplicity), geometricMultiplicity };
+
+  // ---- Real eigenvalue: build Jordan chains ----
+  // Build (A - lambda I)
+  const AmL = A.map((row, i) => row.map((val, j) => {
+    if (i === j) return math.subtract(val, lambda);
+    return val;
+  }));
+
+  // Eigenspace basis
+  const eigenBasis = computeNullSpace(AmL).basis;
+  const geometricMultiplicity = eigenBasis.length;
+
+  if (geometricMultiplicity === 0) {
+    console.error(`No eigenvectors found for eigenvalue ${lambda}`);
+    return { vectors: [], geometricMultiplicity: 0 };
+  }
+
+  // Start one chain per eigenvector. Each chain is bottom-up:
+  // chain[0] = eigenvector, chain[k] satisfies (A - lambda I) chain[k] = chain[k-1].
+  const chains = eigenBasis.map(v => [v]);
+  let total = geometricMultiplicity;
+  let safety = 0;
+  const maxIter = Math.max(algMultiplicity * 4, 8);
+
+  // Extend chains in round-robin fashion until we reach algMultiplicity
+  // or no chain can be extended further.
+  while (total < algMultiplicity && safety++ < maxIter) {
+    let extended = false;
+    for (const chain of chains) {
+      if (total >= algMultiplicity) break;
+      const top = chain[chain.length - 1];
+      const w = solveLinear(AmL, top);
+      if (w && !isZeroVector(w)) {
+        // Verify (A - lambda I) w ≈ top (paranoia check)
+        // Skip verification for speed, rely on solveLinear consistency.
+        chain.push(w);
+        total++;
+        extended = true;
+      }
+    }
+    if (!extended) break;
+  }
+
+  // Flatten with chain tags
+  const tagged = [];
+  chains.forEach((chain, ci) => {
+    chain.forEach((vec, pos) => {
+      tagged.push({ vec, chainId: ci, chainPos: pos });
+    });
+  });
+
+  return {
+    vectors: tagged.slice(0, algMultiplicity),
+    geometricMultiplicity
+  };
 }
 
 // ============================================================
@@ -1248,7 +1336,11 @@ document.getElementById('calcBtn').addEventListener('click', function() {
         throw new Error(`Failed to compute eigenvectors for eigenvalue ${lambda}: ${e.message}`);
       }
       if (evResult.vectors.length > 0) {
-        eigenMap.set(key, { value: lambda, vectors: evResult.vectors, geometricMultiplicity: evResult.geometricMultiplicity });
+        eigenMap.set(key, {
+          value: lambda,
+          vectors: evResult.vectors,           // array of { vec, chainId, chainPos }
+          geometricMultiplicity: evResult.geometricMultiplicity
+        });
         if (!isComplex && evResult.vectors.length > evResult.geometricMultiplicity) {
           hasGeneralizedEigenvectors = true;
         }
@@ -1272,13 +1364,32 @@ document.getElementById('calcBtn').addEventListener('click', function() {
       const algMultiplicity = algMultMap.get(key) || pair.vectors.length;
       const mult_latex = algMultiplicity >= 2 ? '\\text{mult. } ' + algMultiplicity : '';
 
+      // Per-chain scale cache. Filled when we render chainPos == 0.
+      const chainScales = {};
+
       var vecs_html = '';
-      pair.vectors.forEach(function(vec, vecIndex) {
+      pair.vectors.forEach(function(item, vecIndex) {
+        const vec = item.vec;
+        const chainId = item.chainId;
+        const chainPos = item.chainPos;
         try {
-          const vecResult = vectorToLatex(vec);
-          if (vecIndex < pair.geometricMultiplicity) {
+          let vecResult;
+          if (chainPos === 0) {
+            // Eigenvector (chain base): use heuristics, remember scale.
+            vecResult = vectorToLatex(vec);
+            chainScales[chainId] = vecResult.multiplier;
             vecs_html += '<div class="eigen-vec">\\[ ' + vecResult.latex + ' \\]</div>';
           } else {
+            // Generalized eigenvector: apply the base's scale so the
+            // Jordan relation (A - lambda I) w_{k+1} = w_k is preserved
+            // in the displayed vectors, not just in the raw ones.
+            const forced = chainScales[chainId];
+            if (forced === undefined) {
+              // Fallback: should not happen, but be safe.
+              vecResult = vectorToLatex(vec);
+            } else {
+              vecResult = vectorToLatex(vec, forced);
+            }
             vecs_html += '<div class="eigen-vec-gen">\\[ ' + vecResult.latex + ' \\]</div>';
           }
         } catch (e) {
@@ -1326,9 +1437,6 @@ function loadExample() {
   document.getElementById('n').value = '4';
   generateMatrix();
   setTimeout(function() {
-    // Example: 4x4 block diagonal matrix with complex eigenvalues
-    // Upper-left: 2x2 rotation block with eigenvalues 1±2i
-    // Diagonal entries: eigenvalues 3 and -1
     document.getElementById('A_0_0').value = '1';
     document.getElementById('A_0_1').value = '-2';
     document.getElementById('A_0_2').value = '0';
