@@ -240,7 +240,7 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
       <ul>
         <li><strong>Color by speed:</strong> blue = slow, red = fast (magnitude of \(\dot{x}\)) on both the time-series and phase portrait.</li>
         <li><strong>Solid color:</strong> fixed blue trace.</li>
-        <li><strong>Fading trail:</strong> recent path fully opaque, older path fades linearly.</li>
+        <li><strong>Fading trail:</strong> phase portrait only &mdash; last 3000 segments drawn with speed coloring and a linear opacity ramp (recent opaque, older fades). The displacement \(x(t)\) plot retains the speed coloring without fading.</li>
       </ul>
       <h2>Adaptive display scale</h2>
       <p>The sim canvas and wall limits are sized from the actual solved trajectory, so large-amplitude regimes (e.g. \(\gamma=8\)) remain drawable without clipping against the walls.</p>
@@ -739,49 +739,31 @@ function drawGraphFrame(solObj,idx,iPt){
   var cp=iPt||pts[idx];
   var cpx=gx2(cp.t),cpy=gy2(cp.x);
 
-  if(trailStyle==='fade'){
-    /* Fade: redraw last FADE_LEN segments each frame onto axes */
-    graphCtx.drawImage(axesGCv,0,0);
-    var startIdx=Math.max(0,idx-FADE_LEN);
-    var fadeLen=idx-startIdx;
-    if(fadeLen>0){
-      graphCtx.lineWidth=1.8;graphCtx.lineJoin='round';
-      for(var i=startIdx+1;i<=idx;i++){
-        graphCtx.strokeStyle='#1d4ed8';
-        graphCtx.globalAlpha=(i-startIdx)/fadeLen;
-        graphCtx.beginPath();graphCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));graphCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));graphCtx.stroke();
+  /* Fade applies only to the phase portrait; displacement uses solid or speed. */
+  var effStyle=(trailStyle==='fade')?'speed':trailStyle;
+  /* Solid or speed: accumulate new segments on off-screen canvas */
+  if(idx>lastGIdx){
+    var s0=Math.max(0,lastGIdx);
+    trailGCtx.lineWidth=1.8;trailGCtx.lineJoin='round';
+    if(effStyle==='speed'){
+      for(var i=s0+1;i<=idx;i++){
+        trailGCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
+        trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));trailGCtx.stroke();
       }
-      /* Leading segment to interpolated point */
-      graphCtx.globalAlpha=1;
-      graphCtx.strokeStyle='#1d4ed8';
-      graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
+    }else{
+      trailGCtx.strokeStyle='#1d4ed8';
+      trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[s0].t),gy2(pts[s0].x));
+      for(var i=s0+1;i<=idx;i++) trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));
+      trailGCtx.stroke();
     }
-    graphCtx.globalAlpha=1;
-  }else{
-    /* Solid or speed: accumulate new segments on off-screen canvas */
-    if(idx>lastGIdx){
-      var s0=Math.max(0,lastGIdx);
-      trailGCtx.lineWidth=1.8;trailGCtx.lineJoin='round';
-      if(trailStyle==='speed'){
-        for(var i=s0+1;i<=idx;i++){
-          trailGCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
-          trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));trailGCtx.stroke();
-        }
-      }else{
-        trailGCtx.strokeStyle='#1d4ed8';
-        trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[s0].t),gy2(pts[s0].x));
-        for(var i=s0+1;i<=idx;i++) trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));
-        trailGCtx.stroke();
-      }
-      lastGIdx=idx;
-    }
-    graphCtx.drawImage(trailGCv,0,0);
-
-    /* Extend to interpolated point */
-    var col=(trailStyle==='speed')?speedColor(Math.abs(cp.v),maxSpeed):'#1d4ed8';
-    graphCtx.strokeStyle=col;graphCtx.lineWidth=1.8;
-    graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
+    lastGIdx=idx;
   }
+  graphCtx.drawImage(trailGCv,0,0);
+
+  /* Extend to interpolated point */
+  var col=(effStyle==='speed')?speedColor(Math.abs(cp.v),maxSpeed):'#1d4ed8';
+  graphCtx.strokeStyle=col;graphCtx.lineWidth=1.8;
+  graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
 
   /* Time cursor */
   graphCtx.strokeStyle='rgba(220,38,38,.65)';graphCtx.lineWidth=1.5;graphCtx.setLineDash([3,3]);
@@ -807,12 +789,12 @@ function drawPhaseFrame(solObj,idx,iPt){
     if(fadeLen>0){
       phaseCtx.lineWidth=1.6;phaseCtx.lineJoin='round';
       for(var i=startIdx+1;i<=idx;i++){
-        phaseCtx.strokeStyle='#1d4ed8';
+        phaseCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
         phaseCtx.globalAlpha=(i-startIdx)/fadeLen;
         phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));phaseCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));phaseCtx.stroke();
       }
       phaseCtx.globalAlpha=1;
-      phaseCtx.strokeStyle='#1d4ed8';
+      phaseCtx.strokeStyle=speedColor(Math.abs(cp0.v),maxSpeed);
       phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[idx].x),toCy(pts[idx].v));phaseCtx.lineTo(ccx,ccy);phaseCtx.stroke();
     }
     phaseCtx.globalAlpha=1;
