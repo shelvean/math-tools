@@ -236,6 +236,12 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
         <li><strong>Hardening (strong):</strong> \(\delta=0.02,\alpha=1,\beta=5,\gamma=8,\omega=0.5\) &mdash; large-forcing frequency-response example.</li>
         <li><strong>Ueda:</strong> \(\delta=0.05,\alpha=0,\beta=1,\gamma=7.5,\omega=1\) &mdash; Ueda strange attractor.</li>
       </ul>
+      <h2>Trail Coloring</h2>
+      <ul>
+        <li><strong>Color by speed:</strong> blue = slow, red = fast (magnitude of \(\dot{x}\)) on both the time-series and phase portrait.</li>
+        <li><strong>Solid color:</strong> fixed blue trace.</li>
+        <li><strong>Fading trail:</strong> recent path fully opaque, older path fades linearly.</li>
+      </ul>
       <h2>Adaptive display scale</h2>
       <p>The sim canvas and wall limits are sized from the actual solved trajectory, so large-amplitude regimes (e.g. \(\gamma=8\)) remain drawable without clipping against the walls.</p>
       <h2>Potential Energy Panel</h2>
@@ -383,6 +389,14 @@ kbd{display:inline-block;padding:.1rem .38rem;border:1.5px solid var(--bdr2);bor
             <button type="button" class="sbtn stepbtn" data-step="0.01" role="radio" aria-checked="false" aria-label="Very fine step size">Very fine</button>
           </span>
         </div>
+        <div class="speed-wrap">
+          <span id="trailLbl">Trail:</span>
+          <span id="trailBtns" class="speed-btns" role="radiogroup" aria-label="Trajectory trail style">
+            <button type="button" class="sbtn trailbtn" data-trail="speed" role="radio" aria-checked="true"  aria-label="Color by speed: blue slow, red fast">Speed</button>
+            <button type="button" class="sbtn trailbtn" data-trail="solid" role="radio" aria-checked="false" aria-label="Solid color">Solid</button>
+            <button type="button" class="sbtn trailbtn" data-trail="fade"  role="radio" aria-checked="false" aria-label="Fading trail: recent path opaque, older fades">Fade</button>
+          </span>
+        </div>
       </div>
       <p class="kbd-hint" aria-label="Keyboard shortcuts"><kbd>Space</kbd> pause / resume &ensp;<kbd>R</kbd> reset</p>
 
@@ -446,10 +460,23 @@ var simCtx=simCanvas.getContext('2d'),graphCtx=graphCanvas.getContext('2d'),phas
 
 var sol=null,animIdx=0,animTime=0,dtPerFrame=0.005,isPaused=false,isRunning=false;
 var trail=[],TRAIL_LEN=80,srFrameCount=0;
+var trailStyle='speed';
+var FADE_LEN=3000;
 
-/* Off-screen trail accumulators */
+/* Off-screen trail accumulators (axes-only + mutating trail) */
+var axesGCv=null,axesPCv=null;
 var trailGCv=null,trailGCtx=null,trailPCv=null,trailPCtx=null;
 var gSc=null,pSc=null,lastGIdx=-1,lastPIdx=-1;
+
+/* ── Speed → color (blue slow → magenta → red fast) ── */
+function speedColor(speed,maxSpeed){
+  var r=maxSpeed>0?Math.min(speed/maxSpeed,1):0;
+  var rr,gg,bb;
+  if(r<0.33){var t=r/0.33;rr=0;gg=Math.floor(100*t);bb=Math.floor(140+40*t);}
+  else if(r<0.66){var t=(r-0.33)/0.33;rr=Math.floor(180*t);gg=Math.floor(100+40*t);bb=Math.floor(180*(1-t));}
+  else{var t=(r-0.66)/0.34;rr=Math.floor(180+20*t);gg=Math.floor(140*(1-t));bb=0;}
+  return 'rgb('+rr+','+gg+','+bb+')';
+}
 
 /* ── Derivative ── */
 function dF(t,x,v,p){return [v,p.gamma*Math.cos(p.omega*t)-p.delta*v-p.alpha*x-p.beta*x*x*x];}
@@ -523,7 +550,10 @@ function masterSolve(p,x0,v0,tolMul){
   var MAX=12000,pts=raw;
   if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var i=0;i<raw.length;i+=s)pts.push(raw[Math.floor(i)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
   var sc=computeDisplayScale(p,x0,raw);
-  return {pts:pts,rawSteps:raw.length,solver:label,T:T,p:p,x0:x0,v0:v0,xWallMax:sc.xWallMax,maxAmp:sc.maxAmp};
+  var maxSpeed=Math.abs(v0);
+  for(var i=0;i<raw.length;i++){var av=Math.abs(raw[i].v);if(av>maxSpeed)maxSpeed=av;}
+  if(maxSpeed<1e-6)maxSpeed=1;
+  return {pts:pts,rawSteps:raw.length,solver:label,T:T,p:p,x0:x0,v0:v0,xWallMax:sc.xWallMax,maxAmp:sc.maxAmp,maxSpeed:maxSpeed};
 }
 
 function computeDtPerFrame(solObj,spd){
@@ -653,6 +683,9 @@ function initTrailCanvases(solObj){
   for(var i=0;i<=4;i++){bg.fillText((xMin+i*(xMax-xMin)/4).toFixed(2),gPad.l-3,GH-gPad.b-i*(GH-gPad.t-gPad.b)/4);}
   bg.textAlign='center';bg.textBaseline='top';
   for(var i=0;i<=6;i++){var tv=i*T/6;bg.fillText(tv.toFixed(tv<10?1:0),gPad.l+i*(GW-gPad.l-gPad.r)/6,GH-gPad.b+3);}
+  /* Snapshot axes-only for fade mode */
+  axesGCv=document.createElement('canvas');axesGCv.width=GW;axesGCv.height=GH;
+  axesGCv.getContext('2d').drawImage(trailGCv,0,0);
   lastGIdx=-1;
 
   /* ── Phase portrait ── */
@@ -682,7 +715,16 @@ function initTrailCanvases(solObj){
   for(var i=0;i<=5;i++){pb.fillText((pxMin+i*(pxMax-pxMin)/5).toFixed(2),pPad.l+i*(PW-pPad.l-pPad.r)/5,PH-pPad.b+3);}
   pb.font='bold 11px Arial';pb.textAlign='center';pb.textBaseline='bottom';pb.fillStyle='#374151';pb.fillText('x',PW/2,PH-1);
   pb.save();pb.translate(12,PH/2);pb.rotate(-Math.PI/2);pb.textBaseline='top';pb.fillText('\u1e8b',0,0);pb.restore();
+  /* Snapshot axes-only for fade mode */
+  axesPCv=document.createElement('canvas');axesPCv.width=PW;axesPCv.height=PH;
+  axesPCv.getContext('2d').drawImage(trailPCv,0,0);
   lastPIdx=-1;
+}
+
+/* Reset accumulated trail on axes (used when trail style changes) */
+function resetTrailOverlay(){
+  if(trailGCv&&axesGCv){trailGCtx.clearRect(0,0,trailGCv.width,trailGCv.height);trailGCtx.drawImage(axesGCv,0,0);lastGIdx=-1;}
+  if(trailPCv&&axesPCv){trailPCtx.clearRect(0,0,trailPCv.width,trailPCv.height);trailPCtx.drawImage(axesPCv,0,0);lastPIdx=-1;}
 }
 
 /* ════ DRAW GRAPH — O(new segments) per frame, accumulates on off-screen canvas ════ */
@@ -690,26 +732,56 @@ function drawGraphFrame(solObj,idx,iPt){
   if(!trailGCv||!gSc)return;
   var pts=solObj.pts,T=gSc.T,W=gSc.W,H=gSc.H,pad=gSc.pad;
   var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var maxSpeed=solObj.maxSpeed||1;
   function gx2(t){return pad.l+t/T*pw;}
   function gy2(x){return H-pad.b-(x-gSc.xMin)/(gSc.xMax-gSc.xMin)*ph;}
 
-  /* Append only new segments to the off-screen trail canvas */
-  if(idx>lastGIdx){
-    var s0=Math.max(0,lastGIdx);
-    trailGCtx.strokeStyle='#1d4ed8';trailGCtx.lineWidth=1.8;trailGCtx.lineJoin='round';
-    trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[s0].t),gy2(pts[s0].x));
-    for(var i=s0+1;i<=idx;i++) trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));
-    trailGCtx.stroke();
-    lastGIdx=idx;
-  }
-
-  graphCtx.drawImage(trailGCv,0,0);
-
-  /* Extend to interpolated point */
   var cp=iPt||pts[idx];
   var cpx=gx2(cp.t),cpy=gy2(cp.x);
-  graphCtx.strokeStyle='#1d4ed8';graphCtx.lineWidth=1.8;
-  graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
+
+  if(trailStyle==='fade'){
+    /* Fade: redraw last FADE_LEN segments each frame onto axes */
+    graphCtx.drawImage(axesGCv,0,0);
+    var startIdx=Math.max(0,idx-FADE_LEN);
+    var fadeLen=idx-startIdx;
+    if(fadeLen>0){
+      graphCtx.lineWidth=1.8;graphCtx.lineJoin='round';
+      for(var i=startIdx+1;i<=idx;i++){
+        graphCtx.strokeStyle='#1d4ed8';
+        graphCtx.globalAlpha=(i-startIdx)/fadeLen;
+        graphCtx.beginPath();graphCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));graphCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));graphCtx.stroke();
+      }
+      /* Leading segment to interpolated point */
+      graphCtx.globalAlpha=1;
+      graphCtx.strokeStyle='#1d4ed8';
+      graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
+    }
+    graphCtx.globalAlpha=1;
+  }else{
+    /* Solid or speed: accumulate new segments on off-screen canvas */
+    if(idx>lastGIdx){
+      var s0=Math.max(0,lastGIdx);
+      trailGCtx.lineWidth=1.8;trailGCtx.lineJoin='round';
+      if(trailStyle==='speed'){
+        for(var i=s0+1;i<=idx;i++){
+          trailGCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
+          trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));trailGCtx.stroke();
+        }
+      }else{
+        trailGCtx.strokeStyle='#1d4ed8';
+        trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[s0].t),gy2(pts[s0].x));
+        for(var i=s0+1;i<=idx;i++) trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));
+        trailGCtx.stroke();
+      }
+      lastGIdx=idx;
+    }
+    graphCtx.drawImage(trailGCv,0,0);
+
+    /* Extend to interpolated point */
+    var col=(trailStyle==='speed')?speedColor(Math.abs(cp.v),maxSpeed):'#1d4ed8';
+    graphCtx.strokeStyle=col;graphCtx.lineWidth=1.8;
+    graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
+  }
 
   /* Time cursor */
   graphCtx.strokeStyle='rgba(220,38,38,.65)';graphCtx.lineWidth=1.5;graphCtx.setLineDash([3,3]);
@@ -721,27 +793,53 @@ function drawGraphFrame(solObj,idx,iPt){
 function drawPhaseFrame(solObj,idx,iPt){
   if(!trailPCv||!pSc)return;
   var pts=solObj.pts,W=pSc.W,H=pSc.H,pad=pSc.pad;
+  var maxSpeed=solObj.maxSpeed||1;
   function toCx(x){return pad.l+(x-pSc.xMin)/(pSc.xMax-pSc.xMin)*(W-pad.l-pad.r);}
   function toCy(v){return H-pad.b-(v-pSc.vMin)/(pSc.vMax-pSc.vMin)*(H-pad.t-pad.b);}
 
-  /* Append only new segments to off-screen trail canvas */
-  if(idx>lastPIdx){
-    var s0=Math.max(0,lastPIdx);
-    trailPCtx.strokeStyle='#1d4ed8';trailPCtx.lineWidth=1.6;trailPCtx.lineJoin='round';
-    trailPCtx.beginPath();trailPCtx.moveTo(toCx(pts[s0].x),toCy(pts[s0].v));
-    for(var i=s0+1;i<=idx;i++) trailPCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));
-    trailPCtx.stroke();
-    lastPIdx=idx;
-  }
-
-  phaseCtx.drawImage(trailPCv,0,0);
-
-  /* Extend to interpolated point */
   var cp0=iPt||pts[idx];
   var ccx=toCx(cp0.x),ccy=toCy(cp0.v);
-  if(idx>0){
-    phaseCtx.strokeStyle='#1d4ed8';phaseCtx.lineWidth=1.6;
-    phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[idx].x),toCy(pts[idx].v));phaseCtx.lineTo(ccx,ccy);phaseCtx.stroke();
+
+  if(trailStyle==='fade'){
+    phaseCtx.drawImage(axesPCv,0,0);
+    var startIdx=Math.max(0,idx-FADE_LEN);
+    var fadeLen=idx-startIdx;
+    if(fadeLen>0){
+      phaseCtx.lineWidth=1.6;phaseCtx.lineJoin='round';
+      for(var i=startIdx+1;i<=idx;i++){
+        phaseCtx.strokeStyle='#1d4ed8';
+        phaseCtx.globalAlpha=(i-startIdx)/fadeLen;
+        phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));phaseCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));phaseCtx.stroke();
+      }
+      phaseCtx.globalAlpha=1;
+      phaseCtx.strokeStyle='#1d4ed8';
+      phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[idx].x),toCy(pts[idx].v));phaseCtx.lineTo(ccx,ccy);phaseCtx.stroke();
+    }
+    phaseCtx.globalAlpha=1;
+  }else{
+    if(idx>lastPIdx){
+      var s0=Math.max(0,lastPIdx);
+      trailPCtx.lineWidth=1.6;trailPCtx.lineJoin='round';
+      if(trailStyle==='speed'){
+        for(var i=s0+1;i<=idx;i++){
+          trailPCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
+          trailPCtx.beginPath();trailPCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));trailPCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));trailPCtx.stroke();
+        }
+      }else{
+        trailPCtx.strokeStyle='#1d4ed8';
+        trailPCtx.beginPath();trailPCtx.moveTo(toCx(pts[s0].x),toCy(pts[s0].v));
+        for(var i=s0+1;i<=idx;i++) trailPCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));
+        trailPCtx.stroke();
+      }
+      lastPIdx=idx;
+    }
+    phaseCtx.drawImage(trailPCv,0,0);
+
+    if(idx>0){
+      var col=(trailStyle==='speed')?speedColor(Math.abs(cp0.v),maxSpeed):'#1d4ed8';
+      phaseCtx.strokeStyle=col;phaseCtx.lineWidth=1.6;
+      phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[idx].x),toCy(pts[idx].v));phaseCtx.lineTo(ccx,ccy);phaseCtx.stroke();
+    }
   }
 
   /* Moving dot */
@@ -851,6 +949,7 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');
   document.querySelectorAll('#speedBtns .sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('#speedBtns .sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol,parseFloat(this.dataset.speed)||1);say('Speed set.');});});
   document.querySelectorAll('.stepbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.stepbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');say('Step size set. Press Reset to apply.');});});
+  document.querySelectorAll('.trailbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.trailbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');trailStyle=this.dataset.trail||'speed';resetTrailOverlay();say('Trail style: '+this.textContent+'.');});});
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
   document.getElementById('pauseBtn').addEventListener('click',function(){isPaused=!isPaused;updatePauseButton();say(isPaused?'Paused.':'Resumed.');});
   document.querySelectorAll('.pbtn').forEach(function(btn){
