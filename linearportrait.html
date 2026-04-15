@@ -336,6 +336,16 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       </select>
     </div>
 
+    <!-- Eigenvector line colour -->
+    <div class="cfield cfield-sm">
+      <label for="eigenColor">Eigenvec colour</label>
+      <select id="eigenColor">
+        <option value="#2563eb">Blue</option>
+        <option value="#dc2626">Red</option>
+        <option value="#000000" selected>Black</option>
+      </select>
+    </div>
+
     <!-- Checkboxes -->
     <div class="cfield cfield-chk">
       <input type="checkbox" id="showField" checked>
@@ -348,6 +358,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <div class="cfield cfield-chk">
       <input type="checkbox" id="showInitialPoint" checked>
       <label for="showInitialPoint">Init point</label>
+    </div>
+    <div class="cfield cfield-chk">
+      <input type="checkbox" id="showEigen" checked>
+      <label for="showEigen">Eigenvectors</label>
     </div>
 
     <!-- Examples dropdown -->
@@ -609,6 +623,67 @@ function h2rgba(hex,alpha){
   return'rgba('+r+','+g+','+b+','+alpha+')';
 }
 
+/* ── Eigenvector computation ── */
+function eigvecFor(a,b,c,d,lam){
+  if(Math.abs(b)>1e-10)return{x:b,y:lam-a};
+  if(Math.abs(c)>1e-10)return{x:lam-d,y:c};
+  /* Diagonal matrix: axis-aligned eigenvectors */
+  if(Math.abs(lam-a)<1e-10)return{x:1,y:0};
+  if(Math.abs(lam-d)<1e-10)return{x:0,y:1};
+  return null;
+}
+function computeEigenvectors(a,b,c,d){
+  var tr=a+d,det=a*d-b*c,disc=tr*tr-4*det;
+  /* Complex eigenvalues — no real eigenvector lines */
+  if(disc<-1e-10)return[];
+  var out=[];
+  if(disc>1e-10){
+    var l1=(tr+Math.sqrt(disc))/2,l2=(tr-Math.sqrt(disc))/2;
+    var v1=eigvecFor(a,b,c,d,l1);if(v1)out.push({lambda:l1,v:v1});
+    var v2=eigvecFor(a,b,c,d,l2);if(v2)out.push({lambda:l2,v:v2});
+  } else {
+    var lam=tr/2;
+    var isScalar=(Math.abs(b)<1e-10&&Math.abs(c)<1e-10&&Math.abs(a-d)<1e-10);
+    if(isScalar){
+      out.push({lambda:lam,v:{x:1,y:0}});
+      out.push({lambda:lam,v:{x:0,y:1}});
+    } else {
+      var v=eigvecFor(a,b,c,d,lam);if(v)out.push({lambda:lam,v:v});
+    }
+  }
+  return out;
+}
+
+/* ── Draw eigenvector lines (straight lines through origin) ── */
+function drawEigenLines(ctx,color){
+  var M=getM(),evs=computeEigenvectors(M.a,M.b,M.c,M.d);
+  if(!evs.length)return;
+  ctx.save();
+  ctx.strokeStyle=color;ctx.lineWidth=2.2;ctx.setLineDash([]);ctx.globalAlpha=0.9;
+  evs.forEach(function(ev){
+    var vx=ev.v.x,vy=ev.v.y,n=Math.sqrt(vx*vx+vy*vy);
+    if(n<1e-14)return;
+    vx/=n;vy/=n;
+    /* Clip parametric line (t*vx, t*vy) to the view rectangle */
+    var tmin=-Infinity,tmax=Infinity;
+    if(Math.abs(vx)>1e-12){
+      var tx1=SX_MIN/vx,tx2=SX_MAX/vx;
+      tmin=Math.max(tmin,Math.min(tx1,tx2));tmax=Math.min(tmax,Math.max(tx1,tx2));
+    } else if(0<SX_MIN||0>SX_MAX)return;
+    if(Math.abs(vy)>1e-12){
+      var ty1=SY_MIN/vy,ty2=SY_MAX/vy;
+      tmin=Math.max(tmin,Math.min(ty1,ty2));tmax=Math.min(tmax,Math.max(ty1,ty2));
+    } else if(0<SY_MIN||0>SY_MAX)return;
+    if(tmax<=tmin)return;
+    var x1=tmin*vx,y1=tmin*vy,x2=tmax*vx,y2=tmax*vy;
+    ctx.beginPath();
+    ctx.moveTo(s2cx(x1),s2cy(y1));
+    ctx.lineTo(s2cx(x2),s2cy(y2));
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
 /* ── Draw phase portrait ── */
 var COLORS=['#1d4ed8','#dc2626','#059669','#9333ea','#ea580c','#0891b2','#be185d','#4b5563'];
 
@@ -706,6 +781,12 @@ function drawPortrait(){
   ctx.textAlign='center';ctx.textBaseline='top';
   ctx.fillText('x',CW-xo+18,CH-xo-5);
   ctx.save();ctx.translate(xo-18,CH/2);ctx.rotate(-Math.PI/2);ctx.textBaseline='middle';ctx.fillText('y',0,0);ctx.restore();
+
+  /* Eigenvector lines — straight lines through origin along real eigen-directions */
+  if(document.getElementById('showEigen').checked){
+    var eColor=document.getElementById('eigenColor').value||'#000000';
+    drawEigenLines(ctx,eColor);
+  }
 
   /* Trajectories with directional arrowheads */
   trajectories.forEach(function(traj,idx){
@@ -921,6 +1002,8 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('showField').addEventListener('change',drawPortrait);
   document.getElementById('showGrid').addEventListener('change',drawPortrait);
   document.getElementById('showInitialPoint').addEventListener('change',drawPortrait);
+  document.getElementById('showEigen').addEventListener('change',drawPortrait);
+  document.getElementById('eigenColor').addEventListener('change',drawPortrait);
 
   /* Examples dropdown */
   document.getElementById('exampleSel').addEventListener('change',function(){
