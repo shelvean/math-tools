@@ -398,6 +398,14 @@ kbd{display:inline-block;padding:.05rem .32rem;border:1.5px solid var(--bdr2);bo
             </div>
           </div>
 
+          <div class="sl-block">
+            <div class="sl-row">
+              <span id="lbl-tEnd" class="sl-lbl">End time <span class="mjx-label">\(T\)</span></span>
+              <input type="range" id="tEndSlider" min="1" max="600" step="1" value="220" aria-labelledby="lbl-tEnd">
+              <input type="number" id="tEndVal" class="sl-num" value="220" step="1" min="1" aria-labelledby="lbl-tEnd">
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -613,8 +621,9 @@ function computeDisplayScale(p,x0,raw){
   var xWallMax=(trackW/2-BLOCK_HW)/pxPerUnit;
   return {maxAmp:maxAmp,xWallMax:xWallMax};
 }
-function masterSolve(p,x0,v0,tolMul){
-  var T=autoEndTime(p),raw=solveDuffing(p,x0,v0,T,tolMul);
+function masterSolve(p,x0,v0,tolMul,T){
+  if(!(T>0)) T=autoEndTime(p);
+  var raw=solveDuffing(p,x0,v0,T,tolMul);
   var label='RK45 (Dormand\u2013Prince), '+raw.length.toLocaleString()+' steps';
   var MAX=12000,pts=raw;
   if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var i=0;i<raw.length;i+=s)pts.push(raw[Math.floor(i)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
@@ -936,7 +945,7 @@ function updatePresetButtons(p){
 function updatePauseButton(){var btn=document.getElementById('pauseBtn');btn.textContent=isPaused?'\u25b6 Resume':'\u23f8 Pause';btn.setAttribute('aria-pressed',String(isPaused));btn.setAttribute('aria-label',isPaused?'Resume the animation (keyboard shortcut: Space)':'Pause the animation (keyboard shortcut: Space)');}
 function updateStatusLine(pt){document.getElementById('statusLine').textContent='t = '+pt.t.toFixed(3)+'  |  x = '+(pt.x>=0?'+':'')+pt.x.toFixed(4)+'  |  \u1e8b = '+(pt.v>=0?'+':'')+pt.v.toFixed(4);}
 function updateSRData(pt,solObj){var p=solObj.p,r=getRegime(p),Tf=p.omega>0.01?2*Math.PI/p.omega:0,el=document.getElementById('simData');if(!el)return;el.textContent='Time: '+pt.t.toFixed(1)+' s. x: '+(pt.x>=0?'+':'')+pt.x.toFixed(3)+'. v: '+(pt.v>=0?'+':'')+pt.v.toFixed(3)+'. Regime: '+r.lbl+'.';}
-function readParams(){return {p:{delta:Math.max(0,parseFloat(document.getElementById('deltaVal').value)||0),alpha:parseFloat(document.getElementById('alphaVal').value)||0,beta:parseFloat(document.getElementById('betaVal').value)||0,gamma:Math.max(0,parseFloat(document.getElementById('gammaVal').value)||0),omega:Math.max(0.01,parseFloat(document.getElementById('omegaVal').value)||1)},x0:parseFloat(document.getElementById('x0Val').value)||0,v0:parseFloat(document.getElementById('v0Val').value)||0,speed:parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1,tolMul:parseFloat((document.querySelector('.stepbtn[aria-checked=true]')||{dataset:{}}).dataset.step)||1};}
+function readParams(){return {p:{delta:Math.max(0,parseFloat(document.getElementById('deltaVal').value)||0),alpha:parseFloat(document.getElementById('alphaVal').value)||0,beta:parseFloat(document.getElementById('betaVal').value)||0,gamma:Math.max(0,parseFloat(document.getElementById('gammaVal').value)||0),omega:Math.max(0.01,parseFloat(document.getElementById('omegaVal').value)||1)},x0:parseFloat(document.getElementById('x0Val').value)||0,v0:parseFloat(document.getElementById('v0Val').value)||0,T:Math.max(1,parseFloat(document.getElementById('tEndVal').value)||220),speed:parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1,tolMul:parseFloat((document.querySelector('.stepbtn[aria-checked=true]')||{dataset:{}}).dataset.step)||1};}
 
 /* ════ RESET ════ */
 function resetSimulation(){
@@ -947,7 +956,7 @@ function resetSimulation(){
   document.getElementById('solverText').textContent='Computing\u2026';document.getElementById('solverDot').style.background='#f59e0b';
   say('Computing. Regime: '+getRegime(p).lbl+'.');
   setTimeout(function(){
-    var t0=performance.now();sol=masterSolve(p,q.x0,q.v0,q.tolMul);var elapsed=((performance.now()-t0)/1000).toFixed(2);
+    var t0=performance.now();sol=masterSolve(p,q.x0,q.v0,q.tolMul,q.T);var elapsed=((performance.now()-t0)/1000).toFixed(2);
     initTrailCanvases(sol);
     dtPerFrame=computeDtPerFrame(sol,q.speed);
     animIdx=0;animTime=0;trail=[];isRunning=true;srFrameCount=0;
@@ -1000,7 +1009,7 @@ function linkSlider(sId,nId,cb){
 function onPC(){var q=readParams();updateRegimeBadge(q.p);updateEqDisplay(q.p);updatePresetButtons(q.p);}
 
 document.addEventListener('DOMContentLoaded',function(){
-  linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');
+  linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');linkSlider('tEndSlider','tEndVal');
   document.querySelectorAll('#speedBtns .sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('#speedBtns .sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol,parseFloat(this.dataset.speed)||1);say('Speed set.');});});
   document.querySelectorAll('.stepbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.stepbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');say('Step size set. Press Reset to apply.');});});
   document.querySelectorAll('.trailbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.trailbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');trailStyle=this.dataset.trail||'speed';resetTrailOverlay();say('Trail style: '+this.textContent+'.');});});
