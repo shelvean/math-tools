@@ -365,6 +365,24 @@ kbd{display:inline-block;padding:.05rem .32rem;border:1.5px solid var(--bdr2);bo
             </div>
           </div>
 
+          <hr style="border:none;border-top:1px dashed var(--bdr2);margin:.3rem 0;" aria-hidden="true">
+
+          <div class="sl-block">
+            <div class="sl-row">
+              <span class="sl-lbl" style="min-width:150px;">
+                <input type="checkbox" id="multiICChk" style="margin-right:.3rem;vertical-align:middle;">
+                <label for="multiICChk" style="cursor:pointer;">Multi-IC scatter</label>
+              </span>
+            </div>
+          </div>
+          <div class="sl-block">
+            <div class="sl-row">
+              <span id="lbl-nIC" class="sl-lbl"># trajectories \(n\)</span>
+              <input type="range" id="nICSlider" min="1" max="20" step="1" value="10" aria-labelledby="lbl-nIC">
+              <input type="number" id="nICVal" class="sl-num" value="10" step="1" min="1" max="20" aria-labelledby="lbl-nIC">
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -646,6 +664,130 @@ function masterSolve(mu, x0, v0, T){
     if(pts[pts.length-1] !== raw[raw.length-1]) pts.push(raw[raw.length-1]);
   }
   return {pts:pts, raw:raw, rawSteps:raw.length, solver:solverLabel, T:T, mu:mu, x0:x0, v0:v0};
+}
+
+/* ════════════════════════════════════════════════════
+   MULTI-IC SCATTER MODE
+════════════════════════════════════════════════════ */
+var multiAxesCv = null, multiPSc = null;
+var MULTI_FADE_LEN = 240;
+
+function scatterICs(n){
+  var arr=[];
+  for(var i=0;i<n;i++) arr.push({x0:(Math.random()-0.5)*0.4, v0:(Math.random()-0.5)*0.4});
+  return arr;
+}
+function hslColor(i, n){ return 'hsl('+Math.round(i*360/n)+',75%,45%)'; }
+
+function masterSolveMulti(mu, n, T){
+  if(!(T>0)) T = autoEndTime(mu);
+  var ics = scatterICs(n), trajs = [], totalSteps = 0;
+  for(var i=0;i<n;i++){
+    var raw;
+    if(mu <= STIFF_THRESHOLD){
+      var dtTarget = (mu > 0.5) ? Math.min(0.005, 2.0/mu) : 0.01;
+      var N = Math.min(500000, Math.max(3500, Math.ceil(T/dtTarget)));
+      raw = solveRK4(mu, ics[i].x0, ics[i].v0, T, N);
+    } else {
+      raw = solveSDIRK2(mu, ics[i].x0, ics[i].v0, T);
+    }
+    var MAX_PTS = 6000, pts = raw;
+    if(raw.length > MAX_PTS){
+      pts = [];
+      var step = raw.length / MAX_PTS;
+      for(var j=0;j<raw.length;j+=step) pts.push(raw[Math.floor(j)]);
+      if(pts[pts.length-1] !== raw[raw.length-1]) pts.push(raw[raw.length-1]);
+    }
+    trajs.push({pts:pts, x0:ics[i].x0, v0:ics[i].v0, color:hslColor(i,n)});
+    totalSteps += raw.length;
+  }
+  var solverName = (mu <= STIFF_THRESHOLD) ? 'RK4' : 'SDIRK2';
+  var label = solverName+' \u00d7 '+n+' trajectories, '+totalSteps.toLocaleString()+' total steps';
+  return {trajs:trajs, T:T, mu:mu, solver:label, multi:true};
+}
+
+function initMultiAxesCanvas(ms){
+  var xMin=Infinity,xMax=-Infinity,vMin=Infinity,vMax=-Infinity;
+  for(var i=0;i<ms.trajs.length;i++){
+    var pts=ms.trajs[i].pts;
+    for(var j=0;j<pts.length;j++){
+      if(pts[j].x<xMin)xMin=pts[j].x; if(pts[j].x>xMax)xMax=pts[j].x;
+      if(pts[j].v<vMin)vMin=pts[j].v; if(pts[j].v>vMax)vMax=pts[j].v;
+    }
+  }
+  var xR=xMax-xMin||1, vR=vMax-vMin||1;
+  xMin-=xR*0.08; xMax+=xR*0.08; vMin-=vR*0.08; vMax+=vR*0.08;
+  var PW=phaseCanvas.width, PH=phaseCanvas.height;
+  var pad={l:50,r:12,t:12,b:28};
+  multiPSc={pad:pad,xMin:xMin,xMax:xMax,vMin:vMin,vMax:vMax,W:PW,H:PH};
+  multiAxesCv=document.createElement('canvas');
+  multiAxesCv.width=PW; multiAxesCv.height=PH;
+  var bg=multiAxesCv.getContext('2d');
+  bg.fillStyle='#f9fafb'; bg.fillRect(0,0,PW,PH);
+  bg.strokeStyle='rgba(0,0,0,.06)'; bg.lineWidth=0.5;
+  for(var i=1;i<6;i++){var gx=pad.l+i*(PW-pad.l-pad.r)/5;bg.beginPath();bg.moveTo(gx,pad.t);bg.lineTo(gx,PH-pad.b);bg.stroke();}
+  for(var i=1;i<5;i++){var gy=pad.t+i*(PH-pad.t-pad.b)/4;bg.beginPath();bg.moveTo(pad.l,gy);bg.lineTo(PW-pad.r,gy);bg.stroke();}
+  bg.strokeStyle='rgba(100,116,139,.25)'; bg.lineWidth=1;
+  if(vMin<=0&&vMax>=0){var vy=PH-pad.b-(0-vMin)/(vMax-vMin)*(PH-pad.t-pad.b);bg.beginPath();bg.moveTo(pad.l,vy);bg.lineTo(PW-pad.r,vy);bg.stroke();}
+  if(xMin<=0&&xMax>=0){var vx=pad.l+(0-xMin)/(xMax-xMin)*(PW-pad.l-pad.r);bg.beginPath();bg.moveTo(vx,pad.t);bg.lineTo(vx,PH-pad.b);bg.stroke();}
+  bg.setLineDash([4,4]); bg.strokeStyle='rgba(220,38,38,.25)';
+  [1,-1].forEach(function(xv){
+    if(xv<xMin||xv>xMax) return;
+    var xp=pad.l+(xv-xMin)/(xMax-xMin)*(PW-pad.l-pad.r);
+    bg.beginPath(); bg.moveTo(xp,pad.t); bg.lineTo(xp,PH-pad.b); bg.stroke();
+  });
+  bg.setLineDash([]);
+  bg.strokeStyle='#374151'; bg.lineWidth=1.5;
+  bg.beginPath(); bg.moveTo(pad.l,pad.t); bg.lineTo(pad.l,PH-pad.b); bg.lineTo(PW-pad.r,PH-pad.b); bg.stroke();
+  bg.font='10px Arial'; bg.fillStyle='#374151'; bg.textAlign='right'; bg.textBaseline='middle';
+  for(var i=0;i<=4;i++) bg.fillText((vMin+i*(vMax-vMin)/4).toFixed(vMax>10?1:2), pad.l-3, PH-pad.b-i*(PH-pad.t-pad.b)/4);
+  bg.textAlign='center'; bg.textBaseline='top';
+  for(var i=0;i<=5;i++) bg.fillText((xMin+i*(xMax-xMin)/5).toFixed(2), pad.l+i*(PW-pad.l-pad.r)/5, PH-pad.b+3);
+  bg.font='bold 11px Arial'; bg.textAlign='center'; bg.textBaseline='bottom'; bg.fillStyle='#374151';
+  bg.fillText('x', PW/2, PH-1);
+  bg.save(); bg.translate(12, PH/2); bg.rotate(-Math.PI/2); bg.textBaseline='top'; bg.fillText('\u1e8b',0,0); bg.restore();
+}
+
+function drawMultiPhaseFrame(ms, at){
+  if(!multiPSc||!multiAxesCv) return;
+  var pad=multiPSc.pad, PW=multiPSc.W, PH=multiPSc.H;
+  function toCx(x){return pad.l+(x-multiPSc.xMin)/(multiPSc.xMax-multiPSc.xMin)*(PW-pad.l-pad.r);}
+  function toCy(v){return PH-pad.b-(v-multiPSc.vMin)/(multiPSc.vMax-multiPSc.vMin)*(PH-pad.t-pad.b);}
+  phaseCtx.drawImage(multiAxesCv, 0, 0, PW, PH);
+  phaseCtx.lineWidth=1.1; phaseCtx.lineJoin='round'; phaseCtx.lineCap='round';
+  for(var k=0;k<ms.trajs.length;k++){
+    var pts=ms.trajs[k].pts;
+    var lo=0, hi=pts.length-1;
+    while(lo<hi){var mid=(lo+hi+1)>>1; if(pts[mid].t<=at) lo=mid; else hi=mid-1;}
+    var idx=lo;
+    var startIdx=Math.max(0, idx-MULTI_FADE_LEN), fadeLen=idx-startIdx;
+    phaseCtx.strokeStyle=ms.trajs[k].color;
+    if(fadeLen>0){
+      for(var i=startIdx+1;i<=idx;i++){
+        phaseCtx.globalAlpha=(i-startIdx)/fadeLen;
+        phaseCtx.beginPath();
+        phaseCtx.moveTo(toCx(pts[i-1].x), toCy(pts[i-1].v));
+        phaseCtx.lineTo(toCx(pts[i].x), toCy(pts[i].v));
+        phaseCtx.stroke();
+      }
+    }
+    phaseCtx.globalAlpha=1;
+    phaseCtx.fillStyle=ms.trajs[k].color;
+    phaseCtx.beginPath(); phaseCtx.arc(toCx(pts[idx].x), toCy(pts[idx].v), 2.5, 0, 2*Math.PI); phaseCtx.fill();
+  }
+}
+
+function drawMultiDisabledPlaceholder(){
+  var W=simCanvas.width, H=simCanvas.height;
+  simCtx.fillStyle='#EDE9FE'; simCtx.fillRect(0,0,W,H);
+  simCtx.font='bold 14px -apple-system,Arial,sans-serif';
+  simCtx.textAlign='center'; simCtx.textBaseline='middle'; simCtx.fillStyle='#6d28d9';
+  simCtx.fillText('Animation disabled in Multi-IC scatter mode', W/2, H/2);
+  var GW=graphCanvas.width, GH=graphCanvas.height;
+  graphCtx.fillStyle='#f9fafb'; graphCtx.fillRect(0,0,GW,GH);
+  graphCtx.font='bold 14px -apple-system,Arial,sans-serif';
+  graphCtx.textAlign='center'; graphCtx.textBaseline='middle'; graphCtx.fillStyle='#6d28d9';
+  graphCtx.fillText('x(t) plot disabled in Multi-IC scatter mode', GW/2, GH/2);
 }
 
 function computeDtPerFrame(solObj, userMult){
@@ -1242,6 +1384,8 @@ function readParams(){
     x0:    parseFloat(document.getElementById('x0Val').value)||0,
     v0:    parseFloat(document.getElementById('v0Val').value)||0,
     T:     Math.max(1, parseFloat(document.getElementById('tEndVal').value)||80),
+    multiIC: !!(document.getElementById('multiICChk')||{}).checked,
+    nIC:   Math.max(1, Math.min(20, parseInt((document.getElementById('nICVal')||{}).value,10)||10)),
     speed: parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1
   };
 }
@@ -1267,28 +1411,48 @@ function resetSimulation(){
 
   setTimeout(function(){
     var t0=performance.now();
-    sol=masterSolve(p.mu, p.x0, p.v0, p.T);
-    var elapsed=((performance.now()-t0)/1000).toFixed(2);
-    gbg=buildGraphBG(sol);
-    pbg=buildPhaseBG(sol);
-    dtPerFrame=computeDtPerFrame(sol, p.speed);
-    animIdx=0; animTime=0; trail=[]; isRunning=true; srFrameCount=0;
+    if(p.multiIC){
+      sol=masterSolveMulti(p.mu, p.nIC, p.T);
+      var elapsed=((performance.now()-t0)/1000).toFixed(2);
+      initMultiAxesCanvas(sol);
+      drawMultiDisabledPlaceholder();
+      dtPerFrame=computeDtPerFrame(sol, p.speed);
+      animIdx=0; animTime=0; trail=[]; isRunning=true; srFrameCount=0;
+      if(prefersReducedMotion){ isPaused=true; updatePauseButton(); }
+      document.getElementById('solverText').textContent=
+        sol.solver+' | T='+sol.T.toFixed(1)+' s | '+elapsed+' s';
+      document.getElementById('solverDot').style.background='#22c55e';
+      document.getElementById('statusLine').textContent=
+        'Multi-IC scatter: '+p.nIC+' trajectories near origin  |  T = '+sol.T.toFixed(1)+' s';
+      btn.disabled=false;
+      btn.removeAttribute('aria-disabled');
+      btn.removeAttribute('aria-busy');
+      say('Multi-IC scatter ready. '+p.nIC+' trajectories. Mu equals '+p.mu+'. '+
+          (isPaused?'Paused.':'Running.'));
+    } else {
+      sol=masterSolve(p.mu, p.x0, p.v0, p.T);
+      var elapsed=((performance.now()-t0)/1000).toFixed(2);
+      gbg=buildGraphBG(sol);
+      pbg=buildPhaseBG(sol);
+      dtPerFrame=computeDtPerFrame(sol, p.speed);
+      animIdx=0; animTime=0; trail=[]; isRunning=true; srFrameCount=0;
 
-    if(prefersReducedMotion){ isPaused=true; updatePauseButton(); }
+      if(prefersReducedMotion){ isPaused=true; updatePauseButton(); }
 
-    document.getElementById('solverText').textContent=
-      sol.solver+' | T='+sol.T.toFixed(1)+' s | '+elapsed+' s';
-    document.getElementById('solverDot').style.background='#22c55e';
+      document.getElementById('solverText').textContent=
+        sol.solver+' | T='+sol.T.toFixed(1)+' s | '+elapsed+' s';
+      document.getElementById('solverDot').style.background='#22c55e';
 
-    btn.disabled=false;
-    btn.removeAttribute('aria-disabled');
-    btn.removeAttribute('aria-busy');
+      btn.disabled=false;
+      btn.removeAttribute('aria-disabled');
+      btn.removeAttribute('aria-busy');
 
-    var r=getRegime(p.mu), Tp=estimatePeriod(p.mu);
-    say('Simulation ready. Mu equals '+p.mu+'. Regime: '+r.lbl+
-        '. Period approximately '+Tp.toFixed(2)+' s. Span: '+sol.T.toFixed(0)+' s. '+
-        (isPaused?'Animation paused. Press Space or Resume to play.':'Animation running.'));
-    updateSRData(sol.pts[0], sol);
+      var r=getRegime(p.mu), Tp=estimatePeriod(p.mu);
+      say('Simulation ready. Mu equals '+p.mu+'. Regime: '+r.lbl+
+          '. Period approximately '+Tp.toFixed(2)+' s. Span: '+sol.T.toFixed(0)+' s. '+
+          (isPaused?'Animation paused. Press Space or Resume to play.':'Animation running.'));
+      updateSRData(sol.pts[0], sol);
+    }
   }, 20);
 }
 
@@ -1296,7 +1460,15 @@ function resetSimulation(){
    ANIMATION LOOP
 ════════════════════════════════════════════════════ */
 function animate(){
-  if(isRunning&&!isPaused&&sol&&sol.pts.length){
+  if(isRunning&&!isPaused&&sol&&sol.multi){
+    var p=readParams();
+    animTime += dtPerFrame * p.speed;
+    if(animTime >= sol.T){ animTime = 0; }
+    drawMultiPhaseFrame(sol, animTime);
+    requestAnimationFrame(animate);
+    return;
+  }
+  if(isRunning&&!isPaused&&sol&&sol.pts&&sol.pts.length){
     var p=readParams();
     animTime += dtPerFrame * p.speed;
     var pts = sol.pts;
@@ -1353,6 +1525,11 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('x0Slider','x0Val');
   linkSlider('v0Slider','v0Val');
   linkSlider('tEndSlider','tEndVal');
+  linkSlider('nICSlider','nICVal');
+
+  document.getElementById('multiICChk').addEventListener('change',function(){
+    say('Multi-IC scatter '+(this.checked?'enabled':'disabled')+'. Press Reset to apply.');
+  });
 
   document.querySelectorAll('.sbtn').forEach(function(btn){
     btn.addEventListener('click',function(){
