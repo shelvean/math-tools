@@ -645,7 +645,7 @@ function masterSolve(mu, x0, v0, T){
     for(var i=0; i<raw.length; i+=step) pts.push(raw[Math.floor(i)]);
     if(pts[pts.length-1] !== raw[raw.length-1]) pts.push(raw[raw.length-1]);
   }
-  return {pts:pts, rawSteps:raw.length, solver:solverLabel, T:T, mu:mu, x0:x0, v0:v0};
+  return {pts:pts, raw:raw, rawSteps:raw.length, solver:solverLabel, T:T, mu:mu, x0:x0, v0:v0};
 }
 
 function computeDtPerFrame(solObj, userMult){
@@ -1304,14 +1304,22 @@ function animate(){
     var p0 = pts[animIdx], p1 = pts[Math.min(animIdx + 1, pts.length - 1)];
     var frac = (p1.t > p0.t) ? Math.min(1, Math.max(0, (animTime - p0.t) / (p1.t - p0.t))) : 0;
     var pt = {t: p0.t + frac*(p1.t - p0.t), x: p0.x + frac*(p1.x - p0.x), v: p0.v + frac*(p1.v - p0.v)};
+    /* For relaxation regimes the downsampled pts smooth spike values of v=dx/dt; look up the
+       raw (non-downsampled) sample at animTime so the status line reports the true ẋ. */
+    var statusPt = pt;
+    if(sol.raw && sol.raw !== pts){
+      var raw = sol.raw, lo=0, hi=raw.length-1;
+      while(lo<hi){ var mid=(lo+hi+1)>>1; if(raw[mid].t<=animTime) lo=mid; else hi=mid-1; }
+      statusPt = raw[lo];
+    }
     trail.push({x:pt.x, v:pt.v});
     if(trail.length>TRAIL_LEN) trail.shift();
     drawSim(pt, trail, sol);
     drawGraph(sol, animIdx, gbg, pt);
     drawPhase(sol, animIdx, pbg, pt);
-    updateStatusLine(pt);
+    updateStatusLine(statusPt);
     srFrameCount++;
-    if(srFrameCount%60===0) updateSRData(pt, sol);
+    if(srFrameCount%60===0) updateSRData(statusPt, sol);
     if(animIdx>=pts.length-2 && frac>=1){ animIdx=0; animTime=0; trail=[]; }
   }
   requestAnimationFrame(animate);
