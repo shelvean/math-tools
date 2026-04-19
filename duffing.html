@@ -701,7 +701,7 @@ function masterSolveMulti(p,n,T,tolMul){
       raw=solveDuffing(p,ics[i].x0,ics[i].v0,T,effTol*Math.pow(10,tries));
     }
     if(raw[raw.length-1].t<T*0.95) incomplete++;
-    var pts=raw,MAX=6000;
+    var pts=raw,MAX=16000;
     if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var j=0;j<raw.length;j+=s)pts.push(raw[Math.floor(j)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
     trajs.push({pts:pts,x0:ics[i].x0,v0:ics[i].v0,color:hslColor(i,n)});
     totalSteps+=raw.length;
@@ -758,18 +758,25 @@ function initMultiAxesCanvas(ms){
   bg.font='bold 13px Arial';bg.textAlign='center';bg.textBaseline='bottom';bg.fillStyle='#374151';bg.fillText('x',PW/2,PH-1);
   bg.save();bg.translate(14,PH/2);bg.rotate(-Math.PI/2);bg.textBaseline='top';bg.fillText('\u1e8b',0,0);bg.restore();
 
-  /* Persistent trail canvas — accumulates full trajectory paths so every
-     trajectory remains visible end-to-end (strange-attractor build-up). */
+  /* Trail canvas (transparent). Old segments fade via per-frame
+     destination-out; axes are composited underneath. */
   multiTrailCv=document.createElement('canvas');multiTrailCv.width=PW;multiTrailCv.height=PH;
   multiTrailCtx=multiTrailCv.getContext('2d');
   sharpen(multiTrailCv,multiTrailCtx);
-  multiTrailCtx.drawImage(multiAxesCv,0,0,PW,PH);
+  multiTrailCtx.clearRect(0,0,PW,PH);
   for(var i=0;i<ms.trajs.length;i++) ms.trajs[i]._lastDrawnIdx=0;
+
+  /* Global max |ẋ| across every trajectory — shared speed-color scale. */
+  var mspd=0;
+  for(var k=0;k<ms.trajs.length;k++){
+    var p2=ms.trajs[k].pts;
+    for(var j=0;j<p2.length;j++){var a=Math.abs(p2[j].v);if(a>mspd)mspd=a;}
+  }
+  ms._maxSpeed=mspd>1e-6?mspd:1;
 }
 function resetMultiTrail(ms){
-  if(!multiTrailCv||!multiAxesCv||!multiPSc)return;
+  if(!multiTrailCv||!multiPSc)return;
   multiTrailCtx.clearRect(0,0,multiPSc.W,multiPSc.H);
-  multiTrailCtx.drawImage(multiAxesCv,0,0,multiPSc.W,multiPSc.H);
   for(var i=0;i<ms.trajs.length;i++) ms.trajs[i]._lastDrawnIdx=0;
 }
 function drawMultiPhaseFrame(ms,at){
@@ -778,9 +785,15 @@ function drawMultiPhaseFrame(ms,at){
   function toCx(x){return pad.l+(x-multiPSc.xMin)/(multiPSc.xMax-multiPSc.xMin)*(PW-pad.l-pad.r);}
   function toCy(v){return PH-pad.b-(v-multiPSc.vMin)/(multiPSc.vMax-multiPSc.vMin)*(PH-pad.t-pad.b);}
 
-  /* Accumulate newly-traversed segments per trajectory onto the offscreen trail. */
-  multiTrailCtx.lineWidth=1.0;multiTrailCtx.lineJoin='round';multiTrailCtx.lineCap='round';
-  multiTrailCtx.globalAlpha=0.78;
+  /* Fade: strip a little alpha from every existing trail pixel each frame. */
+  multiTrailCtx.globalCompositeOperation='destination-out';
+  multiTrailCtx.fillStyle='rgba(0,0,0,0.018)';
+  multiTrailCtx.fillRect(0,0,PW,PH);
+  multiTrailCtx.globalCompositeOperation='source-over';
+
+  /* New segments: one stroke per segment coloured by |ẋ| on the shared scale. */
+  var maxSpeed=ms._maxSpeed||1;
+  multiTrailCtx.lineWidth=1.4;multiTrailCtx.lineJoin='round';multiTrailCtx.lineCap='round';
   for(var k=0;k<ms.trajs.length;k++){
     var pts=ms.trajs[k].pts;
     var lastIdx=ms.trajs[k]._lastDrawnIdx||0;
@@ -788,17 +801,19 @@ function drawMultiPhaseFrame(ms,at){
     while(lo<hi){var mid=(lo+hi+1)>>1;if(pts[mid].t<=at)lo=mid;else hi=mid-1;}
     var idx=lo;
     if(idx>lastIdx){
-      multiTrailCtx.strokeStyle=ms.trajs[k].color;
-      multiTrailCtx.beginPath();
-      multiTrailCtx.moveTo(toCx(pts[lastIdx].x),toCy(pts[lastIdx].v));
-      for(var i=lastIdx+1;i<=idx;i++) multiTrailCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));
-      multiTrailCtx.stroke();
+      for(var i=lastIdx+1;i<=idx;i++){
+        multiTrailCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
+        multiTrailCtx.beginPath();
+        multiTrailCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));
+        multiTrailCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));
+        multiTrailCtx.stroke();
+      }
       ms.trajs[k]._lastDrawnIdx=idx;
     }
   }
-  multiTrailCtx.globalAlpha=1;
 
-  /* Composite accumulated trails. */
+  /* Composite axes + fading trail. */
+  phaseCtx.drawImage(multiAxesCv,0,0,PW,PH);
   phaseCtx.drawImage(multiTrailCv,0,0,PW,PH);
 
   /* Current head of each trajectory — only the moving end carries a dot. */
@@ -808,8 +823,8 @@ function drawMultiPhaseFrame(ms,at){
     while(lo<hi){var mid=(lo+hi+1)>>1;if(pts[mid].t<=at)lo=mid;else hi=mid-1;}
     var idx=lo;
     var hx=toCx(pts[idx].x),hy=toCy(pts[idx].v);
-    phaseCtx.fillStyle=ms.trajs[k].color;
-    phaseCtx.strokeStyle='rgba(0,0,0,.55)';
+    phaseCtx.fillStyle=speedColor(Math.abs(pts[idx].v),maxSpeed);
+    phaseCtx.strokeStyle='rgba(0,0,0,.45)';
     phaseCtx.lineWidth=1;
     phaseCtx.beginPath();phaseCtx.arc(hx,hy,3.5,0,2*Math.PI);phaseCtx.fill();phaseCtx.stroke();
   }
