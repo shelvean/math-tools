@@ -677,11 +677,28 @@ function masterSolveMulti(p,n,T,tolMul){
 }
 function initMultiAxesCanvas(ms){
   var pxMin=Infinity,pxMax=-Infinity,vMin=Infinity,vMax=-Infinity;
+  /* Ignore the initial transient when sizing the view so the attractor fills the plot.
+     Skip samples before max(5 forcing periods, 40% of T) of each trajectory. */
+  var Tf=(ms.p&&ms.p.omega>0.01)?2*Math.PI/ms.p.omega:ms.T/10;
+  var skipT=Math.min(ms.T*0.7,Math.max(5*Tf,ms.T*0.4));
   for(var i=0;i<ms.trajs.length;i++){
     var pts=ms.trajs[i].pts;
-    for(var j=0;j<pts.length;j++){
+    var s0=0;
+    while(s0<pts.length-1&&pts[s0].t<skipT) s0++;
+    for(var j=s0;j<pts.length;j++){
       if(pts[j].x<pxMin)pxMin=pts[j].x;if(pts[j].x>pxMax)pxMax=pts[j].x;
       if(pts[j].v<vMin)vMin=pts[j].v;if(pts[j].v>vMax)vMax=pts[j].v;
+    }
+  }
+  if(!isFinite(pxMin)){
+    /* Fallback: every trajectory was skipped; use full range. */
+    pxMin=Infinity;pxMax=-Infinity;vMin=Infinity;vMax=-Infinity;
+    for(var i=0;i<ms.trajs.length;i++){
+      var pts=ms.trajs[i].pts;
+      for(var j=0;j<pts.length;j++){
+        if(pts[j].x<pxMin)pxMin=pts[j].x;if(pts[j].x>pxMax)pxMax=pts[j].x;
+        if(pts[j].v<vMin)vMin=pts[j].v;if(pts[j].v>vMax)vMax=pts[j].v;
+      }
     }
   }
   var pxR=pxMax-pxMin||1,pvR=vMax-vMin||1;
