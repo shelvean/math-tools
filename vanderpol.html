@@ -755,19 +755,30 @@ function drawMultiPhaseFrame(ms, at){
   function toCy(v){return PH-pad.b-(v-multiPSc.vMin)/(multiPSc.vMax-multiPSc.vMin)*(PH-pad.t-pad.b);}
   phaseCtx.drawImage(multiAxesCv, 0, 0, PW, PH);
   phaseCtx.lineWidth=1.1; phaseCtx.lineJoin='round'; phaseCtx.lineCap='round';
+  /* Hold the transient visible for at least 3 periods so initial swings don't fade too fast. */
+  var fadeT = Math.max(3 * estimatePeriod(ms.mu), 0.1);
+  var atStart = at - fadeT;
   for(var k=0;k<ms.trajs.length;k++){
     var pts=ms.trajs[k].pts;
     var lo=0, hi=pts.length-1;
     while(lo<hi){var mid=(lo+hi+1)>>1; if(pts[mid].t<=at) lo=mid; else hi=mid-1;}
     var idx=lo;
-    var startIdx=Math.max(0, idx-MULTI_FADE_LEN), fadeLen=idx-startIdx;
+    var s0=0, s1=idx;
+    while(s0<s1){var smid=(s0+s1+1)>>1; if(pts[smid].t<=atStart) s0=smid; else s1=smid-1;}
+    var startIdx=s0;
     phaseCtx.strokeStyle=ms.trajs[k].color;
-    if(fadeLen>0){
-      for(var i=startIdx+1;i<=idx;i++){
-        phaseCtx.globalAlpha=(i-startIdx)/fadeLen;
+    if(idx>startIdx){
+      /* Batch into a few equal-count bands so cost stays ~O(n*bands) even when the 3-period
+         window spans thousands of samples. Each band is a single polyline at one alpha. */
+      var segCount = idx - startIdx;
+      var NBANDS = 16;
+      var bandSize = Math.max(1, Math.ceil(segCount / NBANDS));
+      for(var b0 = startIdx; b0 < idx; b0 += bandSize){
+        var b1 = Math.min(idx, b0 + bandSize);
+        phaseCtx.globalAlpha = Math.min(1, (b1 - startIdx) / segCount);
         phaseCtx.beginPath();
-        phaseCtx.moveTo(toCx(pts[i-1].x), toCy(pts[i-1].v));
-        phaseCtx.lineTo(toCx(pts[i].x), toCy(pts[i].v));
+        phaseCtx.moveTo(toCx(pts[b0].x), toCy(pts[b0].v));
+        for(var i=b0+1;i<=b1;i++) phaseCtx.lineTo(toCx(pts[i].x), toCy(pts[i].v));
         phaseCtx.stroke();
       }
     }
