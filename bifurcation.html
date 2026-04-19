@@ -779,29 +779,6 @@ var AUTO_REFINE_MS = 380;
 var RUBBER = null;
 
 /* =====================================================
-   Quality presets
-===================================================== */
-function getQuality(){
-  var q = document.getElementById('qualSel').value;
-  var base;
-  if(q==='fast')        base={N_cols:400, N_trans:150, N_plot:200};
-  else if(q==='normal') base={N_cols:900, N_trans:300, N_plot:500};
-  else if(q==='high')   base={N_cols:1600,N_trans:500, N_plot:800};
-  else                  base={N_cols:2400,N_trans:800, N_plot:1200};
-  /* Scale transient with zoom depth so self-similar structure settles. */
-  var ex = MAPS[ST.mapId];
-  var fullRange = (ex.pMaxFull||ex.pMax) - (ex.pMinFull||ex.pMin);
-  var curRange  = Math.max(1e-12, ST.pMax - ST.pMin);
-  var zoomDepth = Math.max(1, fullRange/curRange);
-  if(zoomDepth > 4){
-    var boost = 1 + Math.log10(zoomDepth);
-    base.N_trans = Math.min(12000, Math.round(base.N_trans * boost));
-    base.N_plot  = Math.min(3000,  Math.round(base.N_plot  * Math.min(2, boost)));
-  }
-  return base;
-}
-
-/* =====================================================
    Canvas setup
 ===================================================== */
 var bifCanvas = document.getElementById('bifCanvas');
@@ -1012,6 +989,47 @@ window.addEventListener('mouseup',function(e){
 /* =====================================================
    Computation Engine
 ===================================================== */
+/* =====================================================
+   Computation Engine — progressive multi-level refinement
+   Each level recomputes the whole visible range at a
+   higher resolution, rendering over the previous. Levels
+   are scheduled via requestIdleCallback so the UI stays
+   responsive and the user can zoom mid-refinement; a new
+   zoom cancels the chain and starts a fresh one.
+===================================================== */
+
+var PROGRESSIVE_LEVELS = [
+  {N_cols:400,  N_trans:120, N_plot:200},   /* 0 — instant preview (~0.05s) */
+  {N_cols:800,  N_trans:240, N_plot:340},   /* 1 */
+  {N_cols:1400, N_trans:450, N_plot:560},   /* 2 */
+  {N_cols:2400, N_trans:850, N_plot:820},   /* 3 */
+  {N_cols:4000, N_trans:1500,N_plot:1100},  /* 4 */
+  {N_cols:6000, N_trans:2600,N_plot:1500}   /* 5 — ultra */
+];
+
+var MAX_ORBIT_STORE = 300;   /* cap per-column stored iterates for memory */
+
+function getMaxLevel(){
+  var q = document.getElementById('qualSel').value;
+  if(q==='fast')   return 2;
+  if(q==='normal') return 3;
+  if(q==='high')   return 4;
+  return 5; /* ultra */
+}
+
+function applyZoomBoost(cfg){
+  var ex = MAPS[ST.mapId];
+  var fullRange = (ex.pMaxFull||ex.pMax) - (ex.pMinFull||ex.pMin);
+  var curRange  = Math.max(1e-14, ST.pMax - ST.pMin);
+  var zoomDepth = Math.max(1, fullRange/curRange);
+  var boost = 1 + Math.log10(zoomDepth);
+  return {
+    N_cols:  cfg.N_cols,
+    N_trans: Math.min(20000, Math.round(cfg.N_trans * Math.min(2.5, boost))),
+    N_plot:  Math.min(3500,  Math.round(cfg.N_plot  * Math.min(2, boost)))
+  };
+}
+
 function allocBDATA(N){
   BDATA.N_cols = N;
   BDATA.N_done = 0;
@@ -1020,8 +1038,8 @@ function allocBDATA(N){
   BDATA.xCounts  = new Int32Array(N);
   BDATA.lyaArr   = new Float32Array(N);
   BDATA.colColors= new Uint8Array(N*4);
-  var Np = ST.N_plot;
-  for(var i=0;i<N;i++) BDATA.xArrs[i]=new Float32Array(Np);
+  var storeLen = Math.min(ST.N_plot, MAX_ORBIT_STORE);
+  for(var i=0;i<N;i++) BDATA.xArrs[i]=new Float32Array(storeLen);
 }
 
 function getColColor(lya){
@@ -1029,13 +1047,10 @@ function getColColor(lya){
   var hc=document.documentElement.classList.contains('hc');
   if(!isFinite(lya)) return [150,150,150,180];
   if(lya < -0.01){
-    /* stable: blue */
     return hc?[0,0,200,220]:[29,78,216,200];
   } else if(lya > 0.01){
-    /* chaotic: red */
     return hc?[180,0,0,220]:[185,28,28,200];
   } else {
-    /* neutral: amber */
     return hc?[100,40,0,220]:[146,64,14,220];
   }
 }
@@ -1046,22 +1061,32 @@ function computeChunk(startCol, endCol){
   var Nt   = ST.N_trans, Np = ST.N_plot;
   var pMin = ST.pMin, pRange = ST.pMax - pMin;
   var N    = BDATA.N_cols;
+  var storeLen = BDATA.xArrs[0] ? BDATA.xArrs[0].length : Np;
+  var storeEvery = Math.max(1, Math.floor(Np/storeLen));
+  var x0Fallback = ST.x0;
+
+  /* Warm-start: carry last x across columns. Each column's attractor is
+     typically close to its neighbour's, so starting from the previous
+     column's on-attractor x dramatically shortens the effective
+     transient and keeps detail consistent across parameter space. */
+  var prevX = null;
 
   for(var i=startCol; i<endCol && i<N; i++){
     var p = pMin + (i+0.5)/N*pRange;
     BDATA.pArr[i] = p;
 
-    var x = ST.x0;
-    /* transient */
+    var x = (prevX!==null && isFinite(prevX)) ? prevX : x0Fallback;
+
     for(var t=0;t<Nt;t++){
-      try{ x=f(x,p); }catch(e){ x=ST.x0; break; }
-      if(!isFinite(x)){ x=ST.x0; break; }
+      try{ x=f(x,p); }catch(e){ x=x0Fallback; break; }
+      if(!isFinite(x)){ x=x0Fallback; break; }
     }
-    /* collect + Lyapunov */
     var cnt=0, lyaSum=0, lyaCnt=0;
     for(var t=0;t<Np;t++){
       if(isFinite(x)){
-        BDATA.xArrs[i][cnt++]=x;
+        if((t%storeEvery)===0 && cnt<storeLen){
+          BDATA.xArrs[i][cnt++]=x;
+        }
         try{
           var d=Math.abs(df(x,p));
           if(d>1e-15&&isFinite(d)){lyaSum+=Math.log(d);lyaCnt++;}
@@ -1076,48 +1101,94 @@ function computeChunk(startCol, endCol){
     var col=getColColor(lya);
     BDATA.colColors[i*4]=col[0]; BDATA.colColors[i*4+1]=col[1];
     BDATA.colColors[i*4+2]=col[2]; BDATA.colColors[i*4+3]=col[3];
+
+    prevX = x;
   }
   BDATA.N_done = endCol < N ? endCol : N;
+}
+
+/* Progressive chain state */
+var PROG = { level:0, maxLevel:0, active:false, idleId:null, onDone:null };
+
+function cancelProgressive(){
+  PROG.active = false;
+  if(PROG.idleId!=null){
+    if(window.cancelIdleCallback) cancelIdleCallback(PROG.idleId);
+    PROG.idleId = null;
+  }
 }
 
 function stopAll(){
   ST.computing=false;
   if(ST.compTimer)clearTimeout(ST.compTimer); ST.compTimer=null;
+  cancelProgressive();
 }
 
 function runCompute(onDone){
   stopAll();
-  var q=getQuality();
-  ST.N_trans=q.N_trans; ST.N_plot=q.N_plot;
-  allocBDATA(q.N_cols);
-  ST.computing=true;
+  PROG.level = 0;
+  PROG.maxLevel = getMaxLevel();
+  PROG.active = true;
+  PROG.onDone = onDone || null;
+  ST.computing = true;
 
-  var ex=MAPS[ST.mapId];
-  bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+'. Computing…');
-  updateProgress(0, q.N_cols);
+  var ex = MAPS[ST.mapId];
+  bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+'. Refining…');
+  updateProgress(0, PROG.maxLevel+1);
+  runProgressiveLevel();
+}
 
-  /* Defer so the "Computing…" label renders before the compute blocks,
-     but compute the whole diagram in one shot and render only once at the end
-     (no left-to-right sweep). */
-  ST.compTimer=setTimeout(function(){
-    computeChunk(0, q.N_cols);
-    ST.computing=false;
-    updateProgress(q.N_cols, q.N_cols);
-    renderAll();
-    bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+' — fully computed. Scroll to zoom, drag to pan, click to set crosshair.');
-    say('Computation complete — '+q.N_cols+' parameter values computed.');
+function runProgressiveLevel(){
+  if(!PROG.active) return;
+  if(PROG.level > PROG.maxLevel){
+    PROG.active = false;
+    ST.computing = false;
+    var ex = MAPS[ST.mapId];
+    bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+' — fully refined. Scroll/pinch to zoom, drag to pan, click to set crosshair.');
+    say('Refinement complete — '+(PROG.maxLevel+1)+' levels.');
     updateFormula();
-    if(onDone) onDone();
+    if(PROG.onDone){ PROG.onDone(); PROG.onDone=null; }
+    return;
+  }
+
+  var cfg = applyZoomBoost(PROGRESSIVE_LEVELS[PROG.level]);
+  ST.N_trans = cfg.N_trans;
+  ST.N_plot  = cfg.N_plot;
+  allocBDATA(cfg.N_cols);
+
+  /* Defer compute to next tick so the progress label renders first. */
+  ST.compTimer = setTimeout(function(){
+    if(!PROG.active) return;
+    computeChunk(0, cfg.N_cols);
+    renderAll();
+    PROG.level++;
+    updateProgress(PROG.level, PROG.maxLevel+1);
+
+    if(PROG.active && PROG.level <= PROG.maxLevel){
+      /* Schedule next refinement level during browser idle time so
+         zoom/pan/click stay perfectly responsive. */
+      if(window.requestIdleCallback){
+        PROG.idleId = requestIdleCallback(function(){
+          PROG.idleId = null;
+          runProgressiveLevel();
+        }, {timeout: 600});
+      } else {
+        ST.compTimer = setTimeout(runProgressiveLevel, 24);
+      }
+    } else {
+      runProgressiveLevel(); /* finalise */
+    }
   }, 0);
 }
 
-function updateProgress(done, total){
-  var pct = total>0 ? Math.round(done/total*100) : 0;
+function updateProgress(level, totalLevels){
+  var pct = totalLevels>0 ? Math.round(level/totalLevels*100) : 0;
   var bar = document.getElementById('progressBar');
   var wrap = document.getElementById('progressWrap');
   bar.style.width = pct+'%';
   wrap.setAttribute('aria-valuenow', pct);
-  document.getElementById('rv-prog').textContent = done===total ? 'Done' : pct+'%';
+  var el = document.getElementById('rv-prog');
+  el.textContent = (level>=totalLevels) ? 'Done' : ('Lv '+level+'/'+totalLevels);
 }
 
 /* =====================================================
@@ -1184,10 +1255,12 @@ function scheduleAutoRefine(){
   if(!chk||!chk.checked)return;
   if(autoRefineTimer) clearTimeout(autoRefineTimer);
   autoRefineTimer=setTimeout(function(){
-    /* Don't refine if a computation is already running or the view matches ST. */
-    if(ST.computing)return;
+    /* A new zoom cancels the current progressive chain and starts a
+       fresh one at the new view — the in-flight levels were computing
+       a now-stale window. */
     var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12;
-    if(same)return;
+    if(same && !PROG.active) return;
+    if(same && PROG.active) return; /* already refining this same view */
     refineView();
   }, AUTO_REFINE_MS);
 }
