@@ -615,18 +615,18 @@ function solveDuffing(p,x0,v0,T,tolMul){
   if(!tolMul)tolMul=1;
   var atol=1e-7*tolMul,rtol=1e-5*tolMul;
   var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;
-  var hMax=Math.min(T/50,Tf/30,0.08),hMin=1e-10;
+  var hMax=Math.min(T/50,Tf/30,0.08),hMin=1e-12;
   var x=x0,v=v0,t=0,pts=[{t:0,x:x0,v:v0}];
   var h=Math.min(hMax,Tf/100),rejects=0;
-  for(var step=0;step<800000&&t<T;step++){
+  for(var step=0;step<2000000&&t<T;step++){
     if(t+h>T)h=T-t;if(h<hMin)break;
     var res=rk45Step(p,t,x,v,h);
-    if(!isFinite(res.x)||!isFinite(res.v)){h*=0.5;rejects++;if(rejects>60)break;continue;}
+    if(!isFinite(res.x)||!isFinite(res.v)){h*=0.5;rejects++;if(rejects>300)break;continue;}
     var scx=atol+rtol*Math.max(Math.abs(x),Math.abs(res.x));
     var scv=atol+rtol*Math.max(Math.abs(v),Math.abs(res.v));
     var errN=res.err/Math.sqrt(0.5*(scx*scx+scv*scv));
     if(errN<=1.0){t+=h;x=res.x;v=res.v;pts.push({t:t,x:x,v:v});rejects=0;h=Math.min(hMax,h*Math.min(5,Math.max(0.2,0.9*Math.pow(errN+1e-10,-0.2))));}
-    else{h=Math.max(hMin,h*Math.max(0.1,0.9*Math.pow(errN,-0.2)));rejects++;if(rejects>80)break;}
+    else{h=Math.max(hMin,h*Math.max(0.1,0.9*Math.pow(errN,-0.2)));rejects++;if(rejects>300)break;}
   }
   return pts;
 }
@@ -687,15 +687,27 @@ function scatterICs(n){
 function hslColor(i,n){return 'hsl('+Math.round(i*360/n)+',75%,45%)';}
 function masterSolveMulti(p,n,T,tolMul){
   if(!(T>0)) T=autoEndTime(p);
-  var ics=scatterICs(n),trajs=[],totalSteps=0;
+  /* Multi-IC needs every trajectory to reach T. Don't let the user's
+     Very-fine setting starve some ICs; floor tolerance at Normal. */
+  var effTol=Math.max(tolMul||1,1);
+  var ics=scatterICs(n),trajs=[],totalSteps=0,incomplete=0;
   for(var i=0;i<n;i++){
-    var raw=solveDuffing(p,ics[i].x0,ics[i].v0,T,tolMul);
+    var raw=solveDuffing(p,ics[i].x0,ics[i].v0,T,effTol);
+    /* Retry with progressively looser tolerance if the solver terminated
+       early (< 95% of T reached). */
+    var tries=0;
+    while(raw.length>0&&raw[raw.length-1].t<T*0.95&&tries<4){
+      tries++;
+      raw=solveDuffing(p,ics[i].x0,ics[i].v0,T,effTol*Math.pow(10,tries));
+    }
+    if(raw[raw.length-1].t<T*0.95) incomplete++;
     var pts=raw,MAX=6000;
     if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var j=0;j<raw.length;j+=s)pts.push(raw[Math.floor(j)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
     trajs.push({pts:pts,x0:ics[i].x0,v0:ics[i].v0,color:hslColor(i,n)});
     totalSteps+=raw.length;
   }
   var label='RK45 \u00d7 '+n+' trajectories, '+totalSteps.toLocaleString()+' total steps';
+  if(incomplete>0) label+=' ('+incomplete+' terminated early)';
   return {trajs:trajs,T:T,p:p,solver:label,multi:true};
 }
 function initMultiAxesCanvas(ms){
@@ -1225,7 +1237,7 @@ function onPC(){var q=readParams();updateRegimeBadge(q.p);updateEqDisplay(q.p);u
 
 document.addEventListener('DOMContentLoaded',function(){
   linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');linkSlider('tEndSlider','tEndVal');linkSlider('nICSlider','nICVal');
-  document.getElementById('multiICChk').addEventListener('change',function(){setMultiICLayout(this.checked);say('Multi-IC scatter '+(this.checked?'enabled':'disabled')+'. Press Reset to apply.');});
+  document.getElementById('multiICChk').addEventListener('change',function(){say('Multi-IC scatter '+(this.checked?'enabled':'disabled')+'. Recomputing.');resetSimulation();});
   document.querySelectorAll('#speedBtns .sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('#speedBtns .sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol,parseFloat(this.dataset.speed)||1);say('Speed set.');});});
   document.querySelectorAll('.stepbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.stepbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');say('Step size set. Press Reset to apply.');});});
   document.querySelectorAll('.trailbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.trailbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');trailStyle=this.dataset.trail||'speed';resetTrailOverlay();say('Trail style: '+this.textContent+'.');});});
