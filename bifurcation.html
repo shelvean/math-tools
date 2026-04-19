@@ -1042,7 +1042,9 @@ var WORKER_SRC = [
 '  var progEvery=Math.max(32, Math.floor(N/20));',
 '  for(var i=0;i<N;i++){',
 '    var p=pMin+(i+0.5)/N*pRange; pArr[i]=p;',
-'    var x=(prevX!==null && isFinite(prevX))?prevX:x0F;',
+/* 0 is a fixed point for logistic, tent, sine — once the warm-start lands there,
+   every subsequent column stays pinned at 0. Fall back to x0 in that case. */
+'    var x=(prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100)?prevX:x0F;',
 '    for(var t=0;t<Nt;t++){ try{x=f(x,p);}catch(e){x=x0F;break;} if(!isFinite(x)){x=x0F;break;} }',
 '    var cnt=0,lyaSum=0,lyaCnt=0;',
 '    for(var t=0;t<Np;t++){',
@@ -1088,7 +1090,7 @@ var WORKER_SRC = [
 '    var fracD=(new Decimal(i)).plus(half).div(ND);',
 '    var pD=pMinD.plus(fracD.times(pRangeD));',
 '    pArr[i]=Number(pD.toString());',
-'    var x=(prevX!==null && prevX.isFinite())?prevX:x0D;',
+'    var x=(prevX!==null && prevX.isFinite() && prevX.abs().gt("1e-100"))?prevX:x0D;',
 '    for(var t=0;t<Nt;t++){ try{ x=f(x,pD); }catch(e){ x=x0D; break; } if(!x.isFinite()){ x=x0D; break; } }',
 '    var cnt=0,lyaSum=0,lyaCnt=0;',
 '    for(var t=0;t<Np;t++){',
@@ -1239,7 +1241,9 @@ function computeChunkSync(startCol, endCol){
     var p = pMin + (i+0.5)/N*pRange;
     BDATA.pArr[i] = p;
 
-    var x = (prevX!==null && isFinite(prevX)) ? prevX : x0Fallback;
+    /* 0 is a fixed point for logistic/tent/sine — if warm-start hits 0,
+       every subsequent column stays trapped there. Fall back to x0. */
+    var x = (prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100) ? prevX : x0Fallback;
 
     for(var t=0;t<Nt;t++){
       try{ x=f(x,p); }catch(e){ x=x0Fallback; break; }
