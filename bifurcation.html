@@ -996,7 +996,80 @@ window.addEventListener('mouseup',function(e){
    are scheduled via requestIdleCallback so the UI stays
    responsive and the user can zoom mid-refinement; a new
    zoom cancels the chain and starts a fresh one.
+
+   The iteration itself runs in a Web Worker so the main
+   thread is free to handle scroll/pan/pinch while the
+   dots are being computed. Cancellation = terminate the
+   worker (the only reliable way to interrupt a JS loop).
 ===================================================== */
+
+var WORKER_SRC = [
+'var MAPS={',
+"  'logistic':      {f:function(x,r){return r*x*(1-x);}, df:function(x,r){return r*(1-2*x);}},",
+"  'logistic_full': {f:function(x,r){return r*x*(1-x);}, df:function(x,r){return r*(1-2*x);}},",
+"  'tent':          {f:function(x,r){return r*(x<=0.5?x:1-x);}, df:function(x,r){return x===0.5?NaN:(x<0.5?r:-r);}},",
+"  'sine':          {f:function(x,r){return r*Math.sin(Math.PI*x);}, df:function(x,r){return r*Math.PI*Math.cos(Math.PI*x);}},",
+"  'quadratic':     {f:function(x,r){return x*x+r;}, df:function(x,r){return 2*x;}}",
+'};',
+'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute") runCompute(m);};',
+'function runCompute(m){',
+'  var mapDef=MAPS[m.mapId]; var f,df;',
+'  if(mapDef){ f=mapDef.f; df=mapDef.df; }',
+'  else if(m.customSrc){',
+'    try{ var raw=new Function("x","r","return "+m.customSrc+";");',
+'      f=function(x,r){ try{return raw(x,r);}catch(e){return NaN;} };',
+'      df=function(x,r){ var h=1e-5; try{ var fp=raw(x+h,r),fm=raw(x-h,r); return isFinite(fp)&&isFinite(fm)?(fp-fm)/(2*h):NaN; }catch(e){return NaN;} };',
+'    }catch(e){ self.postMessage({cmd:"error",msg:e.message,token:m.token}); return; }',
+'  } else { self.postMessage({cmd:"error",msg:"Unknown map: "+m.mapId,token:m.token}); return; }',
+'  var N=m.N_cols, Nt=m.N_trans, Np=m.N_plot;',
+'  var pMin=m.pMin, pRange=m.pMax-m.pMin, x0F=m.x0;',
+'  var storeLen=Math.min(Np, m.maxStore);',
+'  var pArr=new Float32Array(N), xArrsFlat=new Float32Array(N*storeLen), xCounts=new Int32Array(N), lyaArr=new Float32Array(N);',
+'  var prevX=null;',
+'  var progEvery=Math.max(32, Math.floor(N/20));',
+'  for(var i=0;i<N;i++){',
+'    var p=pMin+(i+0.5)/N*pRange; pArr[i]=p;',
+'    var x=(prevX!==null && isFinite(prevX))?prevX:x0F;',
+'    for(var t=0;t<Nt;t++){ try{x=f(x,p);}catch(e){x=x0F;break;} if(!isFinite(x)){x=x0F;break;} }',
+'    var cnt=0,lyaSum=0,lyaCnt=0;',
+'    for(var t=0;t<Np;t++){',
+'      if(isFinite(x)){',
+'        if(cnt<storeLen){ xArrsFlat[i*storeLen+cnt]=x; cnt++; }',
+'        try{ var d=Math.abs(df(x,p)); if(d>1e-15 && isFinite(d)){ lyaSum+=Math.log(d); lyaCnt++; } }catch(e){}',
+'      }',
+'      try{ x=f(x,p); }catch(e){ break; }',
+'      if(!isFinite(x)) break;',
+'    }',
+'    xCounts[i]=cnt;',
+'    lyaArr[i]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    prevX=x;',
+'    if(i>0 && (i%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:N,token:m.token});',
+'  }',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'}'
+].join('\n');
+
+var workerURL = null, workerInst = null, workerToken = 0;
+
+function makeWorker(){
+  if(!workerURL){
+    try{ workerURL = URL.createObjectURL(new Blob([WORKER_SRC], {type:'application/javascript'})); }
+    catch(e){ return null; }
+  }
+  try{
+    var w = new Worker(workerURL);
+    w.onmessage = onWorkerMessage;
+    w.onerror = function(err){ console && console.warn && console.warn('Bif worker error:', err.message); };
+    return w;
+  } catch(e){ return null; }
+}
+
+function terminateWorker(){
+  if(workerInst){
+    try{ workerInst.terminate(); }catch(e){}
+    workerInst = null;
+  }
+}
 
 var PROGRESSIVE_LEVELS = [
   {N_cols:400,  N_trans:120, N_plot:200},   /* 0 — instant preview (~0.05s) */
@@ -1055,7 +1128,7 @@ function getColColor(lya){
   }
 }
 
-function computeChunk(startCol, endCol){
+function computeChunkSync(startCol, endCol){
   var ex   = MAPS[ST.mapId];
   var f    = ex.f, df = ex.df;
   var Nt   = ST.N_trans, Np = ST.N_plot;
@@ -1110,10 +1183,11 @@ function computeChunk(startCol, endCol){
 }
 
 /* Progressive chain state */
-var PROG = { level:0, maxLevel:0, active:false, idleId:null, onDone:null };
+var PROG = { level:0, maxLevel:0, active:false, idleId:null, onDone:null, busyToken:0 };
 
 function cancelProgressive(){
   PROG.active = false;
+  PROG.busyToken = 0;
   if(PROG.idleId!=null){
     if(window.cancelIdleCallback) cancelIdleCallback(PROG.idleId);
     PROG.idleId = null;
@@ -1124,6 +1198,7 @@ function stopAll(){
   ST.computing=false;
   if(ST.compTimer)clearTimeout(ST.compTimer); ST.compTimer=null;
   cancelProgressive();
+  terminateWorker();   /* kill in-flight iteration */
 }
 
 function runCompute(onDone){
@@ -1156,31 +1231,87 @@ function runProgressiveLevel(){
   var cfg = applyZoomBoost(PROGRESSIVE_LEVELS[PROG.level]);
   ST.N_trans = cfg.N_trans;
   ST.N_plot  = cfg.N_plot;
-  allocBDATA(cfg.N_cols);
 
-  /* Defer compute to next tick so the progress label renders first. */
-  ST.compTimer = setTimeout(function(){
-    if(!PROG.active) return;
-    computeChunk(0, cfg.N_cols);
-    renderAll();
-    PROG.level++;
-    updateProgress(PROG.level, PROG.maxLevel+1);
+  /* Ensure a worker is alive. If the environment won't spawn one we
+     fall back to synchronous compute on the main thread. */
+  if(!workerInst) workerInst = makeWorker();
+  if(workerInst){
+    workerToken++;
+    PROG.busyToken = workerToken;
+    var customSrc = null;
+    if(ST.mapId==='custom' && MAPS.custom && MAPS.custom.customSrc) customSrc = MAPS.custom.customSrc;
+    workerInst.postMessage({
+      cmd:'compute', token: workerToken,
+      mapId: ST.mapId, customSrc: customSrc,
+      pMin: ST.pMin, pMax: ST.pMax, x0: ST.x0,
+      N_cols: cfg.N_cols, N_trans: cfg.N_trans, N_plot: cfg.N_plot,
+      maxStore: MAX_ORBIT_STORE
+    });
+  } else {
+    /* Fallback: sync compute */
+    allocBDATA(cfg.N_cols);
+    ST.compTimer = setTimeout(function(){
+      if(!PROG.active) return;
+      computeChunkSync(0, cfg.N_cols);
+      renderAll();
+      advanceProgressive();
+    }, 0);
+  }
+}
 
-    if(PROG.active && PROG.level <= PROG.maxLevel){
-      /* Schedule next refinement level during browser idle time so
-         zoom/pan/click stay perfectly responsive. */
-      if(window.requestIdleCallback){
-        PROG.idleId = requestIdleCallback(function(){
-          PROG.idleId = null;
-          runProgressiveLevel();
-        }, {timeout: 600});
-      } else {
-        ST.compTimer = setTimeout(runProgressiveLevel, 24);
-      }
+function advanceProgressive(){
+  PROG.level++;
+  updateProgress(PROG.level, PROG.maxLevel+1);
+  if(!PROG.active) return;
+  if(PROG.level <= PROG.maxLevel){
+    /* Yield to the browser so scroll/pan/pinch stay snappy between levels. */
+    if(window.requestIdleCallback){
+      PROG.idleId = requestIdleCallback(function(){
+        PROG.idleId = null;
+        runProgressiveLevel();
+      }, {timeout: 600});
     } else {
-      runProgressiveLevel(); /* finalise */
+      ST.compTimer = setTimeout(runProgressiveLevel, 24);
     }
-  }, 0);
+  } else {
+    runProgressiveLevel(); /* final "done" pass */
+  }
+}
+
+function onWorkerMessage(e){
+  var msg = e.data;
+  if(msg.token !== PROG.busyToken) return;   /* stale result from a cancelled level */
+  if(msg.cmd === 'progress'){
+    /* micro-progress within a level */
+    return;
+  }
+  if(msg.cmd === 'error'){
+    say('Compute error: '+msg.msg);
+    PROG.active = false; ST.computing = false;
+    return;
+  }
+  if(msg.cmd === 'done'){
+    var N = msg.pArr.length;
+    BDATA.N_cols = N;
+    BDATA.N_done = N;
+    BDATA.pArr = msg.pArr;
+    BDATA.xCounts = msg.xCounts;
+    BDATA.lyaArr = msg.lyaArr;
+    var storeLen = msg.storeLen;
+    BDATA.xArrs = new Array(N);
+    for(var i=0;i<N;i++){
+      /* Zero-copy view into the flat buffer. */
+      BDATA.xArrs[i] = msg.xArrsFlat.subarray(i*storeLen, (i+1)*storeLen);
+    }
+    BDATA.colColors = new Uint8Array(N*4);
+    for(var i=0;i<N;i++){
+      var c = getColColor(msg.lyaArr[i]);
+      BDATA.colColors[i*4]=c[0]; BDATA.colColors[i*4+1]=c[1];
+      BDATA.colColors[i*4+2]=c[2]; BDATA.colColors[i*4+3]=c[3];
+    }
+    renderAll();
+    advanceProgressive();
+  }
 }
 
 function updateProgress(level, totalLevels){
@@ -1823,6 +1954,7 @@ function applyCustomMap(){
     latex_f:exprRaw,
     latex_p:'r',
     f:fFn, df:dfFn,
+    customSrc: preprocess2(exprRaw),
     x0:clamp((xMin+xMax)/2,xMin,xMax),
     xMin:xMin, xMax:xMax,
     pMin:parseFloat(document.getElementById('pMinNum').value)||0,
