@@ -476,6 +476,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
       <input type="checkbox" id="autoRefineChk" checked style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue);">
       <label class="speed-lbl" for="autoRefineChk" style="cursor:pointer;">Auto-refine</label>
     </div>
+    <div class="speed-wrap" style="margin-left:.25rem;" title="Use decimal.js for parameter windows below ~1e-12. Supported on polynomial maps only (logistic / quadratic).">
+      <input type="checkbox" id="deepZoomChk" style="width:18px;height:18px;cursor:pointer;accent-color:var(--vio);">
+      <label class="speed-lbl" for="deepZoomChk" style="cursor:pointer;">Deep zoom</label>
+    </div>
   </div>
 
   <!-- Readout bar -->
@@ -512,6 +516,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <div class="phdr">
       <span class="pdot" style="background:var(--bif-stable)" aria-hidden="true"></span>
       Bifurcation Diagram — long-run attractor vs. parameter
+      <span id="deepBadge" hidden style="margin-left:auto;font-size:.75rem;font-weight:700;color:var(--vio);background:rgba(91,33,182,.1);border:1px solid rgba(91,33,182,.3);border-radius:999px;padding:.1rem .55rem;">decimal 40d</span>
     </div>
     <canvas id="bifCanvas" role="img"
       aria-label="Bifurcation diagram. Scroll to zoom parameter axis, drag to pan, click to set crosshair."
@@ -1003,6 +1008,8 @@ window.addEventListener('mouseup',function(e){
    worker (the only reliable way to interrupt a JS loop).
 ===================================================== */
 
+var DECIMAL_CDN = 'https://cdn.jsdelivr.net/npm/decimal.js@10.4.3/decimal.min.js';
+
 var WORKER_SRC = [
 'var MAPS={',
 "  'logistic':      {f:function(x,r){return r*x*(1-x);}, df:function(x,r){return r*(1-2*x);}},",
@@ -1011,7 +1018,13 @@ var WORKER_SRC = [
 "  'sine':          {f:function(x,r){return r*Math.sin(Math.PI*x);}, df:function(x,r){return r*Math.PI*Math.cos(Math.PI*x);}},",
 "  'quadratic':     {f:function(x,r){return x*x+r;}, df:function(x,r){return 2*x;}}",
 '};',
-'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute") runCompute(m);};',
+'var DECIMAL_READY=false, DECIMAL_URL=null;',
+'function ensureDecimal(url){',
+'  if(DECIMAL_READY) return true;',
+'  try{ importScripts(url); DECIMAL_READY=(typeof Decimal!=="undefined"); DECIMAL_URL=url; return DECIMAL_READY; }',
+'  catch(e){ return false; }',
+'}',
+'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute"){ if(m.useDecimal) runComputeDecimal(m); else runCompute(m); } };',
 'function runCompute(m){',
 '  var mapDef=MAPS[m.mapId]; var f,df;',
 '  if(mapDef){ f=mapDef.f; df=mapDef.df; }',
@@ -1046,6 +1059,55 @@ var WORKER_SRC = [
 '    if(i>0 && (i%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:N,token:m.token});',
 '  }',
 '  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'}',
+'function runComputeDecimal(m){',
+'  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js from CDN.",token:m.token}); return; }',
+'  Decimal.set({precision: m.useDecimal.digits||40});',
+'  var mapId=m.mapId; var f, df;',
+'  if(mapId==="logistic" || mapId==="logistic_full"){',
+'    f = function(x,r){ return r.times(x).times(new Decimal(1).minus(x)); };',
+'    df= function(x,r){ return r.times(new Decimal(1).minus(x.times(2))); };',
+'  } else if(mapId==="quadratic"){',
+'    f = function(x,r){ return x.times(x).plus(r); };',
+'    df= function(x,r){ return x.times(2); };',
+'  } else {',
+'    self.postMessage({cmd:"error",msg:"Deep zoom supports only logistic and quadratic maps.",token:m.token}); return;',
+'  }',
+'  var N=m.N_cols, Nt=m.N_trans, Np=m.N_plot;',
+'  var pMinD=new Decimal(m.pMinStr || m.pMin);',
+'  var pMaxD=new Decimal(m.pMaxStr || m.pMax);',
+'  var pRangeD=pMaxD.minus(pMinD);',
+'  var x0D=new Decimal(m.x0);',
+'  var storeLen=Math.min(Np, m.maxStore);',
+'  var pArr=new Float32Array(N), xArrsFlat=new Float32Array(N*storeLen), xCounts=new Int32Array(N), lyaArr=new Float32Array(N);',
+'  var prevX=null;',
+'  var progEvery=Math.max(16, Math.floor(N/12));',
+'  var half=new Decimal("0.5");',
+'  var ND=new Decimal(N);',
+'  for(var i=0;i<N;i++){',
+'    var fracD=(new Decimal(i)).plus(half).div(ND);',
+'    var pD=pMinD.plus(fracD.times(pRangeD));',
+'    pArr[i]=Number(pD.toString());',
+'    var x=(prevX!==null && prevX.isFinite())?prevX:x0D;',
+'    for(var t=0;t<Nt;t++){ try{ x=f(x,pD); }catch(e){ x=x0D; break; } if(!x.isFinite()){ x=x0D; break; } }',
+'    var cnt=0,lyaSum=0,lyaCnt=0;',
+'    for(var t=0;t<Np;t++){',
+'      if(x.isFinite()){',
+'        if(cnt<storeLen){ xArrsFlat[i*storeLen+cnt]=Number(x.toString()); cnt++; }',
+'        try{',
+'          var d=df(x,pD).abs();',
+'          if(d.isFinite() && d.gt("1e-15")){ lyaSum+=Math.log(Number(d.toString())); lyaCnt++; }',
+'        }catch(e){}',
+'      }',
+'      try{ x=f(x,pD); }catch(e){ break; }',
+'      if(!x.isFinite()) break;',
+'    }',
+'    xCounts[i]=cnt;',
+'    lyaArr[i]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    prevX=x;',
+'    if(i>0 && (i%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:N,token:m.token,decimal:true});',
+'  }',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,decimal:true},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
 '}'
 ].join('\n');
 
@@ -1084,10 +1146,40 @@ var MAX_ORBIT_STORE = 500;   /* cap per-column stored iterates for memory */
 
 function getMaxLevel(){
   var q = document.getElementById('qualSel').value;
-  if(q==='fast')   return 2;
-  if(q==='normal') return 3;
-  if(q==='high')   return 4;
-  return 5; /* ultra */
+  var base;
+  if(q==='fast')        base = 2;
+  else if(q==='normal') base = 3;
+  else if(q==='high')   base = 4;
+  else                  base = 5; /* ultra */
+  /* decimal.js is ~50x slower; cap levels to keep wall-time sane. */
+  if(isDeepZoomActive()) base = Math.min(base, 3);
+  return base;
+}
+
+function isDeepZoomActive(){
+  var chk = document.getElementById('deepZoomChk');
+  if(!chk || !chk.checked) return false;
+  /* Only polynomial maps — decimal.js has no cheap sin/cos. */
+  if(['logistic','logistic_full','quadratic'].indexOf(ST.mapId) < 0) return false;
+  /* Only when the window is narrow enough for doubles to struggle. */
+  var pRange = ST.pMax - ST.pMin;
+  return pRange > 0 && pRange < 1e-10;
+}
+
+function updateDeepBadge(){
+  var el = document.getElementById('deepBadge');
+  if(!el) return;
+  if(isDeepZoomActive()){
+    el.textContent = 'decimal ' + decimalPrecisionForRange() + 'd';
+    el.hidden = false;
+  } else {
+    el.hidden = true;
+  }
+}
+
+function decimalPrecisionForRange(){
+  var pRange = Math.max(1e-300, ST.pMax - ST.pMin);
+  return Math.max(30, Math.min(80, Math.ceil(-Math.log10(pRange)) + 20));
 }
 
 function applyZoomBoost(cfg){
@@ -1212,6 +1304,7 @@ function runCompute(onDone){
   var ex = MAPS[ST.mapId];
   bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+'. Refining…');
   updateProgress(0, PROG.maxLevel+1);
+  updateDeepBadge();
   runProgressiveLevel();
 }
 
@@ -1240,12 +1333,18 @@ function runProgressiveLevel(){
     PROG.busyToken = workerToken;
     var customSrc = null;
     if(ST.mapId==='custom' && MAPS.custom && MAPS.custom.customSrc) customSrc = MAPS.custom.customSrc;
+    var useDecimal = isDeepZoomActive()
+      ? { digits: decimalPrecisionForRange(), url: DECIMAL_CDN }
+      : null;
     workerInst.postMessage({
       cmd:'compute', token: workerToken,
       mapId: ST.mapId, customSrc: customSrc,
-      pMin: ST.pMin, pMax: ST.pMax, x0: ST.x0,
+      pMin: ST.pMin, pMax: ST.pMax,
+      pMinStr: String(ST.pMin), pMaxStr: String(ST.pMax),
+      x0: ST.x0,
       N_cols: cfg.N_cols, N_trans: cfg.N_trans, N_plot: cfg.N_plot,
-      maxStore: MAX_ORBIT_STORE
+      maxStore: MAX_ORBIT_STORE,
+      useDecimal: useDecimal
     });
   } else {
     /* Fallback: sync compute */
@@ -2162,6 +2261,15 @@ document.getElementById('btnRefine').addEventListener('click',function(){
   if(autoRefineTimer){clearTimeout(autoRefineTimer);autoRefineTimer=null;}
   refineView();
   say('Refining: recomputing at current zoom window.');
+});
+document.getElementById('deepZoomChk').addEventListener('change',function(){
+  updateDeepBadge();
+  if(this.checked && !isDeepZoomActive()){
+    say('Deep zoom arms automatically when the parameter window is below 1e-10 on logistic or quadratic maps.');
+  } else {
+    runCompute(null);
+    say(this.checked ? 'Deep zoom enabled — loading decimal.js.' : 'Deep zoom disabled.');
+  }
 });
 document.getElementById('btnBack').addEventListener('click',function(){
   popZoomHistory();
