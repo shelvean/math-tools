@@ -374,14 +374,17 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
         <li><strong>Quadratic</strong> \(f_c(x)=x^2+c\): Julia set parameter, chaos at \(c=-2\); related to Mandelbrot set on real axis.</li>
       </ul>
 
-      <h2>How to Interact</h2>
+      <h2>How to Interact — Exploring Self-Similarity</h2>
       <ul>
-        <li><strong>Scroll</strong> on either canvas to zoom the parameter axis.</li>
+        <li><strong>Scroll</strong> or pinch on either canvas to zoom.</li>
         <li><strong>Drag</strong> to pan both axes simultaneously.</li>
+        <li><strong>Shift+drag</strong> on the bifurcation diagram to draw a zoom box around a feature.</li>
+        <li><strong>Refine</strong> (or <strong>Auto-refine</strong>, on by default) re-runs the computation at the current zoom window, revealing fresh detail. Each refine exposes another level of the period-doubling cascade — you'll see miniature copies of the full diagram inside periodic windows (e.g. inside the period-3 window near \(r\approx3.83\)).</li>
+        <li><strong>Back</strong> undoes the last refine; <strong>Reset view</strong> returns to the full map.</li>
         <li><strong>Click</strong> on either canvas to set a parameter crosshair — the readout shows the exact value.</li>
         <li><strong>Double-click</strong> to reset the view.</li>
         <li><strong>Compute</strong> runs the full calculation; <strong>Animate</strong> sweeps \(r\) left to right.</li>
-        <li>Toggle <strong>Feigenbaum lines</strong> to show/hide the annotated bifurcation points.</li>
+        <li>Toggle <strong>Feigenbaum lines</strong> to show/hide the annotated bifurcation points. Use <strong>High</strong> or <strong>Ultra</strong> quality for deep zooms.</li>
       </ul>
     </div>
   </div>
@@ -467,6 +470,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <button class="abtn abtn-zoom" id="btnZoomBif" type="button" aria-label="Zoom to bifurcation region">
       <span aria-hidden="true">&#128269;</span> Bifurcations
     </button>
+    <button class="abtn abtn-zoom" id="btnRefine" type="button" aria-label="Refine: recompute bifurcation diagram at current zoom to reveal self-similarity" style="background:#5b21b6;">
+      <span aria-hidden="true">&#128300;</span> Refine
+    </button>
+    <button class="abtn abtn-reset" id="btnBack" type="button" aria-label="Undo last refine/zoom" disabled style="opacity:.5;">
+      <span aria-hidden="true">&#8592;</span> Back
+    </button>
     <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset view to default">
       <span aria-hidden="true">&#8635;</span> Reset view
     </button>
@@ -478,6 +487,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
         <option value="50">Fast</option>
         <option value="120">Very fast</option>
       </select>
+    </div>
+    <div class="speed-wrap" style="margin-left:.25rem;">
+      <input type="checkbox" id="autoRefineChk" checked style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue);">
+      <label class="speed-lbl" for="autoRefineChk" style="cursor:pointer;">Auto-refine</label>
     </div>
   </div>
 
@@ -530,7 +543,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
       <span class="chip"><span class="csw" style="background:#b91c1c"></span>Chaotic (\(\lambda&gt;0\))</span>
     </div>
     <div class="canvas-footer">
-      <span class="zoom-hint" aria-hidden="true">Scroll: zoom &nbsp;&#183;&nbsp; Drag: pan &nbsp;&#183;&nbsp; Click: crosshair &nbsp;&#183;&nbsp; Dbl-click: reset</span>
+      <span class="zoom-hint" aria-hidden="true">Scroll/pinch: zoom &nbsp;&#183;&nbsp; Drag: pan &nbsp;&#183;&nbsp; Shift+drag: box-zoom &nbsp;&#183;&nbsp; Click: crosshair &nbsp;&#183;&nbsp; Dbl-click: reset</span>
       <button class="cfbtn" id="bifResetBtn" type="button" aria-label="Reset bifurcation view">Reset view</button>
     </div>
   </div>
@@ -775,15 +788,35 @@ var BDATA = {
 var VBIF = { pMin:2.5, pMax:4, xMin:0, xMax:1, dflt:{pMin:2.5,pMax:4,xMin:0,xMax:1} };
 var VLYA = { pMin:2.5, pMax:4, lyaMin:-1.6, lyaMax:0.9, dflt:{pMin:2.5,pMax:4,lyaMin:-1.6,lyaMax:0.9} };
 
+/* Zoom history for self-similarity exploration */
+var ZOOM_HIST = [];
+var autoRefineTimer = null;
+var AUTO_REFINE_MS = 380;
+
+/* Rubber-band box selection for zoom-to-region */
+var RUBBER = null;
+
 /* =====================================================
    Quality presets
 ===================================================== */
 function getQuality(){
   var q = document.getElementById('qualSel').value;
-  if(q==='fast')   return {N_cols:400, N_trans:150, N_plot:200};
-  if(q==='normal') return {N_cols:900, N_trans:300, N_plot:500};
-  if(q==='high')   return {N_cols:1600,N_trans:500, N_plot:800};
-  /* ultra */      return {N_cols:2400,N_trans:800, N_plot:1200};
+  var base;
+  if(q==='fast')        base={N_cols:400, N_trans:150, N_plot:200};
+  else if(q==='normal') base={N_cols:900, N_trans:300, N_plot:500};
+  else if(q==='high')   base={N_cols:1600,N_trans:500, N_plot:800};
+  else                  base={N_cols:2400,N_trans:800, N_plot:1200};
+  /* Scale transient with zoom depth so self-similar structure settles. */
+  var ex = MAPS[ST.mapId];
+  var fullRange = (ex.pMaxFull||ex.pMax) - (ex.pMinFull||ex.pMin);
+  var curRange  = Math.max(1e-12, ST.pMax - ST.pMin);
+  var zoomDepth = Math.max(1, fullRange/curRange);
+  if(zoomDepth > 4){
+    var boost = 1 + Math.log10(zoomDepth);
+    base.N_trans = Math.min(12000, Math.round(base.N_trans * boost));
+    base.N_plot  = Math.min(3000,  Math.round(base.N_plot  * Math.min(2, boost)));
+  }
+  return base;
 }
 
 /* =====================================================
@@ -883,9 +916,21 @@ function addCanvasEvents(canvas, isLya){
     if(isLya) zoomLya(cx,cy,f,f);
     else       zoomBif(cx,cy,f,f);
     renderAll();
+    scheduleAutoRefine();
   },{passive:false});
 
   canvas.addEventListener('mousedown',function(e){
+    /* Shift+drag on bifurcation canvas = rubber-band box zoom */
+    if(!isLya && e.shiftKey && e.button===0){
+      var rect=canvas.getBoundingClientRect();
+      RUBBER={
+        x0:e.clientX-rect.left, y0:e.clientY-rect.top,
+        x1:e.clientX-rect.left, y1:e.clientY-rect.top,
+        active:true
+      };
+      e.preventDefault();
+      return;
+    }
     lastDrag={x:e.clientX,y:e.clientY,down:true,canvas:canvas,isLya:isLya};
   });
   canvas.addEventListener('dblclick',function(e){
@@ -932,17 +977,55 @@ function addCanvasEvents(canvas, isLya){
     lastTouches=ts;
     renderAll();
   },{passive:false});
-  canvas.addEventListener('touchend',function(){lastTouches=null;});
+  canvas.addEventListener('touchend',function(){
+    lastTouches=null;
+    scheduleAutoRefine();
+  });
 }
 
 window.addEventListener('mousemove',function(e){
+  if(RUBBER&&RUBBER.active){
+    var rect=bifCanvas.getBoundingClientRect();
+    RUBBER.x1=e.clientX-rect.left;
+    RUBBER.y1=e.clientY-rect.top;
+    renderAll();
+    return;
+  }
   if(!lastDrag.down)return;
   var dx=e.clientX-lastDrag.x, dy=e.clientY-lastDrag.y;
   lastDrag.x=e.clientX; lastDrag.y=e.clientY;
   if(lastDrag.isLya)panLya(dx,dy); else panBif(dx,dy);
   renderAll();
 });
-window.addEventListener('mouseup',function(){lastDrag.down=false;});
+window.addEventListener('mouseup',function(e){
+  var wasDragging = lastDrag.down;
+  if(RUBBER&&RUBBER.active){
+    var x0=Math.min(RUBBER.x0,RUBBER.x1), x1=Math.max(RUBBER.x0,RUBBER.x1);
+    var y0=Math.min(RUBBER.y0,RUBBER.y1), y1=Math.max(RUBBER.y0,RUBBER.y1);
+    var w=x1-x0, h=y1-y0;
+    RUBBER=null;
+    if(w>6 && h>6){
+      /* Convert pixel box to world coords BEFORE we change view. */
+      var newPMin=bx2p(x0), newPMax=bx2p(x1);
+      var newXMax=by2x(y0), newXMin=by2x(y1);
+      if(newPMax>newPMin+1e-14 && newXMax>newXMin+1e-14){
+        pushZoomHistory();
+        VBIF.pMin=newPMin; VBIF.pMax=newPMax;
+        VBIF.xMin=newXMin; VBIF.xMax=newXMax;
+        VLYA.pMin=newPMin; VLYA.pMax=newPMax;
+        ST.pMin=newPMin;   ST.pMax=newPMax;
+        syncParamInputs();
+        runCompute(null);
+        say('Zoomed to box. Recomputing…');
+      }
+    }
+    renderAll();
+    lastDrag.down=false;
+    return;
+  }
+  lastDrag.down=false;
+  if(wasDragging) scheduleAutoRefine();
+});
 
 /* =====================================================
    Computation Engine
@@ -1095,6 +1178,78 @@ function updateProgress(done, total){
   bar.style.width = pct+'%';
   wrap.setAttribute('aria-valuenow', pct);
   document.getElementById('rv-prog').textContent = done===total ? 'Done' : pct+'%';
+}
+
+/* =====================================================
+   Refine / zoom history — the key to self-similarity
+   When the user zooms, the picture is just the same pre-
+   computed dots scaled up. Refine re-runs the iteration
+   within the current visible parameter window so new
+   detail resolves at every zoom depth, exposing the
+   miniature copies of the diagram hidden in periodic
+   windows and along the period-doubling cascade.
+===================================================== */
+function syncParamInputs(){
+  document.getElementById('pMinNum').value = (+ST.pMin.toFixed(10))+'';
+  document.getElementById('pMaxNum').value = (+ST.pMax.toFixed(10))+'';
+}
+
+function updateBackBtn(){
+  var b=document.getElementById('btnBack');
+  if(!b)return;
+  var has=ZOOM_HIST.length>0;
+  b.disabled=!has;
+  b.style.opacity=has?'1':'.5';
+}
+
+function pushZoomHistory(){
+  ZOOM_HIST.push({
+    pMin:ST.pMin, pMax:ST.pMax, x0:ST.x0,
+    vb:{pMin:VBIF.pMin,pMax:VBIF.pMax,xMin:VBIF.xMin,xMax:VBIF.xMax},
+    vl:{pMin:VLYA.pMin,pMax:VLYA.pMax,lyaMin:VLYA.lyaMin,lyaMax:VLYA.lyaMax}
+  });
+  if(ZOOM_HIST.length>64) ZOOM_HIST.shift();
+  updateBackBtn();
+}
+
+function popZoomHistory(){
+  if(!ZOOM_HIST.length)return;
+  var h=ZOOM_HIST.pop();
+  ST.pMin=h.pMin; ST.pMax=h.pMax; ST.x0=h.x0;
+  VBIF.pMin=h.vb.pMin; VBIF.pMax=h.vb.pMax;
+  VBIF.xMin=h.vb.xMin; VBIF.xMax=h.vb.xMax;
+  VLYA.pMin=h.vl.pMin; VLYA.pMax=h.vl.pMax;
+  VLYA.lyaMin=h.vl.lyaMin; VLYA.lyaMax=h.vl.lyaMax;
+  syncParamInputs();
+  updateBackBtn();
+  runCompute(null);
+  say('Stepped back to previous zoom.');
+}
+
+function refineView(){
+  /* Only push/compute if the visible param window differs from ST. */
+  var w = VBIF.pMax - VBIF.pMin;
+  if(w<=1e-14) return;
+  var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12;
+  if(same && BDATA.N_done===BDATA.N_cols){ return; }
+  pushZoomHistory();
+  ST.pMin = VBIF.pMin;
+  ST.pMax = VBIF.pMax;
+  syncParamInputs();
+  runCompute(null);
+}
+
+function scheduleAutoRefine(){
+  var chk=document.getElementById('autoRefineChk');
+  if(!chk||!chk.checked)return;
+  if(autoRefineTimer) clearTimeout(autoRefineTimer);
+  autoRefineTimer=setTimeout(function(){
+    /* Don't refine if a computation is already running or the view matches ST. */
+    if(ST.computing||ST.animating)return;
+    var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12;
+    if(same)return;
+    refineView();
+  }, AUTO_REFINE_MS);
 }
 
 /* =====================================================
@@ -1369,6 +1524,21 @@ function renderBif(){
       ctx.fillText(labelTxt, px+pw/2, py+ph/2);
       ctx.restore();
     }
+  }
+
+  /* ── Rubber-band zoom box ── */
+  if(RUBBER && RUBBER.active){
+    var rx0=Math.min(RUBBER.x0,RUBBER.x1), rx1=Math.max(RUBBER.x0,RUBBER.x1);
+    var ry0=Math.min(RUBBER.y0,RUBBER.y1), ry1=Math.max(RUBBER.y0,RUBBER.y1);
+    ctx.save();
+    ctx.fillStyle='rgba(29,78,216,.12)';
+    ctx.fillRect(rx0,ry0,rx1-rx0,ry1-ry0);
+    ctx.strokeStyle='rgba(29,78,216,.9)';
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([5,3]);
+    ctx.strokeRect(rx0,ry0,rx1-rx0,ry1-ry0);
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 }
 
@@ -1764,6 +1934,15 @@ function resetView(){
     VLYA.pMin=VLYA.dflt.pMin;VLYA.pMax=VLYA.dflt.pMax;
     VLYA.lyaMin=VLYA.dflt.lyaMin;VLYA.lyaMax=VLYA.dflt.lyaMax;
   }
+  ZOOM_HIST.length=0;
+  updateBackBtn();
+  /* If data was computed on a narrower range, re-run at the default view. */
+  var needRecompute = Math.abs(ST.pMin-VBIF.dflt.pMin)>1e-9 || Math.abs(ST.pMax-VBIF.dflt.pMax)>1e-9;
+  if(needRecompute && BDATA.N_done>0){
+    ST.pMin=VBIF.dflt.pMin; ST.pMax=VBIF.dflt.pMax;
+    syncParamInputs();
+    runCompute(null);
+  }
 }
 
 function switchMap(id){
@@ -1779,6 +1958,8 @@ function switchMap(id){
   document.getElementById('x0Num').value=ex.x0||0.5;
   ST.pMin=ex.pMin; ST.pMax=ex.pMax;
   ST.crosshairP=null;
+  ZOOM_HIST.length=0;
+  updateBackBtn();
   setViewFromMap(id);
   BDATA.N_done=0;
   updateFormula();
@@ -1834,9 +2015,18 @@ document.getElementById('btnZoomBif').addEventListener('click',function(){
     VBIF.pMax=Math.min(ex.pMax,ex.bifPts[ex.bifPts.length-1].r+0.1);
     VLYA.pMin=VBIF.pMin;VLYA.pMax=VBIF.pMax;
     renderAll();say('Zoomed to bifurcation region.');
+    scheduleAutoRefine();
   } else {
     resetView();renderAll();say('View reset.');
   }
+});
+document.getElementById('btnRefine').addEventListener('click',function(){
+  if(autoRefineTimer){clearTimeout(autoRefineTimer);autoRefineTimer=null;}
+  refineView();
+  say('Refining: recomputing at current zoom window.');
+});
+document.getElementById('btnBack').addEventListener('click',function(){
+  popZoomHistory();
 });
 document.getElementById('btnReset').addEventListener('click',function(){
   resetView();renderAll();say('View reset to default.');
