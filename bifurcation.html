@@ -383,7 +383,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
         <li><strong>Back</strong> undoes the last refine; <strong>Reset view</strong> returns to the full map.</li>
         <li><strong>Click</strong> on either canvas to set a parameter crosshair — the readout shows the exact value.</li>
         <li><strong>Double-click</strong> to reset the view.</li>
-        <li><strong>Compute</strong> runs the full calculation; <strong>Animate</strong> sweeps \(r\) left to right.</li>
+        <li><strong>Compute</strong> runs the full calculation and displays the diagram at once.</li>
         <li>Toggle <strong>Feigenbaum lines</strong> to show/hide the annotated bifurcation points. Use <strong>High</strong> or <strong>Ultra</strong> quality for deep zooms.</li>
       </ul>
     </div>
@@ -455,17 +455,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <div id="customFnError" role="status" aria-live="polite"></div>
   </div>
 
-  <!-- Animation / compute bar -->
-  <div class="abar" role="group" aria-label="Computation and animation controls">
-    <button class="abtn abtn-compute" id="btnCompute" type="button" aria-label="Compute full bifurcation diagram">
+  <!-- Compute bar -->
+  <div class="abar" role="group" aria-label="Computation controls">
+    <button class="abtn abtn-compute" id="btnCompute" type="button" aria-label="Compute bifurcation diagram">
       <span aria-hidden="true">&#9654;</span> Compute
-    </button>
-    <button class="abtn abtn-compute" id="btnAnimate" type="button"
-            aria-label="Animate: sweep parameter left to right" style="background:#1e40af;">
-      <span aria-hidden="true">&#127916;</span> Animate
-    </button>
-    <button class="abtn abtn-stop" id="btnStop" type="button" aria-label="Stop computation or animation">
-      <span aria-hidden="true">&#9632;</span> Stop
     </button>
     <button class="abtn abtn-zoom" id="btnZoomBif" type="button" aria-label="Zoom to bifurcation region">
       <span aria-hidden="true">&#128269;</span> Bifurcations
@@ -479,15 +472,6 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset view to default">
       <span aria-hidden="true">&#8635;</span> Reset view
     </button>
-    <div class="speed-wrap">
-      <label class="speed-lbl" for="speedSel">Speed</label>
-      <select class="speed-sel" id="speedSel">
-        <option value="8">Slow</option>
-        <option value="20" selected>Normal</option>
-        <option value="50">Fast</option>
-        <option value="120">Very fast</option>
-      </select>
-    </div>
     <div class="speed-wrap" style="margin-left:.25rem;">
       <input type="checkbox" id="autoRefineChk" checked style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue);">
       <label class="speed-lbl" for="autoRefineChk" style="cursor:pointer;">Auto-refine</label>
@@ -766,9 +750,7 @@ var ST = {
   N_plot: 500,
   N_cols: 900,
   computing: false,
-  animating: false,
   compTimer: null,
-  animTimer: null,
   showAnnot: false,
   crosshairP: null         /* clicked parameter value */
 };
@@ -1099,9 +1081,8 @@ function computeChunk(startCol, endCol){
 }
 
 function stopAll(){
-  ST.computing=false; ST.animating=false;
+  ST.computing=false;
   if(ST.compTimer)clearTimeout(ST.compTimer); ST.compTimer=null;
-  if(ST.animTimer)clearInterval(ST.animTimer); ST.animTimer=null;
 }
 
 function runCompute(onDone){
@@ -1111,64 +1092,23 @@ function runCompute(onDone){
   allocBDATA(q.N_cols);
   ST.computing=true;
 
-  /* update canvas aria labels */
   var ex=MAPS[ST.mapId];
   bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+'. Computing…');
+  updateProgress(0, q.N_cols);
 
-  var chunkSize = Math.max(20, Math.ceil(q.N_cols/80));
-
-  function step(){
-    if(!ST.computing){ updateProgress(BDATA.N_done, q.N_cols); return; }
-    var start=BDATA.N_done;
-    var end=Math.min(start+chunkSize, q.N_cols);
-    computeChunk(start, end);
-    updateProgress(BDATA.N_done, q.N_cols);
+  /* Defer so the "Computing…" label renders before the compute blocks,
+     but compute the whole diagram in one shot and render only once at the end
+     (no left-to-right sweep). */
+  ST.compTimer=setTimeout(function(){
+    computeChunk(0, q.N_cols);
+    ST.computing=false;
+    updateProgress(q.N_cols, q.N_cols);
     renderAll();
-    if(BDATA.N_done < q.N_cols){
-      ST.compTimer=setTimeout(step,0);
-    } else {
-      ST.computing=false;
-      updateProgress(q.N_cols, q.N_cols);
-      bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+' — fully computed. Scroll to zoom, drag to pan, click to set crosshair.');
-      say('Computation complete — '+q.N_cols+' parameter values computed.');
-      updateFormula();
-      if(onDone) onDone();
-    }
-  }
-  step();
-}
-
-function runAnimate(){
-  stopAll();
-  var q=getQuality();
-  ST.N_trans=q.N_trans; ST.N_plot=q.N_plot;
-  allocBDATA(q.N_cols);
-
-  /* respect prefers-reduced-motion */
-  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-    say('Animation skipped: your accessibility settings prefer reduced motion. Use Compute instead.');
-    return;
-  }
-
-  ST.animating=true;
-  var ms = Math.max(1, Math.round(1000/parseInt(document.getElementById('speedSel').value||20)));
-  var colsPerFrame = Math.max(1, Math.round(parseInt(document.getElementById('speedSel').value||20)/4));
-
-  ST.animTimer=setInterval(function(){
-    if(!ST.animating){ clearInterval(ST.animTimer); return; }
-    var start=BDATA.N_done;
-    var end=Math.min(start+colsPerFrame, q.N_cols);
-    computeChunk(start, end);
-    updateProgress(BDATA.N_done, q.N_cols);
-    renderAll();
-    if(BDATA.N_done >= q.N_cols){
-      clearInterval(ST.animTimer); ST.animTimer=null;
-      ST.animating=false;
-      say('Animation complete.');
-      updateFormula();
-    }
-  }, ms);
-  say('Animating bifurcation diagram…');
+    bifCanvas.setAttribute('aria-label','Bifurcation diagram for '+ex.name+' — fully computed. Scroll to zoom, drag to pan, click to set crosshair.');
+    say('Computation complete — '+q.N_cols+' parameter values computed.');
+    updateFormula();
+    if(onDone) onDone();
+  }, 0);
 }
 
 function updateProgress(done, total){
@@ -1245,7 +1185,7 @@ function scheduleAutoRefine(){
   if(autoRefineTimer) clearTimeout(autoRefineTimer);
   autoRefineTimer=setTimeout(function(){
     /* Don't refine if a computation is already running or the view matches ST. */
-    if(ST.computing||ST.animating)return;
+    if(ST.computing)return;
     var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12;
     if(same)return;
     refineView();
@@ -1998,15 +1938,6 @@ document.getElementById('btnCompute').addEventListener('click',function(){
   ST.pMax=parseFloat(document.getElementById('pMaxNum').value)||ST.pMax;
   ST.x0  =parseFloat(document.getElementById('x0Num').value)||ST.x0;
   runCompute(null);
-});
-document.getElementById('btnAnimate').addEventListener('click',function(){
-  ST.pMin=parseFloat(document.getElementById('pMinNum').value)||ST.pMin;
-  ST.pMax=parseFloat(document.getElementById('pMaxNum').value)||ST.pMax;
-  ST.x0  =parseFloat(document.getElementById('x0Num').value)||ST.x0;
-  runAnimate();
-});
-document.getElementById('btnStop').addEventListener('click',function(){
-  stopAll();say('Stopped.');
 });
 document.getElementById('btnZoomBif').addEventListener('click',function(){
   var ex=MAPS[ST.mapId];
