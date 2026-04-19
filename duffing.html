@@ -180,6 +180,18 @@ kbd{display:inline-block;padding:.05rem .32rem;border:1.5px solid var(--bdr2);bo
   .col-controls,.col-sim,.col-phase,.col-graph{grid-column:1;grid-row:auto;}
 }
 
+/* Multi-IC mode: hide sim animation + x(t) graph, expand phase portrait
+   to fill the freed columns so the strange attractor is large. */
+body.multi-ic-mode .col-sim,
+body.multi-ic-mode .col-graph{display:none;}
+body.multi-ic-mode .col-phase{grid-column:2 / span 2;grid-row:1 / span 2;}
+@media(max-width:1200px){
+  body.multi-ic-mode .col-phase{grid-column:2;grid-row:1 / span 3;}
+}
+@media(max-width:840px){
+  body.multi-ic-mode .col-phase{grid-column:1;grid-row:auto;}
+}
+
 .pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);margin-bottom:.6rem;}
 .phdr{padding:.3rem .7rem;display:flex;align-items:center;gap:.4rem;
   background:var(--sect);border-bottom:1px solid var(--bdr2);font-size:.78rem;font-weight:700;color:var(--txt2);}
@@ -559,7 +571,9 @@ var trailStyle='fade';
 var FADE_LEN=3000;
 /* Multi-IC scatter mode */
 var multiAxesCv=null,multiPSc=null;
-var MULTI_FADE_LEN=240;
+var multiTrailCv=null,multiTrailCtx=null;
+var MULTI_PHASE_W=1200,MULTI_PHASE_H=600;
+var SINGLE_PHASE_W=460,SINGLE_PHASE_H=290;
 
 /* Off-screen trail accumulators (axes-only + mutating trail) */
 var axesGCv=null,axesPCv=null;
@@ -656,6 +670,15 @@ function masterSolve(p,x0,v0,tolMul,T){
 }
 
 /* ════ MULTI-IC SCATTER MODE ════ */
+function setMultiICLayout(on){
+  document.body.classList.toggle('multi-ic-mode',on);
+  var newW=on?MULTI_PHASE_W:SINGLE_PHASE_W,newH=on?MULTI_PHASE_H:SINGLE_PHASE_H;
+  if(phaseCanvas._logW!==newW||phaseCanvas._logH!==newH){
+    phaseCanvas._logW=newW;phaseCanvas._logH=newH;
+    sharpen(phaseCanvas,phaseCtx);
+    phaseCtx.fillStyle='#f9fafb';phaseCtx.fillRect(0,0,newW,newH);
+  }
+}
 function scatterICs(n){
   var arr=[];
   for(var i=0;i<n;i++) arr.push({x0:(Math.random()-0.5)*4,v0:(Math.random()-0.5)*4});
@@ -727,35 +750,72 @@ function initMultiAxesCanvas(ms){
   for(var i=0;i<=4;i++)bg.fillText((vMin+i*(vMax-vMin)/4).toFixed(vMax>10?1:2),pad.l-3,PH-pad.b-i*(PH-pad.t-pad.b)/4);
   bg.textAlign='center';bg.textBaseline='top';
   for(var i=0;i<=5;i++)bg.fillText((pxMin+i*(pxMax-pxMin)/5).toFixed(2),pad.l+i*(PW-pad.l-pad.r)/5,PH-pad.b+3);
-  bg.font='bold 11px Arial';bg.textAlign='center';bg.textBaseline='bottom';bg.fillStyle='#374151';bg.fillText('x',PW/2,PH-1);
-  bg.save();bg.translate(12,PH/2);bg.rotate(-Math.PI/2);bg.textBaseline='top';bg.fillText('\u1e8b',0,0);bg.restore();
+  bg.font='bold 13px Arial';bg.textAlign='center';bg.textBaseline='bottom';bg.fillStyle='#374151';bg.fillText('x',PW/2,PH-1);
+  bg.save();bg.translate(14,PH/2);bg.rotate(-Math.PI/2);bg.textBaseline='top';bg.fillText('\u1e8b',0,0);bg.restore();
+
+  /* Persistent trail canvas — accumulates full trajectory paths so every
+     trajectory remains visible end-to-end (strange-attractor build-up). */
+  multiTrailCv=document.createElement('canvas');multiTrailCv.width=PW;multiTrailCv.height=PH;
+  multiTrailCtx=multiTrailCv.getContext('2d');
+  sharpen(multiTrailCv,multiTrailCtx);
+  multiTrailCtx.drawImage(multiAxesCv,0,0,PW,PH);
+  for(var i=0;i<ms.trajs.length;i++) ms.trajs[i]._lastDrawnIdx=0;
+}
+function resetMultiTrail(ms){
+  if(!multiTrailCv||!multiAxesCv||!multiPSc)return;
+  multiTrailCtx.clearRect(0,0,multiPSc.W,multiPSc.H);
+  multiTrailCtx.drawImage(multiAxesCv,0,0,multiPSc.W,multiPSc.H);
+  for(var i=0;i<ms.trajs.length;i++) ms.trajs[i]._lastDrawnIdx=0;
 }
 function drawMultiPhaseFrame(ms,at){
-  if(!multiPSc||!multiAxesCv)return;
+  if(!multiPSc||!multiAxesCv||!multiTrailCv)return;
   var pad=multiPSc.pad,PW=multiPSc.W,PH=multiPSc.H;
   function toCx(x){return pad.l+(x-multiPSc.xMin)/(multiPSc.xMax-multiPSc.xMin)*(PW-pad.l-pad.r);}
   function toCy(v){return PH-pad.b-(v-multiPSc.vMin)/(multiPSc.vMax-multiPSc.vMin)*(PH-pad.t-pad.b);}
-  phaseCtx.drawImage(multiAxesCv,0,0,PW,PH);
-  phaseCtx.lineWidth=1.1;phaseCtx.lineJoin='round';phaseCtx.lineCap='round';
+
+  /* Accumulate newly-traversed segments per trajectory onto the offscreen trail. */
+  multiTrailCtx.lineWidth=1.0;multiTrailCtx.lineJoin='round';multiTrailCtx.lineCap='round';
+  multiTrailCtx.globalAlpha=0.78;
+  for(var k=0;k<ms.trajs.length;k++){
+    var pts=ms.trajs[k].pts;
+    var lastIdx=ms.trajs[k]._lastDrawnIdx||0;
+    var lo=0,hi=pts.length-1;
+    while(lo<hi){var mid=(lo+hi+1)>>1;if(pts[mid].t<=at)lo=mid;else hi=mid-1;}
+    var idx=lo;
+    if(idx>lastIdx){
+      multiTrailCtx.strokeStyle=ms.trajs[k].color;
+      multiTrailCtx.beginPath();
+      multiTrailCtx.moveTo(toCx(pts[lastIdx].x),toCy(pts[lastIdx].v));
+      for(var i=lastIdx+1;i<=idx;i++) multiTrailCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));
+      multiTrailCtx.stroke();
+      ms.trajs[k]._lastDrawnIdx=idx;
+    }
+  }
+  multiTrailCtx.globalAlpha=1;
+
+  /* Composite accumulated trails. */
+  phaseCtx.drawImage(multiTrailCv,0,0,PW,PH);
+
+  /* Initial-condition markers (drawn every frame, white-ringed for contrast). */
+  for(var k=0;k<ms.trajs.length;k++){
+    var ix=toCx(ms.trajs[k].x0),iy=toCy(ms.trajs[k].v0);
+    phaseCtx.fillStyle=ms.trajs[k].color;
+    phaseCtx.strokeStyle='rgba(255,255,255,.95)';
+    phaseCtx.lineWidth=1.5;
+    phaseCtx.beginPath();phaseCtx.arc(ix,iy,4.5,0,2*Math.PI);phaseCtx.fill();phaseCtx.stroke();
+  }
+
+  /* Current head of each trajectory. */
   for(var k=0;k<ms.trajs.length;k++){
     var pts=ms.trajs[k].pts;
     var lo=0,hi=pts.length-1;
     while(lo<hi){var mid=(lo+hi+1)>>1;if(pts[mid].t<=at)lo=mid;else hi=mid-1;}
     var idx=lo;
-    var startIdx=Math.max(0,idx-MULTI_FADE_LEN),fadeLen=idx-startIdx;
-    phaseCtx.strokeStyle=ms.trajs[k].color;
-    if(fadeLen>0){
-      for(var i=startIdx+1;i<=idx;i++){
-        phaseCtx.globalAlpha=(i-startIdx)/fadeLen;
-        phaseCtx.beginPath();
-        phaseCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));
-        phaseCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));
-        phaseCtx.stroke();
-      }
-    }
-    phaseCtx.globalAlpha=1;
+    var hx=toCx(pts[idx].x),hy=toCy(pts[idx].v);
     phaseCtx.fillStyle=ms.trajs[k].color;
-    phaseCtx.beginPath();phaseCtx.arc(toCx(pts[idx].x),toCy(pts[idx].v),2.5,0,2*Math.PI);phaseCtx.fill();
+    phaseCtx.strokeStyle='rgba(0,0,0,.55)';
+    phaseCtx.lineWidth=1;
+    phaseCtx.beginPath();phaseCtx.arc(hx,hy,3.5,0,2*Math.PI);phaseCtx.fill();phaseCtx.stroke();
   }
 }
 function drawMultiDisabledPlaceholder(){
@@ -1092,6 +1152,7 @@ function resetSimulation(){
   isPaused=false;updatePauseButton();
   document.getElementById('solverText').textContent='Computing\u2026';document.getElementById('solverDot').style.background='#f59e0b';
   say('Computing. Regime: '+getRegime(p).lbl+'.');
+  setMultiICLayout(q.multiIC);
   setTimeout(function(){
     var t0=performance.now();
     if(q.multiIC){
@@ -1128,7 +1189,7 @@ function resetSimulation(){
 function animate(){
   if(isRunning&&!isPaused&&sol&&sol.multi){
     var q=readParams();animTime+=dtPerFrame*q.speed;
-    if(animTime>=sol.T){animTime=0;}
+    if(animTime>=sol.T){animTime=0;resetMultiTrail(sol);}
     drawMultiPhaseFrame(sol,animTime);
     requestAnimationFrame(animate);
     return;
@@ -1171,7 +1232,7 @@ function onPC(){var q=readParams();updateRegimeBadge(q.p);updateEqDisplay(q.p);u
 
 document.addEventListener('DOMContentLoaded',function(){
   linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');linkSlider('tEndSlider','tEndVal');linkSlider('nICSlider','nICVal');
-  document.getElementById('multiICChk').addEventListener('change',function(){say('Multi-IC scatter '+(this.checked?'enabled':'disabled')+'. Press Reset to apply.');});
+  document.getElementById('multiICChk').addEventListener('change',function(){setMultiICLayout(this.checked);say('Multi-IC scatter '+(this.checked?'enabled':'disabled')+'. Press Reset to apply.');});
   document.querySelectorAll('#speedBtns .sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('#speedBtns .sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol,parseFloat(this.dataset.speed)||1);say('Speed set.');});});
   document.querySelectorAll('.stepbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.stepbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');say('Step size set. Press Reset to apply.');});});
   document.querySelectorAll('.trailbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.trailbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');trailStyle=this.dataset.trail||'speed';resetTrailOverlay();say('Trail style: '+this.textContent+'.');});});
