@@ -700,32 +700,25 @@ function masterSolveMulti(p,n,T,tolMul){
 }
 function initMultiAxesCanvas(ms){
   var pxMin=Infinity,pxMax=-Infinity,vMin=Infinity,vMax=-Infinity;
-  /* Ignore the initial transient when sizing the view so the attractor fills the plot.
-     Skip samples before max(5 forcing periods, 40% of T) of each trajectory. */
-  var Tf=(ms.p&&ms.p.omega>0.01)?2*Math.PI/ms.p.omega:ms.T/10;
-  var skipT=Math.min(ms.T*0.7,Math.max(5*Tf,ms.T*0.4));
+  /* Use the full trajectory extent (including transients) so the furthest
+     excursion of every trajectory fits inside the axes — no overshoot. */
   for(var i=0;i<ms.trajs.length;i++){
     var pts=ms.trajs[i].pts;
-    var s0=0;
-    while(s0<pts.length-1&&pts[s0].t<skipT) s0++;
-    for(var j=s0;j<pts.length;j++){
+    for(var j=0;j<pts.length;j++){
       if(pts[j].x<pxMin)pxMin=pts[j].x;if(pts[j].x>pxMax)pxMax=pts[j].x;
       if(pts[j].v<vMin)vMin=pts[j].v;if(pts[j].v>vMax)vMax=pts[j].v;
     }
   }
-  if(!isFinite(pxMin)){
-    /* Fallback: every trajectory was skipped; use full range. */
-    pxMin=Infinity;pxMax=-Infinity;vMin=Infinity;vMax=-Infinity;
-    for(var i=0;i<ms.trajs.length;i++){
-      var pts=ms.trajs[i].pts;
-      for(var j=0;j<pts.length;j++){
-        if(pts[j].x<pxMin)pxMin=pts[j].x;if(pts[j].x>pxMax)pxMax=pts[j].x;
-        if(pts[j].v<vMin)vMin=pts[j].v;if(pts[j].v>vMax)vMax=pts[j].v;
-      }
-    }
+  /* Also include starting ICs — guards against a trajectory that diverges
+     quickly past its first sampled point. */
+  for(var i=0;i<ms.trajs.length;i++){
+    var x0=ms.trajs[i].x0,v0=ms.trajs[i].v0;
+    if(x0<pxMin)pxMin=x0;if(x0>pxMax)pxMax=x0;
+    if(v0<vMin)vMin=v0;if(v0>vMax)vMax=v0;
   }
+  if(!isFinite(pxMin)){pxMin=-2;pxMax=2;vMin=-2;vMax=2;}
   var pxR=pxMax-pxMin||1,pvR=vMax-vMin||1;
-  pxMin-=pxR*0.08;pxMax+=pxR*0.08;vMin-=pvR*0.08;vMax+=pvR*0.08;
+  pxMin-=pxR*0.06;pxMax+=pxR*0.06;vMin-=pvR*0.06;vMax+=pvR*0.06;
   var PW=phaseCanvas._logW||phaseCanvas.width,PH=phaseCanvas._logH||phaseCanvas.height;
   var pad={l:50,r:12,t:12,b:28};
   multiPSc={pad:pad,xMin:pxMin,xMax:pxMax,vMin:vMin,vMax:vMax,W:PW,H:PH};
