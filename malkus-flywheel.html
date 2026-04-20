@@ -935,6 +935,57 @@ function drawWheel() {
 /* =====================================================
    Plots: ω(t) time series and (ω, b1, a1) phase space
 ===================================================== */
+
+/* Catmull-Rom spline interpolation (3D + scalar channel)
+   Produces `factor` extra points between each pair of samples,
+   giving visually smooth curves without changing the underlying
+   RK4 samples. The scalar channel `ts` is interpolated linearly
+   over the same parameterisation so the color map lines up. */
+function crInterp1D(p0, p1, p2, p3, t) {
+  var t2 = t*t, t3 = t2*t;
+  return 0.5 * ((2*p1) +
+                (-p0 + p2) * t +
+                (2*p0 - 5*p1 + 4*p2 - p3) * t2 +
+                (-p0 + 3*p1 - 3*p2 + p3) * t3);
+}
+function catmullRom3D(xs, ys, zs, ts, factor) {
+  var n = xs.length;
+  if (n < 4 || factor <= 1) return { x: xs, y: ys, z: zs, t: ts };
+  var xo = [xs[0]], yo = [ys[0]], zo = [zs[0]], to = [ts[0]];
+  for (var i = 0; i < n - 1; i++) {
+    var i0 = i === 0 ? 0 : i - 1;
+    var i1 = i;
+    var i2 = i + 1;
+    var i3 = i + 2 < n ? i + 2 : n - 1;
+    for (var j = 1; j <= factor; j++) {
+      var u = j / factor;
+      xo.push(crInterp1D(xs[i0], xs[i1], xs[i2], xs[i3], u));
+      yo.push(crInterp1D(ys[i0], ys[i1], ys[i2], ys[i3], u));
+      zo.push(crInterp1D(zs[i0], zs[i1], zs[i2], zs[i3], u));
+      to.push(ts[i1] + (ts[i2] - ts[i1]) * u);
+    }
+  }
+  return { x: xo, y: yo, z: zo, t: to };
+}
+
+/* Colorbar matching lorenzsystem.html exactly: actual simulation time
+   labelled at start / midpoint / end of the rolling history window. */
+function makeMalkusColorbar(tMin, tMax) {
+  var tEnd = Math.round(tMax);
+  var tStart = Math.round(tMin);
+  var tMid = Math.round((tMin + tMax) / 2);
+  return {
+    title: { text: 't', side: 'right' },
+    thickness: 14,
+    len: 0.75,
+    tickvals: [0, 0.5, 1],
+    ticktext: ['t\u2009=\u2009' + tStart,
+               't\u2009=\u2009' + tMid,
+               't\u2009=\u2009' + tEnd],
+    tickfont: { size: 11 }
+  };
+}
+
 function drawOmegaPlot() {
   var hc = isHC();
   var bg = hc ? '#fff' : '#fafafa';
@@ -942,7 +993,7 @@ function drawOmegaPlot() {
   Plotly.react('plotOmega',[{
     x: ST.tHist, y: ST.omegaHist,
     type:'scatter', mode:'lines',
-    line:{color:'#1d4ed8', width:1.8},
+    line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
     hovertemplate:'t=%{x:.2f}<br>ω=%{y:.3f}<extra></extra>',
     name:'ω(t)'
   }, {
@@ -967,20 +1018,41 @@ function drawPhasePlot() {
   if (!ST.showPhase) return;
   var hc = isHC();
   var bg = hc ? '#fff' : '#fafafa';
-  var cMin = ST.tHist.length ? ST.tHist[0] : 0;
-  var cMax = ST.tHist.length ? ST.tHist[ST.tHist.length-1] : 1;
-  if (cMax <= cMin) cMax = cMin + 1;
+  var n = ST.tHist.length;
+
+  /* Catmull-Rom smoothing: 4× densification eliminates the
+     angular "coarseness" between consecutive RK4 samples. */
+  var sm = catmullRom3D(ST.omegaHist, ST.b1Hist, ST.a1Hist, ST.tHist, 4);
+
+  /* Normalise time to [0,1] and clamp with cauto:false, cmin:0, cmax:1
+     so the full Jet palette is used and colour does not jump between
+     frames — identical to the Lorenz system plot. */
+  var tMin = sm.t.length ? sm.t[0] : 0;
+  var tMax = sm.t.length ? sm.t[sm.t.length - 1] : 1;
+  var tRange = (tMax - tMin) || 1;
+  var colorNorm = new Array(sm.t.length);
+  for (var i = 0; i < sm.t.length; i++) colorNorm[i] = (sm.t[i] - tMin) / tRange;
+
   Plotly.react('plotPhase',[{
-    x: ST.omegaHist, y: ST.b1Hist, z: ST.a1Hist,
+    x: sm.x, y: sm.y, z: sm.z,
     type:'scatter3d', mode:'lines',
-    line:{color: ST.tHist, colorscale:'Jet', width:2.4, showscale:false, cauto:false, cmin:cMin, cmax:cMax},
+    line:{
+      color: colorNorm,
+      colorscale:'Jet',
+      width: 2,
+      cauto: false,
+      cmin: 0,
+      cmax: 1,
+      showscale: true,
+      colorbar: makeMalkusColorbar(tMin, tMax)
+    },
     hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>',
     name:'orbit'
   }, {
     /* current point */
-    x: ST.omegaHist.length ? [ST.omegaHist[ST.omegaHist.length-1]] : [],
-    y: ST.b1Hist.length ? [ST.b1Hist[ST.b1Hist.length-1]] : [],
-    z: ST.a1Hist.length ? [ST.a1Hist[ST.a1Hist.length-1]] : [],
+    x: n ? [ST.omegaHist[n-1]] : [],
+    y: n ? [ST.b1Hist[n-1]] : [],
+    z: n ? [ST.a1Hist[n-1]] : [],
     type:'scatter3d', mode:'markers',
     marker:{color:'#dc2626', size:4.5, line:{color:'#fff', width:1}},
     hoverinfo:'skip', showlegend:false
@@ -1043,16 +1115,24 @@ function animLoop() {
   var targetSimAdvance = dtWall * ST.simSpeed;
   var nSteps = Math.max(1, Math.round(targetSimAdvance / simDt));
   nSteps = Math.min(nSteps, 40); /* cap to keep frame affordable */
-  for (var k = 0; k < nSteps; k++) stepRK4(simDt);
 
-  /* Append to history buffers */
-  var fc = fourierCoeffs();
-  ST.tHist.push(ST.t);
-  ST.omegaHist.push(ST.omega);
-  ST.a1Hist.push(fc.a1);
-  ST.b1Hist.push(fc.b1);
-  if (ST.tHist.length > ST.maxHist) {
-    ST.tHist.shift(); ST.omegaHist.shift(); ST.a1Hist.shift(); ST.b1Hist.shift();
+  /* Push history every RK4 sub-step (not once per wall frame) so the
+     sample density is constant in simulation time, independent of
+     playback speed. Otherwise fast replay produces a coarse polyline. */
+  for (var k = 0; k < nSteps; k++) {
+    stepRK4(simDt);
+    var fc = fourierCoeffs();
+    ST.tHist.push(ST.t);
+    ST.omegaHist.push(ST.omega);
+    ST.a1Hist.push(fc.a1);
+    ST.b1Hist.push(fc.b1);
+  }
+  var excess = ST.tHist.length - ST.maxHist;
+  if (excess > 0) {
+    ST.tHist.splice(0, excess);
+    ST.omegaHist.splice(0, excess);
+    ST.a1Hist.splice(0, excess);
+    ST.b1Hist.splice(0, excess);
   }
 
   drawWheel();
