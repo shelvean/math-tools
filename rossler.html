@@ -261,7 +261,7 @@ if(document.referrer.includes('projects.html')){
 
       <h2>Numerical Method</h2>
       <p>
-        All trajectories use 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> with fixed step \(\Delta t=0.01\). Static plots use \(N=30{,}000\) steps (total \(t=300\)), long enough for the attractor to be densely traced. \(c\)-sweep animation frames use \(N=15{,}000\) steps (total \(t=150\)), precomputed in full before playback so the animation runs smoothly at any FPS. The Jet colorbar shows actual simulation time.
+        All trajectories use 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> with fixed step \(\Delta t=0.01\). Static plots use \(N=\lceil t_\text{end}/\Delta t\rceil\) steps — the default \(t_\text{end}=300\) gives \(N=30{,}000\), long enough for the attractor to be densely traced; \(t_\text{end}\) is adjustable in the Parameters panel. \(c\)-sweep animation frames use a fixed \(N=15{,}000\) (\(t=150\) per frame) so playback stays responsive regardless of the chosen \(t_\text{end}\). The Jet colorbar shows actual simulation time.
       </p>
 
       <h2>How to Use</h2>
@@ -300,6 +300,12 @@ if(document.referrer.includes('projects.html')){
           Parameters &amp; Initial Conditions
         </div>
         <div style="padding:.65rem .75rem;">
+          <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem;padding:.35rem .5rem;background:var(--sect);border:1px solid var(--bdr2);border-radius:.375rem;">
+            <label for="endTime" style="font-size:.8125rem;font-weight:700;color:var(--txt2);white-space:nowrap;">End time \(t_\text{end}\):</label>
+            <input type="number" id="endTime" class="sl-val" value="300" min="10" max="3000" step="10"
+                   style="width:90px;" aria-label="End time of simulation">
+            <span style="font-size:.75rem;color:var(--muted);">\(N=t_\text{end}/\Delta t\)</span>
+          </div>
           <div class="param-grid" id="paramGrid" role="group" aria-label="System parameters"></div>
         </div>
       </div>
@@ -403,12 +409,26 @@ function debounce(fn,w){var t;return function(){clearTimeout(t);t=setTimeout(fun
 
 /* ── Integration parameters ──
    DT       = 0.01 step size (Rössler tolerates larger steps than Lorenz)
-   STATIC_N = 30000 steps → t_end = 300 (attractor densely traced)
-   ANIM_N   = 15000 steps → t_end = 150 (fills the attractor, fast to compute)
+   STATIC_N = N = round(endTime / DT); 30000 ≡ t_end = 300 at default
+   ANIM_N   = 15000 steps → t_end = 150 per c-sweep frame (kept fixed for
+              playback performance independent of the user-chosen endTime)
 */
 var DT       = 0.01;
-var STATIC_N = 30000;
+var STATIC_N = 30000;     /* default; overridden by currentStaticN() */
 var ANIM_N   = 15000;
+
+/* Current number of RK4 steps for static / particle trajectories,
+   derived from the endTime input. Clamped to a sane range so wild
+   values cannot freeze the browser. */
+function currentStaticN() {
+  var el = document.getElementById('endTime');
+  var tEnd = el ? parseFloat(el.value) : 300;
+  if (!isFinite(tEnd) || tEnd <= 0) tEnd = 300;
+  var N = Math.round(tEnd / DT);
+  if (N < 100)    N = 100;
+  if (N > 300000) N = 300000;  /* ≈ t_end = 3000 */
+  return N;
+}
 
 var PARAMS=[
   {id:'a',  label:'a',   min:0,    max:0.5,  step:0.001,  value:0.2},
@@ -508,12 +528,13 @@ var updatePlot=debounce(function(cOverride){
     var cs=document.getElementById('c'), ci=document.getElementById('cVal');
     if(cs)cs.value=cOverride; if(ci)ci.value=fmtSig(cOverride);
   }
-  var tr=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,STATIC_N);
+  var N = currentStaticN();
+  var tr=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,N);
   Plotly.react('plot',
-    [makeJetTrace(tr, 2, STATIC_N)],
+    [makeJetTrace(tr, 2, N)],
     make3DLayout('Rössler Attractor  (a='+fmtSig(v.a)+', b='+fmtSig(v.b)+', c='+fmtSig(v.c)+')')
   );
-  say('Plot updated. c = '+fmtSig(v.c));
+  say('Plot updated. c = '+fmtSig(v.c)+', t_end = '+Math.round((N-1)*DT));
 }, 100);
 
 /* ── Particle animation ── */
@@ -562,8 +583,9 @@ function launchParticles(){
   stopParticles();
   var v=readParams();
   var eps=parseFloat(document.getElementById('epsilonInput').value)||1e-6;
-  PA.t1=solveRossler(v.a,v.b,v.c,v.x0,       v.y0,v.z0,STATIC_N);
-  PA.t2=solveRossler(v.a,v.b,v.c,v.x0+eps,   v.y0,v.z0,STATIC_N);
+  var Np = currentStaticN();
+  PA.t1=solveRossler(v.a,v.b,v.c,v.x0,       v.y0,v.z0,Np);
+  PA.t2=solveRossler(v.a,v.b,v.c,v.x0+eps,   v.y0,v.z0,Np);
   PA.idx=0; PA.running=true;
   var lb=document.getElementById('launchBtn');
   lb.textContent='Stop'; lb.classList.add('abtn-running');
@@ -614,6 +636,20 @@ function buildParamGrid(){
 /* ── Init ── */
 document.addEventListener('DOMContentLoaded', function(){
   buildParamGrid();
+
+  /* End-time listener — redraws static plot when t_end changes. */
+  (function(){
+    var el = document.getElementById('endTime');
+    if (!el) return;
+    var apply = function(){
+      stopParticles(); stopCAnim();
+      updatePlot();
+    };
+    el.addEventListener('change', apply);
+    el.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') { e.preventDefault(); apply(); }
+    });
+  })();
 
   /* Param listeners */
   PARAMS.forEach(function(p){
@@ -738,9 +774,10 @@ document.addEventListener('DOMContentLoaded', function(){
   }
   if(window.Plotly){
     var v=readParams();
-    var tr=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,STATIC_N);
+    var N0 = currentStaticN();
+    var tr=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,N0);
     Plotly.react('plot',
-      [makeJetTrace(tr, 2, STATIC_N)],
+      [makeJetTrace(tr, 2, N0)],
       make3DLayout('Rössler Attractor  (a='+fmtSig(v.a)+', b='+fmtSig(v.b)+', c='+fmtSig(v.c)+')')
     );
   }
