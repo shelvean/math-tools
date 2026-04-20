@@ -376,6 +376,12 @@ if(document.referrer.includes('projects.html')){
       <label><input type="radio" name="simSpeed" value="2"> 2&times;</label>
       <label><input type="radio" name="simSpeed" value="4"> 4&times;</label>
     </fieldset>
+    <div class="toggle-row" style="display:flex;align-items:center;gap:.4rem;">
+      <label for="endTime" style="font-weight:700;color:var(--txt2);font-size:.8125rem;">End&nbsp;time \(t_\text{end}\):</label>
+      <input type="number" id="endTime" value="60" min="1" max="1000" step="1"
+             style="width:80px;padding:.15rem .35rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);background:var(--card);text-align:center;"
+             aria-label="End time of simulation">
+    </div>
     <div class="toggle-row">
       <input type="checkbox" id="showPhase" checked>
       <label for="showPhase">Show 3D phase space</label>
@@ -520,6 +526,7 @@ var ST = {
   /* animation — must start false so the first startAnim() call does not early-return */
   running: false,
   simSpeed: 1,
+  endTime: 60,        // sim stops when ST.t ≥ endTime
   rafId: null,
   lastFrameWall: null,
   /* plot buffers */
@@ -527,7 +534,7 @@ var ST = {
   omegaHist: [],
   a1Hist: [],
   b1Hist: [],
-  maxHist: 3000,      // rolling window length (~30s at dt=0.01)
+  maxHist: 20000,     // room for a full endtime ≤ 200 at dt=0.01
   /* preset */
   currentPreset: 'chaos',
   /* display */
@@ -975,20 +982,27 @@ function catmullRom3D(xs, ys, zs, ts, factor) {
   return { x: xo, y: yo, z: zo, t: to };
 }
 
-/* Colorbar matching lorenzsystem.html exactly: actual simulation time
-   labelled at start / midpoint / end of the rolling history window. */
-function makeMalkusColorbar(tMin, tMax) {
-  var tEnd = Math.round(tMax);
-  var tStart = Math.round(tMin);
-  var tMid = Math.round((tMin + tMax) / 2);
+/* Direct blue→red colorscale. Avoids the yellow-heavy middle of Jet
+   so the trajectory reads as a clean time progression from t=0 (blue)
+   to t=endTime (red). */
+var BLUE_RED_SCALE = [
+  [0.00, 'rgb(29,78,216)'],   // deep blue
+  [0.25, 'rgb(91,122,222)'],
+  [0.50, 'rgb(168,120,170)'], // muted violet transition (no yellow)
+  [0.75, 'rgb(216,76,102)'],
+  [1.00, 'rgb(220,38,38)']    // deep red
+];
+
+/* Colorbar labelled t=0 → t=endTime so the user sees what the
+   blue-to-red gradient corresponds to in simulation time. */
+function makeMalkusColorbar(tEnd) {
+  var tMid = Math.round(tEnd / 2);
+  var tEndR = Math.round(tEnd);
   return {
     title: { text: 't', side: 'right' },
     thickness: 14,
     len: 0.75,
-    tickvals: [0, 0.5, 1],
-    ticktext: ['t\u2009=\u2009' + tStart,
-               't\u2009=\u2009' + tMid,
-               't\u2009=\u2009' + tEnd],
+    tickvals: [0, tMid, tEndR],
     tickfont: { size: 11 }
   };
 }
@@ -1031,27 +1045,24 @@ function drawPhasePlot() {
      angular "coarseness" between consecutive RK4 samples. */
   var sm = catmullRom3D(ST.omegaHist, ST.b1Hist, ST.a1Hist, ST.tHist, 4);
 
-  /* Normalise time to [0,1] and clamp with cauto:false, cmin:0, cmax:1
-     so the full Jet palette is used and colour does not jump between
-     frames — identical to the Lorenz system plot. */
-  var tMin = sm.t.length ? sm.t[0] : 0;
-  var tMax = sm.t.length ? sm.t[sm.t.length - 1] : 1;
-  var tRange = (tMax - tMin) || 1;
-  var colorNorm = new Array(sm.t.length);
-  for (var i = 0; i < sm.t.length; i++) colorNorm[i] = (sm.t[i] - tMin) / tRange;
+  /* Colour by raw simulation time, clamped to [0, endTime]. t=0 → blue,
+     t=endTime → red. Using the absolute endTime (not a per-frame min/max)
+     means colour stays stable as the trajectory grows: a trajectory
+     point keeps the same colour for the whole run. */
+  var tEnd = ST.endTime || 1;
 
   Plotly.react('plotPhase',[{
     x: sm.x, y: sm.y, z: sm.z,
     type:'scatter3d', mode:'lines',
     line:{
-      color: colorNorm,
-      colorscale:'Jet',
+      color: sm.t,
+      colorscale: BLUE_RED_SCALE,
       width: 2,
       cauto: false,
       cmin: 0,
-      cmax: 1,
+      cmax: tEnd,
       showscale: true,
-      colorbar: makeMalkusColorbar(tMin, tMax)
+      colorbar: makeMalkusColorbar(tEnd)
     },
     hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>',
     name:'orbit'
@@ -1129,7 +1140,9 @@ function animLoop() {
   /* Push history every RK4 sub-step (not once per wall frame) so the
      sample density is constant in simulation time, independent of
      playback speed. Otherwise fast replay produces a coarse polyline. */
+  var reachedEnd = false;
   for (var k = 0; k < nSteps; k++) {
+    if (ST.t >= ST.endTime) { reachedEnd = true; break; }
     stepRK4(simDt);
     var fc = fourierCoeffs();
     ST.tHist.push(ST.t);
@@ -1160,11 +1173,28 @@ function animLoop() {
     updateReadout();
     animLoop.framesSinceReadout = 0;
   }
+  if (reachedEnd) {
+    /* Flush a final redraw so the last state is on-screen then stop. */
+    drawOmegaPlot();
+    if (ST.showPhase) drawPhasePlot();
+    updateReadout();
+    stopAnim();
+    say('End time reached');
+    return;
+  }
   ST.rafId = requestAnimationFrame(animLoop);
 }
 
 function startAnim() {
   if (ST.running) return;
+  /* If the sim already reached endTime, pressing Play should rewind
+     to t=0 with current parameters rather than being a dead button. */
+  if (ST.t >= ST.endTime) {
+    var pr = ST.currentPreset && PRESETS[ST.currentPreset]
+      ? PRESETS[ST.currentPreset]
+      : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+    resetState(pr);
+  }
   ST.running = true;
   ST.lastFrameWall = null;
   var btn = document.getElementById('btnPlay');
@@ -1324,6 +1354,25 @@ document.addEventListener('DOMContentLoaded', function() {
       say('Speed ' + this.value + '×');
     });
   });
+
+  /* End time — drives the colorbar range and the auto-stop condition. */
+  (function(){
+    var et = document.getElementById('endTime');
+    if (!et) return;
+    var applyEnd = function(){
+      var v = parseFloat(et.value);
+      if (!isFinite(v) || v <= 0) v = 60;
+      ST.endTime = v;
+      if (ST.showPhase) drawPhasePlot();
+      drawOmegaPlot();
+      say('End time set to ' + v);
+    };
+    et.addEventListener('change', applyEnd);
+    et.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') { e.preventDefault(); applyEnd(); }
+    });
+    ST.endTime = parseFloat(et.value) || 60;
+  })();
 
   /* Phase plot toggle */
   document.getElementById('showPhase').addEventListener('change', function(){
