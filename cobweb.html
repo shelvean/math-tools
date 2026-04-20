@@ -178,6 +178,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .speed-lbl{font-size:.875rem;font-weight:600;color:var(--txt2);white-space:nowrap;}  /* #374151 on #f8f9fb = 9.4:1 ✓ AAA */
 .speed-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
   font-size:.875rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+.trail-wrap{display:flex;align-items:center;gap:.35rem;margin-left:.25rem;}
+.trail-lbl{font-size:.875rem;font-weight:600;color:var(--txt2);white-space:nowrap;}
+.trail-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
+  font-size:.875rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
 
 /* ── readout bar ─────────────────────────────────── */
 .rbar{display:flex;align-items:stretch;margin-bottom:.875rem;
@@ -483,6 +487,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
         <option value="700">Slow</option>
         <option value="350">Normal</option>
         <option value="200" selected>Fast</option>
+      </select>
+    </div>
+    <div class="trail-wrap">
+      <label class="trail-lbl" for="trailSel">Trail</label>
+      <select class="trail-sel" id="trailSel" aria-label="Cobweb trail style: faded transients or solid trail">
+        <option value="faded" selected>Faded</option>
+        <option value="solid">Solid</option>
       </select>
     </div>
   </div>
@@ -922,6 +933,7 @@ var ST = {
   orbit: [],
   animating: false,
   animTimer: null,
+  trailMode: 'faded',
   view: {xMin:-1, xMax:3.4, yMin:-1, yMax:3.4},
   defaultView: {xMin:-1, xMax:3.4, yMin:-1, yMax:3.4}
 };
@@ -1288,6 +1300,7 @@ function drawCobweb(C) {
   var orbit = ST.orbit;
   var nDraw = Math.min(ST.nDraw, totalSegs());
   if(nDraw < 1) return;
+  var solid = (ST.trailMode === 'solid');
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -1301,11 +1314,20 @@ function drawCobweb(C) {
     var isLast = (s === nDraw - 1);
     var prog   = nDraw > 1 ? s / (nDraw - 1) : 1;
 
-    /* thin bright red — older steps slightly darker/dimmer, latest full brightness */
-    var alpha  = isLast ? 1.0 : 0.5 + 0.35 * prog;
-    var lum    = isLast ? 255 : Math.round(lerp(180, 255, prog));
+    var alpha, lum, lw;
+    if(solid){
+      /* Solid: uniform red trail, all iterations equally visible. */
+      alpha = isLast ? 1.0 : 0.9;
+      lum   = isLast ? 255 : 230;
+      lw    = isLast ? 1.8 : 1.4;
+    } else {
+      /* Faded: early transients fade toward invisible, revealing the final orbit. */
+      alpha = isLast ? 1.0 : 0.05 + 0.9 * Math.pow(prog, 2.2);
+      lum   = isLast ? 255 : Math.round(lerp(210, 255, prog));
+      lw    = isLast ? 1.8 : 1.1 + 0.4 * prog;
+    }
     ctx.strokeStyle = 'rgba(' + lum + ',20,20,' + alpha + ')';
-    ctx.lineWidth   = isLast ? 1.8 : 1.2;
+    ctx.lineWidth   = lw;
 
     ctx.beginPath();
     if(s % 2 === 0){
@@ -1596,6 +1618,9 @@ document.getElementById('btnReset').addEventListener('click',function(){
   ST.nDraw=0;
   render();drawOrbit();updateReadout();
   say('Reset to start');
+});
+document.getElementById('trailSel').addEventListener('change',function(){
+  ST.trailMode=this.value;render();say('Trail: '+this.value);
 });
 
 /* =====================================================
