@@ -1,0 +1,1296 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Malkus Chaotic Waterwheel simulator — a physical realisation of the Lorenz system. Animated rotating wheel with leaky buckets, time-series and 3D phase-space views showing the butterfly attractor emerge. WCAG 2.1 AA.">
+  <meta name="keywords" content="Malkus waterwheel, Lorenz attractor, chaos, butterfly effect, fluid dynamics, dynamical systems, Fourier decomposition">
+  <title>Malkus Chaotic Waterwheel — Dynamical Systems</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
+  <script>
+    window.MathJax={
+      tex:{inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},
+      options:{enableExplorer:true,enableAssistiveMml:true,
+        menuOptions:{settings:{assistiveMml:true,explorer:true,speech:true}},
+        skipHtmlTags:['script','noscript','style','textarea','pre','code']},
+      a11y:{speech:true,speechRules:'mathspeak',semantic:true},
+      startup:{pageReady:function(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <style>
+:root{
+  --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;
+  --info:#eff6ff;--inf-b:#1d4ed8;--inf-hd:#1e3a8a;
+  --txt:#111827;--txt2:#374151;--muted:#4b5563;
+  --bdr:#6b7280;--bdr2:#d1d5db;--focus:#1d4ed8;
+  --blue:#1d4ed8;--bl2:#1e3a8a;--teal:#0f766e;
+  --vio:#6d28d9;--ora:#92400e;--green:#15803d;--red:#dc2626;--link:#1e40af;
+  --r:.5rem;--r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10);--sh2:0 4px 12px rgba(0,0,0,.12);
+  --slider-thumb:#15803d;--slider-track:#d1d5db;
+  /* Waterwheel palette */
+  --wheel-rim:#475569;
+  --wheel-spoke:#64748b;
+  --wheel-hub:#334155;
+  --bucket-frame:#1f2937;
+  --bucket-empty:#f3f4f6;
+  --water:#2563eb;
+  --water-edge:#1d4ed8;
+  --stream:#60a5fa;
+  --ground:#6b7280;
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;--inf-hd:#00006b;
+  --txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--red:#cc0000;--link:#00c;
+  --slider-thumb:#006600;--slider-track:#000;
+  --wheel-rim:#000;--wheel-spoke:#333;--wheel-hub:#000;
+  --bucket-frame:#000;--bucket-empty:#fff;
+  --water:#0000cc;--water-edge:#000066;--stream:#0000cc;--ground:#000;
+}
+@media(prefers-contrast:more){:root{--txt:#000;--txt2:#000;--bdr:#000;--blue:#00c;--link:#00c;}}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px;
+  box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;z-index:1000;
+  border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;outline:3px solid #fff;outline-offset:2px;}
+
+/* Nav */
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;background:var(--card);
+  border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;
+  padding:.625rem .5rem;border-radius:.3rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+
+/* Card */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:1200px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* Info panel */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);
+  margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p,.info-body li{font-size:.9375rem;color:var(--txt2);line-height:1.65;}
+.info-body ul{margin:0 0 .5rem 1.5rem;}.info-body li{margin-bottom:.3rem;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+.map-box{background:rgba(15,118,110,.07);padding:.55rem .7rem;border-radius:var(--r);
+  margin:.5rem 0;border-left:3px solid var(--teal);font-size:.875rem;}
+
+/* Equation display */
+.eq-display{text-align:center;padding:.75rem 1rem;background:var(--info);
+  border:2px solid var(--inf-b);border-radius:var(--r);margin-bottom:1rem;
+  font-size:1.05rem;overflow-x:auto;}
+
+/* Preset bar */
+.preset-bar{display:flex;align-items:center;justify-content:center;gap:.4rem;flex-wrap:wrap;
+  margin-bottom:.6rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.preset-lbl{font-size:.8125rem;font-weight:700;color:var(--txt2);margin-right:.3rem;}
+.pbtn{padding:.4rem .9rem;min-height:40px;border:2px solid var(--bdr);border-radius:.4rem;
+  background:var(--card);color:var(--txt);font-size:.875rem;font-weight:700;cursor:pointer;}
+.pbtn:hover{background:rgba(29,78,216,.06);border-color:var(--blue);color:var(--bl2);}
+.pbtn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.pbtn-s{border-color:var(--green);color:var(--green);}
+.pbtn-s:hover{background:rgba(21,128,61,.08);}
+.pbtn-s.active{background:var(--green);color:#fff;border-color:var(--green);}
+.pbtn-p{border-color:var(--teal);color:var(--teal);}
+.pbtn-p:hover{background:rgba(15,118,110,.08);}
+.pbtn-p.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+.pbtn-c{border-color:var(--vio);color:var(--vio);}
+.pbtn-c:hover{background:rgba(109,40,217,.08);}
+.pbtn-c.active{background:var(--vio);color:#fff;border-color:var(--vio);}
+.pbtn-v{border-color:var(--red);color:var(--red);}
+.pbtn-v:hover{background:rgba(220,38,38,.08);}
+.pbtn-v.active{background:var(--red);color:#fff;border-color:var(--red);}
+.pbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* Parameters panel */
+.param-panel{background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);
+  padding:.7rem .85rem;margin-bottom:.6rem;}
+.param-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.7rem;}
+.sl-block{display:flex;flex-direction:column;gap:.15rem;}
+.sl-row{display:flex;align-items:center;justify-content:space-between;gap:.35rem;}
+.sl-label{font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.sl-val{width:78px;min-height:32px;padding:.15rem .3rem;border:2px solid var(--bdr);
+  border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);
+  background:var(--card);text-align:center;}
+.sl-val:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+input[type=range]{-webkit-appearance:none;width:100%;background:transparent;
+  margin:.1rem 0;min-height:28px;cursor:pointer;}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--slider-track);border-radius:2px;}
+input[type=range]::-moz-range-track{height:4px;background:var(--slider-track);border-radius:2px;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;
+  background:var(--slider-thumb);border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.2);
+  cursor:pointer;margin-top:-7px;}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;background:var(--slider-thumb);
+  border-radius:50%;border:none;cursor:pointer;}
+input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* Action bar */
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;
+  margin-bottom:.6rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.abtn{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem 1rem;
+  min-height:40px;border:none;border-radius:.5rem;font-size:.875rem;font-weight:700;cursor:pointer;}
+.abtn-go{background:var(--blue);color:#fff;}.abtn-go:hover{background:var(--bl2);}
+.abtn-grn{background:var(--green);color:#fff;}.abtn-grn:hover{background:#166534;}
+.abtn-stop{background:var(--red);color:#fff;}.abtn-stop:hover{background:#b91c1c;}
+.abtn-reset{background:var(--muted);color:#fff;}.abtn-reset:hover{background:#374151;}
+.abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.speed-row{display:flex;align-items:center;gap:.5rem;font-size:.8125rem;flex-wrap:wrap;}
+.speed-row label{display:flex;align-items:center;gap:.25rem;cursor:pointer;color:var(--txt2);font-weight:600;min-height:32px;}
+.speed-row input[type=radio]{cursor:pointer;min-width:16px;min-height:16px;accent-color:var(--blue);}
+.toggle-row{display:inline-flex;align-items:center;gap:.4rem;margin-left:.25rem;}
+.toggle-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;}
+.toggle-row label{font-size:.8125rem;font-weight:600;color:var(--txt2);cursor:pointer;}
+
+/* Readout bar */
+.rbar{display:flex;align-items:stretch;margin-bottom:.875rem;background:var(--card);
+  border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);flex-wrap:wrap;}
+.rbar{margin-block:0;}
+.rbar dt,.rbar dd{margin:0;padding:0;}
+.rcell{flex:1;text-align:center;padding:.5rem .4rem .4rem;border-right:1px solid var(--bdr2);min-width:90px;}
+.rcell:last-child{border-right:none;}
+.rlbl{font-size:.7rem;color:var(--txt2);margin-bottom:.1rem;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:.02em;}
+.rlbl mjx-container{font-size:1em !important;vertical-align:middle;}
+.rval{font-size:.95rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;line-height:1.2;color:var(--txt);}
+.rval-b{color:#1e40af;}.rval-g{color:#14532d;}.rval-r{color:#7f1d1d;}.rval-t{color:#134e4a;}.rval-v{color:#5b21b6;}
+
+/* Main layout */
+.main-layout{display:grid;grid-template-columns:minmax(360px,1fr) minmax(360px,1fr);gap:.75rem;margin-bottom:.875rem;}
+@media(max-width:900px){.main-layout{grid-template-columns:1fr;}}
+
+/* Panel wrapper */
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);}
+.phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.4rem;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+/* Wheel SVG */
+.wheel-wrap{display:flex;justify-content:center;align-items:center;padding:.4rem;background:#fafafa;}
+.hc .wheel-wrap{background:#f5f5f5;}
+#wheelSvg{display:block;max-width:100%;width:100%;height:auto;}
+.wheel-footer{display:flex;align-items:center;justify-content:space-between;gap:.35rem;
+  padding:.3rem .65rem;background:var(--sect);border-top:1px solid var(--bdr2);flex-wrap:wrap;
+  font-size:.8125rem;color:var(--txt2);}
+.wheel-legend{display:inline-flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
+.wheel-legend-item{display:inline-flex;align-items:center;gap:.3rem;}
+.wheel-legend-swatch{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.25);}
+
+/* Plot panels */
+.plot-stack{display:flex;flex-direction:column;gap:.75rem;}
+#plotOmega{width:100%;height:240px;}
+#plotPhase{width:100%;height:320px;}
+
+/* Pedagogical info box below */
+.ped-box{margin-top:.5rem;padding:.65rem .85rem;background:rgba(15,118,110,.06);
+  border:1px solid rgba(15,118,110,.25);border-left:4px solid var(--teal);
+  border-radius:var(--r);font-size:.875rem;line-height:1.65;color:var(--txt2);}
+
+/* Footer */
+.footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);padding-top:1rem;
+  text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);text-decoration:underline;}
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;background:var(--txt);
+  color:var(--card);border:2px solid var(--bdr);border-radius:50%;width:48px;height:48px;
+  font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important;}}
+
+/* Back link */
+.back-link{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem 0 0.5rem 1rem;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+</style>
+  <meta name="author" content="Shelvean Kapita">
+  <link rel="canonical" href="https://shelvean.github.io/math-tools/malkus-waterwheel.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Math Tools — Shelvean Kapita">
+  <meta property="og:title" content="Malkus Chaotic Waterwheel — Dynamical Systems">
+  <meta property="og:description" content="Malkus Chaotic Waterwheel simulator — a physical realisation of the Lorenz system. Animated rotating wheel with leaky buckets, time-series and 3D phase-space views showing the butterfly attractor emerge.">
+  <meta property="og:url" content="https://shelvean.github.io/math-tools/malkus-waterwheel.html">
+  <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Malkus Chaotic Waterwheel — Dynamical Systems">
+  <meta name="twitter:description" content="Malkus Chaotic Waterwheel simulator — a physical realisation of the Lorenz system. Animated rotating wheel with leaky buckets, time-series and 3D phase-space views showing the butterfly attractor emerge.">
+  <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Diff Eq</a></li>
+      <li><a href="dynamical.html" aria-current="page">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Linear Programming</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+      <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+<a href="dynamical.html" class="back-link" aria-label="Back to Dynamical Systems">&larr; Back to Dynamical Systems</a>
+<script>
+if(document.referrer.includes('projects.html')){
+  var bl=document.querySelector('.back-link');
+  if(bl){bl.href='projects.html';bl.textContent='← Back to Differential Equations';bl.setAttribute('aria-label','Back to Differential Equations');}
+}
+</script>
+
+<main id="main" class="card" role="main">
+  <h1>Malkus Chaotic Waterwheel</h1>
+  <p class="subtitle">A physical realisation of the Lorenz attractor — leaky buckets on a rotating wheel produce the same butterfly in phase space.</p>
+
+  <!-- About panel -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button"
+      aria-label="About the Malkus waterwheel: expand or collapse">
+      <span>About &mdash; Physics, Fourier Decomposition &amp; Reduction to Lorenz</span>
+      <span id="infoIcon" style="font-size:1.25rem;font-weight:700;flex-shrink:0;" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+
+      <h2>The Setup</h2>
+      <p>A wheel (radius \(R\), moment of inertia \(I\)) rotates freely about a horizontal axis. Around its rim are \(N\) leaky cups. Water flows in from above, peaking at the top (angle \(\theta=0\)). Each cup drains through a hole at the bottom at rate proportional to its water mass.</p>
+      <p>Two things tend to happen. (i) As the wheel turns, a cup that fills near the top swings outward, its weight driving the wheel further — positive feedback. (ii) Leakage and viscous damping \(\nu\) bleed the rotation away — negative feedback. The competition between these produces extraordinarily rich dynamics: steady rotation, periodic oscillation, and — at high enough inflow — <strong>chaotic reversals indistinguishable from the Lorenz attractor</strong>.</p>
+
+      <h2>Equations of Motion</h2>
+      <p>Let \(m(\theta,t)\) be the mass density of water at angle \(\theta\) around the rim. Conservation of mass in a rotating frame gives</p>
+      <div class="defn-box">
+        \[\frac{\partial m}{\partial t} + \omega\,\frac{\partial m}{\partial \theta} = Q(\theta) - K\,m\]
+      </div>
+      <p>where \(Q(\theta)\) is the inflow (water falling in) and \(K\) is the leakage rate. The wheel's angular momentum equation is</p>
+      <div class="defn-box">
+        \[I\,\dot{\omega} = gR\!\int_0^{2\pi} m(\theta,t)\sin\theta\,d\theta \;-\;\nu\,\omega.\]
+      </div>
+      <p>The gravity torque integral picks up only the \(\sin\theta\) (first-sine) Fourier component of the mass distribution.</p>
+
+      <h2>Fourier Reduction — How Lorenz Emerges</h2>
+      <p>Expand the mass density in a Fourier series around the rim:</p>
+      <div class="defn-box">
+        \[m(\theta,t) = \sum_{n=0}^{\infty}\bigl[a_n(t)\cos(n\theta) + b_n(t)\sin(n\theta)\bigr].\]
+      </div>
+      <p>Take an inflow profile that is purely first-harmonic in cosine: \(Q(\theta) = q_1\cos\theta\) (water peaks at the top, \(\theta=0\)). Substituting into the PDE and projecting onto \(\cos\theta\) and \(\sin\theta\) <em>decouples</em> the first-harmonic modes \((a_1,b_1)\) from all higher modes:</p>
+      <div class="defn-box">
+        \[\dot{a}_1 = \omega\,b_1 - K\,a_1 + q_1,\qquad \dot{b}_1 = -\omega\,a_1 - K\,b_1,\qquad \dot{\omega} = \frac{\pi gR}{I}\,b_1 - \frac{\nu}{I}\,\omega.\]
+      </div>
+      <p>Three ODEs in three unknowns \((\omega,b_1,a_1)\). Rescaling time and state gives <strong>exactly the Lorenz system</strong>:</p>
+      <div class="map-box">
+        \[\sigma = \frac{\nu/I}{K},\qquad \rho = \frac{\pi gR\,q_1}{K^2\,(\nu/I)},\qquad \beta = 1.\]
+      </div>
+      <p>The Lorenz parameter \(\beta\) is not free here — it is pinned to 1 by the waterwheel geometry. This is why Malkus's model is said to realise Lorenz <em>exactly</em> on a planar cross-section of parameter space.</p>
+
+      <h2>What You'll See</h2>
+      <ul>
+        <li>At <strong>low inflow</strong> \(q_1\): damping wins. The wheel either stays still (if initial \(\omega=0\)) or settles into steady one-directional rotation (symmetric pitchfork of stable fixed points \(C^\pm\), corresponding to Lorenz equilibria).</li>
+        <li>At <strong>intermediate inflow</strong>: a Hopf bifurcation gives birth to a periodic orbit — the wheel oscillates without crossing zero angular velocity.</li>
+        <li>At <strong>high inflow</strong>: chaos. The wheel reverses direction at unpredictable times, and the point \((\omega,b_1,a_1)\) traces the famous Lorenz butterfly in phase space — two lobes around \(C^+\) and \(C^-\).</li>
+      </ul>
+
+      <h2>Numerical Method</h2>
+      <p>This simulation uses the <em>discrete</em> version of the Malkus wheel: \(N\) buckets with individual masses \(m_i(t)\), positions \(\theta_i(t) = \theta_i(0) + \varphi(t)\) where \(\dot\varphi=\omega\). The equations are</p>
+      <div class="defn-box">
+        \[\dot m_i = q_1\,\max(0,\cos\theta_i) - K\,m_i,\qquad I\,\dot\omega = gR\sum_i m_i\sin\theta_i - \nu\,\omega.\]
+      </div>
+      <p>Note the \(\max(0,\cos\theta_i)\) inflow profile — physically realistic (water only lands in cups near the top), though it contains higher harmonics. For sufficiently large \(N\) these higher harmonics are damped out by leakage faster than the fundamental, and the effective dynamics in \((\omega,b_1,a_1)\)-space remain Lorenz-like. Integration uses a fixed-step explicit 4th-order Runge&ndash;Kutta scheme with \(\Delta t=0.01\).</p>
+      <p>The Fourier coefficients displayed in real time are</p>
+      <div class="defn-box">
+        \[a_1(t)=\tfrac{2}{N}\sum_i m_i\cos\theta_i,\qquad b_1(t)=\tfrac{2}{N}\sum_i m_i\sin\theta_i.\]
+      </div>
+
+      <h2>How to Use</h2>
+      <ul>
+        <li>Click a <strong>preset</strong> (Steady / Periodic / Chaos / Violent Chaos) to load parameters that demonstrate each regime. The wheel is reset and animation starts.</li>
+        <li>Use the <strong>parameter sliders</strong> to adjust inflow \(q_1\), leakage \(K\), damping \(\nu\), and moment of inertia \(I\). Changes take effect immediately without resetting the state.</li>
+        <li>The <strong>Play / Pause</strong> button controls animation. <strong>Reset</strong> zeroes the state and starts over.</li>
+        <li>Watch the right-hand plots: the top shows \(\omega(t)\) over time — a good indicator of the regime. The bottom 3D plot traces the orbit in \((\omega,b_1,a_1)\) space, where the Lorenz butterfly emerges in the chaotic regime.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Equations -->
+  <div class="eq-display" role="math" aria-label="Malkus waterwheel equations and Fourier definitions">
+    \[\dot m_i = q_1\max(0,\cos\theta_i) - K m_i,\quad I\dot\omega = gR\!\sum_i\! m_i\sin\theta_i - \nu\omega\]
+  </div>
+
+  <!-- Preset bar -->
+  <div class="preset-bar" role="group" aria-label="Parameter presets">
+    <span class="preset-lbl">Preset:</span>
+    <button type="button" class="pbtn pbtn-s" id="preStead" aria-pressed="false">Steady (\(q_1{=}15\))</button>
+    <button type="button" class="pbtn pbtn-p" id="preOsc" aria-pressed="false">Periodic (\(q_1{=}15,\nu{=}7\))</button>
+    <button type="button" class="pbtn pbtn-c active" id="preChaos" aria-pressed="true">Chaos (\(q_1{=}40\))</button>
+    <button type="button" class="pbtn pbtn-v" id="preViol" aria-pressed="false">Violent (\(q_1{=}90\))</button>
+  </div>
+
+  <!-- Parameters -->
+  <div class="param-panel">
+    <div class="param-grid" id="paramGrid" role="group" aria-label="Physical parameters"></div>
+  </div>
+
+  <!-- Animation controls -->
+  <div class="abar" role="group" aria-label="Animation controls">
+    <button type="button" id="btnPlay" class="abtn abtn-grn" aria-pressed="true" aria-label="Pause or resume animation">
+      <span aria-hidden="true">&#9616;&#9616;</span> Pause
+    </button>
+    <button type="button" id="btnReset" class="abtn abtn-reset" aria-label="Reset simulation state">
+      <span aria-hidden="true">&#8635;</span> Reset
+    </button>
+    <fieldset class="speed-row" style="border:none;padding:0;margin:0;">
+      <legend class="sr-only">Simulation speed</legend>
+      <span style="font-weight:700;color:var(--txt2);font-size:.8125rem;">Speed:</span>
+      <label><input type="radio" name="simSpeed" value="0.5"> 0.5&times;</label>
+      <label><input type="radio" name="simSpeed" value="1" checked> 1&times;</label>
+      <label><input type="radio" name="simSpeed" value="2"> 2&times;</label>
+      <label><input type="radio" name="simSpeed" value="4"> 4&times;</label>
+    </fieldset>
+    <div class="toggle-row">
+      <input type="checkbox" id="showPhase" checked>
+      <label for="showPhase">Show 3D phase space</label>
+    </div>
+  </div>
+
+  <!-- Readout -->
+  <dl class="rbar" role="region" aria-label="Simulation state readouts">
+    <div class="rcell">
+      <dt class="rlbl">Time \(t\)</dt>
+      <dd class="rval rval-b" id="rvT">0.00</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">\(\omega(t)\)</dt>
+      <dd class="rval rval-b" id="rvOmega">0.000</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">\(a_1(t)\)</dt>
+      <dd class="rval rval-t" id="rvA1">0.000</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">\(b_1(t)\)</dt>
+      <dd class="rval rval-v" id="rvB1">0.000</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Total water</dt>
+      <dd class="rval rval-g" id="rvMass">0.00</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Reversals</dt>
+      <dd class="rval rval-r" id="rvRev">0</dd>
+    </div>
+  </dl>
+
+  <!-- Main 2-col layout: wheel (left) + plots (right) -->
+  <div class="main-layout">
+
+    <!-- Wheel -->
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--water);" aria-hidden="true"></span>
+        Waterwheel &mdash; live animation
+      </div>
+      <div class="wheel-wrap">
+        <svg id="wheelSvg" viewBox="0 0 500 500"
+             role="img" aria-label="Animated waterwheel. Rotating wheel with leaky buckets. Water falls from top into buckets near the top; buckets leak as they rotate; the wheel's angular velocity is driven by the imbalance of water around the rim."
+             aria-describedby="wheelDesc"></svg>
+        <p id="wheelDesc" class="sr-only" aria-live="polite">Live waterwheel simulation. Current angular velocity announced in the readout bar above.</p>
+      </div>
+      <div class="wheel-footer">
+        <span class="wheel-legend" aria-hidden="true">
+          <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--water);"></span>Water level</span>
+          <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--bucket-empty);"></span>Empty bucket</span>
+          <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--stream);"></span>Inflow stream</span>
+        </span>
+        <span id="wheelStatus" style="font-weight:600;">Running</span>
+      </div>
+    </div>
+
+    <!-- Plots stack -->
+    <div class="plot-stack">
+      <div class="pwrap">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>
+          Angular velocity &mdash; \(\omega(t)\)
+        </div>
+        <div id="plotOmega" role="img" aria-label="Angular velocity omega plotted against time. Sign reversals indicate chaotic direction changes."></div>
+      </div>
+      <div class="pwrap" id="phaseWrap">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--vio);" aria-hidden="true"></span>
+          Phase space &mdash; \((\omega,\,b_1,\,a_1)\)  &nbsp;<span style="font-weight:400;color:var(--muted);">&mdash; Lorenz butterfly</span>
+        </div>
+        <div id="plotPhase" role="img" aria-label="3D phase-space trajectory in omega, b1, a1 coordinates. In the chaotic regime the trajectory traces the Lorenz butterfly."></div>
+      </div>
+    </div>
+
+  </div><!-- /main-layout -->
+
+  <!-- Pedagogical note -->
+  <div class="ped-box" id="pedagogicalBox" role="region" aria-label="Pedagogical interpretation">
+    Loading interpretation&hellip;
+  </div>
+
+  <footer class="footer" role="contentinfo">
+    &copy; Shelvean Kapita &mdash; Department of Mathematics, Texas A&amp;M University.
+    MIT License. Last modified: March 2026.
+    Source: <a href="https://shelvean.github.io/math-tools/">shelvean.github.io/math-tools</a>.<br>
+    <strong>Accessibility:</strong> This tool meets <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards,
+    with keyboard navigation, screen reader support via MathJax Assistive MML and Speech Rule Engine,
+    visible focus indicators, high-contrast mode, and reduced-motion support.<br>
+    Accessibility issues? Contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.
+  </footer>
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* =====================================================
+   Utilities
+===================================================== */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+function fmt(v,d){if(!isFinite(v))return '—';d=d==null?3:d;return v.toFixed(d);}
+function fmtSig(n){if(!Number.isFinite(n))return String(n);var s=n.toFixed(6);s=s.replace(/\.?0+$/,'');return s;}
+function parseInp(s){if(!s||typeof s!=='string')return NaN;s=s.trim();var v=parseFloat(s);return isNaN(v)?NaN:v;}
+function mj(n){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(n).catch(function(){});}
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function isHC(){return document.documentElement.classList.contains('hc');}
+
+/* =====================================================
+   Parameter definitions
+===================================================== */
+var PARAMS=[
+  {id:'q1',   label:'q_1',  name:'Inflow rate',     min:0,  max:150,step:0.5, value:40,
+    desc:'Peak inflow at the top. Higher = more water, more torque. Primary bifurcation parameter.'},
+  {id:'K',    label:'K',    name:'Leakage rate',    min:0.2,max:5,  step:0.05, value:1,
+    desc:'How fast each bucket drains. Higher = water leaves faster.'},
+  {id:'nu',   label:'\\nu', name:'Damping',         min:0.5,max:30, step:0.1,  value:10,
+    desc:'Viscous/frictional damping of the wheel.'},
+  {id:'I',    label:'I',    name:'Moment of inertia',min:0.2,max:5,  step:0.05, value:1,
+    desc:'Rotational inertia. Larger = wheel responds more slowly to torque.'},
+  {id:'gR',   label:'gR',   name:'Gravity &times; radius',min:0.2,max:5,  step:0.05, value:1,
+    desc:'Scaled gravitational torque arm.'},
+  {id:'N',    label:'N',    name:'Number of buckets',min:12, max:48, step:4,   value:24,
+    desc:'Finer discretization tracks the continuum PDE more faithfully.',  integer:true}
+];
+
+/* =====================================================
+   State
+===================================================== */
+var ST = {
+  /* physics state */
+  phi: 0,             // cumulative wheel angle
+  omega: 0.5,         // angular velocity
+  m: [],              // bucket masses m[i], length N
+  baseAngle: [],      // θ_i(0) = 2πi/N
+  t: 0,
+  reversals: 0,
+  lastOmegaSign: 1,
+  /* animation — must start false so the first startAnim() call does not early-return */
+  running: false,
+  simSpeed: 1,
+  rafId: null,
+  lastFrameWall: null,
+  /* plot buffers */
+  tHist: [],
+  omegaHist: [],
+  a1Hist: [],
+  b1Hist: [],
+  maxHist: 3000,      // rolling window length (~30s at dt=0.01)
+  /* preset */
+  currentPreset: 'chaos',
+  /* display */
+  showPhase: true
+};
+
+/* Presets */
+var PRESETS = {
+  steady:  { name:'Steady',           q1:15, K:1, nu:10, I:1, gR:1, N:24, omega0:0.5, tag:'steady' },
+  periodic:{ name:'Periodic',         q1:15, K:1, nu:7,  I:1, gR:1, N:24, omega0:0.5, tag:'periodic' },
+  chaos:   { name:'Chaos',            q1:40, K:1, nu:10, I:1, gR:1, N:24, omega0:0.5, tag:'chaos' },
+  violent: { name:'Violent chaos',    q1:90, K:1, nu:10, I:1, gR:1, N:24, omega0:0.5, tag:'violent' }
+};
+
+var PED_TEXT = {
+  steady: 'In this regime, damping dominates the first-harmonic Fourier mode. The wheel settles to one of two symmetric steady rotations \\(C^\\pm\\) (a supercritical pitchfork bifurcation from the origin). The phase-space trajectory spirals into a single fixed point; \\(\\omega(t)\\) tends to a constant.',
+  periodic:'Just past the Hopf bifurcation of the equilibria \\(C^\\pm\\). A stable limit cycle orbits one of the fixed points — the wheel oscillates without crossing \\(\\omega=0\\). The 3D phase portrait shows a closed loop, not yet the butterfly.',
+  chaos: 'The classic Lorenz regime. The equilibria \\(C^\\pm\\) are now unstable, but a chaotic attractor has emerged around them. Nearby trajectories diverge exponentially (positive Lyapunov exponent) and the wheel reverses direction at unpredictable times. The 3D view shows the full <strong>Lorenz butterfly</strong>.',
+  violent: 'Far above the chaos threshold: strong, fast reversals with a more spread attractor. The dynamics remain bounded by leakage and damping, but each lobe of the butterfly is filled densely. A single initial condition cannot be predicted more than a few time units ahead.',
+  custom: 'Custom parameters. The regime depends on the dimensionless numbers \\(\\sigma=\\nu/(IK)\\), \\(\\rho=\\pi gR\\,q_1/(K^2\\nu/I)\\), \\(\\beta=1\\). Classic Lorenz chaos sits near \\(\\sigma\\approx 10\\), \\(\\rho>24.74\\).'
+};
+
+/* =====================================================
+   Initialisation
+===================================================== */
+function initBuckets(N) {
+  ST.baseAngle = [];
+  ST.m = [];
+  for (var i = 0; i < N; i++) {
+    ST.baseAngle.push(2 * Math.PI * i / N);
+    ST.m.push(0);
+  }
+}
+
+function resetState(preset) {
+  var p = preset || PRESETS[ST.currentPreset];
+  ST.phi = 0;
+  ST.omega = p.omega0;
+  ST.t = 0;
+  ST.reversals = 0;
+  ST.lastOmegaSign = Math.sign(p.omega0) || 1;
+  initBuckets(p.N);
+  ST.tHist.length = 0;
+  ST.omegaHist.length = 0;
+  ST.a1Hist.length = 0;
+  ST.b1Hist.length = 0;
+  updateReadout();
+  drawWheel();
+  drawOmegaPlot();
+  drawPhasePlot();
+}
+
+/* =====================================================
+   RK4 integration step (dt ≈ 0.01, 4 substeps per RAF frame at 1×)
+===================================================== */
+function getParams(){
+  return {
+    q1: parseFloat(document.getElementById('q1').value),
+    K:  parseFloat(document.getElementById('K').value),
+    nu: parseFloat(document.getElementById('nu').value),
+    I:  parseFloat(document.getElementById('I').value),
+    gR: parseFloat(document.getElementById('gR').value),
+  };
+}
+
+/* Derivatives given state (phi, omega, m[]) and params */
+function deriv(phi, omega, m, params) {
+  var N = m.length;
+  var dm = new Array(N);
+  var torque = 0;
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i] + phi;
+    var cosT = Math.cos(theta);
+    var sinT = Math.sin(theta);
+    var inflow = cosT > 0 ? params.q1 * cosT : 0;
+    dm[i] = inflow - params.K * m[i];
+    torque += m[i] * sinT;
+  }
+  var dOmega = (params.gR * torque - params.nu * omega) / params.I;
+  return { dPhi: omega, dOmega: dOmega, dm: dm };
+}
+
+function stepRK4(dt) {
+  var p = getParams();
+  var phi = ST.phi, omega = ST.omega, m = ST.m;
+  var N = m.length;
+
+  /* k1 */
+  var k1 = deriv(phi, omega, m, p);
+  /* k2 */
+  var phi2 = phi + 0.5*dt*k1.dPhi;
+  var omega2 = omega + 0.5*dt*k1.dOmega;
+  var m2 = new Array(N);
+  for (var i = 0; i < N; i++) m2[i] = m[i] + 0.5*dt*k1.dm[i];
+  var k2 = deriv(phi2, omega2, m2, p);
+  /* k3 */
+  var phi3 = phi + 0.5*dt*k2.dPhi;
+  var omega3 = omega + 0.5*dt*k2.dOmega;
+  var m3 = new Array(N);
+  for (var i = 0; i < N; i++) m3[i] = m[i] + 0.5*dt*k2.dm[i];
+  var k3 = deriv(phi3, omega3, m3, p);
+  /* k4 */
+  var phi4 = phi + dt*k3.dPhi;
+  var omega4 = omega + dt*k3.dOmega;
+  var m4 = new Array(N);
+  for (var i = 0; i < N; i++) m4[i] = m[i] + dt*k3.dm[i];
+  var k4 = deriv(phi4, omega4, m4, p);
+
+  /* Combine */
+  ST.phi   = phi + dt * (k1.dPhi + 2*k2.dPhi + 2*k3.dPhi + k4.dPhi) / 6;
+  ST.omega = omega + dt * (k1.dOmega + 2*k2.dOmega + 2*k3.dOmega + k4.dOmega) / 6;
+  for (var i = 0; i < N; i++) {
+    ST.m[i] = m[i] + dt * (k1.dm[i] + 2*k2.dm[i] + 2*k3.dm[i] + k4.dm[i]) / 6;
+    if (ST.m[i] < 0) ST.m[i] = 0; /* enforce physical bound */
+  }
+  ST.t += dt;
+
+  /* reversal counting */
+  var s = Math.sign(ST.omega);
+  if (s !== 0 && s !== ST.lastOmegaSign && ST.lastOmegaSign !== 0) {
+    ST.reversals++;
+  }
+  if (s !== 0) ST.lastOmegaSign = s;
+}
+
+/* =====================================================
+   Fourier coefficients a_1, b_1 (current state)
+===================================================== */
+function fourierCoeffs() {
+  var N = ST.m.length;
+  var a1 = 0, b1 = 0;
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i] + ST.phi;
+    a1 += ST.m[i] * Math.cos(theta);
+    b1 += ST.m[i] * Math.sin(theta);
+  }
+  return { a1: (2/N)*a1, b1: (2/N)*b1 };
+}
+
+function totalMass(){var s=0;for(var i=0;i<ST.m.length;i++)s+=ST.m[i];return s;}
+
+/* =====================================================
+   Wheel SVG rendering
+===================================================== */
+var SVG_NS = 'http://www.w3.org/2000/svg';
+var WHEEL_CX = 250, WHEEL_CY = 240;
+var WHEEL_R = 150;             /* rim radius */
+var BUCKET_W = 24;             /* bucket width (tangential) */
+var BUCKET_H = 40;             /* bucket height (radial, pointing outward from rim) */
+var HUB_R = 14;
+var STREAM_X = WHEEL_CX;       /* inflow stream x position */
+var STREAM_TOP = 18;           /* top of falling water */
+var STREAM_BOT = WHEEL_CY - WHEEL_R - 6; /* stream stops at top of wheel */
+
+function buildWheelSvg() {
+  var svg = document.getElementById('wheelSvg');
+  svg.innerHTML = ''; /* wipe */
+  var N = ST.m.length;
+
+  /* Background ground shading */
+  var ground = document.createElementNS(SVG_NS, 'rect');
+  ground.setAttribute('x', 0);
+  ground.setAttribute('y', WHEEL_CY + WHEEL_R + BUCKET_H + 8);
+  ground.setAttribute('width', 500);
+  ground.setAttribute('height', 500 - (WHEEL_CY + WHEEL_R + BUCKET_H + 8));
+  ground.setAttribute('fill', 'rgba(107,114,128,0.15)');
+  ground.setAttribute('aria-hidden', 'true');
+  svg.appendChild(ground);
+
+  /* Inflow stream (animated by opacity based on q1) */
+  var streamGroup = document.createElementNS(SVG_NS, 'g');
+  streamGroup.setAttribute('id', 'streamGroup');
+  streamGroup.setAttribute('aria-hidden', 'true');
+  svg.appendChild(streamGroup);
+
+  /* Wheel: rim + spokes + hub (fixed) */
+  var wheelFixed = document.createElementNS(SVG_NS, 'g');
+  wheelFixed.setAttribute('id', 'wheelFixed');
+  wheelFixed.setAttribute('aria-hidden', 'true');
+  svg.appendChild(wheelFixed);
+
+  /* Outer rim */
+  var rim = document.createElementNS(SVG_NS, 'circle');
+  rim.setAttribute('cx', WHEEL_CX);
+  rim.setAttribute('cy', WHEEL_CY);
+  rim.setAttribute('r', WHEEL_R);
+  rim.setAttribute('fill', 'none');
+  rim.setAttribute('stroke', 'var(--wheel-rim)');
+  rim.setAttribute('stroke-width', 3);
+  wheelFixed.appendChild(rim);
+
+  /* Rotating layer: spokes + buckets */
+  var rotGroup = document.createElementNS(SVG_NS, 'g');
+  rotGroup.setAttribute('id', 'rotGroup');
+  svg.appendChild(rotGroup);
+
+  /* Spokes (8 evenly spaced inside rotating group so they turn with wheel) */
+  for (var s = 0; s < 8; s++) {
+    var ang = s * Math.PI / 4;
+    var sp = document.createElementNS(SVG_NS, 'line');
+    sp.setAttribute('x1', WHEEL_CX);
+    sp.setAttribute('y1', WHEEL_CY);
+    sp.setAttribute('x2', WHEEL_CX + WHEEL_R * Math.sin(ang));
+    sp.setAttribute('y2', WHEEL_CY - WHEEL_R * Math.cos(ang));
+    sp.setAttribute('stroke', 'var(--wheel-spoke)');
+    sp.setAttribute('stroke-width', 1.8);
+    sp.setAttribute('opacity', '0.55');
+    rotGroup.appendChild(sp);
+  }
+
+  /* Buckets (created inside rotating group) */
+  for (var i = 0; i < N; i++) {
+    var bucketGroup = document.createElementNS(SVG_NS, 'g');
+    bucketGroup.setAttribute('data-bucket', String(i));
+    /* Bucket frame (outline) */
+    var frame = document.createElementNS(SVG_NS, 'rect');
+    frame.setAttribute('x', -BUCKET_W / 2);
+    frame.setAttribute('y', 0);
+    frame.setAttribute('width', BUCKET_W);
+    frame.setAttribute('height', BUCKET_H);
+    frame.setAttribute('fill', 'var(--bucket-empty)');
+    frame.setAttribute('stroke', 'var(--bucket-frame)');
+    frame.setAttribute('stroke-width', 1.4);
+    frame.setAttribute('rx', 2);
+    frame.setAttribute('data-kind', 'frame');
+    bucketGroup.appendChild(frame);
+    /* Water fill */
+    var water = document.createElementNS(SVG_NS, 'rect');
+    water.setAttribute('x', -BUCKET_W / 2 + 1.5);
+    water.setAttribute('y', BUCKET_H - 1.5); /* bottom-anchored */
+    water.setAttribute('width', BUCKET_W - 3);
+    water.setAttribute('height', 0);
+    water.setAttribute('fill', 'var(--water)');
+    water.setAttribute('data-kind', 'water');
+    bucketGroup.appendChild(water);
+    /* Water surface line (slight) */
+    var surface = document.createElementNS(SVG_NS, 'line');
+    surface.setAttribute('stroke', 'var(--water-edge)');
+    surface.setAttribute('stroke-width', 1);
+    surface.setAttribute('data-kind', 'surface');
+    surface.setAttribute('x1', -BUCKET_W / 2 + 1.5);
+    surface.setAttribute('x2', BUCKET_W / 2 - 1.5);
+    surface.setAttribute('y1', BUCKET_H - 1.5);
+    surface.setAttribute('y2', BUCKET_H - 1.5);
+    bucketGroup.appendChild(surface);
+    rotGroup.appendChild(bucketGroup);
+  }
+
+  /* Hub (above rotating group so it stays on top, non-rotating but not strictly necessary) */
+  var hub = document.createElementNS(SVG_NS, 'circle');
+  hub.setAttribute('cx', WHEEL_CX);
+  hub.setAttribute('cy', WHEEL_CY);
+  hub.setAttribute('r', HUB_R);
+  hub.setAttribute('fill', 'var(--wheel-hub)');
+  hub.setAttribute('aria-hidden', 'true');
+  svg.appendChild(hub);
+
+  /* Direction-of-rotation arrow (inside hub) */
+  var dirArrow = document.createElementNS(SVG_NS, 'g');
+  dirArrow.setAttribute('id', 'dirArrow');
+  dirArrow.setAttribute('aria-hidden', 'true');
+  svg.appendChild(dirArrow);
+
+  /* θ = 0 marker (small tick at top, above wheel) */
+  var topMarker = document.createElementNS(SVG_NS, 'g');
+  topMarker.setAttribute('aria-hidden', 'true');
+  var markTri = document.createElementNS(SVG_NS, 'polygon');
+  var mY = WHEEL_CY - WHEEL_R - 3;
+  markTri.setAttribute('points', (WHEEL_CX-6)+','+(mY-8)+' '+(WHEEL_CX+6)+','+(mY-8)+' '+WHEEL_CX+','+mY);
+  markTri.setAttribute('fill', 'var(--stream)');
+  topMarker.appendChild(markTri);
+  svg.appendChild(topMarker);
+}
+
+function drawWheel() {
+  var N = ST.m.length;
+  if (!document.getElementById('rotGroup')) buildWheelSvg();
+  var rot = document.getElementById('rotGroup');
+
+  /* Defensive: if bucket count in SVG doesn't match current N, rebuild.
+     This covers the case where buildWheelSvg ran with a different N
+     (e.g. initial empty state, or N slider changed). */
+  var existingBuckets = rot.querySelectorAll('[data-bucket]');
+  if (existingBuckets.length !== N) {
+    buildWheelSvg();
+    rot = document.getElementById('rotGroup');
+  }
+
+  /* Apply rotation: wheel spins by phi (radians). SVG rotates in degrees, positive = clockwise. */
+  var phiDeg = (ST.phi * 180 / Math.PI);
+  rot.setAttribute('transform', 'rotate(' + phiDeg + ' ' + WHEEL_CX + ' ' + WHEEL_CY + ')');
+
+  /* For each bucket, compute its rest position (θ = 2πi/N from top) and apply local transform
+     that places the bucket at that rim position with radial-outward orientation.
+     When rotGroup rotates by phi, the bucket naturally moves to θ_i + phi without per-bucket logic. */
+  var buckets = rot.querySelectorAll('[data-bucket]');
+  var mMax = 0;
+  for (var i = 0; i < N; i++) if (ST.m[i] > mMax) mMax = ST.m[i];
+  /* Anchor mMax to typical steady-state level so fills are visible early on;
+     use 1.5× running max or at least mass_target = q1/K (rough single-bucket steady state) */
+  var p = getParams();
+  var estMax = Math.max(mMax, p.q1 / p.K * 0.7);
+  var fillCap = Math.max(0.5, estMax);
+
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i]; /* local base angle; rotGroup transform adds phi */
+    /* bucket rest position (top at theta = 0 going CW is standard Malkus convention) */
+    var rimX = WHEEL_CX + WHEEL_R * Math.sin(theta);
+    var rimY = WHEEL_CY - WHEEL_R * Math.cos(theta);
+    /* rotation angle (degrees) to point bucket radially outward */
+    var rotDeg = theta * 180 / Math.PI;
+    /* combined transform: translate to rim, rotate so bucket y-axis points outward */
+    buckets[i].setAttribute('transform',
+      'translate(' + rimX + ',' + rimY + ') rotate(' + rotDeg + ')');
+    /* Update water fill: bucket local coords have rectangle from (−W/2, 0) to (W/2, BUCKET_H).
+       Water fills from the bottom (y=BUCKET_H) upward, so water rect has:
+       y = BUCKET_H - fillH, height = fillH */
+    var fillFrac = Math.min(1, Math.max(0, ST.m[i] / fillCap));
+    var fillH = fillFrac * (BUCKET_H - 3);
+    var water = buckets[i].querySelector('[data-kind=water]');
+    var surface = buckets[i].querySelector('[data-kind=surface]');
+    water.setAttribute('y', BUCKET_H - 1.5 - fillH);
+    water.setAttribute('height', fillH);
+    surface.setAttribute('y1', BUCKET_H - 1.5 - fillH);
+    surface.setAttribute('y2', BUCKET_H - 1.5 - fillH);
+  }
+
+  /* Inflow stream: intensity ~ q1 */
+  var streamGroup = document.getElementById('streamGroup');
+  streamGroup.innerHTML = '';
+  var streamOp = Math.min(1, p.q1 / 40);
+  if (streamOp > 0.01) {
+    /* Main stream: a few vertical droplet-lines falling at slightly different x */
+    for (var j = -2; j <= 2; j++) {
+      var xj = STREAM_X + j * 2.5;
+      var line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', xj);
+      line.setAttribute('x2', xj + 0.4);
+      line.setAttribute('y1', STREAM_TOP);
+      line.setAttribute('y2', STREAM_BOT);
+      line.setAttribute('stroke', 'var(--stream)');
+      line.setAttribute('stroke-width', 1.6);
+      line.setAttribute('opacity', streamOp * (1 - Math.abs(j) * 0.15));
+      streamGroup.appendChild(line);
+    }
+    /* Animated droplets (CSS keyframe alternative: just redraw each frame at different y) */
+    for (var d = 0; d < 3; d++) {
+      var tPhase = ((ST.t * 3 + d * 0.33) % 1);
+      var dy = STREAM_TOP + tPhase * (STREAM_BOT - STREAM_TOP);
+      var drop = document.createElementNS(SVG_NS, 'circle');
+      drop.setAttribute('cx', STREAM_X);
+      drop.setAttribute('cy', dy);
+      drop.setAttribute('r', 2.2);
+      drop.setAttribute('fill', 'var(--water)');
+      drop.setAttribute('opacity', streamOp);
+      streamGroup.appendChild(drop);
+    }
+    /* Small puddle/splash at top-most bucket location */
+    var splash = document.createElementNS(SVG_NS, 'ellipse');
+    splash.setAttribute('cx', STREAM_X);
+    splash.setAttribute('cy', STREAM_BOT + 1);
+    splash.setAttribute('rx', 9);
+    splash.setAttribute('ry', 2.4);
+    splash.setAttribute('fill', 'var(--water)');
+    splash.setAttribute('opacity', streamOp * 0.45);
+    streamGroup.appendChild(splash);
+  }
+
+  /* Direction arrow inside hub */
+  var arrow = document.getElementById('dirArrow');
+  arrow.innerHTML = '';
+  if (Math.abs(ST.omega) > 0.02) {
+    var arrowR = HUB_R - 4;
+    var dir = ST.omega > 0 ? 1 : -1; /* +1 = clockwise */
+    /* Simple curved arrow: 3/4 circle arc with arrowhead */
+    var startA = -Math.PI/2;
+    var sweep = dir * Math.PI * 1.35;
+    var endA = startA + sweep;
+    var x1 = WHEEL_CX + arrowR * Math.cos(startA);
+    var y1 = WHEEL_CY + arrowR * Math.sin(startA);
+    var x2 = WHEEL_CX + arrowR * Math.cos(endA);
+    var y2 = WHEEL_CY + arrowR * Math.sin(endA);
+    var largeArc = Math.abs(sweep) > Math.PI ? 1 : 0;
+    var sweepFlag = dir > 0 ? 1 : 0;
+    var path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', 'M ' + x1 + ',' + y1 + ' A ' + arrowR + ',' + arrowR + ' 0 ' + largeArc + ' ' + sweepFlag + ' ' + x2 + ',' + y2);
+    path.setAttribute('stroke', '#fff');
+    path.setAttribute('stroke-width', 1.5);
+    path.setAttribute('fill', 'none');
+    arrow.appendChild(path);
+    /* Arrowhead at end */
+    var tipLen = 4;
+    var tipA = endA + dir * Math.PI / 2;
+    var tipX = x2 + tipLen * Math.cos(tipA - dir * 0.45);
+    var tipY = y2 + tipLen * Math.sin(tipA - dir * 0.45);
+    var head = document.createElementNS(SVG_NS, 'circle');
+    head.setAttribute('cx', x2);
+    head.setAttribute('cy', y2);
+    head.setAttribute('r', 1.7);
+    head.setAttribute('fill', '#fff');
+    arrow.appendChild(head);
+  }
+}
+
+/* =====================================================
+   Plots: ω(t) time series and (ω, b1, a1) phase space
+===================================================== */
+function drawOmegaPlot() {
+  var hc = isHC();
+  var bg = hc ? '#fff' : '#fafafa';
+  var grid = hc ? 'rgba(0,0,0,.2)' : '#e5e7eb';
+  Plotly.react('plotOmega',[{
+    x: ST.tHist, y: ST.omegaHist,
+    type:'scatter', mode:'lines',
+    line:{color:'#1d4ed8', width:1.8},
+    hovertemplate:'t=%{x:.2f}<br>ω=%{y:.3f}<extra></extra>',
+    name:'ω(t)'
+  }, {
+    /* current point marker */
+    x: ST.tHist.length ? [ST.tHist[ST.tHist.length-1]] : [],
+    y: ST.omegaHist.length ? [ST.omegaHist[ST.omegaHist.length-1]] : [],
+    type:'scatter', mode:'markers',
+    marker:{color:'#dc2626', size:8, line:{color:'#fff', width:1.5}},
+    hoverinfo:'skip', showlegend:false
+  }], {
+    margin:{t:6,r:12,b:32,l:44},
+    plot_bgcolor: bg,
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font:{family:'-apple-system,Arial,sans-serif', size:10, color: hc?'#000':'#374151'},
+    xaxis:{title:{text:'t', font:{size:11}}, gridcolor:grid, zerolinecolor:grid},
+    yaxis:{title:{text:'ω', font:{size:11}}, gridcolor:grid, zerolinecolor: hc?'#000':'#9ca3af', zerolinewidth:1.5},
+    showlegend:false
+  }, {responsive:true, displaylogo:false, displayModeBar:false});
+}
+
+function drawPhasePlot() {
+  if (!ST.showPhase) return;
+  var hc = isHC();
+  var bg = hc ? '#fff' : '#fafafa';
+  var cMin = ST.tHist.length ? ST.tHist[0] : 0;
+  var cMax = ST.tHist.length ? ST.tHist[ST.tHist.length-1] : 1;
+  if (cMax <= cMin) cMax = cMin + 1;
+  Plotly.react('plotPhase',[{
+    x: ST.omegaHist, y: ST.b1Hist, z: ST.a1Hist,
+    type:'scatter3d', mode:'lines',
+    line:{color: ST.tHist, colorscale:'Jet', width:2.4, showscale:false, cauto:false, cmin:cMin, cmax:cMax},
+    hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>',
+    name:'orbit'
+  }, {
+    /* current point */
+    x: ST.omegaHist.length ? [ST.omegaHist[ST.omegaHist.length-1]] : [],
+    y: ST.b1Hist.length ? [ST.b1Hist[ST.b1Hist.length-1]] : [],
+    z: ST.a1Hist.length ? [ST.a1Hist[ST.a1Hist.length-1]] : [],
+    type:'scatter3d', mode:'markers',
+    marker:{color:'#dc2626', size:4.5, line:{color:'#fff', width:1}},
+    hoverinfo:'skip', showlegend:false
+  }], {
+    scene:{
+      xaxis:{title:'ω', gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
+      yaxis:{title:'b₁', gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
+      zaxis:{title:'a₁', gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
+      camera:{eye:{x:1.8, y:1.4, z:0.9}},
+      bgcolor: bg
+    },
+    margin:{t:6, r:6, b:6, l:6},
+    paper_bgcolor:bg,
+    font:{color: hc?'#000':'#374151', size:10},
+    hovermode:false,
+    uirevision:'camera3d'
+  }, {responsive:true, displaylogo:false, displayModeBar:false});
+}
+
+/* =====================================================
+   Readouts
+===================================================== */
+function updateReadout() {
+  var fc = fourierCoeffs();
+  document.getElementById('rvT').textContent = ST.t.toFixed(2);
+  document.getElementById('rvOmega').textContent = ST.omega.toFixed(3);
+  document.getElementById('rvA1').textContent = fc.a1.toFixed(3);
+  document.getElementById('rvB1').textContent = fc.b1.toFixed(3);
+  document.getElementById('rvMass').textContent = totalMass().toFixed(2);
+  document.getElementById('rvRev').textContent = ST.reversals;
+}
+
+function updatePedagogical() {
+  var key = ST.currentPreset || 'custom';
+  var txt = PED_TEXT[key] || PED_TEXT.custom;
+  var p = getParams();
+  var sigma = (p.nu / p.I) / p.K;
+  var rho = Math.PI * p.gR * p.q1 / (p.K * p.K * (p.nu / p.I));
+  var dim = '<span style="display:block;margin-top:.35rem;color:var(--txt);"><strong>Effective Lorenz parameters:</strong> \\(\\sigma \\approx '+sigma.toFixed(2)+'\\), \\(\\rho \\approx '+rho.toFixed(2)+'\\), \\(\\beta = 1\\). ' +
+    (rho > 24.74 && sigma > 1 ? 'Chaotic regime (\\(\\rho>\\rho_H\\approx24.74\\)).' : rho > 1 ? 'Fixed-point or periodic regime.' : 'Sub-threshold (origin stable).') +'</span>';
+  var box = document.getElementById('pedagogicalBox');
+  box.innerHTML = txt + dim;
+  mj([box]);
+}
+
+/* =====================================================
+   Animation loop
+===================================================== */
+function animLoop() {
+  if (!ST.running) return;
+  var now = performance.now();
+  if (!ST.lastFrameWall) ST.lastFrameWall = now;
+  var dtWall = (now - ST.lastFrameWall) / 1000; /* seconds */
+  ST.lastFrameWall = now;
+  /* Cap to avoid huge jumps after tab-away */
+  if (dtWall > 0.1) dtWall = 0.1;
+
+  /* Sim time per wall-clock second is simSpeed (so at 1×, 1s wall = 1 time unit) */
+  var simDt = 0.01;
+  var targetSimAdvance = dtWall * ST.simSpeed;
+  var nSteps = Math.max(1, Math.round(targetSimAdvance / simDt));
+  nSteps = Math.min(nSteps, 40); /* cap to keep frame affordable */
+  for (var k = 0; k < nSteps; k++) stepRK4(simDt);
+
+  /* Append to history buffers */
+  var fc = fourierCoeffs();
+  ST.tHist.push(ST.t);
+  ST.omegaHist.push(ST.omega);
+  ST.a1Hist.push(fc.a1);
+  ST.b1Hist.push(fc.b1);
+  if (ST.tHist.length > ST.maxHist) {
+    ST.tHist.shift(); ST.omegaHist.shift(); ST.a1Hist.shift(); ST.b1Hist.shift();
+  }
+
+  drawWheel();
+  /* Throttle plot updates (Plotly react is expensive) */
+  if (animLoop.framesSincePlot === undefined) animLoop.framesSincePlot = 0;
+  animLoop.framesSincePlot++;
+  if (animLoop.framesSincePlot >= 5) {
+    drawOmegaPlot();
+    if (ST.showPhase) drawPhasePlot();
+    animLoop.framesSincePlot = 0;
+  }
+  if (animLoop.framesSinceReadout === undefined) animLoop.framesSinceReadout = 0;
+  animLoop.framesSinceReadout++;
+  if (animLoop.framesSinceReadout >= 3) {
+    updateReadout();
+    animLoop.framesSinceReadout = 0;
+  }
+  ST.rafId = requestAnimationFrame(animLoop);
+}
+
+function startAnim() {
+  if (ST.running) return;
+  ST.running = true;
+  ST.lastFrameWall = null;
+  var btn = document.getElementById('btnPlay');
+  btn.innerHTML = '<span aria-hidden="true">&#9616;&#9616;</span> Pause';
+  btn.setAttribute('aria-pressed', 'true');
+  btn.className = 'abtn abtn-stop';
+  document.getElementById('wheelStatus').textContent = 'Running';
+  animLoop();
+  say('Animation resumed');
+}
+
+function stopAnim() {
+  ST.running = false;
+  if (ST.rafId) { cancelAnimationFrame(ST.rafId); ST.rafId = null; }
+  var btn = document.getElementById('btnPlay');
+  btn.innerHTML = '<span aria-hidden="true">&#9654;</span> Play';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.className = 'abtn abtn-grn';
+  document.getElementById('wheelStatus').textContent = 'Paused';
+  say('Animation paused');
+}
+
+/* =====================================================
+   Parameter controls
+===================================================== */
+function buildParamGrid() {
+  var grid = document.getElementById('paramGrid');
+  grid.innerHTML = PARAMS.map(function(p) {
+    return '<div class="sl-block">' +
+      '<div class="sl-row">' +
+        '<label class="sl-label" for="' + p.id + 'Val">\\(' + p.label + '\\) &mdash; ' + p.name + '</label>' +
+        '<input type="text" id="' + p.id + 'Val" class="sl-val" value="' + fmtSig(p.value) + '" aria-label="' + p.name + ' value">' +
+      '</div>' +
+      '<input type="range" id="' + p.id + '" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" value="' + p.value + '" aria-label="' + p.name + ' slider">' +
+    '</div>';
+  }).join('');
+  mj([grid]);
+}
+
+function syncParamInputs(p, val) {
+  var slider = document.getElementById(p.id);
+  var text = document.getElementById(p.id + 'Val');
+  if (slider) slider.value = val;
+  if (text) text.value = p.integer ? String(Math.round(val)) : fmtSig(val);
+}
+
+function onParamChange(pid, rawVal) {
+  var pDef = PARAMS.find(function(pd){return pd.id === pid;});
+  if (!pDef) return;
+  var v = parseInp(rawVal);
+  if (isNaN(v)) v = pDef.value;
+  v = Math.max(pDef.min, Math.min(pDef.max, v));
+  if (pDef.integer) v = Math.round(v);
+  syncParamInputs(pDef, v);
+  pDef.value = v;
+  if (pid === 'N') {
+    /* Rebuild buckets preserving mass roughly — simplest: reset buckets */
+    initBuckets(v);
+    buildWheelSvg();
+    /* Clear history since dimensionality of system changed */
+    ST.tHist.length = 0; ST.omegaHist.length = 0; ST.a1Hist.length = 0; ST.b1Hist.length = 0;
+  }
+  ST.currentPreset = matchingPreset() || 'custom';
+  highlightPreset();
+  updatePedagogical();
+}
+
+function matchingPreset() {
+  var p = getParams();
+  var N = parseFloat(document.getElementById('N').value);
+  for (var key in PRESETS) {
+    var pr = PRESETS[key];
+    if (Math.abs(pr.q1 - p.q1) < 1e-6 &&
+        Math.abs(pr.K  - p.K)  < 1e-6 &&
+        Math.abs(pr.nu - p.nu) < 1e-6 &&
+        Math.abs(pr.I  - p.I)  < 1e-6 &&
+        Math.abs(pr.gR - p.gR) < 1e-6 &&
+        pr.N === N) return key;
+  }
+  return null;
+}
+
+function highlightPreset() {
+  var key = ST.currentPreset;
+  var map = { steady:'preStead', periodic:'preOsc', chaos:'preChaos', violent:'preViol' };
+  Object.keys(map).forEach(function(k){
+    var btn = document.getElementById(map[k]);
+    if (!btn) return;
+    if (k === key) { btn.classList.add('active'); btn.setAttribute('aria-pressed','true'); }
+    else { btn.classList.remove('active'); btn.setAttribute('aria-pressed','false'); }
+  });
+}
+
+function applyPreset(key) {
+  var pr = PRESETS[key];
+  if (!pr) return;
+  ST.currentPreset = key;
+  PARAMS.forEach(function(pd){
+    var v = pr[pd.id];
+    if (v == null) return;
+    pd.value = v;
+    syncParamInputs(pd, v);
+  });
+  resetState(pr);
+  highlightPreset();
+  updatePedagogical();
+  say('Preset loaded: ' + pr.name);
+}
+
+/* =====================================================
+   Event listeners
+===================================================== */
+document.addEventListener('DOMContentLoaded', function() {
+  /* CRITICAL: populate ST.m before buildWheelSvg reads ST.m.length.
+     Without this, buildWheelSvg creates an empty rotGroup with zero buckets,
+     and the subsequent drawWheel crashes on buckets[i].setAttribute (undefined). */
+  var defaultN = 24;
+  var nInput = PARAMS.find(function(p){return p.id==='N';});
+  if (nInput) defaultN = nInput.value;
+  initBuckets(defaultN);
+
+  buildParamGrid();
+  buildWheelSvg();
+
+  /* Parameter listeners */
+  PARAMS.forEach(function(p) {
+    var slider = document.getElementById(p.id);
+    var text = document.getElementById(p.id + 'Val');
+    if (!slider || !text) return;
+    slider.addEventListener('input', function(){ onParamChange(p.id, this.value); });
+    text.addEventListener('change', function(){ onParamChange(p.id, this.value); });
+    text.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); onParamChange(p.id, this.value); } });
+  });
+
+  /* Preset buttons */
+  document.getElementById('preStead').addEventListener('click', function(){ applyPreset('steady'); });
+  document.getElementById('preOsc').addEventListener('click', function(){ applyPreset('periodic'); });
+  document.getElementById('preChaos').addEventListener('click', function(){ applyPreset('chaos'); });
+  document.getElementById('preViol').addEventListener('click', function(){ applyPreset('violent'); });
+
+  /* Play/pause */
+  document.getElementById('btnPlay').addEventListener('click', function(){
+    if (ST.running) stopAnim(); else startAnim();
+  });
+
+  /* Reset */
+  document.getElementById('btnReset').addEventListener('click', function(){
+    var pr = ST.currentPreset && PRESETS[ST.currentPreset] ? PRESETS[ST.currentPreset] : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+    resetState({ N: parseFloat(document.getElementById('N').value), omega0: 0.5 });
+    say('Simulation reset');
+  });
+
+  /* Speed */
+  document.querySelectorAll('input[name="simSpeed"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      ST.simSpeed = parseFloat(this.value);
+      say('Speed ' + this.value + '×');
+    });
+  });
+
+  /* Phase plot toggle */
+  document.getElementById('showPhase').addEventListener('change', function(){
+    ST.showPhase = this.checked;
+    document.getElementById('phaseWrap').style.display = this.checked ? '' : 'none';
+    if (this.checked) drawPhasePlot();
+  });
+
+  /* Info panel */
+  document.getElementById('infoBtn').addEventListener('click', function(){
+    var exp = this.getAttribute('aria-expanded') === 'true';
+    this.setAttribute('aria-expanded', String(!exp));
+    document.getElementById('infoBody').hidden = exp;
+    document.getElementById('infoIcon').textContent = exp ? '+' : '\u2212';
+    if (!exp && window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([document.getElementById('infoBody')]).catch(function(){});
+  });
+
+  /* High contrast */
+  document.getElementById('ctog').addEventListener('click', function(){
+    document.documentElement.classList.toggle('hc');
+    drawWheel(); drawOmegaPlot(); if (ST.showPhase) drawPhasePlot();
+    say('High contrast ' + (isHC() ? 'on' : 'off'));
+  });
+
+  /* Start */
+  if (window.MathJax && MathJax.startup) {
+    MathJax.startup.promise.then(function(){
+      MathJax.typesetPromise().then(function(){
+        applyPreset('chaos');
+        startAnim(); /* begins running */
+      }).catch(function(){ applyPreset('chaos'); startAnim(); });
+    }).catch(function(){ applyPreset('chaos'); startAnim(); });
+  } else {
+    setTimeout(function(){ applyPreset('chaos'); startAnim(); }, 200);
+  }
+
+  /* Respect prefers-reduced-motion: offer a notice but keep animation (this tool is about motion) */
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    /* Don't auto-start animation; wait for user */
+    setTimeout(function(){
+      stopAnim();
+      var box = document.getElementById('pedagogicalBox');
+      box.insertAdjacentHTML('afterbegin',
+        '<p style="font-weight:700;color:var(--ora);margin:0 0 .5rem;">Your system prefers reduced motion. Animation is paused — click <em>Play</em> to start.</p>');
+    }, 600);
+  }
+
+  /* Handle window resize (debounced) */
+  var _rt;
+  window.addEventListener('resize', function(){
+    clearTimeout(_rt);
+    _rt = setTimeout(function(){
+      drawOmegaPlot();
+      if (ST.showPhase) drawPhasePlot();
+    }, 120);
+  });
+});
+</script>
+</body>
+</html>
