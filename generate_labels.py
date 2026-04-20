@@ -10,6 +10,7 @@ LABELS_DIR = os.path.join(BASE, 'labels')
 # Hub pages to scan: (filename, display_name)
 HUB_PAGES = [
     ('projects.html', 'Diff Eq'),
+    ('dynamical.html', 'Dynamical Systems'),
     ('linear.html', 'Linear Algebra'),
     ('numerical.html', 'Numerical Methods'),
     ('optim.html', 'Linear Programming'),
@@ -271,11 +272,14 @@ def generate_page(label, tool_list):
     <div class="nav-inner">
       <ul class="nav-list" role="list">
         <li><a href="../index.html">Home</a></li>
+        <li><a href="../about.html">About</a></li>
         <li><a href="../teaching.html">Teaching</a></li>
         <li><a href="../projects.html">Diff Eq</a></li>
+        <li><a href="../dynamical.html">Dynamical Systems</a></li>
         <li><a href="../linear.html">Linear Algebra</a></li>
         <li><a href="../optim.html">Linear Programming</a></li>
         <li><a href="../numerical.html">Numerical Methods</a></li>
+        <li><a href="../businessmath.html">Business Math</a></li>
       </ul>
     </div>
   </nav>
