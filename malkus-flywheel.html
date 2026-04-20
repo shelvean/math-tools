@@ -362,8 +362,8 @@ if(document.referrer.includes('projects.html')){
 
   <!-- Animation controls -->
   <div class="abar" role="group" aria-label="Animation controls">
-    <button type="button" id="btnPlay" class="abtn abtn-grn" aria-pressed="true" aria-label="Pause or resume animation">
-      <span aria-hidden="true">&#9616;&#9616;</span> Pause
+    <button type="button" id="btnPlay" class="abtn abtn-grn" aria-pressed="false" aria-label="Pause or resume animation">
+      <span aria-hidden="true">&#9654;</span> Play
     </button>
     <button type="button" id="btnReset" class="abtn abtn-reset" aria-label="Reset simulation state">
       <span aria-hidden="true">&#8635;</span> Reset
@@ -431,7 +431,7 @@ if(document.referrer.includes('projects.html')){
           <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--bucket-empty);"></span>Empty bucket</span>
           <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--stream);"></span>Inflow stream</span>
         </span>
-        <span id="wheelStatus" style="font-weight:600;">Running</span>
+        <span id="wheelStatus" style="font-weight:600;">Paused</span>
       </div>
     </div>
 
@@ -574,6 +574,13 @@ function resetState(preset) {
   ST.omegaHist.length = 0;
   ST.a1Hist.length = 0;
   ST.b1Hist.length = 0;
+  /* Record the initial condition as a single history sample so the plots
+     display the starting state on load without running the simulation. */
+  var fc0 = fourierCoeffs();
+  ST.tHist.push(ST.t);
+  ST.omegaHist.push(ST.omega);
+  ST.a1Hist.push(fc0.a1);
+  ST.b1Hist.push(fc0.b1);
   updateReadout();
   drawWheel();
   drawOmegaPlot();
@@ -1338,27 +1345,18 @@ document.addEventListener('DOMContentLoaded', function() {
     say('High contrast ' + (isHC() ? 'on' : 'off'));
   });
 
-  /* Start */
+  /* Initial load: set the chaos preset and render a single frame of the
+     initial condition, but do NOT start the simulation. The page stays
+     idle until the user clicks Play. This keeps page-load fast and
+     predictable. */
   if (window.MathJax && MathJax.startup) {
     MathJax.startup.promise.then(function(){
       MathJax.typesetPromise().then(function(){
         applyPreset('chaos');
-        startAnim(); /* begins running */
-      }).catch(function(){ applyPreset('chaos'); startAnim(); });
-    }).catch(function(){ applyPreset('chaos'); startAnim(); });
+      }).catch(function(){ applyPreset('chaos'); });
+    }).catch(function(){ applyPreset('chaos'); });
   } else {
-    setTimeout(function(){ applyPreset('chaos'); startAnim(); }, 200);
-  }
-
-  /* Respect prefers-reduced-motion: offer a notice but keep animation (this tool is about motion) */
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    /* Don't auto-start animation; wait for user */
-    setTimeout(function(){
-      stopAnim();
-      var box = document.getElementById('pedagogicalBox');
-      box.insertAdjacentHTML('afterbegin',
-        '<p style="font-weight:700;color:var(--ora);margin:0 0 .5rem;">Your system prefers reduced motion. Animation is paused — click <em>Play</em> to start.</p>');
-    }, 600);
+    setTimeout(function(){ applyPreset('chaos'); }, 200);
   }
 
   /* Handle window resize (debounced) */
