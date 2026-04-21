@@ -413,24 +413,40 @@ function debounce(fn,w){var t;return function(){clearTimeout(t);t=setTimeout(fun
 
 /* ── Integration parameters ──
    DT       = 0.01 step size (Rössler tolerates larger steps than Lorenz)
-   STATIC_N = N = round(endTime / DT); 30000 ≡ t_end = 300 at default
-   ANIM_N   = 15000 steps → t_end = 150 per c-sweep frame (kept fixed for
-              playback performance independent of the user-chosen endTime)
+   STATIC_N = N = round(endTime / DT) + 1; includes both endpoints
+              so xa[0] is the initial condition at t=0 and xa[N-1] is
+              at t=(N-1)·DT = endTime. 30001 ≡ t_end = 300 at default.
+   ANIM_N   = 15001 samples → t_end = 150 per c-sweep frame (kept fixed
+              for playback performance independent of user-chosen endTime)
 */
 var DT       = 0.01;
-var STATIC_N = 30000;     /* default; overridden by currentStaticN() */
-var ANIM_N   = 15000;
+var STATIC_N = 30001;     /* default; overridden by currentStaticN() */
+var ANIM_N   = 15001;
 
-/* Current number of RK4 steps for static / particle trajectories,
-   derived from the endTime input. Clamped to a sane range so wild
-   values cannot freeze the browser. */
+/* Format a time value for display with the smallest precision that
+   keeps it recognisable (strips trailing zeros). Avoids Math.round's
+   damage to non-integer user inputs like t_end = 17.5. */
+function fmtT(v){
+  return parseFloat(v.toFixed(v >= 100 ? 0 : 2));
+}
+
+/* Current number of RK4 samples for static / particle trajectories,
+   derived from the endTime input. N = round(tEnd/DT) + 1 so that
+   (N-1)·DT equals the user-entered t_end (up to DT). Clamped to a
+   sane range so wild values cannot freeze the browser; when clamped,
+   the input is updated to reflect the actual simulated t_end so what
+   the user sees in the box matches what the simulation does. */
 function currentStaticN() {
   var el = document.getElementById('endTime');
   var tEnd = el ? parseFloat(el.value) : 300;
   if (!isFinite(tEnd) || tEnd <= 0) tEnd = 300;
-  var N = Math.round(tEnd / DT);
-  if (N < 100)    N = 100;
-  if (N > 300000) N = 300000;  /* ≈ t_end = 3000 */
+  var N = Math.round(tEnd / DT) + 1;
+  var clamped = false;
+  if (N < 101)     { N = 101;     clamped = true; }   /* t_end ≥ 1   */
+  if (N > 300001)  { N = 300001;  clamped = true; }   /* t_end ≤ 3000 */
+  if (clamped && el) {
+    el.value = fmtT((N-1)*DT).toString();
+  }
   return N;
 }
 
@@ -456,7 +472,11 @@ function solveRossler(a,b,c,x0,y0,z0,N){
   var xa=new Array(N), ya=new Array(N), za=new Array(N), ta=new Array(N);
   var x=x0, y=y0, z=z0;
   var norm=N>1?N-1:1;
-  for(var i=0;i<N;i++){
+  /* Store the initial condition at index 0 so xa[i] is the state at
+     actual simulation time i·DT. After N-1 RK4 steps, xa[N-1] is at
+     t = (N-1)·DT — exactly the user-entered t_end. */
+  xa[0]=x; ya[0]=y; za[0]=z; ta[0]=0;
+  for(var i=1;i<N;i++){
     var k1=rossler(x,y,z,a,b,c);
     var k2=rossler(x+k1[0]*DT/2, y+k1[1]*DT/2, z+k1[2]*DT/2, a,b,c);
     var k3=rossler(x+k2[0]*DT/2, y+k2[1]*DT/2, z+k2[2]*DT/2, a,b,c);
@@ -472,13 +492,13 @@ function solveRossler(a,b,c,x0,y0,z0,N){
 /* ── Colorbar & trace factory (mirrors Lorenz pattern exactly) ── */
 function makeColorbar(N){
   N=N||STATIC_N;
-  var tEnd=Math.round((N-1)*DT);
-  var tMid=Math.round(tEnd/2);
+  var tEnd=(N-1)*DT;
+  var tMid=tEnd/2;
   return {
     title:{text:'t',side:'right'},
     thickness:14, len:0.75,
     tickvals:[0,0.5,1],
-    ticktext:['t\u2009=\u20090','t\u2009=\u2009'+tMid,'t\u2009=\u2009'+tEnd],
+    ticktext:['t\u2009=\u20090','t\u2009=\u2009'+fmtT(tMid),'t\u2009=\u2009'+fmtT(tEnd)],
     tickfont:{size:11}
   };
 }
@@ -538,7 +558,7 @@ var updatePlot=debounce(function(cOverride){
     [makeJetTrace(tr, 2, N)],
     make3DLayout('Rössler Attractor  (a='+fmtSig(v.a)+', b='+fmtSig(v.b)+', c='+fmtSig(v.c)+')')
   );
-  say('Plot updated. c = '+fmtSig(v.c)+', t_end = '+Math.round((N-1)*DT));
+  say('Plot updated. c = '+fmtSig(v.c)+', t_end = '+fmtT((N-1)*DT));
 }, 100);
 
 /* ── Particle animation ── */
