@@ -89,8 +89,8 @@ TOOL_MAP = {
 # CSS for back link (self-contained)
 BACK_CSS = """
 /* ===== Back link ===== */
-.back-link{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
-  color:#4338ca;text-decoration:none;margin:0.5rem 0 0.5rem 1rem;transition:transform .2s;}
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
 .back-link:hover{transform:translateX(-3px);color:#3730a3;}
 """
 
