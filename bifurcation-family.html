@@ -168,6 +168,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .legend{display:inline-flex;align-items:center;gap:.5rem;margin-left:auto;font-size:.8125rem;font-weight:600;flex-wrap:wrap;}
 .legend-item{display:inline-flex;align-items:center;gap:.25rem;}
 .legend-dot{width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.2);flex-shrink:0;}
+.legend-dot-semi-pos{background:linear-gradient(90deg,var(--eq-stable) 50%,var(--eq-unstable) 50%);}
+.legend-dot-semi-neg{background:linear-gradient(90deg,var(--eq-unstable) 50%,var(--eq-stable) 50%);}
 
 .svg-wrap{padding:8px;background:#fafafa;}
 .bif-svg{display:block;width:100%;height:auto;border-radius:.375rem;}
@@ -276,7 +278,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 
       <h2>Reading the Coupled View</h2>
       <ul>
-        <li>The <strong>left panel</strong> shows the graph of \(f(x;r)\) for the current \(r\), with the phase line on the \(x\)-axis. Intersections with \(y=0\) are equilibria; arrows show the sign of \(\dot{x}\). Green dots are stable (\(f'<0\)), red dots unstable (\(f'>0\)).</li>
+        <li>The <strong>left panel</strong> shows the graph of \(f(x;r)\) for the current \(r\), with the phase line on the \(x\)-axis. Intersections with \(y=0\) are equilibria; arrows show the sign of \(\dot{x}\). Green dots are stable (\(f'<0\)), red dots unstable (\(f'>0\)), and <strong>half-green/half-red dots are semistable</strong> &mdash; \(f\) touches zero without changing sign, so trajectories approach from one side and flee on the other. These appear exactly at a saddle-node (\(r+x^2\) at \(r=0\)) or transcritical (\(rx-x^2\) at \(r=0\)) crossing.</li>
         <li>The <strong>right panel</strong> plots all branches \(x^*(r)\). Solid green = stable; dashed red = unstable. Purple dots mark bifurcation points. A vertical amber line tracks the current \(r\).</li>
         <li>The intersections of the vertical \(r\)-line with the branches are exactly the equilibria shown on the phase line. This is the whole point.</li>
       </ul>
@@ -376,6 +378,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <dd class="rval rval-u" id="rv-unstable" aria-live="polite">0</dd>
     </div>
     <div class="rcell">
+      <dt class="rlbl">Semistable</dt>
+      <dd class="rval" id="rv-semi" aria-live="polite" style="color:var(--ora)">0</dd>
+    </div>
+    <div class="rcell">
       <dt class="rlbl">Nearest bifurcation</dt>
       <dd class="rval rval-v" id="rv-bif" aria-live="polite">\(r_c=0\)</dd>
     </div>
@@ -391,6 +397,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <span class="legend" aria-hidden="true">
           <span class="legend-item"><span class="legend-dot" style="background:var(--eq-stable)"></span>stable</span>
           <span class="legend-item"><span class="legend-dot" style="background:var(--eq-unstable)"></span>unstable</span>
+          <span class="legend-item"><span class="legend-dot legend-dot-semi-pos"></span>semistable</span>
         </span>
       </div>
       <div class="eq-display" id="eqDisplay" role="math" aria-label="Current equation">
@@ -414,12 +421,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <span class="legend" aria-hidden="true">
           <span class="legend-item"><span style="display:inline-block;width:18px;height:3px;background:var(--eq-stable);vertical-align:middle"></span> stable</span>
           <span class="legend-item"><span style="display:inline-block;width:18px;height:3px;background:var(--eq-unstable);border-top:2px dashed var(--eq-unstable);background:none;border-bottom:none;vertical-align:middle"></span> unstable</span>
+          <span class="legend-item"><span class="legend-dot legend-dot-semi-pos"></span>semistable</span>
           <span class="legend-item"><span class="legend-dot" style="background:var(--eq-bif)"></span>bifurcation</span>
         </span>
       </div>
       <div class="svg-wrap">
         <svg id="bifSvg" class="bif-svg" role="img"
-             aria-label="Bifurcation diagram. Horizontal axis r, vertical axis x-star. Solid green branches are stable equilibria; dashed red branches are unstable. Purple dots mark bifurcation points. Amber vertical line tracks current r value."
+             aria-label="Bifurcation diagram. Horizontal axis r, vertical axis x-star. Solid green branches are stable equilibria; dashed red branches are unstable. Half green and half red dots mark semistable equilibria. Purple dots mark bifurcation points. Amber vertical line tracks current r value."
              viewBox="0 0 600 420"></svg>
       </div>
       <div class="canvas-footer">
@@ -501,7 +509,9 @@ var PRESETS = {
     /* Equilibria: x* = ±√(-r) for r ≤ 0 */
     equilibria: function(r){
       if(r > 0) return [];
-      if(Math.abs(r) < 1e-12) return [{x:0, stable:null}]; // degenerate
+      /* r=0: f(x)=x² ≥ 0 on both sides → flow rightward on both sides
+         → stable from left, unstable on right → semistable-pos */
+      if(Math.abs(r) < 1e-12) return [{x:0, stable:'semi-pos'}];
       var s = Math.sqrt(-r);
       return [
         {x: -s, stable: true},   // f'(-s) = -2s < 0
@@ -537,8 +547,10 @@ var PRESETS = {
     rInit: -0.8,
     equilibria: function(r){
       var eqs = [];
-      // x = 0
-      eqs.push({x:0, stable: r<0 ? true : r>0 ? false : null});
+      /* x = 0 equilibrium. At r=0 the x=0 and x=r branches collide:
+         f(x)=-x² ≤ 0 on both sides → flow leftward on both sides
+         → unstable on left, stable on right → semistable-neg */
+      eqs.push({x:0, stable: r<0 ? true : r>0 ? false : 'semi-neg'});
       // x = r
       if(Math.abs(r) > 1e-12){
         eqs.push({x:r, stable: r>0 ? true : false});
@@ -840,12 +852,15 @@ function renderPhaseLine(){
     drawArrow(xScale(midX), zeroY, fmid>0 ? 1 : -1, sz);
   }
 
-  /* Equilibria dots */
-  eqs.forEach(function(eq){
-    var col = eq.stable===true ? stableColor : eq.stable===false ? unstableColor : '#92400e';
-    g.append('circle').attr('cx',xScale(eq.x)).attr('cy',zeroY).attr('r',8)
-      .attr('stroke',isHC()?'#000':'rgba(0,0,0,.6)').attr('stroke-width',2).attr('fill',col);
-    g.append('text').attr('x',xScale(eq.x)).attr('y',zeroY-16)
+  /* Equilibria dots — semi-stable renders as half green/half red via linearGradient
+     (same approach as phaseline.html) */
+  var defs = svg.append('defs');
+  eqs.forEach(function(eq, i){
+    var cx = xScale(eq.x);
+    var fill = eqFill(eq.stable, defs, 'phEq'+i, cx, 8, stableColor, unstableColor);
+    g.append('circle').attr('cx',cx).attr('cy',zeroY).attr('r',8)
+      .attr('stroke',isHC()?'#000':'rgba(0,0,0,.6)').attr('stroke-width',2).attr('fill',fill);
+    g.append('text').attr('x',cx).attr('y',zeroY-16)
       .attr('text-anchor','middle').attr('font-size',12).attr('font-weight','700')
       .attr('fill',axisColor).text('x*');
   });
@@ -965,13 +980,14 @@ function renderBifurcationDiagram(){
   g.append('line').attr('x1',rx).attr('x2',rx).attr('y1',0).attr('y2',plotH)
     .attr('stroke',cursorColor).attr('stroke-width',2.4).attr('stroke-dasharray','6 3');
 
-  /* Current equilibria dots on branches */
+  /* Current equilibria dots on branches — semi-stable renders as half green/half red */
   var eqs = P.equilibria(ST.r);
-  eqs.forEach(function(eq){
+  var defs = svg.append('defs');
+  eqs.forEach(function(eq, i){
     if(eq.x < xMin || eq.x > xMax) return;
-    var col = eq.stable===true ? stableColor : eq.stable===false ? unstableColor : '#92400e';
+    var fill = eqFill(eq.stable, defs, 'bifEq'+i, rx, 6, stableColor, unstableColor);
     g.append('circle').attr('cx',rx).attr('cy',yScale(eq.x)).attr('r',6)
-      .attr('fill',col).attr('stroke','#fff').attr('stroke-width',2);
+      .attr('fill',fill).attr('stroke','#fff').attr('stroke-width',2);
   });
 
   /* r annotation at top of cursor */
@@ -980,6 +996,27 @@ function renderBifurcationDiagram(){
   g.append('text').attr('x',rx).attr('y',-5).attr('text-anchor','middle')
     .attr('fill','#fff').attr('font-size',11).attr('font-weight','700')
     .text('r = '+fmt(ST.r,3));
+}
+
+/* Resolve fill color for an equilibrium dot. For semi-stable states, build a
+   horizontal linearGradient (green|red or red|green) and return its url(#id).
+   Modeled after phaseline.html. */
+function eqFill(stable, defs, id, cx, r, stableColor, unstableColor){
+  if(stable === true)  return stableColor;
+  if(stable === false) return unstableColor;
+  if(stable === 'semi-pos' || stable === 'semi-neg'){
+    var grad = defs.append('linearGradient').attr('id', id)
+      .attr('gradientUnits','userSpaceOnUse')
+      .attr('x1', cx - r).attr('x2', cx + r)
+      .attr('y1', 0).attr('y2', 0);
+    var stops = stable === 'semi-pos'
+      ? [{o:'0%',c:stableColor},  {o:'50%',c:stableColor},  {o:'50%',c:unstableColor},{o:'100%',c:unstableColor}]
+      : [{o:'0%',c:unstableColor},{o:'50%',c:unstableColor},{o:'50%',c:stableColor},  {o:'100%',c:stableColor}];
+    stops.forEach(function(s){grad.append('stop').attr('offset',s.o).attr('stop-color',s.c);});
+    return 'url(#'+id+')';
+  }
+  /* Fallback for any other null/degenerate case — amber */
+  return '#92400e';
 }
 
 function drawBranchSeg(g, pts, stable, xScale, yScale, stableColor, unstableColor){
@@ -1014,9 +1051,11 @@ function updateReadout(){
   var eqs = P.equilibria(ST.r);
   var nS = eqs.filter(function(e){return e.stable===true;}).length;
   var nU = eqs.filter(function(e){return e.stable===false;}).length;
+  var nSemi = eqs.filter(function(e){return e.stable==='semi-pos' || e.stable==='semi-neg';}).length;
   document.getElementById('rv-eq').textContent = eqs.length;
   document.getElementById('rv-stable').textContent = nS;
   document.getElementById('rv-unstable').textContent = nU;
+  document.getElementById('rv-semi').textContent = nSemi;
 
   /* Nearest bifurcation r_c */
   var nearest = null, bestD = Infinity;
