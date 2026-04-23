@@ -506,19 +506,25 @@ function makeColorbar(N){
    eliminating the colour "jumps" that occur when Plotly auto-scales.
    ──────────────────────────────────────────────────────────────────────────── */
 function makeJetTrace(tr,width,N){
+  /* On mobile the colorbar (thickness 14 + "t = 150" tick labels) eats
+     30–40% of the plot width and pushes the 3D scene left, clipping the
+     attractor. The jet palette itself is self-documenting, so suppress
+     the colorbar on narrow viewports. */
+  var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
+  var line={
+    color:tr.t,
+    colorscale:'Jet',
+    width:width||2,
+    cauto:false,   // CRITICAL: prevents per-frame colour rescaling
+    cmin:0,
+    cmax:1,
+    showscale:!mobile
+  };
+  if(!mobile)line.colorbar=makeColorbar(N);
   return{
     x:tr.x,y:tr.y,z:tr.z,
     type:'scatter3d',mode:'lines',
-    line:{
-      color:tr.t,
-      colorscale:'Jet',
-      width:width||2,
-      cauto:false,   // CRITICAL: prevents per-frame colour rescaling
-      cmin:0,
-      cmax:1,
-      showscale:true,
-      colorbar:makeColorbar(N)
-    }
+    line:line
   };
 }
 
@@ -648,11 +654,14 @@ function renderTransientFrame(idx){
   var t=(idx*DT).toFixed(1);
   // Slice colour array to match xyz slice so Jet maps correctly over elapsed time
   Plotly.react('plot',[
-    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
-     type:'scatter3d',mode:'lines',
-     line:{color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
-           cauto:false,cmin:0,cmax:1,showscale:true,colorbar:makeColorbar(STATIC_N)},
-     showlegend:false},
+    (function(){
+      var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
+      var line={color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
+                cauto:false,cmin:0,cmax:1,showscale:!mobile};
+      if(!mobile)line.colorbar=makeColorbar(STATIC_N);
+      return {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
+              type:'scatter3d',mode:'lines',line:line,showlegend:false};
+    })(),
     {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
   ],make3DLayout('Transient Chaos (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
