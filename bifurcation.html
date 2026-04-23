@@ -1192,6 +1192,12 @@ var WORKER_SRC = [
 '  var lyaArr=new Float32Array(N);',
 '  var progEvery=Math.max(8, Math.floor(N/20));',
 '  var warm=null;',                            // { x,y,z } carried across columns
+'  /* Warm-started columns (all but the first) inherit the previous',
+'     column`s final state, which is already on the attractor for a',
+'     nearby parameter value. The attractor shifts only slightly with',
+'     c, so a short re-settling transient is plenty — no need to',
+'     repeat the full cold transient every column. */',
+'  var tTransWarm=Math.min(tTrans, Math.max(25, 0.25*tTrans));',
 '  function rk4step(x,y,z,c){',
 '    var k1x=-y-z,           k1y=x+aR*y,           k1z=bR+z*(x-c);',
 '    var x2=x+0.5*dt*k1x,    y2=y+0.5*dt*k1y,      z2=z+0.5*dt*k1z;',
@@ -1208,13 +1214,13 @@ var WORKER_SRC = [
 '  }',
 '  for(var i=0;i<N;i++){',
 '    var c=pMin+(i+0.5)/N*pRange; pArr[i]=c;',
-'    var x, y, z;',
+'    var x, y, z, warmStart;',
 '    if(warm && isFinite(warm.x) && isFinite(warm.y) && isFinite(warm.z)){',
-'      x=warm.x; y=warm.y; z=warm.z;',
+'      x=warm.x; y=warm.y; z=warm.z; warmStart=true;',
 '    } else {',
-'      x=m.x0||0.1; y=0.0; z=0.0;',
+'      x=m.x0||0.1; y=0.0; z=0.0; warmStart=false;',
 '    }',
-'    var nTrans=Math.round(tTrans/dt);',
+'    var nTrans=Math.round((warmStart?tTransWarm:tTrans)/dt);',
 '    for(var t=0;t<nTrans;t++){',
 '      var s=rk4step(x,y,z,c); x=s[0]; y=s[1]; z=s[2];',
 '      if(!isFinite(x)||!isFinite(y)||!isFinite(z)){ x=0.1; y=0; z=0; break; }',
@@ -1226,6 +1232,7 @@ var WORKER_SRC = [
 '    var xm2=x, xm1=x;',
 '    var cnt=0;',
 '    var nColl=Math.round(tCollect/dt);',
+'    var renormCnt=0;',
 '    for(var t=0;t<nColl && cnt<targetN;t++){',
 '      var s =rk4step(x, y, z,  c);',
 '      var sb=rk4step(xb,yb,zb, c);',
@@ -1244,8 +1251,11 @@ var WORKER_SRC = [
 '        }',
 '        if(cnt<storeLen){ xArrsFlat[i*storeLen+cnt]=peak; cnt++; }',
 '      }',
-'      // Renormalize perturbation periodically for Benettin’s Lyapunov',
-'      if(((t+1)%renormSteps)===0){',
+'      // Renormalize perturbation periodically for Benettin’s Lyapunov.',
+'      // Counter is faster than (t+1)%renormSteps in a hot loop.',
+'      renormCnt++;',
+'      if(renormCnt===renormSteps){',
+'        renormCnt=0;',
 '        var ex=xb-x, ey=yb-y, ez=zb-z;',
 '        var dNow=Math.sqrt(ex*ex+ey*ey+ez*ez);',
 '        if(isFinite(dNow) && dNow>0){',
@@ -1444,6 +1454,7 @@ function computeChunkSyncRossler(startCol, endCol){
   var renormSteps=20, delta0=1e-8;
   var targetN=ST.N_plot;
   var warm=null;
+  var tTransWarm=Math.min(tTrans, Math.max(25, 0.25*tTrans));
   function step(x,y,z,c){
     var k1x=-y-z,        k1y=x+aR*y,       k1z=bR+z*(x-c);
     var x2=x+0.5*dt*k1x, y2=y+0.5*dt*k1y,  z2=z+0.5*dt*k1z;
@@ -1461,11 +1472,11 @@ function computeChunkSyncRossler(startCol, endCol){
   for(var i=startCol;i<endCol && i<N;i++){
     var c=pMin+(i+0.5)/N*pRange;
     BDATA.pArr[i]=c;
-    var x, y, z;
+    var x, y, z, warmStart;
     if(warm && isFinite(warm.x) && isFinite(warm.y) && isFinite(warm.z)){
-      x=warm.x; y=warm.y; z=warm.z;
-    } else { x=ST.x0||0.1; y=0; z=0; }
-    var nTrans=Math.round(tTrans/dt);
+      x=warm.x; y=warm.y; z=warm.z; warmStart=true;
+    } else { x=ST.x0||0.1; y=0; z=0; warmStart=false; }
+    var nTrans=Math.round((warmStart?tTransWarm:tTrans)/dt);
     for(var t=0;t<nTrans;t++){
       var s=step(x,y,z,c); x=s[0]; y=s[1]; z=s[2];
       if(!isFinite(x)||!isFinite(y)||!isFinite(z)){ x=0.1; y=0; z=0; break; }
@@ -1474,6 +1485,7 @@ function computeChunkSyncRossler(startCol, endCol){
     var lyaSum=0, lyaTime=0;
     var xm2=x, xm1=x, cnt=0;
     var nColl=Math.round(tCollect/dt);
+    var renormCnt=0;
     for(var t=0;t<nColl && cnt<targetN;t++){
       var s =step(x, y, z,  c);
       var sb=step(xb,yb,zb, c);
@@ -1490,7 +1502,10 @@ function computeChunkSyncRossler(startCol, endCol){
         }
         if(cnt<storeLen){ BDATA.xArrs[i][cnt++]=peak; }
       }
-      if(((t+1)%renormSteps)===0){
+      // Counter is faster than (t+1)%renormSteps in a hot loop.
+      renormCnt++;
+      if(renormCnt===renormSteps){
+        renormCnt=0;
         var ex=xb-x, ey=yb-y, ez=zb-z;
         var dNow=Math.sqrt(ex*ex+ey*ey+ez*ez);
         if(isFinite(dNow) && dNow>0){
