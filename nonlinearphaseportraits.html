@@ -588,14 +588,18 @@ function drawVectorField(f,g,xMin,xMax,yMin,yMax,arrowCount,arrowLength,arrowOpa
   var scaleX=W/(xMax-xMin),scaleY=H/(yMax-yMin);
   var gsx=(xMax-xMin)/arrowCount,gsy=(yMax-yMin)/arrowCount;
   var scope={x:0,y:0},arrows=[];
-  /* First pass: collect magnitudes for normalisation */
+  /* First pass: rescale (dx, dy) to canvas pixels per unit time before
+     measuring magnitude/direction. Normalising in data space gives wrong
+     arrow angles when xMax-xMin and yMax-yMin differ wildly (e.g. Van der
+     Pol at large mu, where y-range >> x-range). */
   var maxMag=0;
   for(var i=0;i<=arrowCount;i++){for(var j=0;j<=arrowCount;j++){
     var sx=xMin+i*gsx,sy=yMin+j*gsy,dx=0,dy=0;
     try{scope.x=sx;scope.y=sy;dx=f.evaluate(scope)||0;dy=g.evaluate(scope)||0;}catch(e){continue;}
-    var mag=Math.sqrt(dx*dx+dy*dy);if(mag===0)continue;
+    var pdx=dx*scaleX,pdy=-dy*scaleY;
+    var mag=Math.sqrt(pdx*pdx+pdy*pdy);if(mag===0)continue;
     if(mag>maxMag)maxMag=mag;
-    arrows.push({cx:(sx-xMin)/(xMax-xMin)*W,cy:(yMax-sy)/(yMax-yMin)*H,dx:dx,dy:dy,mag:mag});
+    arrows.push({cx:(sx-xMin)/(xMax-xMin)*W,cy:(yMax-sy)/(yMax-yMin)*H,pdx:pdx,pdy:pdy,mag:mag});
   }}
   if(!arrows.length)return;
   var refMag=maxMag||1;
@@ -608,8 +612,8 @@ function drawVectorField(f,g,xMin,xMax,yMin,yMax,arrowCount,arrowLength,arrowOpa
     var sf=Math.sqrt(nf);/* perceptual: sqrt compresses range */
     var dl=arrowLength;
     if(variableArrows){dl=arrowLength*(0.55+0.45*sf);}/* floor at 55% of full size */
-    /* Direction in canvas coords */
-    var dcx=a.dx/a.mag,dcy=-a.dy/a.mag;/* unit direction */
+    /* Direction in canvas pixels (already includes y-axis flip). */
+    var dcx=a.pdx/a.mag,dcy=a.pdy/a.mag;
     /* Arrowhead: fixed proportions, generous minimum */
     var headLen=Math.max(dl*0.35,5);
     var headHW=headLen*0.5;/* half-width of arrowhead */
