@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Direction Field Visualizer — plot slope fields and solution curves for first-order ODEs using an adaptive Dormand–Prince 5(4) solver. WCAG 2.1 AA accessible.">
+  <meta name="description" content="Direction Field Visualizer — plot slope fields and solution curves for first-order ODEs using an adaptive Tsitouras 5(4) (Tsit5) solver. WCAG 2.1 AA accessible.">
   <title>Direction Field Visualizer</title>
 
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
@@ -199,14 +199,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Math Tools — Shelvean Kapita">
     <meta property="og:title" content="Direction Field Visualizer">
-    <meta property="og:description" content="Direction Field Visualizer — plot slope fields and solution curves for first-order ODEs using an adaptive Dormand–Prince 5(4) solver. WCAG 2.1 AA accessible.">
+    <meta property="og:description" content="Direction Field Visualizer — plot slope fields and solution curves for first-order ODEs using an adaptive Tsitouras 5(4) (Tsit5) solver. WCAG 2.1 AA accessible.">
     <meta property="og:url" content="https://shelvean.github.io/math-tools/slope.html">
     <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
     <meta property="og:locale" content="en_US">
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Direction Field Visualizer">
-    <meta name="twitter:description" content="Direction Field Visualizer — plot slope fields and solution curves for first-order ODEs using an adaptive Dormand–Prince 5(4) solver. WCAG 2.1 AA accessible.">
+    <meta name="twitter:description" content="Direction Field Visualizer — plot slope fields and solution curves for first-order ODEs using an adaptive Tsitouras 5(4) (Tsit5) solver. WCAG 2.1 AA accessible.">
     <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
 </head>
 <body>
@@ -233,12 +233,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 <a href="projects.html" class="back-link" aria-label="Back to Differential Equations">&larr; Back to Differential Equations</a>
 <main id="main" class="card" role="main">
   <h1>Direction Field Visualizer</h1>
-  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) using an adaptive Dormand&ndash;Prince 5(4) solver &mdash; click anywhere on the field to draw a solution curve through that point.</p>
+  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) using an adaptive Tsitouras 5(4) (Tsit5) solver &mdash; click anywhere on the field to draw a solution curve through that point.</p>
 
   <!-- ── About panel ── -->
   <div class="info-panel">
     <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
-      <span>About &mdash; Direction Fields, Solution Curves &amp; the Dormand&ndash;Prince Solver</span>
+      <span>About &mdash; Direction Fields, Solution Curves &amp; the Tsit5 Solver</span>
       <span class="info-icon" id="infoIcon" aria-hidden="true">+</span>
     </button>
     <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
@@ -246,7 +246,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <p>A <strong>direction field</strong> (or slope field) for \(y' = f(t,y)\) places a short arrow at each grid point \((t,y)\) whose slope equals \(f(t,y)\). Any solution curve must be tangent to the arrows everywhere it passes.</p>
       <div class="method-box">\[y'(t) = f\!\bigl(t,\,y(t)\bigr), \quad y(t_0)=y_0\]</div>
       <h2>Adaptive Solver</h2>
-      <p>Clicking a point \((t_0,y_0)\) solves the IVP with an <strong>adaptive Dormand&ndash;Prince 5(4)</strong> Runge&ndash;Kutta method. Step size is automatically shrunk near steep slopes or blow-up points and enlarged in smooth regions &mdash; maintaining accuracy without wasted computation.</p>
+      <p>Clicking a point \((t_0,y_0)\) solves the IVP with an <strong>adaptive Tsitouras 5(4) (Tsit5)</strong> explicit Runge&ndash;Kutta method with FSAL (the final stage of an accepted step is reused as the first stage of the next, giving an effective cost of six derivative evaluations). Step size is automatically shrunk near steep slopes or blow-up points and enlarged in smooth regions &mdash; maintaining accuracy without wasted computation.</p>
       <h2>How to Use</h2>
       <ul>
         <li>Type \(f(t,y)\) in the equation box. Use <code>t</code> or <code>x</code> for the independent variable.</li>
@@ -871,20 +871,23 @@ document.addEventListener('DOMContentLoaded',function(){
     updateReadout();
   };
 
-  /* ── Dormand-Prince 5(4) ── */
-  function dpStep(t,y,h,f){
+  /* ── Tsit5 (Tsitouras 5(4), FSAL adaptive) ──
+     Replaces the previous Dormand-Prince 5(4) integrator. FSAL (k7 reused
+     as next k1) drops the per-accepted-step cost from 7 to 6 derivative
+     evaluations. Coefficients from Tsitouras (2011). */
+  function tsit5Step(t,y,h,f,k1){
     try{
-      var k1=f(t,y);
-      var k2=f(t+h/5,    y+h*(k1/5));
-      var k3=f(t+3*h/10, y+h*(3*k1/40+9*k2/40));
-      var k4=f(t+4*h/5,  y+h*(44*k1/45-56*k2/15+32*k3/9));
-      var k5=f(t+8*h/9,  y+h*(19372*k1/6561-25360*k2/2187+64448*k3/6561-212*k4/729));
-      var k6=f(t+h,      y+h*(9017*k1/3168-355*k2/33+46732*k3/5247+49*k4/176-5103*k5/18656));
-      var k7=f(t+h,      y+h*(35*k1/384+500*k3/1113+125*k4/192-2187*k5/6784+11*k6/84));
-      var y5=y+h*(35*k1/384+500*k3/1113+125*k4/192-2187*k5/6784+11*k6/84);
-      var y4=y+h*(5179*k1/57600+7571*k3/16695+393*k4/640-92097*k5/339200+187*k6/2100+k7/40);
-      return{yNext:y5,error:Math.abs(y5-y4)};
-    }catch(e){return{yNext:NaN,error:Infinity};}
+      if(k1===null||k1===undefined) k1=f(t,y);
+      var k2=f(t+0.161*h, y+h*0.161*k1);
+      var k3=f(t+0.327*h, y+h*(-0.008480655492356989*k1+0.335480655492357*k2));
+      var k4=f(t+0.9*h,   y+h*(2.8971530571054935*k1-6.359448489975075*k2+4.362295432869581*k3));
+      var k5=f(t+0.9800255409045097*h, y+h*(5.325864828439257*k1-11.748883564062828*k2+7.4955393428898365*k3-0.09249506636175525*k4));
+      var k6=f(t+h,       y+h*(5.86145544294642*k1-12.92096931784711*k2+8.159367898576159*k3-0.071584973281401*k4-0.028269050394068383*k5));
+      var yN=y+h*(0.09646076681806523*k1+0.01*k2+0.4798896504144996*k3+1.379008574103742*k4-3.290069515436081*k5+2.324710524099774*k6);
+      var k7=f(t+h, yN);
+      var err=Math.abs(h*(-0.001780011052225771*k1-0.0008164344596567469*k2+0.007880878010261996*k3-0.144711007173263*k4+0.5823571654525552*k5-0.4580821059291869*k6+0.015151515151515152*k7));
+      return{yNext:yN,error:err,k7:k7};
+    }catch(e){return{yNext:NaN,error:Infinity,k7:null};}
   }
 
   /* ── IVP solver ── */
@@ -906,19 +909,20 @@ document.addEventListener('DOMContentLoaded',function(){
       var pts=[],t=t0,y=y0,h=dir*Math.min(0.001,tR/2000),steps=0,lastT=t;
       pts.push({t:t,y:y});
       var tEnd=dir>0?tMax:tMin;
+      var k1=null;
       while(steps<MAX_STEPS/2){
         if(dir>0&&t+h>tEnd)h=tEnd-t;
         if(dir<0&&t+h<tEnd)h=tEnd-t;
         if(Math.abs(h)<MIN_H)break;
         var ok=false,attempt=0,curH=h;
         while(!ok&&attempt<20){
-          var res=dpStep(t,y,curH,f);
-          if(!isFinite(res.yNext)||res.error===Infinity){curH*=0.5;attempt++;continue;}
+          var res=tsit5Step(t,y,curH,f,k1);
+          if(!isFinite(res.yNext)||res.error===Infinity){curH*=0.5;attempt++;k1=null;continue;}
           var ratio=res.error/TOL;
           var hOpt=Math.abs(curH)*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
           hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt))*dir;
           if(ratio<=1){
-            t+=curH;y=res.yNext;h=hOpt;ok=true;
+            t+=curH;y=res.yNext;h=hOpt;ok=true;k1=res.k7;
             if(Math.abs(t-lastT)>=MIN_DT||Math.abs(t-tEnd)<MIN_H){pts.push({t:t,y:y});lastT=t;}
           }else{curH=hOpt;attempt++;}
         }
