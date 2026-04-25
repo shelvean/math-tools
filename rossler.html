@@ -265,7 +265,7 @@ if(document.referrer.includes('projects.html')){
 
       <h2>Numerical Method</h2>
       <p>
-        All trajectories use 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> with fixed step \(\Delta t=0.01\). Static plots use \(N=\lceil t_\text{end}/\Delta t\rceil\) steps — the default \(t_\text{end}=300\) gives \(N=30{,}000\), long enough for the attractor to be densely traced; \(t_\text{end}\) is adjustable in the Parameters panel. \(c\)-sweep animation frames use a fixed \(N=15{,}000\) (\(t=150\) per frame) so playback stays responsive regardless of the chosen \(t_\text{end}\). The Jet colorbar shows actual simulation time.
+        All trajectories use a fixed-step 5th-order <strong>Tsitouras 5(4) (Tsit5)</strong> method with step \(\Delta t=0.01\). Static plots use \(N=\lceil t_\text{end}/\Delta t\rceil\) steps — the default \(t_\text{end}=300\) gives \(N=30{,}000\), long enough for the attractor to be densely traced; \(t_\text{end}\) is adjustable in the Parameters panel. \(c\)-sweep animation frames use a fixed \(N=15{,}000\) (\(t=150\) per frame) so playback stays responsive regardless of the chosen \(t_\text{end}\). The Jet colorbar shows actual simulation time.
       </p>
 
       <h2>How to Use</h2>
@@ -434,7 +434,7 @@ function fmtT(v){
   return parseFloat(v.toFixed(v >= 100 ? 0 : 2));
 }
 
-/* Current number of RK4 samples for static / particle trajectories,
+/* Current number of Tsit5 samples for static / particle trajectories,
    derived from the endTime input. N = round(tEnd/DT) + 1 so that
    (N-1)·DT equals the user-entered t_end (up to DT). Clamped to a
    sane range so wild values cannot freeze the browser; when clamped,
@@ -463,7 +463,10 @@ var PARAMS=[
   {id:'z0', label:'z_0', min:0,    max:40,   step:0.01,   value:0}
 ];
 
-/* ── Rössler RK4 ── */
+/* ── Rössler Tsit5 ──
+   Fixed-step Tsitouras 5(4): 5th-order accurate per step (vs RK4's 4th order).
+   Uses only the 5th-order solution coefficients (no adaptive control), so the
+   step count and array layout match the previous RK4 implementation exactly. */
 function rossler(x,y,z,a,b,c){
   return [
     -y - z,
@@ -477,17 +480,29 @@ function solveRossler(a,b,c,x0,y0,z0,N){
   var x=x0, y=y0, z=z0;
   var norm=N>1?N-1:1;
   /* Store the initial condition at index 0 so xa[i] is the state at
-     actual simulation time i·DT. After N-1 RK4 steps, xa[N-1] is at
+     actual simulation time i·DT. After N-1 Tsit5 steps, xa[N-1] is at
      t = (N-1)·DT — exactly the user-entered t_end. */
   xa[0]=x; ya[0]=y; za[0]=z; ta[0]=0;
   for(var i=1;i<N;i++){
     var k1=rossler(x,y,z,a,b,c);
-    var k2=rossler(x+k1[0]*DT/2, y+k1[1]*DT/2, z+k1[2]*DT/2, a,b,c);
-    var k3=rossler(x+k2[0]*DT/2, y+k2[1]*DT/2, z+k2[2]*DT/2, a,b,c);
-    var k4=rossler(x+k3[0]*DT,   y+k3[1]*DT,   z+k3[2]*DT,   a,b,c);
-    x += (k1[0]+2*k2[0]+2*k3[0]+k4[0])*DT/6;
-    y += (k1[1]+2*k2[1]+2*k3[1]+k4[1])*DT/6;
-    z += (k1[2]+2*k2[2]+2*k3[2]+k4[2])*DT/6;
+    var k2=rossler(x+DT*0.161*k1[0],
+                   y+DT*0.161*k1[1],
+                   z+DT*0.161*k1[2], a,b,c);
+    var k3=rossler(x+DT*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+                   y+DT*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1]),
+                   z+DT*(-0.008480655492356989*k1[2]+0.335480655492357*k2[2]), a,b,c);
+    var k4=rossler(x+DT*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+                   y+DT*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1]),
+                   z+DT*(2.8971530571054935*k1[2]-6.359448489975075*k2[2]+4.362295432869581*k3[2]), a,b,c);
+    var k5=rossler(x+DT*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+                   y+DT*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1]),
+                   z+DT*(5.325864828439257*k1[2]-11.748883564062828*k2[2]+7.4955393428898365*k3[2]-0.09249506636175525*k4[2]), a,b,c);
+    var k6=rossler(x+DT*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+                   y+DT*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1]),
+                   z+DT*(5.86145544294642*k1[2]-12.92096931784711*k2[2]+8.159367898576159*k3[2]-0.071584973281401*k4[2]-0.028269050394068383*k5[2]), a,b,c);
+    x += DT*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
+    y += DT*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
+    z += DT*(0.09646076681806523*k1[2]+0.01*k2[2]+0.4798896504144996*k3[2]+1.379008574103742*k4[2]-3.290069515436081*k5[2]+2.324710524099774*k6[2]);
     xa[i]=x; ya[i]=y; za[i]=z; ta[i]=i/norm;
   }
   return {x:xa, y:ya, z:za, t:ta};
