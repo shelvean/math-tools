@@ -501,7 +501,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   </div><!-- /viz-grid -->
 
   <footer class="footer" role="contentinfo">
-    &copy; Shelvean Kapita. All code released under the MIT License. Last modified: March 2026.<br>
+    &copy; Shelvean Kapita. All code released under the MIT License. Last modified: April 2026.<br>
     <strong>Accessibility:</strong> Designed for <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> &mdash; keyboard navigation, screen reader support, high-contrast mode, visible focus indicators.
     Issues? <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.
   </footer>
@@ -597,9 +597,47 @@ document.addEventListener('DOMContentLoaded',function(){
   }
 
   /* ── Preprocess ── */
+  /* Rewrite a^b as Math.pow(a,b). Avoids the ES2016 syntax error
+     for expressions like exp(-t^2) where -t**2 is illegal. */
+  function powRewrite(eq){
+    var i;
+    while((i=eq.lastIndexOf('^'))>=0){
+      var bs=i,be=i;
+      while(bs>0&&/\s/.test(eq[bs-1]))bs--;
+      be=bs;
+      if(bs>0&&eq[bs-1]===')'){
+        var d=1,p=bs-2;
+        while(p>=0&&d>0){var c=eq[p];if(c===')')d++;else if(c==='(')d--;if(d>0)p--;}
+        if(p<0)return eq;
+        bs=p;
+        while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+      }else{
+        while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+      }
+      var base=eq.substring(bs,be);
+      var es=i+1,ee=es;
+      while(ee<eq.length&&/\s/.test(eq[ee]))ee++;
+      es=ee;
+      if(eq[ee]==='+'||eq[ee]==='-')ee++;
+      if(eq[ee]==='('){
+        var d2=1;ee++;
+        while(ee<eq.length&&d2>0){var c2=eq[ee];if(c2==='(')d2++;else if(c2===')')d2--;ee++;}
+      }else{
+        while(ee<eq.length&&/[\w$.]/.test(eq[ee]))ee++;
+        if(eq[ee]==='('){
+          var d3=1;ee++;
+          while(ee<eq.length&&d3>0){var c3=eq[ee];if(c3==='(')d3++;else if(c3===')')d3--;ee++;}
+        }
+      }
+      var expn=eq.substring(es,ee);
+      if(!base||!expn)return eq;
+      eq=eq.substring(0,bs)+'Math.pow('+base+','+expn+')'+eq.substring(ee);
+    }
+    return eq;
+  }
   function preprocess(eq){
     eq=eq.replace(/\bx\b/g,'t');
-    eq=eq.replace(/\^/g,'**');
+    eq=powRewrite(eq);
     eq=eq
       .replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
       .replace(/\bpi\b/gi,'Math.PI')
