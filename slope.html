@@ -955,18 +955,22 @@ document.addEventListener('DOMContentLoaded',function(){
 
   /* ── Arc-length integration (2D autonomous Tsit5) ──
      Treats y' = f(t, y) as a curve in the (t, y) plane parameterised by
-     arc length: dt/ds = cos θ, dy/ds = sin θ where θ = arctan(f). The
-     unit-speed RHS keeps both components bounded as f → ±∞, so vertical
-     tangents and pole-style singularities (e.g. y' = -t/y at y = 0) are
-     traversed smoothly and full implicit curves like circles close up. */
-  function tsit5StepArc(t,y,h,f,k1){
+     arc length. The unit tangent has two valid orientations (T = ±(1, f)
+     normalised); we pick one and maintain continuity by flipping the sign
+     when the dot product with the previous tangent goes negative. This
+     lets the integrator cross vertical tangents (where f → ±∞) and trace
+     full implicit curves like circles, not just function graphs. */
+  function tsit5StepArc(t,y,h,f,refDir,k1){
     function G(tv,yv){
       var fv;
       try{fv=f(tv,yv);}catch(e){return null;}
       if(Number.isNaN(fv))return null;
-      if(!isFinite(fv))return[0,fv>0?1:-1];
-      var th=Math.atan(fv);
-      return[Math.cos(th),Math.sin(th)];
+      var tx,ty;
+      if(!isFinite(fv)){tx=0;ty=fv>0?1:-1;}
+      else{var n=Math.sqrt(1+fv*fv);tx=1/n;ty=fv/n;}
+      /* Orient relative to refDir for continuity across vertical tangents */
+      if(refDir&&(tx*refDir[0]+ty*refDir[1])<0){tx=-tx;ty=-ty;}
+      return[tx,ty];
     }
     if(!k1){k1=G(t,y);if(!k1)return null;}
     var k2=G(t+h*0.161*k1[0], y+h*0.161*k1[1]); if(!k2)return null;
@@ -1005,23 +1009,35 @@ document.addEventListener('DOMContentLoaded',function(){
     var CLOSE_R=MAX_H*1.5;      /* proximity threshold for closure */
     var MIN_ARC_CLOSE=MAX_H*8;  /* don't trigger immediately */
 
-    function integrate(dir){
+    /* Initial unit tangent at (t0, y0); negate for backward direction so the
+       two sweeps trace opposite orientations of the same curve. */
+    function seedDir(sign){
+      var fv;try{fv=f(t0,y0);}catch(e){return null;}
+      if(Number.isNaN(fv))return null;
+      var tx,ty;
+      if(!isFinite(fv)){tx=0;ty=fv>0?1:-1;}
+      else{var n=Math.sqrt(1+fv*fv);tx=1/n;ty=fv/n;}
+      return[sign*tx,sign*ty];
+    }
+
+    function integrate(sign){
+      var refDir=seedDir(sign);if(!refDir)return[{t:t0,y:y0}];
       var pts=[],t=t0,y=y0;
-      var h=dir*Math.min(MAX_H,diag/2000);
+      var h=Math.min(MAX_H,diag/2000); /* h is positive; orientation lives in refDir */
       var steps=0,arcLen=0,lastT=t,lastY=y,k1=null;
       pts.push({t:t,y:y});
       while(steps<MAX_STEPS/2&&arcLen<MAX_ARC){
-        if(Math.abs(h)<MIN_H)break;
+        if(h<MIN_H)break;
         var ok=false,attempt=0,curH=h;
         while(!ok&&attempt<20){
-          var res=tsit5StepArc(t,y,curH,f,k1);
+          var res=tsit5StepArc(t,y,curH,f,refDir,k1);
           if(!res||!isFinite(res.tNext)||!isFinite(res.yNext)||!isFinite(res.error)){curH*=0.5;attempt++;k1=null;continue;}
           var ratio=res.error/TOL;
-          var hOpt=Math.abs(curH)*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
-          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt))*dir;
+          var hOpt=curH*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
+          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt));
           if(ratio<=1){
-            t=res.tNext;y=res.yNext;h=hOpt;ok=true;k1=res.k7;
-            arcLen+=Math.abs(curH);
+            t=res.tNext;y=res.yNext;h=hOpt;ok=true;k1=res.k7;refDir=res.k7;
+            arcLen+=curH;
             var dt=t-lastT,dy=y-lastY;
             if(Math.sqrt(dt*dt+dy*dy)>=MIN_DS){pts.push({t:t,y:y});lastT=t;lastY=y;}
           }else{curH=hOpt;attempt++;}
