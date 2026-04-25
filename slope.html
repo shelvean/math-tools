@@ -245,8 +245,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <h2>What Is a Direction Field?</h2>
       <p>A <strong>direction field</strong> (or slope field) for \(y' = f(t,y)\) places a short arrow at each grid point \((t,y)\) whose slope equals \(f(t,y)\). Any solution curve must be tangent to the arrows everywhere it passes.</p>
       <div class="method-box">\[y'(t) = f\!\bigl(t,\,y(t)\bigr), \quad y(t_0)=y_0\]</div>
-      <h2>Adaptive Solver</h2>
-      <p>Clicking a point \((t_0,y_0)\) solves the IVP with an <strong>adaptive Tsitouras 5(4) (Tsit5)</strong> explicit Runge&ndash;Kutta method with FSAL (the final stage of an accepted step is reused as the first stage of the next, giving an effective cost of six derivative evaluations). Step size is automatically shrunk near steep slopes or blow-up points and enlarged in smooth regions &mdash; maintaining accuracy without wasted computation.</p>
+      <h2>Adaptive Solver &mdash; Two Trajectory Modes</h2>
+      <p>Clicking a point \((t_0,y_0)\) solves the IVP with an <strong>adaptive Tsitouras 5(4) (Tsit5)</strong> explicit Runge&ndash;Kutta method with FSAL (the final stage of an accepted step is reused as the first stage of the next, giving an effective cost of six derivative evaluations). Step size is automatically shrunk near steep slopes and enlarged in smooth regions.</p>
+      <p>The <strong>Trajectory Mode</strong> selector chooses how the curve is parameterised:</p>
+      <ul>
+        <li><strong>t-step (default)</strong> &mdash; integrates \(y(t)\) directly from \(y' = f(t,y)\). Fastest and most familiar; one \(y\) value per \(t\). Stops short of vertical tangents and pole-style singularities (e.g. \(y' = -t/y\) at \(y = 0\)).</li>
+        <li><strong>Arc-length</strong> &mdash; integrates the equivalent autonomous 2D system \(\dot{t} = \cos\theta,\ \dot{y} = \sin\theta\) where \(\theta = \arctan f(t,y)\). The unit-speed RHS stays bounded as \(f \to \pm\infty\), so vertical tangents are crossed smoothly and full implicit curves close up &mdash; \(y' = -t/y\) traces complete circles in one click. This is exactly the trick used by phase portraits to draw trajectories of \(\dot{x} = Q(x,y),\ \dot{y} = P(x,y)\).</li>
+      </ul>
       <h2>How to Use</h2>
       <ul>
         <li>Type \(f(t,y)\) in the equation box. Use <code>t</code> or <code>x</code> for the independent variable.</li>
@@ -294,6 +299,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <option value="#3b82f6">Blue</option>
         <option value="#dc2626">Red</option>
         <option value="#000000">Black</option>
+      </select>
+    </div>
+    <div class="cbar-med cfield">
+      <label for="solveMode">Trajectory Mode</label>
+      <select id="solveMode" aria-label="Choose integration parameterization">
+        <option value="t" selected>t-step (current)</option>
+        <option value="arc">Arc-length (handles vertical tangents)</option>
       </select>
     </div>
   </div>
@@ -941,6 +953,100 @@ document.addEventListener('DOMContentLoaded',function(){
     return bwd.reverse().slice(1).concat(fwd);
   }
 
+  /* ── Arc-length integration (2D autonomous Tsit5) ──
+     Treats y' = f(t, y) as a curve in the (t, y) plane parameterised by
+     arc length: dt/ds = cos θ, dy/ds = sin θ where θ = arctan(f). The
+     unit-speed RHS keeps both components bounded as f → ±∞, so vertical
+     tangents and pole-style singularities (e.g. y' = -t/y at y = 0) are
+     traversed smoothly and full implicit curves like circles close up. */
+  function tsit5StepArc(t,y,h,f,k1){
+    function G(tv,yv){
+      var fv;
+      try{fv=f(tv,yv);}catch(e){return null;}
+      if(Number.isNaN(fv))return null;
+      if(!isFinite(fv))return[0,fv>0?1:-1];
+      var th=Math.atan(fv);
+      return[Math.cos(th),Math.sin(th)];
+    }
+    if(!k1){k1=G(t,y);if(!k1)return null;}
+    var k2=G(t+h*0.161*k1[0], y+h*0.161*k1[1]); if(!k2)return null;
+    var k3=G(t+h*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+             y+h*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1])); if(!k3)return null;
+    var k4=G(t+h*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+             y+h*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1])); if(!k4)return null;
+    var k5=G(t+h*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+             y+h*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1])); if(!k5)return null;
+    var k6=G(t+h*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+             y+h*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1])); if(!k6)return null;
+    var tN=t+h*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
+    var yN=y+h*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
+    var k7=G(tN,yN); if(!k7)return null;
+    var et=h*(-0.001780011052225771*k1[0]-0.0008164344596567469*k2[0]+0.007880878010261996*k3[0]-0.144711007173263*k4[0]+0.5823571654525552*k5[0]-0.4580821059291869*k6[0]+0.015151515151515152*k7[0]);
+    var ey=h*(-0.001780011052225771*k1[1]-0.0008164344596567469*k2[1]+0.007880878010261996*k3[1]-0.144711007173263*k4[1]+0.5823571654525552*k5[1]-0.4580821059291869*k6[1]+0.015151515151515152*k7[1]);
+    return{tNext:tN,yNext:yN,error:Math.sqrt(0.5*(et*et+ey*ey)),k7:k7};
+  }
+
+  function solveArc(t0,y0){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var v=f(t0,y0);if(Number.isNaN(v))return[];}catch(e){return[];}
+
+    var diag=Math.sqrt((tMax-tMin)*(tMax-tMin)+(yMax-yMin)*(yMax-yMin));
+    var MAX_STEPS=50000,TOL=1e-7*diag,SAFETY=0.9;
+    var MIN_H=diag*1e-12,MAX_H=diag/100;
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000);
+    var MIN_DS=diag/3000;
+    var EPS_OUT=diag*0.01;
+    var MAX_ARC=20*diag; /* prevent runaway on closed curves */
+
+    var CLOSE_R=MAX_H*1.5;      /* proximity threshold for closure */
+    var MIN_ARC_CLOSE=MAX_H*8;  /* don't trigger immediately */
+
+    function integrate(dir){
+      var pts=[],t=t0,y=y0;
+      var h=dir*Math.min(MAX_H,diag/2000);
+      var steps=0,arcLen=0,lastT=t,lastY=y,k1=null;
+      pts.push({t:t,y:y});
+      while(steps<MAX_STEPS/2&&arcLen<MAX_ARC){
+        if(Math.abs(h)<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=tsit5StepArc(t,y,curH,f,k1);
+          if(!res||!isFinite(res.tNext)||!isFinite(res.yNext)||!isFinite(res.error)){curH*=0.5;attempt++;k1=null;continue;}
+          var ratio=res.error/TOL;
+          var hOpt=Math.abs(curH)*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
+          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt))*dir;
+          if(ratio<=1){
+            t=res.tNext;y=res.yNext;h=hOpt;ok=true;k1=res.k7;
+            arcLen+=Math.abs(curH);
+            var dt=t-lastT,dy=y-lastY;
+            if(Math.sqrt(dt*dt+dy*dy)>=MIN_DS){pts.push({t:t,y:y});lastT=t;lastY=y;}
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if(t<tMin-EPS_OUT||t>tMax+EPS_OUT||y<yMin-EPS_OUT||y>yMax+EPS_OUT){
+          if(!pts.length||pts[pts.length-1].t!==t||pts[pts.length-1].y!==y)pts.push({t:t,y:y});
+          break;
+        }
+        /* Closed-curve detection: after we've moved away from the start, if
+           we return within CLOSE_R, snap to start and stop. */
+        if(arcLen>MIN_ARC_CLOSE){
+          var d0t=t-t0,d0y=y-y0;
+          if(d0t*d0t+d0y*d0y<CLOSE_R*CLOSE_R){pts.push({t:t0,y:y0});break;}
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().slice(1).concat(fwd);
+  }
+
   /* ── Canvas click ── */
   canvas.addEventListener('click',function(e){
     var rect=canvas.getBoundingClientRect();
@@ -955,7 +1061,8 @@ document.addEventListener('DOMContentLoaded',function(){
     var t=tMin+(cx-PADDING)/xScale;
     var yVal=yMin+(canvas.height-PADDING-cy)/yScale;
 
-    var pts=solve(t,yVal);
+    var mode=document.getElementById('solveMode').value;
+    var pts=mode==='arc'?solveArc(t,yVal):solve(t,yVal);
     if(pts.length>0){
       var tc=document.getElementById('trajColor').value;
       var color=tc==='multicolor'?TRAJ_COLORS[colorIndex%TRAJ_COLORS.length]:tc;
