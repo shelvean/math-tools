@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Duffing Oscillator — interactive visualizer with adaptive RK45 solver, phase portrait, potential energy curve, and time series. WCAG 2.1 AA.">
-  <meta name="keywords" content="duffing oscillator, nonlinear, double well, chaos, hardening spring, softening spring, forced oscillation, RK45, Dormand-Prince">
+  <meta name="description" content="Duffing Oscillator — interactive visualizer with adaptive Tsit5 solver, phase portrait, potential energy curve, and time series. WCAG 2.1 AA.">
+  <meta name="keywords" content="duffing oscillator, nonlinear, double well, chaos, hardening spring, softening spring, forced oscillation, Tsit5, Tsitouras">
   <title>Duffing Oscillator — Differential Equations</title>
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
@@ -289,8 +289,8 @@ if(document.referrer.includes('dynamical.html')){
       <p>When Multiple initial conditions scatter is enabled, the phase portrait starts with a <em>wide</em> view that guarantees every initial condition and transient arc sits inside the plot. Each trajectory has its own colour and a short fading trail (quadratic alpha curve) so only recent motion stays prominent and the plot doesn't clutter when trajectories overlap. After about one forcing period the camera smoothly zooms in (ease-in-out) until the strange attractor fills the frame. The zoom is keyed to simulation time, so pausing pauses the zoom, and the full wide&#8594;attractor sequence replays each time the animation loops at \(t=T\).</p>
       <h2>Potential Energy Panel</h2>
       <p>The lower panel plots \(V(x)=\tfrac{\alpha}{2}x^2+\tfrac{\beta}{4}x^4\). The moving dot tracks the current displacement on this curve; the dashed line connects the mass position to the curve. Minima of \(V\) mark stable equilibria of the unforced system.</p>
-      <h2>Solver: RK45 (Dormand&#8211;Prince)</h2>
-      <p>Adaptive order-5 Runge&#8211;Kutta. Six derivative evaluations per step; error estimated by comparing order-4 and order-5 solutions. Step is accepted when the normalised error \(\le 1\); otherwise the step is rescaled. Reliable across all regimes including chaotic transients.</p>
+      <h2>Solver: Tsit5 (Tsitouras 5(4))</h2>
+      <p>Adaptive order-5 explicit Runge&#8211;Kutta with embedded order-4 error estimator (Tsitouras, 2011). Seven stages with First-Same-As-Last (FSAL): the final stage of an accepted step is reused as the first stage of the next, giving an effective cost of six derivative evaluations. The step is accepted when the normalised error \(\le 1\); otherwise it is rescaled. Reliable across all regimes including chaotic transients.</p>
     </div>
   </div>
 
@@ -440,7 +440,7 @@ if(document.referrer.includes('dynamical.html')){
       <div class="regime-wrap" aria-live="polite" aria-atomic="true">
         <span class="regime-lbl">Regime:</span>
         <span id="regimeBadge" class="regime-badge regime-stiff">Double Well</span>
-        <span id="solverBadge" style="font-size:.72rem;font-weight:700;padding:.1rem .5rem;border-radius:50px;background:#dcfce7;border:1.5px solid #86efac;color:#14532d;">RK45</span>
+        <span id="solverBadge" style="font-size:.72rem;font-weight:700;padding:.1rem .5rem;border-radius:50px;background:#dcfce7;border:1.5px solid #86efac;color:#14532d;">Tsit5</span>
       </div>
 
       <div id="solverInfo" class="solver-info">
@@ -539,7 +539,7 @@ if(document.referrer.includes('dynamical.html')){
 <script>
 /* ════════════════════════════════════════════════════════════════
    DUFFING OSCILLATOR  ·  Shelvean Kapita  ·  Texas A&M  ·  2026
-   ẍ + δẋ + αx + βx³ = γcos(ωt)   Solver: Adaptive RK45
+   ẍ + δẋ + αx + βx³ = γcos(ωt)   Solver: Adaptive Tsit5 (Tsitouras 5(4))
 ════════════════════════════════════════════════════════════════ */
 function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
 var rmq=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -589,22 +589,32 @@ function speedColor(speed,maxSpeed){
 /* ── Derivative ── */
 function dF(t,x,v,p){return [v,p.gamma*Math.cos(p.omega*t)-p.delta*v-p.alpha*x-p.beta*x*x*x];}
 
-/* ── RK45 Dormand-Prince ── */
-function rk45Step(p,t,x,v,h){
-  var k1=dF(t,x,v,p);
-  var k2=dF(t+h/5,x+h/5*k1[0],v+h/5*k1[1],p);
-  var k3=dF(t+3*h/10,x+h*(3/40*k1[0]+9/40*k2[0]),v+h*(3/40*k1[1]+9/40*k2[1]),p);
-  var k4=dF(t+4*h/5,x+h*(44/45*k1[0]-56/15*k2[0]+32/9*k3[0]),v+h*(44/45*k1[1]-56/15*k2[1]+32/9*k3[1]),p);
-  var k5=dF(t+8*h/9,x+h*(19372/6561*k1[0]-25360/2187*k2[0]+64448/6561*k3[0]-212/729*k4[0]),v+h*(19372/6561*k1[1]-25360/2187*k2[1]+64448/6561*k3[1]-212/729*k4[1]),p);
-  var x6=x+h*(9017/3168*k1[0]-355/33*k2[0]+46732/5247*k3[0]+49/176*k4[0]-5103/18656*k5[0]);
-  var v6=v+h*(9017/3168*k1[1]-355/33*k2[1]+46732/5247*k3[1]+49/176*k4[1]-5103/18656*k5[1]);
-  var k6=dF(t+h,x6,v6,p);
-  var xN=x+h*(35/384*k1[0]+500/1113*k3[0]+125/192*k4[0]-2187/6784*k5[0]+11/84*k6[0]);
-  var vN=v+h*(35/384*k1[1]+500/1113*k3[1]+125/192*k4[1]-2187/6784*k5[1]+11/84*k6[1]);
+/* ── Tsit5 (Tsitouras 5(4), FSAL adaptive) ──
+   Replaces the previous Dormand-Prince 5(4) integrator. Coefficients from
+   Tsitouras 2011; FSAL means the stage-7 derivative at (t+h, xN, vN) is
+   reused as stage-1 of the next accepted step. */
+function tsit5Step(p,t,x,v,h,k1){
+  if(!k1) k1=dF(t,x,v,p);
+  var c2=0.161,c3=0.327,c4=0.9,c5=0.9800255409045097;
+  var k2=dF(t+c2*h, x+h*0.161*k1[0], v+h*0.161*k1[1], p);
+  var k3=dF(t+c3*h,
+    x+h*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+    v+h*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1]), p);
+  var k4=dF(t+c4*h,
+    x+h*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+    v+h*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1]), p);
+  var k5=dF(t+c5*h,
+    x+h*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+    v+h*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1]), p);
+  var k6=dF(t+h,
+    x+h*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+    v+h*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1]), p);
+  var xN=x+h*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
+  var vN=v+h*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
   var k7=dF(t+h,xN,vN,p);
-  var ex=h*(71/57600*k1[0]-71/16695*k3[0]+71/1920*k4[0]-17253/339200*k5[0]+22/525*k6[0]-1/40*k7[0]);
-  var ev=h*(71/57600*k1[1]-71/16695*k3[1]+71/1920*k4[1]-17253/339200*k5[1]+22/525*k6[1]-1/40*k7[1]);
-  return {x:xN,v:vN,err:Math.sqrt(0.5*(ex*ex+ev*ev))};
+  var ex=h*(-0.001780011052225771*k1[0]-0.0008164344596567469*k2[0]+0.007880878010261996*k3[0]-0.144711007173263*k4[0]+0.5823571654525552*k5[0]-0.4580821059291869*k6[0]+0.015151515151515152*k7[0]);
+  var ev=h*(-0.001780011052225771*k1[1]-0.0008164344596567469*k2[1]+0.007880878010261996*k3[1]-0.144711007173263*k4[1]+0.5823571654525552*k5[1]-0.4580821059291869*k6[1]+0.015151515151515152*k7[1]);
+  return {x:xN,v:vN,err:Math.sqrt(0.5*(ex*ex+ev*ev)),k7:k7};
 }
 
 function solveDuffing(p,x0,v0,T,tolMul){
@@ -613,15 +623,15 @@ function solveDuffing(p,x0,v0,T,tolMul){
   var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;
   var hMax=Math.min(T/50,Tf/30,0.08),hMin=1e-10;
   var x=x0,v=v0,t=0,pts=[{t:0,x:x0,v:v0}];
-  var h=Math.min(hMax,Tf/100),rejects=0;
+  var h=Math.min(hMax,Tf/100),rejects=0,k1=null;
   for(var step=0;step<800000&&t<T;step++){
     if(t+h>T)h=T-t;if(h<hMin)break;
-    var res=rk45Step(p,t,x,v,h);
-    if(!isFinite(res.x)||!isFinite(res.v)){h*=0.5;rejects++;if(rejects>60)break;continue;}
+    var res=tsit5Step(p,t,x,v,h,k1);
+    if(!isFinite(res.x)||!isFinite(res.v)){h*=0.5;rejects++;k1=null;if(rejects>60)break;continue;}
     var scx=atol+rtol*Math.max(Math.abs(x),Math.abs(res.x));
     var scv=atol+rtol*Math.max(Math.abs(v),Math.abs(res.v));
     var errN=res.err/Math.sqrt(0.5*(scx*scx+scv*scv));
-    if(errN<=1.0){t+=h;x=res.x;v=res.v;pts.push({t:t,x:x,v:v});rejects=0;h=Math.min(hMax,h*Math.min(5,Math.max(0.2,0.9*Math.pow(errN+1e-10,-0.2))));}
+    if(errN<=1.0){t+=h;x=res.x;v=res.v;pts.push({t:t,x:x,v:v});k1=res.k7;rejects=0;h=Math.min(hMax,h*Math.min(5,Math.max(0.2,0.9*Math.pow(errN+1e-10,-0.2))));}
     else{h=Math.max(hMin,h*Math.max(0.1,0.9*Math.pow(errN,-0.2)));rejects++;if(rejects>80)break;}
   }
   return pts;
@@ -655,7 +665,7 @@ function computeDisplayScale(p,x0,raw){
 function masterSolve(p,x0,v0,tolMul,T){
   if(!(T>0)) T=autoEndTime(p);
   var raw=solveDuffing(p,x0,v0,T,tolMul);
-  var label='RK45 (Dormand\u2013Prince), '+raw.length.toLocaleString()+' steps';
+  var label='Tsit5 (Tsitouras 5(4)), '+raw.length.toLocaleString()+' steps';
   var MAX=12000,pts=raw;
   if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var i=0;i<raw.length;i+=s)pts.push(raw[Math.floor(i)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
   var sc=computeDisplayScale(p,x0,raw);
@@ -682,7 +692,7 @@ function masterSolveMulti(p,n,T,tolMul){
     trajs.push({pts:pts,x0:ics[i].x0,v0:ics[i].v0,color:hslColor(i,n)});
     totalSteps+=raw.length;
   }
-  var label='RK45 \u00d7 '+n+' trajectories, '+totalSteps.toLocaleString()+' total steps';
+  var label='Tsit5 \u00d7 '+n+' trajectories, '+totalSteps.toLocaleString()+' total steps';
   return {trajs:trajs,T:T,p:p,solver:label,multi:true};
 }
 

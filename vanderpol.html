@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Van der Pol Oscillator — interactive visualizer with RK4/SDIRK2 hybrid solver, phase portrait, and time series. WCAG 2.1 AA.">
-  <meta name="keywords" content="van der pol, oscillator, nonlinear, limit cycle, relaxation oscillation, second order ODE, RK4, SDIRK2, stiff">
+  <meta name="description" content="Van der Pol Oscillator — interactive visualizer with Tsit5/SDIRK2 hybrid solver, phase portrait, and time series. WCAG 2.1 AA.">
+  <meta name="keywords" content="van der pol, oscillator, nonlinear, limit cycle, relaxation oscillation, second order ODE, Tsit5, Tsitouras, SDIRK2, stiff">
   <title>Van der Pol Oscillator — Differential Equations</title>
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
@@ -224,7 +224,7 @@ kbd{display:inline-block;padding:.05rem .32rem;border:1.5px solid var(--bdr2);bo
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Math Tools — Shelvean Kapita">
   <meta property="og:title" content="Van der Pol Oscillator — Differential Equations">
-  <meta property="og:description" content="Van der Pol Oscillator — RK4/SDIRK2 hybrid solver, phase portrait, and time series. WCAG 2.1 AA.">
+  <meta property="og:description" content="Van der Pol Oscillator — Tsit5/SDIRK2 hybrid solver, phase portrait, and time series. WCAG 2.1 AA.">
   <meta property="og:url" content="https://shelvean.github.io/math-tools/vanderpol.html">
   <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
   <meta name="twitter:card" content="summary">
@@ -296,7 +296,7 @@ if(document.referrer.includes('dynamical.html')){
       </ul>
       <h2>Numerical Solvers</h2>
       <ul>
-        <li><strong>RK4 (classical, order 4)</strong> — used for \(\mu \le 5\). Four evaluations per step. Fixed step \(\Delta t = 0.01/(1+\mu/5)\).</li>
+        <li><strong>Tsit5 (Tsitouras 5(4), order 5)</strong> — used for \(\mu \le 5\). Six effective derivative evaluations per step (FSAL). Fixed step \(\Delta t = 0.01/(1+\mu/5)\); 5th-order accuracy gives noticeably less drift than RK4 over long limit-cycle simulations.</li>
         <li><strong>SDIRK2 (singly diagonally implicit, order 2)</strong> — used for \(\mu > 5\). A-stable and L-stable: unconditionally stable for any step size. Newton iteration with analytic Jacobian and exact \(2\times2\) solve. Adaptive step control.</li>
       </ul>
     </div>
@@ -399,7 +399,7 @@ if(document.referrer.includes('dynamical.html')){
         <span id="regimeBadge" class="regime-badge regime-vdp">Van der Pol</span>
         <span id="solverBadge" style="font-size:.72rem;font-weight:700;padding:.1rem .5rem;
           border-radius:50px;background:#f3f4f6;border:1.5px solid var(--bdr2);color:var(--muted);">
-          RK4
+          Tsit5
         </span>
       </div>
 
@@ -506,7 +506,7 @@ if(document.referrer.includes('dynamical.html')){
    Shelvean Kapita · Texas A&M University · April 2026
    Equation: ẍ − μ(1−x²)ẋ + x = 0
    System:   ẋ = v,   v̇ = μ(1−x²)v − x
-   Solvers:  RK4 (explicit, μ ≤ 5) | SDIRK2 (implicit, μ > 5)
+   Solvers:  Tsit5 (explicit, μ ≤ 5) | SDIRK2 (implicit, μ > 5)
    Animation: horizontal mass sliding on fixed pole
 ════════════════════════════════════════════════════════════════ */
 
@@ -626,16 +626,25 @@ function solveSDIRK2(mu, x0, v0, T){
   return pts;
 }
 
-function solveRK4(mu, x0, v0, T, N){
+/* Fixed-step Tsit5 (Tsitouras 5(4)): 5th-order accurate per step (vs RK4's
+   4th order). Used in the non-stiff regime (mu <= STIFF_THRESHOLD). */
+function solveTsit5(mu, x0, v0, T, N){
   var dt=T/N, x=x0, v=v0;
   var pts=[{t:0,x:x0,v:v0}];
   for(var i=0; i<N; i++){
     var k1=F(x,v,mu);
-    var k2=F(x+dt/2*k1[0], v+dt/2*k1[1], mu);
-    var k3=F(x+dt/2*k2[0], v+dt/2*k2[1], mu);
-    var k4=F(x+dt*k3[0],   v+dt*k3[1],   mu);
-    x+=dt/6*(k1[0]+2*k2[0]+2*k3[0]+k4[0]);
-    v+=dt/6*(k1[1]+2*k2[1]+2*k3[1]+k4[1]);
+    var k2=F(x+dt*0.161*k1[0],
+             v+dt*0.161*k1[1], mu);
+    var k3=F(x+dt*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+             v+dt*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1]), mu);
+    var k4=F(x+dt*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+             v+dt*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1]), mu);
+    var k5=F(x+dt*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+             v+dt*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1]), mu);
+    var k6=F(x+dt*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+             v+dt*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1]), mu);
+    x+=dt*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
+    v+=dt*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
     if(!isFinite(x)||!isFinite(v)) break;
     pts.push({t:(i+1)*dt,x:x,v:v});
   }
@@ -656,8 +665,8 @@ function masterSolve(mu, x0, v0, T){
   if(mu <= STIFF_THRESHOLD){
     var dtTarget = (mu > 0.5) ? Math.min(0.005, 2.0/mu) : 0.01;
     var N = Math.min(500000, Math.max(3500, Math.ceil(T/dtTarget)));
-    raw = solveRK4(mu, x0, v0, T, N);
-    solverLabel = 'RK4 (classical), ' + N.toLocaleString() + ' steps';
+    raw = solveTsit5(mu, x0, v0, T, N);
+    solverLabel = 'Tsit5 (Tsitouras 5(4)), ' + N.toLocaleString() + ' steps';
   } else {
     raw = solveSDIRK2(mu, x0, v0, T);
     solverLabel = 'SDIRK2 (implicit, A-stable), ' + raw.length.toLocaleString() + ' adaptive steps';
@@ -694,7 +703,7 @@ function masterSolveMulti(mu, n, T){
     if(mu <= STIFF_THRESHOLD){
       var dtTarget = (mu > 0.5) ? Math.min(0.005, 2.0/mu) : 0.01;
       var N = Math.min(500000, Math.max(3500, Math.ceil(T/dtTarget)));
-      raw = solveRK4(mu, ics[i].x0, ics[i].v0, T, N);
+      raw = solveTsit5(mu, ics[i].x0, ics[i].v0, T, N);
     } else {
       raw = solveSDIRK2(mu, ics[i].x0, ics[i].v0, T);
     }
@@ -708,7 +717,7 @@ function masterSolveMulti(mu, n, T){
     trajs.push({pts:pts, x0:ics[i].x0, v0:ics[i].v0, color:hslColor(i,n)});
     totalSteps += raw.length;
   }
-  var solverName = (mu <= STIFF_THRESHOLD) ? 'RK4' : 'SDIRK2';
+  var solverName = (mu <= STIFF_THRESHOLD) ? 'Tsit5' : 'SDIRK2';
   var label = solverName+' \u00d7 '+n+' trajectories, '+totalSteps.toLocaleString()+' total steps';
   return {trajs:trajs, T:T, mu:mu, solver:label, multi:true};
 }
@@ -1346,7 +1355,7 @@ function updateRegimeBadge(mu){
   var b=document.getElementById('regimeBadge');
   b.className='regime-badge '+r.cls; b.textContent=r.lbl;
   var sb=document.getElementById('solverBadge');
-  sb.textContent=mu<=STIFF_THRESHOLD?'RK4':'SDIRK2';
+  sb.textContent=mu<=STIFF_THRESHOLD?'Tsit5':'SDIRK2';
   sb.style.background=mu<=STIFF_THRESHOLD?'#dcfce7':'#ffedd5';
   sb.style.borderColor=mu<=STIFF_THRESHOLD?'#86efac':'#fb923c';
   sb.style.color=mu<=STIFF_THRESHOLD?'#14532d':'#7c2d12';
