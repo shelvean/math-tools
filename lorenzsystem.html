@@ -292,8 +292,8 @@ if(document.referrer.includes('dynamical.html')){
 
       <h2>Numerical Method</h2>
       <p>
-        Static trajectories use a classical 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> method with
-        fixed step \(\Delta t=0.005\) and 30,000 steps (total time \(t=150\)).
+        Static trajectories use a fixed-step 5th-order <strong>Tsitouras 5(4) (Tsit5)</strong> method
+        with \(\Delta t=0.005\) and 30,000 steps (total time \(t=150\)).
         Animate \(\rho\) frames use 10,000 steps (total time \(t=50\)) — enough to fill both lobes —
         and are <strong>precomputed in full before playback begins</strong>, so the animation runs smoothly at any FPS.
         The Jet colorbar shows actual simulation time (e.g.&nbsp;\(t=0\) to \(t=150\) for static, \(t=0\) to \(t=50\) for animation).
@@ -457,10 +457,11 @@ var PARAMS=[
   {id:'z0',    label:'z_0',       min:-20, max:50,  step:1e-10,     value:20},
 ];
 
-/* ── Lorenz RK4 ───────────────────────────────────────────────────────────────
+/* ── Lorenz Tsit5 ─────────────────────────────────────────────────────────────
+   Fixed-step Tsitouras 5(4) — 5th-order accurate per step (vs RK4's 4th order).
+   Uses the 5th-order solution coefficients only (no adaptive control), so the
+   step count and array layout match the previous RK4 implementation exactly.
    N is optional; defaults to STATIC_N.
-   ta[i] is normalised to [0,1] via i/(N-1) so the colorbar endpoints map
-   exactly to t=0 and t=(N-1)*DT without clipping at either end.
    ──────────────────────────────────────────────────────────────────────────── */
 function lorenz(x,y,z,sigma,rho,beta){return[sigma*(y-x),x*(rho-z)-y,x*y-beta*z];}
 function solveLorenz(sigma,rho,beta,x0,y0,z0,N){
@@ -470,12 +471,24 @@ function solveLorenz(sigma,rho,beta,x0,y0,z0,N){
   var norm=N>1?N-1:1;
   for(var i=0;i<N;i++){
     var k1=lorenz(x,y,z,sigma,rho,beta);
-    var k2=lorenz(x+k1[0]*DT/2,y+k1[1]*DT/2,z+k1[2]*DT/2,sigma,rho,beta);
-    var k3=lorenz(x+k2[0]*DT/2,y+k2[1]*DT/2,z+k2[2]*DT/2,sigma,rho,beta);
-    var k4=lorenz(x+k3[0]*DT,y+k3[1]*DT,z+k3[2]*DT,sigma,rho,beta);
-    x+=(k1[0]+2*k2[0]+2*k3[0]+k4[0])*DT/6;
-    y+=(k1[1]+2*k2[1]+2*k3[1]+k4[1])*DT/6;
-    z+=(k1[2]+2*k2[2]+2*k3[2]+k4[2])*DT/6;
+    var k2=lorenz(x+DT*0.161*k1[0],
+                  y+DT*0.161*k1[1],
+                  z+DT*0.161*k1[2],sigma,rho,beta);
+    var k3=lorenz(x+DT*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+                  y+DT*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1]),
+                  z+DT*(-0.008480655492356989*k1[2]+0.335480655492357*k2[2]),sigma,rho,beta);
+    var k4=lorenz(x+DT*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+                  y+DT*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1]),
+                  z+DT*(2.8971530571054935*k1[2]-6.359448489975075*k2[2]+4.362295432869581*k3[2]),sigma,rho,beta);
+    var k5=lorenz(x+DT*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+                  y+DT*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1]),
+                  z+DT*(5.325864828439257*k1[2]-11.748883564062828*k2[2]+7.4955393428898365*k3[2]-0.09249506636175525*k4[2]),sigma,rho,beta);
+    var k6=lorenz(x+DT*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+                  y+DT*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1]),
+                  z+DT*(5.86145544294642*k1[2]-12.92096931784711*k2[2]+8.159367898576159*k3[2]-0.071584973281401*k4[2]-0.028269050394068383*k5[2]),sigma,rho,beta);
+    x+=DT*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
+    y+=DT*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
+    z+=DT*(0.09646076681806523*k1[2]+0.01*k2[2]+0.4798896504144996*k3[2]+1.379008574103742*k4[2]-3.290069515436081*k5[2]+2.324710524099774*k6[2]);
     xa[i]=x;ya[i]=y;za[i]=z;ta[i]=i/norm;
   }
   return{x:xa,y:ya,z:za,t:ta};
