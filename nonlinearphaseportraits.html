@@ -1100,10 +1100,12 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var tolScale=meshKey==='coarse'?100:meshKey==='fine'?0.1:meshKey==='veryfine'?0.01:1;
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-6*tolScale,rtol=1e-3*tolScale;
-  /* Stiff slow phases (e.g. Van der Pol with large μ) need the same hMax the
-     standalone SDIRK2 uses; capping at mesh.dtMax forces tens of thousands of
-     tiny steps where one big implicit step would do. */
-  var hMax=Math.max(mesh.dtMax,dS*0.05),hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* Per-mode step caps. SDIRK gets the big viewport-scaled cap so it can
+     stride across stiff slow phases (Van der Pol, μ=1000); Tsit5 keeps the
+     conservative mesh cap so it never overshoots non-stiff dynamics even if
+     the mode-switcher just handed it a step from the SDIRK branch. */
+  var hMaxNs=mesh.dtMax,hMaxSt=Math.max(mesh.dtMax,dS*0.05);
+  var hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
   var scope={x:0,y:0};
   var STIFF_THRESHOLD=3.25;/* h*|lambda_max| above this → stiff */
 
@@ -1117,29 +1119,36 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
   }
 
   function integrate(sign,maxP){
-    var x=x0,y=y0,t=0,h=sign*Math.min(mesh.dtMin,hMax);
+    var x=x0,y=y0,t=0,h=sign*Math.min(mesh.dtMin,hMaxNs);
     var pts=[],lastX=x,lastY=y;
     var stiffCount=0,nonstiffCount=0,isStiff=false;
     var k1x=null,k1y=null;/* FSAL state for Tsit5 */
     var gamma=SDIRK_GAMMA;
 
     for(var i=0;i<steps.maxIter&&pts.length<maxP;i++){
+      var hMax=isStiff?hMaxSt:hMaxNs;
       if(Math.abs(h)<hMin)h=hMin*sign;if(Math.abs(h)>hMax)h=hMax*sign;
       /* Compute J once per outer step; reuse for stiffness check and SDIRK */
       var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
       var J=numericalJacobian(f,g,x,y,scope,eps);
       var sr=spectralRadiusFromJ(J);
       var stiffRatio=Math.abs(h)*sr;
+      /* "Intrinsically stiff" = even the largest non-stiff step would be
+         unstable for explicit. This prevents the controller from leaving
+         stiff mode just because it temporarily shrank h for accuracy
+         (e.g. during Van der Pol's fast jump). */
+      var intrinsicallyStiff=sr*hMaxNs>STIFF_THRESHOLD;
       var wasStiff=isStiff;
-      if(!isStiff&&stiffRatio>STIFF_THRESHOLD){stiffCount++;nonstiffCount=0;if(stiffCount>=3){isStiff=true;k1x=null;k1y=null;}}
-      else if(isStiff&&stiffRatio<STIFF_THRESHOLD*0.5){nonstiffCount++;stiffCount=0;if(nonstiffCount>=5){isStiff=false;k1x=null;k1y=null;}}
+      if(!isStiff&&(stiffRatio>STIFF_THRESHOLD||intrinsicallyStiff)){stiffCount++;nonstiffCount=0;if(stiffCount>=2){isStiff=true;k1x=null;k1y=null;}}
+      else if(isStiff&&!intrinsicallyStiff&&stiffRatio<STIFF_THRESHOLD*0.5){nonstiffCount++;stiffCount=0;if(nonstiffCount>=5){isStiff=false;k1x=null;k1y=null;}}
       else{if(!isStiff)stiffCount=0;else nonstiffCount=0;}
-      /* Just switched to stiff: grow h to exploit SDIRK's L-stability. */
-      if(!wasStiff&&isStiff)h=Math.min(hMax,Math.abs(h)*10)*sign;
+      /* On mode change, rescale h to the new mode's cap. */
+      if(!wasStiff&&isStiff){h=Math.min(hMaxSt,Math.abs(h)*10)*sign;hMax=hMaxSt;}
+      else if(wasStiff&&!isStiff){h=Math.min(hMaxNs,Math.abs(h))*sign;hMax=hMaxNs;}
 
       var ok=false,attempt=0,curH=h;
       if(!isStiff){
-        /* ---- Tsit5 path ---- */
+        /* ---- Tsit5 path (capped at hMaxNs) ---- */
         while(!ok&&attempt<25){
           var res=tsit5Step2D(f,g,x,y,curH,k1x,k1y,scope);
           if(!res||!isFinite(res.xNext)||!isFinite(res.yNext)){curH*=0.25;k1x=null;k1y=null;attempt++;continue;}
@@ -1148,11 +1157,11 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
           var errN=Math.sqrt(0.5*((res.errX/scX)*(res.errX/scX)+(res.errY/scY)*(res.errY/scY)));
           if(errN<=1){t+=curH;x=res.xNext;y=res.yNext;k1x=res.k7x;k1y=res.k7y;
             var fac=errN>1e-12?Math.min(5,0.9*Math.pow(errN,-0.2)):5;
-            h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac))*sign;ok=true;
-          }else{curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,0.9*Math.pow(errN,-0.2))))*sign;k1x=null;k1y=null;attempt++;}
+            h=Math.max(hMin,Math.min(hMaxNs,Math.abs(curH)*fac))*sign;ok=true;
+          }else{curH=Math.max(hMin,Math.min(hMaxNs,Math.abs(curH)*Math.max(0.1,0.9*Math.pow(errN,-0.2))))*sign;k1x=null;k1y=null;attempt++;}
         }
       }else{
-        /* ---- SDIRK2 path (reuses cached J from above) ---- */
+        /* ---- SDIRK2 path (reuses cached J, capped at hMaxSt) ---- */
         while(!ok&&attempt<25){
           scope.x=x;scope.y=y;var f0,g0;try{f0=f.evaluate(scope);g0=g.evaluate(scope);}catch(e){break;}
           if(!isFinite(f0)||!isFinite(g0))break;
@@ -1169,7 +1178,7 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
           var eN=Math.sqrt(0.5*((eX/scX2)*(eX/scX2)+(eY/scY2)*(eY/scY2)));
           if(eN<=1){t+=curH;x=xN;y=yN;k1x=null;k1y=null;
             h=(eN>1e-10?Math.min(2,0.9/Math.sqrt(eN)):2)*Math.abs(curH)*sign;
-            h=Math.max(hMin,Math.min(hMax,Math.abs(h)))*sign;ok=true;
+            h=Math.max(hMin,Math.min(hMaxSt,Math.abs(h)))*sign;ok=true;
           }else{curH=Math.max(0.1,0.9/Math.sqrt(eN))*Math.abs(curH)*sign;attempt++;}
         }
       }
