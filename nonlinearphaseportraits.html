@@ -1129,6 +1129,12 @@ function computeTrajectoryRodas5P(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-5*tolScale,rtol=1e-3*tolScale;
   var hMax=dS*0.05,hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* Visual-density cap: a high-order method would happily take huge steps
+     across the fast jump of a relaxation oscillator, producing a polyline
+     with long straight segments where the true trajectory curves. Force a
+     retry with smaller h when one accepted step would jump more than ~2%
+     of the viewport. Slow phases never trip this so efficiency is preserved. */
+  var maxDispX=(xMax-xMin)*0.02,maxDispY=(yMax-yMin)*0.02;
   var scope={x:0,y:0};
   var ksx=new Array(8),ksy=new Array(8);
   function step(x,y,h){
@@ -1169,7 +1175,16 @@ function computeTrajectoryRodas5P(f,g,x0,y0,xMin,xMax,yMin,yMax){
         var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(res.xNext));
         var scY=atol+rtol*Math.max(Math.abs(y),Math.abs(res.yNext));
         var eN=Math.sqrt(0.5*((res.errX/scX)*(res.errX/scX)+(res.errY/scY)*(res.errY/scY)));
-        if(eN<=1){t+=curH;x=res.xNext;y=res.yNext;
+        if(eN<=1){
+          /* Visual-density cap: even though accuracy passes, refuse the
+             step if it traverses more than maxDisp in either axis. */
+          var dxStep=res.xNext-x,dyStep=res.yNext-y;
+          if(Math.abs(dxStep)>maxDispX||Math.abs(dyStep)>maxDispY){
+            var shrink=Math.min(maxDispX/(Math.abs(dxStep)+1e-30),maxDispY/(Math.abs(dyStep)+1e-30));
+            curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,0.9*shrink)))*sign;
+            attempt++;continue;
+          }
+          t+=curH;x=res.xNext;y=res.yNext;
           var fac=eN>1e-12?Math.min(5,0.9*Math.pow(eN,-0.2)):5;
           h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac))*sign;ok=true;
         }else{curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,0.9*Math.pow(eN,-0.2))))*sign;attempt++;}
@@ -1237,6 +1252,9 @@ function computeTrajectoryRadauIIA5(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-5*tolScale,rtol=1e-3*tolScale;
   var hMax=dS*0.05,hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* Visual-density cap (see Rodas5P comment): refuse a step whose
+     state-space displacement exceeds ~2% of the viewport. */
+  var maxDispX=(xMax-xMin)*0.02,maxDispY=(yMax-yMin)*0.02;
   var scope={x:0,y:0};
   function step(x,y,h){
     /* Frozen Jacobian at (x,y) — simplified Newton */
@@ -1295,7 +1313,14 @@ function computeTrajectoryRadauIIA5(f,g,x0,y0,xMin,xMax,yMin,yMax){
         var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(res.xNext));
         var scY=atol+rtol*Math.max(Math.abs(y),Math.abs(res.yNext));
         var eN=Math.sqrt(0.5*((res.errX/scX)*(res.errX/scX)+(res.errY/scY)*(res.errY/scY)));
-        if(eN<=1){t+=curH;x=res.xNext;y=res.yNext;
+        if(eN<=1){
+          var dxStep=res.xNext-x,dyStep=res.yNext-y;
+          if(Math.abs(dxStep)>maxDispX||Math.abs(dyStep)>maxDispY){
+            var shrink=Math.min(maxDispX/(Math.abs(dxStep)+1e-30),maxDispY/(Math.abs(dyStep)+1e-30));
+            curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,0.9*shrink)))*sign;
+            attempt++;continue;
+          }
+          t+=curH;x=res.xNext;y=res.yNext;
           var fac=eN>1e-12?Math.min(5,0.9*Math.pow(eN,-0.2)):5;
           h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac))*sign;ok=true;
         }else{curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,0.9*Math.pow(eN,-0.2))))*sign;attempt++;}
