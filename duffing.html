@@ -537,6 +537,7 @@ if(document.referrer.includes('dynamical.html')){
             <button type="button" class="sbtn trailbtn" data-trail="speed" role="radio" aria-checked="false" aria-label="Color by speed: blue slow, red fast">Speed</button>
             <button type="button" class="sbtn trailbtn" data-trail="solid" role="radio" aria-checked="false" aria-label="Solid color">Solid</button>
             <button type="button" class="sbtn trailbtn" data-trail="fade"  role="radio" aria-checked="true"  aria-label="Fading trail: recent path opaque, older fades">Fade</button>
+            <button type="button" class="sbtn trailbtn" data-trail="time"  role="radio" aria-checked="false" aria-label="Color by time using jet colormap: dark blue early, dark red late">Time</button>
           </span>
         </div>
       </div>
@@ -664,6 +665,16 @@ function speedColor(speed,maxSpeed){
   else if(r<0.66){var t=(r-0.33)/0.33;rr=Math.floor(180*t);gg=Math.floor(100+40*t);bb=Math.floor(180*(1-t));}
   else{var t=(r-0.66)/0.34;rr=Math.floor(180+20*t);gg=Math.floor(140*(1-t));bb=0;}
   return 'rgb('+rr+','+gg+','+bb+')';
+}
+
+/* ── Jet colormap: dark blue → blue → cyan → green → yellow → red → dark red ── */
+function jetColor(r){
+  r=Math.max(0,Math.min(1,r));
+  function cl(v){return Math.max(0,Math.min(1,v));}
+  var rr=cl(1.5-Math.abs(4*r-3));
+  var gg=cl(1.5-Math.abs(4*r-2));
+  var bb=cl(1.5-Math.abs(4*r-1));
+  return 'rgb('+Math.round(rr*255)+','+Math.round(gg*255)+','+Math.round(bb*255)+')';
 }
 
 /* ── Derivative ── */
@@ -1137,15 +1148,20 @@ function drawGraphFrame(solObj,idx,iPt){
   var cp=iPt||pts[idx];
   var cpx=gx2(cp.t),cpy=gy2(cp.x);
 
-  /* Fade applies only to the phase portrait; displacement uses solid or speed. */
+  /* Fade applies only to the phase portrait; displacement uses solid, speed, or time. */
   var effStyle=(trailStyle==='fade')?'speed':trailStyle;
-  /* Solid or speed: accumulate new segments on off-screen canvas */
+  /* Solid, speed, or time: accumulate new segments on off-screen canvas */
   if(idx>lastGIdx){
     var s0=Math.max(0,lastGIdx);
     trailGCtx.lineWidth=1.8;trailGCtx.lineJoin='round';
     if(effStyle==='speed'){
       for(var i=s0+1;i<=idx;i++){
         trailGCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
+        trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));trailGCtx.stroke();
+      }
+    }else if(effStyle==='time'){
+      for(var i=s0+1;i<=idx;i++){
+        trailGCtx.strokeStyle=jetColor(pts[i].t/T);
         trailGCtx.beginPath();trailGCtx.moveTo(gx2(pts[i-1].t),gy2(pts[i-1].x));trailGCtx.lineTo(gx2(pts[i].t),gy2(pts[i].x));trailGCtx.stroke();
       }
     }else{
@@ -1159,7 +1175,9 @@ function drawGraphFrame(solObj,idx,iPt){
   graphCtx.drawImage(trailGCv,0,0,W,H);
 
   /* Extend to interpolated point */
-  var col=(effStyle==='speed')?speedColor(Math.abs(cp.v),maxSpeed):'#1d4ed8';
+  var col=(effStyle==='speed')?speedColor(Math.abs(cp.v),maxSpeed)
+         :(effStyle==='time')?jetColor(cp.t/T)
+         :'#1d4ed8';
   graphCtx.strokeStyle=col;graphCtx.lineWidth=1.8;
   graphCtx.beginPath();graphCtx.moveTo(gx2(pts[idx].t),gy2(pts[idx].x));graphCtx.lineTo(cpx,cpy);graphCtx.stroke();
 
@@ -1205,6 +1223,12 @@ function drawPhaseFrame(solObj,idx,iPt){
           trailPCtx.strokeStyle=speedColor(Math.abs(pts[i].v),maxSpeed);
           trailPCtx.beginPath();trailPCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));trailPCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));trailPCtx.stroke();
         }
+      }else if(trailStyle==='time'){
+        var Tt=solObj.T||1;
+        for(var i=s0+1;i<=idx;i++){
+          trailPCtx.strokeStyle=jetColor(pts[i].t/Tt);
+          trailPCtx.beginPath();trailPCtx.moveTo(toCx(pts[i-1].x),toCy(pts[i-1].v));trailPCtx.lineTo(toCx(pts[i].x),toCy(pts[i].v));trailPCtx.stroke();
+        }
       }else{
         trailPCtx.strokeStyle='#1d4ed8';
         trailPCtx.beginPath();trailPCtx.moveTo(toCx(pts[s0].x),toCy(pts[s0].v));
@@ -1216,7 +1240,9 @@ function drawPhaseFrame(solObj,idx,iPt){
     phaseCtx.drawImage(trailPCv,0,0,W,H);
 
     if(idx>0){
-      var col=(trailStyle==='speed')?speedColor(Math.abs(cp0.v),maxSpeed):'#1d4ed8';
+      var col=(trailStyle==='speed')?speedColor(Math.abs(cp0.v),maxSpeed)
+             :(trailStyle==='time')?jetColor(cp0.t/(solObj.T||1))
+             :'#1d4ed8';
       phaseCtx.strokeStyle=col;phaseCtx.lineWidth=0.9;phaseCtx.lineCap='round';
       phaseCtx.beginPath();phaseCtx.moveTo(toCx(pts[idx].x),toCy(pts[idx].v));phaseCtx.lineTo(ccx,ccy);phaseCtx.stroke();
     }
