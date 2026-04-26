@@ -175,6 +175,12 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
   background:rgba(29,78,216,.04);border-left:3px solid var(--blue);
   padding:.4rem .7rem;border-radius:0 var(--r) var(--r) 0;margin-bottom:.6rem;}
 
+/* Numerical-method selector */
+.method-row{display:flex;align-items:center;gap:.5rem;margin-top:.6rem;padding-top:.55rem;border-top:1px solid var(--bdr2);}
+.method-sel{flex:1;min-height:34px;padding:.2rem .5rem;border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);font-size:.85rem;font-weight:600;cursor:pointer;}
+.method-sel:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
 /* Example preset grid (Lorenz examples reproducing Ch. 9 figures) */
 .ex-grid{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;}
 .ex-btn{font-size:.78rem;padding:.45rem .5rem;justify-content:center;text-align:center;line-height:1.2;}
@@ -298,11 +304,17 @@ if(document.referrer.includes('dynamical.html')){
 
       <h2>Numerical Method</h2>
       <p>
-        Static trajectories use a fixed-step 5th-order <strong>Tsitouras 5(4) (Tsit5)</strong> method
-        with \(\Delta t=0.005\) and a configurable end time \(T\) (default \(T=150\), so 30,000 steps).
-        Reducing \(T\) is useful when long-time behaviour washes out the feature of interest — for
-        example at \(\rho=21\) the chaotic transient is hidden by the post-settling spiral if \(T\)
-        is left at 150.
+        Static trajectories use a fixed-step Runge-Kutta integrator with \(\Delta t=0.005\) and a
+        configurable end time \(T\) (default \(T=150\), so 30,000 steps).
+        The <strong>Method</strong> selector switches between three options so the user can verify
+        that any feature of interest is intrinsic to the dynamics rather than an artifact of one solver:
+      </p>
+      <ul>
+        <li><strong>RK4</strong> — classic Runge-Kutta, 4 stages, 4th-order accurate per step.</li>
+        <li><strong>Dormand-Prince 5(4)</strong> — 6 stages (FSAL), 5th-order solution coefficients.</li>
+        <li><strong>Tsit5</strong> — Tsitouras 5(4), 6 stages, 5th-order; default.</li>
+      </ul>
+      <p>
         Animate \(\rho\) frames use 10,000 steps (total time \(t=50\)) — enough to fill both lobes —
         and are <strong>precomputed in full before playback begins</strong>, so the animation runs smoothly at any FPS.
         The Jet colorbar shows actual simulation time (\(t=0\) to \(t=T\) for static, \(t=0\) to \(t=50\) for animation).
@@ -340,6 +352,14 @@ if(document.referrer.includes('dynamical.html')){
         </div>
         <div style="padding:.65rem .75rem;">
           <div class="param-grid" id="paramGrid" role="group" aria-label="System parameters"></div>
+          <div class="method-row">
+            <label for="method" class="sl-label">Method:</label>
+            <select id="method" class="method-sel" aria-label="Numerical integration method">
+              <option value="tsit5" selected>Tsit5 (5th order)</option>
+              <option value="dp5">Dormand-Prince 5(4)</option>
+              <option value="rk4">RK4 (4th order)</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="abar">
@@ -505,38 +525,85 @@ var PARAMS=[
 // Step count for static renders, derived from the user's end time T.
 function staticN(v){return Math.max(2,Math.round(v.tend/DT));}
 
-/* ── Lorenz Tsit5 ─────────────────────────────────────────────────────────────
-   Fixed-step Tsitouras 5(4) — 5th-order accurate per step (vs RK4's 4th order).
-   Uses the 5th-order solution coefficients only (no adaptive control), so the
-   step count and array layout match the previous RK4 implementation exactly.
-   N is optional; defaults to STATIC_N.
+/* ── Lorenz integrators (fixed-step, dt = DT) ────────────────────────────────
+   Three options exposed via the Method selector so users can confirm
+   features (e.g. transient chaos length at a given ρ) are intrinsic to
+   the dynamics rather than artifacts of one solver:
+
+     rk4   : classic Runge-Kutta 4(4),       4 stages, 4th order
+     dp5   : Dormand-Prince 5(4),            6 stages, 5th order (FSAL)
+     tsit5 : Tsitouras 5(4),                 6 stages, 5th order
+
+   solveLorenz dispatches on the `method` argument; default is tsit5.
    ──────────────────────────────────────────────────────────────────────────── */
 function lorenz(x,y,z,sigma,rho,beta){return[sigma*(y-x),x*(rho-z)-y,x*y-beta*z];}
-function solveLorenz(sigma,rho,beta,x0,y0,z0,N){
+
+function stepRK4(x,y,z,s,r,b,h){
+  var k1=lorenz(x,y,z,s,r,b);
+  var k2=lorenz(x+h*0.5*k1[0],y+h*0.5*k1[1],z+h*0.5*k1[2],s,r,b);
+  var k3=lorenz(x+h*0.5*k2[0],y+h*0.5*k2[1],z+h*0.5*k2[2],s,r,b);
+  var k4=lorenz(x+h*k3[0],    y+h*k3[1],    z+h*k3[2],    s,r,b);
+  var c=h/6;
+  return[x+c*(k1[0]+2*k2[0]+2*k3[0]+k4[0]),
+         y+c*(k1[1]+2*k2[1]+2*k3[1]+k4[1]),
+         z+c*(k1[2]+2*k2[2]+2*k3[2]+k4[2])];
+}
+
+function stepDP5(x,y,z,s,r,b,h){
+  var k1=lorenz(x,y,z,s,r,b);
+  var k2=lorenz(x+h*(1/5)*k1[0],
+                y+h*(1/5)*k1[1],
+                z+h*(1/5)*k1[2],s,r,b);
+  var k3=lorenz(x+h*(3/40*k1[0]+9/40*k2[0]),
+                y+h*(3/40*k1[1]+9/40*k2[1]),
+                z+h*(3/40*k1[2]+9/40*k2[2]),s,r,b);
+  var k4=lorenz(x+h*(44/45*k1[0]-56/15*k2[0]+32/9*k3[0]),
+                y+h*(44/45*k1[1]-56/15*k2[1]+32/9*k3[1]),
+                z+h*(44/45*k1[2]-56/15*k2[2]+32/9*k3[2]),s,r,b);
+  var k5=lorenz(x+h*(19372/6561*k1[0]-25360/2187*k2[0]+64448/6561*k3[0]-212/729*k4[0]),
+                y+h*(19372/6561*k1[1]-25360/2187*k2[1]+64448/6561*k3[1]-212/729*k4[1]),
+                z+h*(19372/6561*k1[2]-25360/2187*k2[2]+64448/6561*k3[2]-212/729*k4[2]),s,r,b);
+  var k6=lorenz(x+h*(9017/3168*k1[0]-355/33*k2[0]+46732/5247*k3[0]+49/176*k4[0]-5103/18656*k5[0]),
+                y+h*(9017/3168*k1[1]-355/33*k2[1]+46732/5247*k3[1]+49/176*k4[1]-5103/18656*k5[1]),
+                z+h*(9017/3168*k1[2]-355/33*k2[2]+46732/5247*k3[2]+49/176*k4[2]-5103/18656*k5[2]),s,r,b);
+  return[x+h*(35/384*k1[0]+500/1113*k3[0]+125/192*k4[0]-2187/6784*k5[0]+11/84*k6[0]),
+         y+h*(35/384*k1[1]+500/1113*k3[1]+125/192*k4[1]-2187/6784*k5[1]+11/84*k6[1]),
+         z+h*(35/384*k1[2]+500/1113*k3[2]+125/192*k4[2]-2187/6784*k5[2]+11/84*k6[2])];
+}
+
+function stepTsit5(x,y,z,s,r,b,h){
+  var k1=lorenz(x,y,z,s,r,b);
+  var k2=lorenz(x+h*0.161*k1[0],
+                y+h*0.161*k1[1],
+                z+h*0.161*k1[2],s,r,b);
+  var k3=lorenz(x+h*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+                y+h*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1]),
+                z+h*(-0.008480655492356989*k1[2]+0.335480655492357*k2[2]),s,r,b);
+  var k4=lorenz(x+h*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+                y+h*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1]),
+                z+h*(2.8971530571054935*k1[2]-6.359448489975075*k2[2]+4.362295432869581*k3[2]),s,r,b);
+  var k5=lorenz(x+h*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+                y+h*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1]),
+                z+h*(5.325864828439257*k1[2]-11.748883564062828*k2[2]+7.4955393428898365*k3[2]-0.09249506636175525*k4[2]),s,r,b);
+  var k6=lorenz(x+h*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+                y+h*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1]),
+                z+h*(5.86145544294642*k1[2]-12.92096931784711*k2[2]+8.159367898576159*k3[2]-0.071584973281401*k4[2]-0.028269050394068383*k5[2]),s,r,b);
+  return[x+h*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]),
+         y+h*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]),
+         z+h*(0.09646076681806523*k1[2]+0.01*k2[2]+0.4798896504144996*k3[2]+1.379008574103742*k4[2]-3.290069515436081*k5[2]+2.324710524099774*k6[2])];
+}
+
+var STEPPERS={rk4:stepRK4, dp5:stepDP5, tsit5:stepTsit5};
+
+function solveLorenz(sigma,rho,beta,x0,y0,z0,N,method){
   N=N||STATIC_N;
+  var step=STEPPERS[method]||stepTsit5;
   var xa=new Array(N),ya=new Array(N),za=new Array(N),ta=new Array(N);
   var x=x0,y=y0,z=z0;
   var norm=N>1?N-1:1;
   for(var i=0;i<N;i++){
-    var k1=lorenz(x,y,z,sigma,rho,beta);
-    var k2=lorenz(x+DT*0.161*k1[0],
-                  y+DT*0.161*k1[1],
-                  z+DT*0.161*k1[2],sigma,rho,beta);
-    var k3=lorenz(x+DT*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
-                  y+DT*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1]),
-                  z+DT*(-0.008480655492356989*k1[2]+0.335480655492357*k2[2]),sigma,rho,beta);
-    var k4=lorenz(x+DT*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
-                  y+DT*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1]),
-                  z+DT*(2.8971530571054935*k1[2]-6.359448489975075*k2[2]+4.362295432869581*k3[2]),sigma,rho,beta);
-    var k5=lorenz(x+DT*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
-                  y+DT*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1]),
-                  z+DT*(5.325864828439257*k1[2]-11.748883564062828*k2[2]+7.4955393428898365*k3[2]-0.09249506636175525*k4[2]),sigma,rho,beta);
-    var k6=lorenz(x+DT*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
-                  y+DT*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1]),
-                  z+DT*(5.86145544294642*k1[2]-12.92096931784711*k2[2]+8.159367898576159*k3[2]-0.071584973281401*k4[2]-0.028269050394068383*k5[2]),sigma,rho,beta);
-    x+=DT*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
-    y+=DT*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
-    z+=DT*(0.09646076681806523*k1[2]+0.01*k2[2]+0.4798896504144996*k3[2]+1.379008574103742*k4[2]-3.290069515436081*k5[2]+2.324710524099774*k6[2]);
+    var s=step(x,y,z,sigma,rho,beta,DT);
+    x=s[0];y=s[1];z=s[2];
     xa[i]=x;ya[i]=y;za[i]=z;ta[i]=i/norm;
   }
   return{x:xa,y:ya,z:za,t:ta};
@@ -624,6 +691,8 @@ function make3DLayout(title){
 function readParams(){
   var v={};
   PARAMS.forEach(function(p){var el=document.getElementById(p.id);v[p.id]=el?parseFloat(el.value):p.value;});
+  var ms=document.getElementById('method');
+  v.method=(ms&&ms.value)||'tsit5';
   return v;
 }
 
@@ -636,7 +705,7 @@ var updatePlot=debounce(function(rhoOverride){
     if(rs)rs.value=rhoOverride;if(ri)ri.value=fmtSig(rhoOverride);
   }
   var N=staticN(v);
-  var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N);
+  var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
   Plotly.react('plot',
     [makeJetTrace(tr,2,N)],
     make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v.rho)+')')
@@ -679,8 +748,8 @@ function launchParticles(){
   var v=readParams();
   var eps=parseFloat(document.getElementById('epsilonInput').value)||1e-9;
   var N=staticN(v);
-  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N);
-  PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,N);
+  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
+  PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,N,v.method);
   PA.idx=0;PA.running=true;PA.mode='particles';PA.renderFn=renderParticleFrame;
   var lb=document.getElementById('launchBtn');lb.textContent='Stop';lb.classList.add('abtn-running');
   say('Particle animation started.');startAnimLoop();
@@ -691,7 +760,7 @@ function launchTransientChaos(){
   var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
   if(rs)rs.value=22;if(ri)ri.value='22';
   var v=readParams();v.rho=22;
-  PA.t1=solveLorenz(v.sigma,22,v.beta,v.x0,v.y0,v.z0,staticN(v));
+  PA.t1=solveLorenz(v.sigma,22,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='transient';PA.renderFn=renderTransientFrame;
   var tb=document.getElementById('transientBtn');tb.textContent='Stop';tb.classList.add('abtn-running');
   say('Transient chaos animation started.');startAnimLoop();
@@ -766,7 +835,7 @@ function precomputeRhoFrames(rhoVals,v,onProgress,onDone){
     if(i>=rhoVals.length){onDone(frames);return;}
     frames.push({
       rho:rhoVals[i],
-      tr:solveLorenz(v.sigma,rhoVals[i],v.beta,v.x0,v.y0,v.z0,ANIM_N)
+      tr:solveLorenz(v.sigma,rhoVals[i],v.beta,v.x0,v.y0,v.z0,ANIM_N,v.method)
     });
     onProgress(i+1,rhoVals.length);
     i++;
@@ -816,6 +885,16 @@ document.addEventListener('DOMContentLoaded',function(){
       updatePlot();
     });
   });
+
+  /* Method selector — re-render with the chosen integrator */
+  var methodSel=document.getElementById('method');
+  if(methodSel){
+    methodSel.addEventListener('change',function(){
+      stopParticles();stopRhoAnim();
+      updatePlot();
+      say('Method: '+this.options[this.selectedIndex].text);
+    });
+  }
 
   /* ── Animate rho ─────────────────────────────────────────────────────────
      Phase 1: Precompute all ANIM_N-step trajectories for every ρ in the
@@ -985,7 +1064,7 @@ document.addEventListener('DOMContentLoaded',function(){
   if(window.Plotly){
     var v0=readParams();
     var N0=staticN(v0);
-    var tr0=solveLorenz(v0.sigma,v0.rho,v0.beta,v0.x0,v0.y0,v0.z0,N0);
+    var tr0=solveLorenz(v0.sigma,v0.rho,v0.beta,v0.x0,v0.y0,v0.z0,N0,v0.method);
     Plotly.react('plot',
       [makeJetTrace(tr0,2,N0)],
       make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v0.rho)+')')
