@@ -735,6 +735,29 @@ function readParams(){
   return v;
 }
 
+/* At ρ > 100 the oscillation period shrinks like 1/√(βρ) and chaos
+   diverges faster, so we force DOP853 (the highest-order option) and cap
+   the time horizon at ~150·√(28/ρ). Mutates v and reflects to the UI. */
+function applyLargeRhoDefaults(v){
+  if(!(v.rho>100))return false;
+  var changed=false;
+  if(v.method!=='dop853'){
+    v.method='dop853';
+    var ms=document.getElementById('method');
+    if(ms&&ms.value!=='dop853')ms.value='dop853';
+    changed=true;
+  }
+  var tCap=Math.max(5,Math.ceil(150*Math.sqrt(28/v.rho)));
+  if(v.tend>tCap){
+    v.tend=tCap;
+    var ts=document.getElementById('tend'),ti=document.getElementById('tendVal');
+    if(ts)ts.value=tCap;
+    if(ti)ti.value=fmtSig(tCap);
+    changed=true;
+  }
+  return changed;
+}
+
 /* ── Update static plot ── */
 var updatePlot=debounce(function(rhoOverride){
   var v=readParams();
@@ -743,6 +766,7 @@ var updatePlot=debounce(function(rhoOverride){
     var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
     if(rs)rs.value=rhoOverride;if(ri)ri.value=fmtSig(rhoOverride);
   }
+  if(applyLargeRhoDefaults(v))say('ρ > 100: switched to DOP853 and capped T at '+v.tend+'.');
   var N=staticN(v);
   var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
   var ic='('+fmtSig(v.x0)+', '+fmtSig(v.y0)+', '+fmtSig(v.z0)+')';
@@ -786,6 +810,7 @@ function startAnimLoop(){
 function launchParticles(){
   stopParticles();
   var v=readParams();
+  if(applyLargeRhoDefaults(v))say('ρ > 100: switched to DOP853 and capped T at '+v.tend+'.');
   var eps=parseFloat(document.getElementById('epsilonInput').value)||1e-9;
   var N=staticN(v);
   PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
@@ -974,6 +999,14 @@ document.addEventListener('DOMContentLoaded',function(){
     }
 
     var v=readParams();
+    /* If any frame in the sweep crosses ρ=100, force DOP853 for the
+       whole sweep so accuracy doesn't degrade midway. */
+    if(rhoEnd>100&&v.method!=='dop853'){
+      v.method='dop853';
+      var msSweep=document.getElementById('method');
+      if(msSweep)msSweep.value='dop853';
+      say('ρ sweep crosses 100: switched to DOP853.');
+    }
     var me=this;
     RhoAnim.cancelled=false;
     RhoAnim.computing=true;
