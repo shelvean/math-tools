@@ -299,15 +299,18 @@ if(document.referrer.includes('dynamical.html')){
       <h2>Numerical Method</h2>
       <p>
         Static trajectories use a fixed-step 5th-order <strong>Tsitouras 5(4) (Tsit5)</strong> method
-        with \(\Delta t=0.005\) and 30,000 steps (total time \(t=150\)).
+        with \(\Delta t=0.005\) and a configurable end time \(T\) (default \(T=150\), so 30,000 steps).
+        Reducing \(T\) is useful when long-time behaviour washes out the feature of interest — for
+        example at \(\rho=21\) the chaotic transient is hidden by the post-settling spiral if \(T\)
+        is left at 150.
         Animate \(\rho\) frames use 10,000 steps (total time \(t=50\)) — enough to fill both lobes —
         and are <strong>precomputed in full before playback begins</strong>, so the animation runs smoothly at any FPS.
-        The Jet colorbar shows actual simulation time (e.g.&nbsp;\(t=0\) to \(t=150\) for static, \(t=0\) to \(t=50\) for animation).
+        The Jet colorbar shows actual simulation time (\(t=0\) to \(t=T\) for static, \(t=0\) to \(t=50\) for animation).
       </p>
 
       <h2>How to Use</h2>
       <ul>
-        <li>Adjust \(\sigma,\rho,\beta\) and initial conditions \((x_0,y_0,z_0)\) using the sliders or type directly in the value boxes.</li>
+        <li>Adjust \(\sigma,\rho,\beta\), initial conditions \((x_0,y_0,z_0)\), and the end time \(T\) using the sliders or type directly in the value boxes. Each preset below sets a sensible \(T\) automatically.</li>
         <li>Use the <strong>Examples</strong> buttons to load presets that reproduce the canonical Chapter 9 figures from <em>Nonlinear Dynamics and Chaos</em>: \(\rho=0.5\) (stable origin), \(\rho=10\) (stable spirals onto \(C^\pm\)), \(\rho=21\) (transient chaos), and \(\rho=28\) with both the textbook IC \((0,1,0)\) and Sparrow's \((0,1,1.05)\). Each preset uses \(\sigma=10\), \(\beta=8/3\).</li>
         <li>Click <strong>Animate \(\rho\)</strong> to precompute and play the sweep from \(\rho_\text{start}\) to \(\rho_\text{end}\). The button shows precompute progress; click again at any time to stop.</li>
         <li>Click <strong>Transient Chaos</strong> to set \(\rho=22\) and animate a single trajectory exhibiting long transient chaotic behaviour before settling.</li>
@@ -477,13 +480,15 @@ function parseInp(s){
 function debounce(fn,w){var t;return function(){clearTimeout(t);t=setTimeout(function(){fn.apply(this,arguments);},w);};}
 
 /* ── Step counts ──────────────────────────────────────────────────────────────
-   STATIC_N : used for the main static plot and particle/transient animations.
-              dt=0.005 → t_end = 150. Gives the fully detailed attractor.
+   Static plot and particle/transient animations use staticN(v) =
+   round(v.tend / DT), where v.tend is the user-controlled end-time T.
+   Defaults to T=150 → 30,000 steps; can be reduced to expose features
+   that get washed out at long times (e.g. transient chaos at ρ=21).
    ANIM_N   : used for each precomputed ρ-sweep frame.
               dt=0.005 → t_end = 50. Fast to compute; enough to fill both lobes.
    ──────────────────────────────────────────────────────────────────────────── */
 var DT       = 0.005;
-var STATIC_N = 30000;   // t_end = 150
+var STATIC_N = 30000;   // legacy fallback; staticN(v) is the live value
 var ANIM_N   = 10000;   // t_end = 50
 
 /* ── Parameters ── */
@@ -494,7 +499,11 @@ var PARAMS=[
   {id:'x0',    label:'x_0',       min:-20, max:20,  step:1e-10,     value:1},
   {id:'y0',    label:'y_0',       min:-20, max:20,  step:1e-10,     value:1},
   {id:'z0',    label:'z_0',       min:-20, max:50,  step:1e-10,     value:20},
+  {id:'tend',  label:'T',         min:5,   max:300, step:1,         value:150},
 ];
+
+// Step count for static renders, derived from the user's end time T.
+function staticN(v){return Math.max(2,Math.round(v.tend/DT));}
 
 /* ── Lorenz Tsit5 ─────────────────────────────────────────────────────────────
    Fixed-step Tsitouras 5(4) — 5th-order accurate per step (vs RK4's 4th order).
@@ -626,9 +635,10 @@ var updatePlot=debounce(function(rhoOverride){
     var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
     if(rs)rs.value=rhoOverride;if(ri)ri.value=fmtSig(rhoOverride);
   }
-  var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,STATIC_N);
+  var N=staticN(v);
+  var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N);
   Plotly.react('plot',
-    [makeJetTrace(tr,2,STATIC_N)],
+    [makeJetTrace(tr,2,N)],
     make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v.rho)+')')
   );
   say('Plot updated. \u03C1 = '+fmtSig(v.rho));
@@ -668,8 +678,9 @@ function launchParticles(){
   stopParticles();
   var v=readParams();
   var eps=parseFloat(document.getElementById('epsilonInput').value)||1e-9;
-  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,STATIC_N);
-  PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,STATIC_N);
+  var N=staticN(v);
+  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N);
+  PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,N);
   PA.idx=0;PA.running=true;PA.mode='particles';PA.renderFn=renderParticleFrame;
   var lb=document.getElementById('launchBtn');lb.textContent='Stop';lb.classList.add('abtn-running');
   say('Particle animation started.');startAnimLoop();
@@ -680,7 +691,7 @@ function launchTransientChaos(){
   var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
   if(rs)rs.value=22;if(ri)ri.value='22';
   var v=readParams();v.rho=22;
-  PA.t1=solveLorenz(v.sigma,22,v.beta,v.x0,v.y0,v.z0,STATIC_N);
+  PA.t1=solveLorenz(v.sigma,22,v.beta,v.x0,v.y0,v.z0,staticN(v));
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='transient';PA.renderFn=renderTransientFrame;
   var tb=document.getElementById('transientBtn');tb.textContent='Stop';tb.classList.add('abtn-running');
   say('Transient chaos animation started.');startAnimLoop();
@@ -715,7 +726,7 @@ function renderTransientFrame(idx){
       var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
       var line={color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
                 cauto:false,cmin:0,cmax:1,showscale:!mobile};
-      if(!mobile)line.colorbar=makeColorbar(STATIC_N);
+      if(!mobile)line.colorbar=makeColorbar(t1.x.length);
       return {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
               type:'scatter3d',mode:'lines',line:line,showlegend:false};
     })(),
@@ -917,26 +928,28 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 
   /* ── Examples (Nonlinear Dynamics and Chaos, Ch. 9) ──────────────────────
-     Each preset sets σ, ρ, β, and the initial condition (x0, y0, z0) in
-     the parameter inputs and re-renders the static trajectory using the
-     Tsit5 integrator above.  Verified numerically (see commit message):
-       ρ=0.5  IC (0,1,0)    → settles at origin (|x| < 1e-4 by t=20)
-       ρ=10   IC (0,1,0)    → reaches C+ exactly (Hopf threshold ~24.74)
-       ρ=21   IC (0,1,0)    → chaotic transient, settles to C±
-       ρ=28   IC (0,1,0)    → strange attractor, x in ~[-17, 20]
-       ρ=28   IC (0,1,1.05) → strange attractor, Sparrow's classic IC
+     Each preset sets σ, ρ, β, the initial condition (x0, y0, z0), and
+     a sensible end-time T in the parameter inputs, then re-renders the
+     static trajectory using the Tsit5 integrator above.
+     T is chosen per preset so the salient feature is visible without
+     being washed out by long-time settling:
+       ρ=0.5  IC (0,1,0)    T=15  → settles at origin
+       ρ=10   IC (0,1,0)    T=30  → spirals onto C+ (Hopf threshold ~24.74)
+       ρ=21   IC (0,1,0)    T=80  → chaotic transient, then settles to C±
+       ρ=28   IC (0,1,0)    T=150 → strange attractor (full)
+       ρ=28   IC (0,1,1.05) T=150 → strange attractor, Sparrow's classic IC
      ────────────────────────────────────────────────────────────────────── */
   var EXAMPLE_PRESETS={
-    origin   :{sigma:10,rho:0.5,beta:8/3,x0:0,y0:1,z0:0,    label:'ρ=0.5 stable origin'},
-    spirals  :{sigma:10,rho:10, beta:8/3,x0:0,y0:1,z0:0,    label:'ρ=10 stable C±'},
-    transient:{sigma:10,rho:21, beta:8/3,x0:0,y0:1,z0:0,    label:'ρ=21 transient chaos'},
-    attractor:{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:0,    label:'ρ=28 strange attractor'},
-    sparrow  :{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:1.05, label:'ρ=28 Sparrow IC'}
+    origin   :{sigma:10,rho:0.5,beta:8/3,x0:0,y0:1,z0:0,    tend:15,  label:'ρ=0.5 stable origin'},
+    spirals  :{sigma:10,rho:10, beta:8/3,x0:0,y0:1,z0:0,    tend:30,  label:'ρ=10 stable C±'},
+    transient:{sigma:10,rho:21, beta:8/3,x0:0,y0:1,z0:0,    tend:80,  label:'ρ=21 transient chaos'},
+    attractor:{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:0,    tend:150, label:'ρ=28 strange attractor'},
+    sparrow  :{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:1.05, tend:150, label:'ρ=28 Sparrow IC'}
   };
   function applyExamplePreset(key){
     var p=EXAMPLE_PRESETS[key];if(!p)return;
     stopParticles();stopRhoAnim();
-    ['sigma','rho','beta','x0','y0','z0'].forEach(function(k){
+    ['sigma','rho','beta','x0','y0','z0','tend'].forEach(function(k){
       var s=document.getElementById(k),i=document.getElementById(k+'Val');
       if(s)s.value=p[k];
       if(i)i.value=fmtSig(p[k]);
@@ -971,9 +984,10 @@ document.addEventListener('DOMContentLoaded',function(){
      defined when MathJax loads async) cannot block the attractor render. */
   if(window.Plotly){
     var v0=readParams();
-    var tr0=solveLorenz(v0.sigma,v0.rho,v0.beta,v0.x0,v0.y0,v0.z0,STATIC_N);
+    var N0=staticN(v0);
+    var tr0=solveLorenz(v0.sigma,v0.rho,v0.beta,v0.x0,v0.y0,v0.z0,N0);
     Plotly.react('plot',
-      [makeJetTrace(tr0,2,STATIC_N)],
+      [makeJetTrace(tr0,2,N0)],
       make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v0.rho)+')')
     );
   }
