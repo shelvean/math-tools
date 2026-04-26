@@ -313,6 +313,7 @@ if(document.referrer.includes('dynamical.html')){
         <li><strong>RK4</strong> — classic Runge-Kutta, 4 stages, 4th-order accurate per step.</li>
         <li><strong>Dormand-Prince 5(4)</strong> — 6 stages (FSAL), 5th-order solution coefficients.</li>
         <li><strong>Tsit5</strong> — Tsitouras 5(4), 6 stages, 5th-order; default.</li>
+        <li><strong>DOP853</strong> — Dormand-Prince 8(5,3), 12 stages, 8th-order; closest to a "ground truth" reference at small \(\Delta t\).</li>
       </ul>
       <p>
         Animate \(\rho\) frames use 10,000 steps (total time \(t=50\)) — enough to fill both lobes —
@@ -356,6 +357,7 @@ if(document.referrer.includes('dynamical.html')){
             <select id="method" class="method-sel" aria-label="Numerical integration method">
               <option value="tsit5" selected>Tsit5 (5th order)</option>
               <option value="dp5">Dormand-Prince 5(4)</option>
+              <option value="dop853">DOP853 (Dormand-Prince 8th order)</option>
               <option value="rk4">RK4 (4th order)</option>
             </select>
           </div>
@@ -586,7 +588,50 @@ function stepTsit5(x,y,z,s,r,b,h){
          z+h*(0.09646076681806523*k1[2]+0.01*k2[2]+0.4798896504144996*k3[2]+1.379008574103742*k4[2]-3.290069515436081*k5[2]+2.324710524099774*k6[2])];
 }
 
-var STEPPERS={rk4:stepRK4, dp5:stepDP5, tsit5:stepTsit5};
+var STEPPERS={rk4:stepRK4, dp5:stepDP5, tsit5:stepTsit5, dop853:stepDOP853};
+
+/* ── DOP853 (Dormand-Prince 8(5,3)) ──────────────────────────────────────────
+   12 stages, 8th order.  Coefficients extracted verbatim from
+   scipy.integrate._ivp.dop853_coefficients (Hairer-Norsett-Wanner pair);
+   row-sum and b-sum invariants verified to floating-point precision.
+   Sparse a-rows stored as {col_index: coefficient} objects to keep the
+   tableau readable; the inner loop sums only the nonzero entries.
+   ──────────────────────────────────────────────────────────────────────────── */
+var DOP853_A=[
+  {},
+  {0:0.05260015195876773},
+  {0:0.0197250569845379, 1:0.0591751709536137},
+  {0:0.02958758547680685, 2:0.08876275643042054},
+  {0:0.2413651341592667, 2:-0.8845494793282861, 3:0.924834003261792},
+  {0:0.037037037037037035, 3:0.17082860872947386, 4:0.12546768756682242},
+  {0:0.037109375, 3:0.17025221101954405, 4:0.06021653898045596, 5:-0.017578125},
+  {0:0.03709200011850479, 3:0.17038392571223998, 4:0.10726203044637328, 5:-0.015319437748624402, 6:0.008273789163814023},
+  {0:0.6241109587160757, 3:-3.3608926294469414, 4:-0.868219346841726, 5:27.59209969944671, 6:20.154067550477894, 7:-43.48988418106996},
+  {0:0.47766253643826434, 3:-2.4881146199716677, 4:-0.590290826836843, 5:21.230051448181193, 6:15.279233632882423, 7:-33.28821096898486, 8:-0.020331201708508627},
+  {0:-0.9371424300859873, 3:5.186372428844064, 4:1.0914373489967295, 5:-8.149787010746927, 6:-18.52006565999696, 7:22.739487099350505, 8:2.4936055526796523, 9:-3.0467644718982196},
+  {0:2.273310147516538, 3:-10.53449546673725, 4:-2.0008720582248625, 5:-17.9589318631188, 6:27.94888452941996, 7:-2.8589982771350235, 8:-8.87285693353063, 9:12.360567175794303, 10:0.6433927460157636}
+];
+var DOP853_B=[0.054293734116568765, 0.0, 0.0, 0.0, 0.0, 4.450312892752409, 1.8915178993145003, -5.801203960010585, 0.3111643669578199, -0.1521609496625161, 0.20136540080403034, 0.04471061572777259];
+
+function stepDOP853(x,y,z,s,r,b,h){
+  var ks=new Array(12);
+  ks[0]=lorenz(x,y,z,s,r,b);
+  for(var i=1;i<12;i++){
+    var ax=0,ay=0,az=0,row=DOP853_A[i],keys=Object.keys(row);
+    for(var ki=0;ki<keys.length;ki++){
+      var j=+keys[ki],aij=row[j],kj=ks[j];
+      ax+=aij*kj[0]; ay+=aij*kj[1]; az+=aij*kj[2];
+    }
+    ks[i]=lorenz(x+h*ax, y+h*ay, z+h*az, s,r,b);
+  }
+  var bx=0,by=0,bz=0;
+  for(var i=0;i<12;i++){
+    var bi=DOP853_B[i];
+    if(bi===0)continue;
+    bx+=bi*ks[i][0]; by+=bi*ks[i][1]; bz+=bi*ks[i][2];
+  }
+  return [x+h*bx, y+h*by, z+h*bz];
+}
 
 function solveLorenz(sigma,rho,beta,x0,y0,z0,N,method){
   N=N||STATIC_N;
