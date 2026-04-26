@@ -1107,7 +1107,13 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var hMaxNs=mesh.dtMax,hMaxSt=Math.max(mesh.dtMax,dS*0.05);
   var hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
   var scope={x:0,y:0};
-  var STIFF_THRESHOLD=3.25;/* h*|lambda_max| above this → stiff */
+  /* Stiffness criterion: stiffness = sr·hMaxNs measures what fraction of
+     Tsit5's stability budget (R≈3.4 on the negative real axis) the explicit
+     method would need at its natural max step. Decoupled from the current h
+     so accuracy-driven step reductions can't masquerade as "non-stiff" and
+     trigger spurious mode flips. The dead zone (STIFF_OFF, STIFF_ON)
+     prevents toggling near the boundary. */
+  var STIFF_ON=1.5,STIFF_OFF=0.5;
 
   /* Exact spectral radius for a 2×2 Jacobian via tr/det — much tighter than
      Gershgorin row-sums, which over-estimate λ_max badly for Van der Pol. */
@@ -1132,16 +1138,10 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
       var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
       var J=numericalJacobian(f,g,x,y,scope,eps);
       var sr=spectralRadiusFromJ(J);
-      var stiffRatio=Math.abs(h)*sr;
-      /* "Intrinsically stiff" = SDIRK is meaningfully cheaper than Tsit5 even
-         at Tsit5's largest step. Threshold matches the exit-stiff cut so
-         the two tests agree on borderline cases (μ=100 was wobbling because
-         it sat between the entry threshold 3.25 and the exit threshold 1.625
-         and the mode switcher kept toggling). */
-      var intrinsicallyStiff=sr*hMaxNs>STIFF_THRESHOLD*0.5;
+      var stiffness=sr*hMaxNs;
       var wasStiff=isStiff;
-      if(!isStiff&&(stiffRatio>STIFF_THRESHOLD||intrinsicallyStiff)){stiffCount++;nonstiffCount=0;if(stiffCount>=2){isStiff=true;k1x=null;k1y=null;}}
-      else if(isStiff&&!intrinsicallyStiff&&stiffRatio<STIFF_THRESHOLD*0.5){nonstiffCount++;stiffCount=0;if(nonstiffCount>=5){isStiff=false;k1x=null;k1y=null;}}
+      if(!isStiff&&stiffness>STIFF_ON){stiffCount++;nonstiffCount=0;if(stiffCount>=2){isStiff=true;k1x=null;k1y=null;}}
+      else if(isStiff&&stiffness<STIFF_OFF){nonstiffCount++;stiffCount=0;if(nonstiffCount>=5){isStiff=false;k1x=null;k1y=null;}}
       else{if(!isStiff)stiffCount=0;else nonstiffCount=0;}
       /* On mode change, rescale h to the new mode's cap. */
       if(!wasStiff&&isStiff){h=Math.min(hMaxSt,Math.abs(h)*10)*sign;hMax=hMaxSt;}
