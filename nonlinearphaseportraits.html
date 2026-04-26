@@ -1100,17 +1100,20 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var tolScale=meshKey==='coarse'?100:meshKey==='fine'?0.1:meshKey==='veryfine'?0.01:1;
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-6*tolScale,rtol=1e-3*tolScale;
-  var hMax=mesh.dtMax,hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* Stiff slow phases (e.g. Van der Pol with large μ) need the same hMax the
+     standalone SDIRK2 uses; capping at mesh.dtMax forces tens of thousands of
+     tiny steps where one big implicit step would do. */
+  var hMax=Math.max(mesh.dtMax,dS*0.05),hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
   var scope={x:0,y:0};
   var STIFF_THRESHOLD=3.25;/* h*|lambda_max| above this → stiff */
 
-  function spectralRadius(x,y){
-    var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
-    var J=numericalJacobian(f,g,x,y,scope,eps);
-    /* Approximate spectral radius via Gershgorin discs */
-    var r1=Math.abs(J.dfdx)+Math.abs(J.dfdy);
-    var r2=Math.abs(J.dgdx)+Math.abs(J.dgdy);
-    return Math.max(r1,r2);
+  /* Exact spectral radius for a 2×2 Jacobian via tr/det — much tighter than
+     Gershgorin row-sums, which over-estimate λ_max badly for Van der Pol. */
+  function spectralRadiusFromJ(J){
+    var tr=J.dfdx+J.dgdy,det=J.dfdx*J.dgdy-J.dfdy*J.dgdx;
+    var disc=tr*tr-4*det;
+    if(disc>=0){var s=Math.sqrt(disc);return Math.max(Math.abs((tr+s)*0.5),Math.abs((tr-s)*0.5));}
+    return Math.sqrt(Math.abs(det));
   }
 
   function integrate(sign,maxP){
@@ -1122,12 +1125,17 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
 
     for(var i=0;i<steps.maxIter&&pts.length<maxP;i++){
       if(Math.abs(h)<hMin)h=hMin*sign;if(Math.abs(h)>hMax)h=hMax*sign;
-      /* Stiffness detection */
-      var sr=spectralRadius(x,y);
+      /* Compute J once per outer step; reuse for stiffness check and SDIRK */
+      var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
+      var J=numericalJacobian(f,g,x,y,scope,eps);
+      var sr=spectralRadiusFromJ(J);
       var stiffRatio=Math.abs(h)*sr;
+      var wasStiff=isStiff;
       if(!isStiff&&stiffRatio>STIFF_THRESHOLD){stiffCount++;nonstiffCount=0;if(stiffCount>=3){isStiff=true;k1x=null;k1y=null;}}
       else if(isStiff&&stiffRatio<STIFF_THRESHOLD*0.5){nonstiffCount++;stiffCount=0;if(nonstiffCount>=5){isStiff=false;k1x=null;k1y=null;}}
       else{if(!isStiff)stiffCount=0;else nonstiffCount=0;}
+      /* Just switched to stiff: grow h to exploit SDIRK's L-stability. */
+      if(!wasStiff&&isStiff)h=Math.min(hMax,Math.abs(h)*10)*sign;
 
       var ok=false,attempt=0,curH=h;
       if(!isStiff){
@@ -1144,12 +1152,11 @@ function computeTrajectoryLSODA(f,g,x0,y0,xMin,xMax,yMin,yMax){
           }else{curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,0.9*Math.pow(errN,-0.2))))*sign;k1x=null;k1y=null;attempt++;}
         }
       }else{
-        /* ---- SDIRK2 path ---- */
+        /* ---- SDIRK2 path (reuses cached J from above) ---- */
         while(!ok&&attempt<25){
           scope.x=x;scope.y=y;var f0,g0;try{f0=f.evaluate(scope);g0=g.evaluate(scope);}catch(e){break;}
           if(!isFinite(f0)||!isFinite(g0))break;
-          var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
-          var J=numericalJacobian(f,g,x,y,scope,eps),gh=gamma*curH;
+          var gh=gamma*curH;
           var s1=solveStage(f,g,x,y,curH,gh,J,x,y,f0,g0);
           if(!s1){curH*=0.25;attempt++;continue;}
           var bx=x+(1-gamma)*curH*s1.kx,by=y+(1-gamma)*curH*s1.ky;
