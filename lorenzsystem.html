@@ -323,7 +323,7 @@ if(document.referrer.includes('dynamical.html')){
       <h2>How to Use</h2>
       <ul>
         <li>Adjust \(\sigma,\rho,\beta\), initial conditions \((x_0,y_0,z_0)\), and the end time \(T\) using the sliders or type directly in the value boxes. Each preset below sets a sensible \(T\) automatically.</li>
-        <li>Use the <strong>Examples</strong> buttons to load presets that reproduce the canonical Chapter 9 figures from <em>Nonlinear Dynamics and Chaos</em>: \(\rho=0.5\) (stable origin), \(\rho=10\) (stable spirals onto \(C^\pm\)), \(\rho=21\) (transient chaos), and \(\rho=28\) with both the textbook IC \((0,1,0)\) and Sparrow's \((0,1,1.05)\). Each preset uses \(\sigma=10\), \(\beta=8/3\).</li>
+        <li>Use the <strong>Examples</strong> buttons to load presets reproducing canonical Chapter 9 figures from <em>Nonlinear Dynamics and Chaos</em>: \(\rho=0.5\) (stable origin), \(\rho=10\) (stable spirals onto \(C^\pm\)), \(\rho=21\) (transient chaos, IC \((1,1,20)\), \(T=200\) — switch the Method selector to compare RK4/DP5/Tsit5 settle times), and \(\rho=28\) (strange attractor). All use \(\sigma=10\), \(\beta=8/3\).</li>
         <li>Click <strong>Animate \(\rho\)</strong> to precompute and play the sweep from \(\rho_\text{start}\) to \(\rho_\text{end}\). The button shows precompute progress; click again at any time to stop.</li>
         <li>Click <strong>Transient Chaos</strong> to set \(\rho=22\) and animate a single trajectory exhibiting long transient chaotic behaviour before settling.</li>
         <li>Click <strong>Launch Particles</strong> to compare two trajectories separated by \(\varepsilon\) in the \(x\)-direction — select Slow/Medium/Fast to control animation speed.</li>
@@ -384,16 +384,12 @@ if(document.referrer.includes('dynamical.html')){
               \(\rho=10\)<br>stable \(C^\pm\)
             </button>
             <button type="button" class="abtn abtn-go ex-btn" data-example="transient"
-              aria-label="Preset: rho equals 21, transient chaos, initial condition (0,1,0)">
+              aria-label="Preset: rho equals 21, transient chaos, initial condition (1,1,20), end time 200">
               \(\rho=21\)<br>transient chaos
             </button>
             <button type="button" class="abtn abtn-go ex-btn" data-example="attractor"
               aria-label="Preset: rho equals 28, strange attractor, initial condition (0,1,0)">
-              \(\rho=28\)<br>attractor, IC \((0,1,0)\)
-            </button>
-            <button type="button" class="abtn abtn-go ex-btn ex-wide" data-example="sparrow"
-              aria-label="Preset: rho equals 28, strange attractor, Sparrow initial condition (0,1,1.05)">
-              \(\rho=28\), Sparrow IC \((0,1,1.05)\)
+              \(\rho=28\)<br>strange attractor
             </button>
           </div>
         </div>
@@ -642,7 +638,7 @@ function makeJetTrace(tr,width,N){
   var line={
     color:tr.t,
     colorscale:'Jet',
-    width:width||2,
+    width:width||2.5,
     cauto:false,   // CRITICAL: prevents per-frame colour rescaling
     cmin:0,
     cmax:1,
@@ -677,7 +673,8 @@ function make3DLayout(title){
       yaxis:Object.assign({title:mobile?'':'Y'},ax),
       zaxis:Object.assign({title:mobile?'':'Z'},ax),
       camera:{eye:eye},
-      bgcolor:bg
+      bgcolor:bg,
+      aspectmode:'data'   // preserve geometric proportions of the attractor
     },
     margin:mobile?{t:0,b:0,l:0,r:0}:{t:40,b:10,l:0,r:0},
     paper_bgcolor:bg,
@@ -706,9 +703,10 @@ var updatePlot=debounce(function(rhoOverride){
   }
   var N=staticN(v);
   var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
+  var ic='('+fmtSig(v.x0)+', '+fmtSig(v.y0)+', '+fmtSig(v.z0)+')';
   Plotly.react('plot',
-    [makeJetTrace(tr,2,N)],
-    make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v.rho)+')')
+    [makeJetTrace(tr,2.5,N)],
+    make3DLayout('Lorenz Attractor \u2014 \u03C1\u2009=\u2009'+fmtSig(v.rho)+', IC '+ic+', T = '+fmtSig(v.tend))
   );
   say('Plot updated. \u03C1 = '+fmtSig(v.rho));
 },100);
@@ -1009,21 +1007,27 @@ document.addEventListener('DOMContentLoaded',function(){
   /* ── Examples (Nonlinear Dynamics and Chaos, Ch. 9) ──────────────────────
      Each preset sets σ, ρ, β, the initial condition (x0, y0, z0), and
      a sensible end-time T in the parameter inputs, then re-renders the
-     static trajectory using the Tsit5 integrator above.
+     static trajectory using the selected integrator.
      T is chosen per preset so the salient feature is visible without
      being washed out by long-time settling:
        ρ=0.5  IC (0,1,0)    T=15  → settles at origin
        ρ=10   IC (0,1,0)    T=30  → spirals onto C+ (Hopf threshold ~24.74)
-       ρ=21   IC (0,1,0)    T=80  → chaotic transient, then settles to C±
+       ρ=21   IC (1,1,20)   T=200 → genuine transient chaos: trajectory
+                                    visits both lobes many times before
+                                    eventually settling on C+ or C-.
+                                    All three methods show transient
+                                    chaos here but disagree on settle
+                                    time / final equilibrium -- a live
+                                    demonstration of sensitive dependence.
+                                    (IC (0,1,0) collapses straight to C-
+                                    in one swing -- not transient chaos.)
        ρ=28   IC (0,1,0)    T=150 → strange attractor (full)
-       ρ=28   IC (0,1,1.05) T=150 → strange attractor, Sparrow's classic IC
      ────────────────────────────────────────────────────────────────────── */
   var EXAMPLE_PRESETS={
-    origin   :{sigma:10,rho:0.5,beta:8/3,x0:0,y0:1,z0:0,    tend:15,  label:'ρ=0.5 stable origin'},
-    spirals  :{sigma:10,rho:10, beta:8/3,x0:0,y0:1,z0:0,    tend:30,  label:'ρ=10 stable C±'},
-    transient:{sigma:10,rho:21, beta:8/3,x0:0,y0:1,z0:0,    tend:80,  label:'ρ=21 transient chaos'},
-    attractor:{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:0,    tend:150, label:'ρ=28 strange attractor'},
-    sparrow  :{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:1.05, tend:150, label:'ρ=28 Sparrow IC'}
+    origin   :{sigma:10,rho:0.5,beta:8/3,x0:0,y0:1,z0:0,   tend:15,  label:'ρ=0.5 stable origin'},
+    spirals  :{sigma:10,rho:10, beta:8/3,x0:0,y0:1,z0:0,   tend:30,  label:'ρ=10 stable C±'},
+    transient:{sigma:10,rho:21, beta:8/3,x0:1,y0:1,z0:20,  tend:200, label:'ρ=21 transient chaos'},
+    attractor:{sigma:10,rho:28, beta:8/3,x0:0,y0:1,z0:0,   tend:150, label:'ρ=28 strange attractor'}
   };
   function applyExamplePreset(key){
     var p=EXAMPLE_PRESETS[key];if(!p)return;
