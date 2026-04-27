@@ -755,9 +755,12 @@ function solveDuffing(p,x0,v0,T,tolMul){
   if(!tolMul)tolMul=1;
   var atol=1e-7*tolMul,rtol=1e-5*tolMul;
   var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;
-  var hMax=Math.min(T/50,Tf/30,0.08),hMin=1e-10;
+  /* Cap step at Tf/80 so even slowly-varying smooth segments still have ≥80
+     raw steps per forcing period — keeps long-T trajectories visually smooth
+     and bounds local truncation error in chaotic regimes. */
+  var hMax=Math.min(Tf/80,0.04),hMin=1e-10;
   var x=x0,v=v0,t=0,pts=[{t:0,x:x0,v:v0}];
-  var h=Math.min(hMax,Tf/100),rejects=0,k1=null;
+  var h=Math.min(hMax,Tf/160),rejects=0,k1=null;
   for(var step=0;step<800000&&t<T;step++){
     if(t+h>T)h=T-t;if(h<hMin)break;
     var res=tsit5Step(p,t,x,v,h,k1);
@@ -800,7 +803,11 @@ function masterSolve(p,x0,v0,tolMul,T){
   if(!(T>0)) T=autoEndTime(p);
   var raw=solveDuffing(p,x0,v0,T,tolMul);
   var label='Tsit5 (Tsitouras 5(4)), '+raw.length.toLocaleString()+' steps';
-  var MAX=12000,pts=raw;
+  /* Render-point budget scales with T so long simulations keep ~200 plotted
+     points per forcing period. Floor 12k, ceiling 60k to keep canvas drawing
+     responsive even for chaotic high-T runs. */
+  var Tf=p.omega>0.01?2*Math.PI/p.omega:6.28;
+  var MAX=Math.min(60000,Math.max(12000,Math.ceil((T/Tf)*200))),pts=raw;
   if(raw.length>MAX){pts=[];var s=raw.length/MAX;for(var i=0;i<raw.length;i+=s)pts.push(raw[Math.floor(i)]);if(pts[pts.length-1]!==raw[raw.length-1])pts.push(raw[raw.length-1]);}
   var sc=computeDisplayScale(p,x0,raw);
   var maxSpeed=Math.abs(v0);
