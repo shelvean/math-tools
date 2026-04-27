@@ -265,7 +265,7 @@ if(document.referrer.includes('projects.html')){
 
       <h2>Numerical Method</h2>
       <p>
-        All trajectories use a fixed-step 5th-order <strong>Tsitouras 5(4) (Tsit5)</strong> method with step \(\Delta t=0.01\). Static plots use \(N=\lceil t_\text{end}/\Delta t\rceil\) steps — the default \(t_\text{end}=300\) gives \(N=30{,}000\), long enough for the attractor to be densely traced; \(t_\text{end}\) is adjustable in the Parameters panel. \(c\)-sweep animation frames use a fixed \(N=15{,}000\) (\(t=150\) per frame) so playback stays responsive regardless of the chosen \(t_\text{end}\). The Jet colorbar shows actual simulation time.
+        All trajectories use a fixed-step 5th-order <strong>Tsitouras 5(4) (Tsit5)</strong> method with step \(\Delta t=0.01\). Static plots use \(N=\lceil t_\text{end}/\Delta t\rceil\) steps — the default \(t_\text{end}=300\) gives \(N=30{,}000\), long enough for the attractor to be densely traced; \(t_\text{end}\) is adjustable in the Parameters panel. \(c\)-sweep animation frames use the same \(t_\text{end}\) (snapshotted at sweep start so \(N\) stays consistent across frames). The Jet colorbar shows actual simulation time.
       </p>
 
       <h2>How to Use</h2>
@@ -420,12 +420,12 @@ function debounce(fn,w){var t;return function(){clearTimeout(t);t=setTimeout(fun
    STATIC_N = N = round(endTime / DT) + 1; includes both endpoints
               so xa[0] is the initial condition at t=0 and xa[N-1] is
               at t=(N-1)·DT = endTime. 30001 ≡ t_end = 300 at default.
-   ANIM_N   = 15001 samples → t_end = 150 per c-sweep frame (kept fixed
-              for playback performance independent of user-chosen endTime)
+   c-sweep animation frames also use currentStaticN() so each frame
+   integrates to the user-chosen t_end (snapshotted at sweep start so
+   N stays consistent across frames).
 */
 var DT       = 0.01;
 var STATIC_N = 30001;     /* default; overridden by currentStaticN() */
-var ANIM_N   = 15001;
 
 /* Format a time value for display with the smallest precision that
    keeps it recognisable (strips trailing zeros). Avoids Math.round's
@@ -522,10 +522,10 @@ function makeColorbar(N){
   };
 }
 function makeJetTrace(tr, width, N){
-  /* On mobile the colorbar (thickness 14 + "t = 150" tick labels) eats
-     30–40% of the plot width and pushes the 3D scene left, clipping the
-     attractor. The jet palette itself is self-documenting, so suppress
-     the colorbar on narrow viewports. */
+  /* On mobile the colorbar (thickness 14 + tick labels like "t = 150")
+     eats 30–40% of the plot width and pushes the 3D scene left, clipping
+     the attractor. The jet palette itself is self-documenting, so
+     suppress the colorbar on narrow viewports. */
   var mobile = (typeof window!=='undefined') && window.innerWidth < 640;
   var line = {
     color:tr.t, colorscale:'Jet', width:width||2,
@@ -662,14 +662,14 @@ function stopCAnim(){
   var btn=document.getElementById('animateBtn');
   if(btn){btn.textContent='Animate c';btn.classList.remove('abtn-running');btn.disabled=false;}
 }
-function precomputeFrames(cVals,v,onProgress,onDone){
+function precomputeFrames(cVals,v,N,onProgress,onDone){
   var frames=[]; var i=0;
   function next(){
     if(CAnim.cancelled)return;
     if(i>=cVals.length){onDone(frames);return;}
     frames.push({
       c:cVals[i],
-      tr:solveRossler(v.a,v.b,cVals[i],v.x0,v.y0,v.z0,ANIM_N)
+      tr:solveRossler(v.a,v.b,cVals[i],v.x0,v.y0,v.z0,N)
     });
     onProgress(i+1,cVals.length);
     i++;
@@ -757,11 +757,15 @@ document.addEventListener('DOMContentLoaded', function(){
     var cVals=[]; var steps=Math.round((cEnd-cStart)/0.1)+1;
     for(var k=0;k<steps;k++)cVals.push(parseFloat((cStart+k*0.1).toFixed(6)));
     var v=readParams(); var me=this;
+    /* Snapshot N at sweep start so every frame integrates to the
+       user-chosen t_end consistently, even if the input is edited
+       mid-playback. */
+    var animN = currentStaticN();
     CAnim.cancelled=false; CAnim.computing=true;
     me.textContent='Computing\u2026 (0/'+cVals.length+')';
     me.classList.add('abtn-running');
     say('Precomputing '+cVals.length+' frames for c sweep\u2026');
-    precomputeFrames(cVals, v,
+    precomputeFrames(cVals, v, animN,
       function(done,total){
         if(!CAnim.cancelled)me.textContent='Computing\u2026 ('+done+'/'+total+')';
       },
@@ -785,7 +789,7 @@ document.addEventListener('DOMContentLoaded', function(){
           var cs=document.getElementById('c'), ci=document.getElementById('cVal');
           if(cs)cs.value=cur; if(ci)ci.value=fmtSig(cur);
           Plotly.react('plot',
-            [makeJetTrace(frame.tr, 3, ANIM_N)],
+            [makeJetTrace(frame.tr, 3, animN)],
             make3DLayout('Rössler Attractor (c='+fmtSig(cur)+')')
           );
           CAnim.timerId=setTimeout(tick,delay);
