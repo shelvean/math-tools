@@ -176,6 +176,29 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
   padding:.4rem .7rem;border-radius:0 var(--r) var(--r) 0;margin-bottom:.6rem;}
 
 /* Numerical-method selector */
+/* Animation progress bar — Jet gradient, mirrors the colorbar on the trajectory.
+   Track shows the faded full gradient (preview of "what's coming");
+   fill shows the same gradient at full opacity, clipped to current progress. */
+.progress-wrap{padding:.55rem .8rem .65rem;background:var(--card);border-top:1px solid var(--bdr2);}
+.progress-track{
+  position:relative; height:10px; border-radius:5px; overflow:hidden;
+  background:linear-gradient(to right,
+    rgba(0,0,143,0.18), rgba(0,0,255,0.18), rgba(0,127,255,0.18),
+    rgba(0,255,255,0.18), rgba(127,255,127,0.18), rgba(255,255,0,0.18),
+    rgba(255,127,0,0.18), rgba(255,0,0,0.18), rgba(127,0,0,0.18));
+  border:1px solid rgba(0,0,0,0.10);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.05);
+}
+.progress-fill{
+  position:absolute; inset:0;
+  background:linear-gradient(to right,
+    #00008F, #0000FF, #007FFF, #00FFFF, #7FFF7F, #FFFF00, #FF7F00, #FF0000, #7F0000);
+  -webkit-clip-path:inset(0 calc(100% - var(--progress, 0%)) 0 0);
+          clip-path:inset(0 calc(100% - var(--progress, 0%)) 0 0);
+  transition:clip-path 0.06s linear, -webkit-clip-path 0.06s linear;
+}
+.progress-label{margin-top:.35rem; font-size:.74rem; font-variant-numeric:tabular-nums;
+  color:var(--txt2); text-align:right; letter-spacing:0.01em;}
 .method-row{display:flex;align-items:center;gap:.5rem;margin-top:.6rem;padding-top:.55rem;border-top:1px solid var(--bdr2);}
 .method-sel{flex:1;min-height:34px;padding:.2rem .5rem;border:2px solid var(--bdr);border-radius:.375rem;
   background:var(--card);color:var(--txt);font-size:.85rem;font-weight:600;cursor:pointer;}
@@ -462,6 +485,14 @@ if(document.referrer.includes('dynamical.html')){
           <span id="plotTitle">Lorenz Attractor</span>
         </div>
         <div id="plot" role="img" aria-label="3D Lorenz attractor plot"></div>
+        <div class="progress-wrap">
+          <div class="progress-track" id="progressTrack" role="progressbar"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               aria-label="Trajectory progress (Jet color: blue = early, red = late)">
+            <div class="progress-fill"></div>
+          </div>
+          <div class="progress-label" id="progressLabel">t = 0.0 / 0.0</div>
+        </div>
       </div>
     </div>
 
@@ -519,6 +550,21 @@ var PARAMS=[
 
 // Step count for static renders, derived from the user's end time T.
 function staticN(v){return Math.max(2,Math.round(v.tend/DT));}
+
+// Update the Jet progress bar below the plot.  pct in [0,100].
+// idx and N are optional; when supplied, the label shows current/end time.
+function setProgress(pct, idx, N){
+  pct=Math.max(0,Math.min(100,pct));
+  var fill=document.querySelector('.progress-fill');
+  var track=document.getElementById('progressTrack');
+  var lbl=document.getElementById('progressLabel');
+  if(fill)fill.style.setProperty('--progress',pct.toFixed(2)+'%');
+  if(track)track.setAttribute('aria-valuenow',Math.round(pct));
+  if(lbl&&idx!=null&&N!=null){
+    var tNow=idx*DT,tEnd=(N-1)*DT;
+    lbl.textContent='t = '+tNow.toFixed(1)+' / '+tEnd.toFixed(0);
+  }
+}
 
 /* ── Lorenz integrators (fixed-step, dt = DT) ────────────────────────────────
    Three options exposed via the Method selector so users can confirm
@@ -774,6 +820,7 @@ var updatePlot=debounce(function(rhoOverride){
     [makeJetTrace(tr,2.5,N)],
     make3DLayout('Lorenz Attractor \u2014 \u03C1\u2009=\u2009'+fmtSig(v.rho)+', IC '+ic+', T = '+fmtSig(v.tend))
   );
+  setProgress(100, N-1, N);
   say('Plot updated. \u03C1 = '+fmtSig(v.rho));
 },100);
 
@@ -800,8 +847,9 @@ function startAnimLoop(){
   function tick(){
     if(!PA.running)return;
     PA.idx+=speedSteps();
-    if(PA.idx>=N){PA.idx=N-1;PA.renderFn(PA.idx);stopParticles();say('Animation complete.');return;}
+    if(PA.idx>=N){PA.idx=N-1;PA.renderFn(PA.idx);setProgress(100,N-1,N);stopParticles();say('Animation complete.');return;}
     PA.renderFn(PA.idx);
+    setProgress((PA.idx/(N-1))*100, PA.idx, N);
     PA.rafId=requestAnimationFrame(tick);
   }
   PA.rafId=requestAnimationFrame(tick);
@@ -816,6 +864,7 @@ function launchParticles(){
   PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
   PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,N,v.method);
   PA.idx=0;PA.running=true;PA.mode='particles';PA.renderFn=renderParticleFrame;
+  setProgress(0, 0, PA.t1.x.length);
   var lb=document.getElementById('launchBtn');lb.textContent='Stop';lb.classList.add('abtn-running');
   say('Particle animation started.');startAnimLoop();
 }
@@ -828,6 +877,7 @@ function launchAnimateAttractor(){
   var v=readParams();
   PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
+  setProgress(0, 0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
   say('Attractor animation started.');startAnimLoop();
 }
