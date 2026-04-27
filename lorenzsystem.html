@@ -366,6 +366,8 @@ if(document.referrer.includes('dynamical.html')){
       <div class="abar">
         <button type="button" id="showAttractorBtn" class="abtn abtn-grn"
           aria-label="Show attractor with current parameters and initial conditions">Show Attractor</button>
+        <button type="button" id="animateAttractorBtn" class="abtn abtn-go"
+          aria-label="Animate attractor: incrementally trace the trajectory at the current parameters">Animate Attractor</button>
       </div>
 
       <!-- Examples -->
@@ -787,6 +789,8 @@ function stopParticles(){
   if(lb){lb.textContent='Launch Particles';lb.classList.remove('abtn-running');}
   var tb=document.getElementById('transientBtn');
   if(tb){tb.textContent='Transient Chaos';tb.classList.remove('abtn-running');}
+  var ab=document.getElementById('animateAttractorBtn');
+  if(ab){ab.textContent='Animate Attractor';ab.classList.remove('abtn-running');}
 }
 
 function speedSteps(){
@@ -838,6 +842,18 @@ function launchTransientChaos(){
   say('Transient chaos animation started.');startAnimLoop();
 }
 
+function launchAnimateAttractor(){
+  // Incrementally traces the trajectory at the current parameters --
+  // unlike Transient Chaos this does not pin ρ or the IC.  Same speed
+  // (speedSteps()) and same Jet colorbar as the transient animation.
+  stopParticles();
+  var v=readParams();
+  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
+  PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
+  var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
+  say('Attractor animation started.');startAnimLoop();
+}
+
 function renderParticleFrame(idx){
   var t1=PA.t1,t2=PA.t2;
   var rho=parseFloat(document.getElementById('rho').value);
@@ -857,24 +873,26 @@ function renderParticleFrame(idx){
     {showlegend:true,legend:{x:.02,y:.98,bgcolor:'rgba(255,255,255,.8)'}}));
 }
 
-function renderTransientFrame(idx){
+// Shared incremental renderer used by both Transient Chaos and Animate
+// Attractor.  Identical Jet colorbar (cmin=0, cmax=1) and per-frame
+// slice; only the title prefix differs.
+function renderIncrementalFrame(idx, titlePrefix){
   var t1=PA.t1;
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
-  // Slice colour array to match xyz slice so Jet maps correctly over elapsed time
+  var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
+  var line={color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
+            cauto:false,cmin:0,cmax:1,showscale:!mobile};
+  if(!mobile)line.colorbar=makeColorbar(t1.x.length);
   Plotly.react('plot',[
-    (function(){
-      var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-      var line={color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
-                cauto:false,cmin:0,cmax:1,showscale:!mobile};
-      if(!mobile)line.colorbar=makeColorbar(t1.x.length);
-      return {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
-              type:'scatter3d',mode:'lines',line:line,showlegend:false};
-    })(),
+    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
+     type:'scatter3d',mode:'lines',line:line,showlegend:false},
     {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
-  ],make3DLayout('Transient Chaos (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
+  ],make3DLayout(titlePrefix+' (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
 }
+function renderTransientFrame(idx){ renderIncrementalFrame(idx, 'Transient Chaos'); }
+function renderAttractorFrame(idx){ renderIncrementalFrame(idx, 'Lorenz Attractor'); }
 
 /* ── Rho animation state ─────────────────────────────────────────────────────
    Separate from PA so both systems can coexist without shared state.
@@ -1076,6 +1094,13 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('showAttractorBtn').addEventListener('click',function(){
     stopParticles();stopRhoAnim();
     updatePlot();say('Attractor updated.');
+  });
+
+  /* Animate attractor — incremental real-time tracing at current params */
+  document.getElementById('animateAttractorBtn').addEventListener('click',function(){
+    stopRhoAnim();
+    if(PA.running&&PA.mode==='attractor')stopParticles();
+    else launchAnimateAttractor();
   });
 
   /* ── Examples (Nonlinear Dynamics and Chaos, Ch. 9) ──────────────────────
