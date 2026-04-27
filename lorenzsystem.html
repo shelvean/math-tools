@@ -326,7 +326,6 @@ if(document.referrer.includes('dynamical.html')){
         <li>Adjust \(\sigma,\rho,\beta\), initial conditions \((x_0,y_0,z_0)\), and the end time \(T\) using the sliders or type directly in the value boxes. Each preset below sets a sensible \(T\) automatically.</li>
         <li>Use the <strong>Examples</strong> buttons to load presets reproducing canonical Chapter 9 figures from <em>Nonlinear Dynamics and Chaos</em>: \(\rho=0.5\) (stable origin), \(\rho=10\) (stable spirals onto \(C^\pm\)), \(\rho=22.05\) (long-lived transient chaos, \(T=200\) — switch the Method selector to compare RK4/DP5/Tsit5/DOP853 settle times), and \(\rho=28\) (strange attractor). All use \(\sigma=10\), \(\beta=8/3\), and IC \((8,-19,30)\).</li>
         <li>Click <strong>Animate \(\rho\)</strong> to precompute and play the sweep from \(\rho_\text{start}\) to \(\rho_\text{end}\). The button shows precompute progress; click again at any time to stop.</li>
-        <li>Click <strong>Transient Chaos</strong> to set \(\rho=22\) and animate a single trajectory exhibiting long transient chaotic behaviour before settling.</li>
         <li>Click <strong>Launch Particles</strong> to compare two trajectories separated by \(\varepsilon\) in the \(x\)-direction — select Slow/Medium/Fast to control animation speed.</li>
         <li>The 3D plot is fully interactive: drag to rotate, scroll to zoom.</li>
       </ul>
@@ -421,7 +420,6 @@ if(document.referrer.includes('dynamical.html')){
           </div>
           <div class="abar" style="margin-bottom:0;">
             <button type="button" id="animateBtn" class="abtn abtn-go" aria-label="Animate rho parameter sweep">Animate &rho;</button>
-            <button type="button" id="transientBtn" class="abtn abtn-ora" aria-label="Run transient chaos animation at rho equals 22.05, initial condition (8,-19,30)">Transient Chaos</button>
           </div>
         </div>
       </div>
@@ -787,8 +785,6 @@ function stopParticles(){
   PA.running=false;PA.mode=null;
   var lb=document.getElementById('launchBtn');
   if(lb){lb.textContent='Launch Particles';lb.classList.remove('abtn-running');}
-  var tb=document.getElementById('transientBtn');
-  if(tb){tb.textContent='Transient Chaos';tb.classList.remove('abtn-running');}
   var ab=document.getElementById('animateAttractorBtn');
   if(ab){ab.textContent='Animate Attractor';ab.classList.remove('abtn-running');}
 }
@@ -824,27 +820,9 @@ function launchParticles(){
   say('Particle animation started.');startAnimLoop();
 }
 
-function launchTransientChaos(){
-  stopParticles();
-  // Pin ρ and the initial condition to values that actually exhibit
-  // transient chaos.  IC=(8,-19,30) lies near the chaotic invariant
-  // set and wanders many lobes before settling on C±.
-  var inputs={rho:22.05,x0:8,y0:-19,z0:30};
-  Object.keys(inputs).forEach(function(k){
-    var s=document.getElementById(k),i=document.getElementById(k+'Val');
-    if(s)s.value=inputs[k];
-    if(i)i.value=String(inputs[k]);
-  });
-  var v=readParams();
-  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
-  PA.t2=null;PA.idx=0;PA.running=true;PA.mode='transient';PA.renderFn=renderTransientFrame;
-  var tb=document.getElementById('transientBtn');tb.textContent='Stop';tb.classList.add('abtn-running');
-  say('Transient chaos animation started.');startAnimLoop();
-}
-
 function launchAnimateAttractor(){
   // Incrementally traces the trajectory at the current parameters --
-  // unlike Transient Chaos this does not pin ρ or the IC.  Same speed
+  // does not pin ρ or the IC -- animates whatever is currently set.  Speed
   // (speedSteps()) and same Jet colorbar as the transient animation.
   stopParticles();
   var v=readParams();
@@ -873,9 +851,9 @@ function renderParticleFrame(idx){
     {showlegend:true,legend:{x:.02,y:.98,bgcolor:'rgba(255,255,255,.8)'}}));
 }
 
-// Shared incremental renderer used by both Transient Chaos and Animate
-// Attractor.  Identical Jet colorbar (cmin=0, cmax=1) and per-frame
-// slice; only the title prefix differs.
+// Incremental Lorenz-attractor renderer used by Animate Attractor.
+// Jet colorbar (cmin=0, cmax=1) over the full simulation length, sliced
+// per-frame so colors map to actual elapsed time.
 function renderIncrementalFrame(idx, titlePrefix){
   var t1=PA.t1;
   var rho=parseFloat(document.getElementById('rho').value);
@@ -891,7 +869,6 @@ function renderIncrementalFrame(idx, titlePrefix){
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
   ],make3DLayout(titlePrefix+' (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
 }
-function renderTransientFrame(idx){ renderIncrementalFrame(idx, 'Transient Chaos'); }
 function renderAttractorFrame(idx){ renderIncrementalFrame(idx, 'Lorenz Attractor'); }
 
 /* ── Rho animation state ─────────────────────────────────────────────────────
@@ -1074,13 +1051,6 @@ document.addEventListener('DOMContentLoaded',function(){
         tick();
       }
     );
-  });
-
-  /* Transient chaos */
-  document.getElementById('transientBtn').addEventListener('click',function(){
-    stopRhoAnim();
-    if(PA.running&&PA.mode==='transient')stopParticles();
-    else launchTransientChaos();
   });
 
   /* Launch particles */
