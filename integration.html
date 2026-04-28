@@ -86,6 +86,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .mbtn[data-method="gauss2"]:hover{border-color:#7c3aed;color:#7c3aed;background:rgba(124,58,237,.07);}
 .mbtn[data-method="gauss3"]:hover{border-color:#c026d3;color:#c026d3;background:rgba(192,38,211,.07);}
 .mbtn[data-method="gauss5"]:hover{border-color:#0e7490;color:#0e7490;background:rgba(14,116,144,.07);}
+.mbtn[data-method="adaptive"]:hover{border-color:#be185d;color:#be185d;background:rgba(190,24,93,.07);}
+.mbtn[data-method="romberg"]:hover{border-color:#1e40af;color:#1e40af;background:rgba(30,64,175,.07);}
 .mbtn.active{color:#fff;border-color:transparent;}
 /* Per-method active colors */
 .mbtn[data-method="left"].active{background:#2563eb;}
@@ -96,6 +98,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .mbtn[data-method="gauss2"].active{background:#7c3aed;}
 .mbtn[data-method="gauss3"].active{background:#c026d3;}
 .mbtn[data-method="gauss5"].active{background:#0e7490;}
+.mbtn[data-method="adaptive"].active{background:#be185d;}
+.mbtn[data-method="romberg"].active{background:#1e40af;}
 .mbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
 @media(max-width:640px){.method-grid{grid-template-columns:repeat(2,1fr);}}
 /* Two-col */
@@ -162,8 +166,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .view-btn{font-size:.8125rem;font-weight:700;color:var(--bl2);background:transparent;
   border:2px solid var(--bdr);border-radius:.375rem;padding:.4rem .75rem;cursor:pointer;min-height:36px;}
 .view-btn:hover,.view-btn:focus-visible{background:rgba(29,78,216,.08);border-color:var(--blue);}
+.signed-toggle{display:inline-flex;align-items:center;gap:.3rem;font-size:.78rem;
+  font-weight:600;color:var(--txt2);cursor:pointer;}
+.signed-toggle input{cursor:pointer;width:14px;height:14px;}
 /* Convergence */
 #convergencePlot{width:100%;height:240px;}
+.conv-compare{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .75rem;
+  border:1px solid var(--bdr2);border-radius:.375rem;padding:.45rem .65rem;
+  margin:.5rem .75rem .25rem;background:var(--sect);}
+.conv-compare legend{font-size:.78rem;font-weight:700;color:var(--txt2);padding:0 .35rem;}
+.conv-compare label{display:inline-flex;align-items:center;gap:.25rem;
+  font-size:.78rem;font-weight:600;color:var(--txt2);cursor:pointer;}
+.conv-compare input[type=checkbox]{cursor:pointer;width:14px;height:14px;}
 /* Tolerance section */
 .tol-result{background:rgba(15,118,110,.06);border:2px solid var(--teal);border-radius:var(--r);
   padding:.75rem 1rem;margin-top:.5rem;font-size:.9375rem;color:var(--txt);}
@@ -299,6 +313,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <button type="button" data-method="gauss2"     class="mbtn">Gauss-Leg. 2pt</button>
     <button type="button" data-method="gauss3"     class="mbtn">Gauss-Leg. 3pt</button>
     <button type="button" data-method="gauss5"     class="mbtn">Gauss-Leg. 5pt</button>
+    <button type="button" data-method="adaptive"   class="mbtn">Adaptive Simpson</button>
+    <button type="button" data-method="romberg"    class="mbtn">Romberg</button>
   </div>
 
   <!-- Main layout -->
@@ -389,6 +405,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         </div>
         <div class="canvas-footer">
           <span class="view-hint" aria-hidden="true">Ctrl+Scroll: zoom &middot; Drag: pan &middot; Pinch: zoom</span>
+          <label class="signed-toggle" title="Tint positive area blue and negative area red">
+            <input type="checkbox" id="signedToggle" checked>
+            <span>Signed area</span>
+          </label>
           <button class="view-btn" id="resetViewBtn" type="button" aria-label="Reset view">Reset view</button>
         </div>
       </div>
@@ -406,6 +426,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
           <span id="convIcon" aria-hidden="true">&minus;</span>
         </button>
         <div id="convBody">
+          <fieldset id="convCompare" class="conv-compare" aria-label="Compare methods on the convergence plot">
+            <legend>Compare:</legend>
+            <label><input type="checkbox" data-cmp="left">Left</label>
+            <label><input type="checkbox" data-cmp="right">Right</label>
+            <label><input type="checkbox" data-cmp="midpoint">Midpoint</label>
+            <label><input type="checkbox" data-cmp="trapezoid">Trap.</label>
+            <label><input type="checkbox" data-cmp="simpson">Simpson</label>
+            <label><input type="checkbox" data-cmp="gauss2">GL-2</label>
+            <label><input type="checkbox" data-cmp="gauss3">GL-3</label>
+            <label><input type="checkbox" data-cmp="gauss5">GL-5</label>
+            <label><input type="checkbox" data-cmp="romberg">Romberg</label>
+          </fieldset>
           <div id="convergencePlot"></div>
           <p id="convCaption" style="margin:.25rem .75rem .4rem;color:var(--muted);font-size:.8125rem;text-align:center;"></p>
         </div>
@@ -692,6 +724,82 @@ function quadGauss(f,a,b,n,m){
   return{value:total,h:h,pts:pts};
 }
 
+/* ── Adaptive Simpson ──
+   Recursively halves each subinterval until the per-panel Richardson
+   error estimate (S_split - S_whole)/15 is below the local tolerance.
+   Hugely more efficient than uniform Simpson on functions with peaks
+   or rapid oscillation, and naturally clusters nodes where they're
+   needed.  Returns leaf panels so the canvas can draw the actual
+   subdivision the algorithm chose. */
+function quadAdaptive(f,a,b){
+  var TOL=1e-10, MAXDEPTH=22;
+  var pts=[], leaves=[];
+  function S(a,b,fa,fm,fb){return (b-a)/6*(fa+4*fm+fb);}
+  function rec(a,b,fa,fb,fm,sab,depth,tol){
+    var m=(a+b)/2, lm=(a+m)/2, rm=(m+b)/2;
+    var flm=f(lm), frm=f(rm);
+    pts.push({x:lm,y:flm,type:'adaptive'});
+    pts.push({x:rm,y:frm,type:'adaptive'});
+    var Sl=S(a,m,fa,flm,fm), Sr=S(m,b,fm,frm,fb);
+    var err=(Sl+Sr-sab)/15;
+    if(depth<=0 || Math.abs(err) < tol){
+      leaves.push({a:a,b:m,fa:fa,fm:flm,fb:fm});
+      leaves.push({a:m,b:b,fa:fm,fm:frm,fb:fb});
+      return Sl+Sr+err;
+    }
+    return rec(a,m,fa,fm,flm,Sl,depth-1,tol/2)
+         + rec(m,b,fm,fb,frm,Sr,depth-1,tol/2);
+  }
+  var fa=f(a), fb=f(b), m=(a+b)/2, fm=f(m);
+  pts.push({x:a,y:fa,type:'adaptive'});
+  pts.push({x:m,y:fm,type:'adaptive'});
+  pts.push({x:b,y:fb,type:'adaptive'});
+  var s0=S(a,b,fa,fm,fb);
+  var val=rec(a,b,fa,fb,fm,s0,MAXDEPTH,TOL);
+  pts.sort(function(p,q){return p.x-q.x;});
+  leaves.sort(function(p,q){return p.a-q.a;});
+  return {value:val, h:0, pts:pts, leaves:leaves, nActual:pts.length, tolerance:TOL};
+}
+
+/* ── Romberg integration ──
+   Successively halves the trapezoid step and Richardson-extrapolates
+   the resulting table.  Column j has order 2j+2, so the diagonal
+   converges very fast for analytic integrands.  n controls the
+   maximum number of levels (clamped to [2, 14]). */
+function quadRomberg(f,a,b,n){
+  var maxL=Math.max(2,Math.min(n||10,14));
+  var T=[], pts=[];
+  var fa=f(a), fb=f(b);
+  pts.push({x:a,y:fa,type:'romberg'});
+  pts.push({x:b,y:fb,type:'romberg'});
+  T.push([(b-a)/2*(fa+fb)]);
+  for(var k=1;k<maxL;k++){
+    var nk=1<<(k-1);  // # new midpoints to add at this level
+    var h=(b-a)/(1<<k);
+    var sum=0;
+    for(var i=0;i<nk;i++){
+      var x=a+(2*i+1)*h, fx=f(x);
+      sum+=fx;
+      pts.push({x:x,y:fx,type:'romberg'});
+    }
+    var row=[T[k-1][0]/2 + h*sum];
+    for(var j=1;j<=k;j++){
+      var p4=Math.pow(4,j);
+      row.push((p4*row[j-1] - T[k-1][j-1])/(p4-1));
+    }
+    T.push(row);
+    /* Stop once the diagonal stabilises (rare for smooth integrands
+       to need all 14 levels). */
+    if(k>=3 && Math.abs(row[k]-T[k-1][k-1]) < 1e-13*Math.max(1,Math.abs(row[k]))){
+      break;
+    }
+  }
+  pts.sort(function(p,q){return p.x-q.x;});
+  var last=T[T.length-1];
+  return {value:last[last.length-1], h:(b-a)/(1<<(T.length-1)),
+          pts:pts, romberg:T, nActual:pts.length};
+}
+
 function computeQuad(method,f,a,b,n){
   switch(method){
     case 'left':      return quadLeft(f,a,b,n);
@@ -702,6 +810,8 @@ function computeQuad(method,f,a,b,n){
     case 'gauss2':    return quadGauss(f,a,b,n,2);
     case 'gauss3':    return quadGauss(f,a,b,n,3);
     case 'gauss5':    return quadGauss(f,a,b,n,5);
+    case 'adaptive':  return quadAdaptive(f,a,b);
+    case 'romberg':   return quadRomberg(f,a,b,n);
     default:          return quadLeft(f,a,b,n);
   }
 }
@@ -731,6 +841,8 @@ function quadValFast(method,f,a,b,n){
     case 'gauss2': return gaussValFast(f,a,b,n,2);
     case 'gauss3': return gaussValFast(f,a,b,n,3);
     case 'gauss5': return gaussValFast(f,a,b,n,5);
+    case 'adaptive':return quadAdaptive(f,a,b).value;
+    case 'romberg':return quadRomberg(f,a,b,n).value;
     default: for(s=0,i=0;i<n;i++)s+=f(a+i*h);return s*h;
   }
 }
@@ -888,8 +1000,31 @@ function getMethodColors(method){
          g1:'rgba(0,60,140,.22)',g2:'rgba(0,60,140,.10)'}
       : {f1:'rgba(14,116,144,.20)',f2:'rgba(14,116,144,.10)',s:'rgba(14,116,144,.50)',dot:'#0e7490',dot2:'#fff',
          g1:'rgba(14,116,144,.24)',g2:'rgba(14,116,144,.10)'};
+    case 'adaptive': return hc
+      ? {f1:'rgba(160,0,80,.22)',f2:'rgba(160,0,80,.12)',s:'rgba(140,0,70,.7)',dot:'#a30060',dot2:'#fff'}
+      : {f1:'rgba(190,24,93,.20)',f2:'rgba(190,24,93,.10)',s:'rgba(190,24,93,.50)',dot:'#be185d',dot2:'#fff'};
+    case 'romberg': return hc
+      ? {f1:'rgba(0,40,140,.22)',f2:'rgba(0,40,140,.12)',s:'rgba(0,30,120,.7)',dot:'#002080',dot2:'#fff'}
+      : {f1:'rgba(30,64,175,.20)',f2:'rgba(30,64,175,.10)',s:'rgba(30,64,175,.50)',dot:'#1e40af',dot2:'#fff'};
     default: return {f1:'rgba(29,78,216,.15)',f2:'rgba(29,78,216,.08)',s:'rgba(29,78,216,.45)',dot:'#1d4ed8',dot2:'#fff'};
   }
+}
+
+/* Two-shade fill palette keyed by panel sign and parity, used when the
+   "Signed area" toggle is on.  Returning null means: fall back to the
+   method's own colors (signed mode disabled). */
+function sgnColors(idx, fv){
+  var sg=document.getElementById('signedToggle');
+  if(!sg||!sg.checked)return null;
+  var pos=(fv>=0);
+  if(idx%2===0){
+    return pos
+      ? {f1:'rgba(29,78,216,0.30)', f2:'rgba(29,78,216,0.12)'}
+      : {f1:'rgba(220,38,38,0.30)', f2:'rgba(220,38,38,0.12)'};
+  }
+  return pos
+    ? {f1:'rgba(29,78,216,0.20)', f2:'rgba(29,78,216,0.07)'}
+    : {f1:'rgba(220,38,38,0.20)', f2:'rgba(220,38,38,0.07)'};
 }
 
 function drawQuadratureShapes(){
@@ -921,9 +1056,10 @@ function drawQuadratureShapes(){
       var rx=Math.min(x1,x2),ry=Math.min(y0,yf),rw=Math.abs(x2-x1),rh=Math.abs(yf-y0);
       /* Vertical gradient per rectangle for depth */
       var grad=ctx.createLinearGradient(0,ry,0,ry+rh);
-      var baseColor=i%2===0?C.f1:C.f2;
+      var sc=sgnColors(i,fv)||C;
+      var baseColor=i%2===0?sc.f1:sc.f2;
       grad.addColorStop(0,baseColor);
-      grad.addColorStop(1,i%2===0?C.f2:C.f1);
+      grad.addColorStop(1,i%2===0?sc.f2:sc.f1);
       ctx.fillStyle=grad;
       ctx.fillRect(rx,ry,rw,rh);
       ctx.strokeStyle=C.s;ctx.lineWidth=1.2;
@@ -959,8 +1095,9 @@ function drawQuadratureShapes(){
       var pyBase=w2cy(0);
       /* Gradient along x for each trapezoid */
       var grad=ctx.createLinearGradient(px0,0,px1,0);
-      grad.addColorStop(0,i%2===0?C.f1:C.f2);
-      grad.addColorStop(1,i%2===0?C.f2:C.f1);
+      var sc=sgnColors(i,(fi+fi1)/2)||C;
+      grad.addColorStop(0,i%2===0?sc.f1:sc.f2);
+      grad.addColorStop(1,i%2===0?sc.f2:sc.f1);
       ctx.fillStyle=grad;
       ctx.beginPath();ctx.moveTo(px0,pyBase);ctx.lineTo(px0,py0);ctx.lineTo(px1,py1);ctx.lineTo(px1,pyBase);ctx.closePath();ctx.fill();
       ctx.strokeStyle=C.s;ctx.lineWidth=1.2;ctx.stroke();
@@ -988,9 +1125,10 @@ function drawQuadratureShapes(){
       /* Gradient fill for each parabolic panel */
       var gx0=w2cx(x0s),gx2=w2cx(x2s);
       var grad=ctx.createLinearGradient(gx0,0,gx2,0);
-      grad.addColorStop(0,pairIdx%2===0?C.f1:C.f2);
-      grad.addColorStop(0.5,pairIdx%2===0?C.f2:C.f1);
-      grad.addColorStop(1,pairIdx%2===0?C.f1:C.f2);
+      var sc=sgnColors(pairIdx,f1)||C;
+      grad.addColorStop(0,pairIdx%2===0?sc.f1:sc.f2);
+      grad.addColorStop(0.5,pairIdx%2===0?sc.f2:sc.f1);
+      grad.addColorStop(1,pairIdx%2===0?sc.f1:sc.f2);
       ctx.fillStyle=grad;
       ctx.beginPath();
       var pyBase=w2cy(0);
@@ -1030,8 +1168,14 @@ function drawQuadratureShapes(){
       var pxs=w2cx(si),pxe=w2cx(ei);
       var pyBase=w2cy(0);
       var grad=ctx.createLinearGradient(pxs,0,pxe,0);
-      grad.addColorStop(0,i%2===0?(C.g1||C.f1):(C.g2||C.f2));
-      grad.addColorStop(1,i%2===0?(C.g2||C.f2):(C.g1||C.f1));
+      /* Sign by mid-interval f-value (cheap proxy for the panel's
+         net contribution). */
+      var fmid;try{fmid=f((si+ei)/2);}catch(e){fmid=0;}
+      if(!isFinite(fmid))fmid=0;
+      var sc=sgnColors(i,fmid);
+      var f1c=sc?sc.f1:(C.g1||C.f1), f2c=sc?sc.f2:(C.g2||C.f2);
+      grad.addColorStop(0,i%2===0?f1c:f2c);
+      grad.addColorStop(1,i%2===0?f2c:f1c);
       ctx.fillStyle=grad;
       ctx.beginPath();
       ctx.moveTo(pxs,pyBase);
@@ -1056,6 +1200,69 @@ function drawQuadratureShapes(){
         ctx.beginPath();ctx.moveTo(px,pyBase);ctx.lineTo(px,py);ctx.stroke();
         ctx.setLineDash([]);
       }
+      ctx.beginPath();ctx.arc(px,py,dotR,0,2*Math.PI);
+      ctx.fillStyle=C.dot;ctx.fill();
+      ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
+    });
+  }
+
+  else if(m==='adaptive'){
+    /* Each leaf is a Simpson panel of varying width — draw the parabola
+       through (a, fa), (m, fm), (b, fb) just like uniform Simpson. */
+    var leaves=ST.result.leaves||[];
+    leaves.forEach(function(L,idx){
+      var x0s=L.a, x2s=L.b, x1s=(L.a+L.b)/2;
+      var f0=L.fa, f1=L.fm, f2=L.fb;
+      if(!isFinite(f0))f0=0;if(!isFinite(f1))f1=0;if(!isFinite(f2))f2=0;
+      var gx0=w2cx(x0s),gx2=w2cx(x2s),pyBase=w2cy(0);
+      var grad=ctx.createLinearGradient(gx0,0,gx2,0);
+      var sc=sgnColors(idx,f1)||C;
+      grad.addColorStop(0,idx%2===0?sc.f1:sc.f2);
+      grad.addColorStop(1,idx%2===0?sc.f2:sc.f1);
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.moveTo(gx0,pyBase);
+      var steps=24;
+      for(var j=0;j<=steps;j++){
+        var t=j/steps;
+        var xx=x0s+t*(x2s-x0s);
+        var t0=((xx-x1s)*(xx-x2s))/((x0s-x1s)*(x0s-x2s));
+        var t1=((xx-x0s)*(xx-x2s))/((x1s-x0s)*(x1s-x2s));
+        var t2=((xx-x0s)*(xx-x1s))/((x2s-x0s)*(x2s-x1s));
+        var yy=f0*t0+f1*t1+f2*t2;
+        ctx.lineTo(w2cx(xx),w2cy(yy));
+      }
+      ctx.lineTo(w2cx(x2s),pyBase);ctx.closePath();ctx.fill();
+      ctx.strokeStyle=C.s;ctx.lineWidth=1.0;ctx.stroke();
+    });
+    if(dotR>0) ST.result.pts.forEach(function(p){
+      var px=w2cx(p.x),py=w2cy(p.y);
+      ctx.beginPath();ctx.arc(px,py,dotR,0,2*Math.PI);
+      ctx.fillStyle=C.dot;ctx.fill();
+      ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
+    });
+  }
+  else if(m==='romberg'){
+    /* Show the trapezoids at the finest level computed (rightmost
+       column of the Romberg table corresponds to 2^L equal panels). */
+    var levels=(ST.result.romberg||[[0]]).length-1;
+    var nk=1<<Math.max(1,levels), hr=(b-a)/nk;
+    for(var i=0;i<nk;i++){
+      var xi=a+i*hr,xi1=xi+hr;
+      var fi,fi1;
+      try{fi=f(xi);}catch(e){fi=0;}
+      try{fi1=f(xi1);}catch(e){fi1=0;}
+      if(!isFinite(fi))fi=0;if(!isFinite(fi1))fi1=0;
+      var px0=w2cx(xi),px1=w2cx(xi1),py0=w2cy(fi),py1=w2cy(fi1),pyBase=w2cy(0);
+      var grad=ctx.createLinearGradient(px0,0,px1,0);
+      var sc=sgnColors(i,(fi+fi1)/2)||C;
+      grad.addColorStop(0,i%2===0?sc.f1:sc.f2);
+      grad.addColorStop(1,i%2===0?sc.f2:sc.f1);
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.moveTo(px0,pyBase);ctx.lineTo(px0,py0);ctx.lineTo(px1,py1);ctx.lineTo(px1,pyBase);ctx.closePath();ctx.fill();
+      ctx.strokeStyle=C.s;ctx.lineWidth=0.8;ctx.stroke();
+    }
+    if(dotR>0) ST.result.pts.forEach(function(p){
+      var px=w2cx(p.x),py=w2cy(p.y);
       ctx.beginPath();ctx.arc(px,py,dotR,0,2*Math.PI);
       ctx.fillStyle=C.dot;ctx.fill();
       ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
@@ -1199,10 +1406,12 @@ CV.addEventListener('pointercancel',endPtr);
 var METHOD_NAMES={
   left:'Left Riemann Sum',right:'Right Riemann Sum',midpoint:'Midpoint Rule',
   trapezoid:'Trapezoidal Rule',simpson:"Simpson's 1/3 Rule",
-  gauss2:'Gauss-Legendre (2-point)',gauss3:'Gauss-Legendre (3-point)',gauss5:'Gauss-Legendre (5-point)'
+  gauss2:'Gauss-Legendre (2-point)',gauss3:'Gauss-Legendre (3-point)',gauss5:'Gauss-Legendre (5-point)',
+  adaptive:'Adaptive Simpson',romberg:'Romberg'
 };
 
-var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss3:6,gauss5:10};
+var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss3:6,gauss5:10,
+  adaptive:4,romberg:14};
 
 /* Format a numeric value as a LaTeX rational multiple of pi when it
    matches one to high precision (denominator up to 12); otherwise fall
@@ -1252,6 +1461,11 @@ function formulaLatex(method,a,b,n,latex){
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{3}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
     case 'gauss5':
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{5}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
+    case 'adaptive':
+      return integralStr+'\\;\\approx\\; \\sum_{\\text{leaves }[a_k,b_k]}\\!\\!\\dfrac{b_k-a_k}{6}\\!\\left[f(a_k)+4f\\!\\left(\\dfrac{a_k+b_k}{2}\\right)+f(b_k)\\right]'+
+        ',\\quad \\bigl|S_{\\text{split}}-S\\bigr|/15<\\varepsilon';
+    case 'romberg':
+      return integralStr+'\\;\\approx\\; R_{m,m},\\quad R_{k,j}=\\dfrac{4^{j}R_{k,j-1}-R_{k-1,j-1}}{4^{j}-1},\\quad R_{k,0}=T_{2^k}';
     default: return integralStr;
   }
 }
@@ -1271,6 +1485,7 @@ function doCompute(){
   var n=parseInt(document.getElementById('nInput').value)||6;
   if(n<1)n=1;if(n>1000)n=1000;
   if(ST.method==='simpson'&&n%2!==0)n++;
+  if(ST.method==='romberg'){if(n<2)n=2;if(n>14)n=14;}
   document.getElementById('nInput').value=n;
 
   var fn;
@@ -1337,17 +1552,32 @@ function doCompute(){
   var METHOD_ACCENT={
     left:'#2563eb',right:'#0891b2',midpoint:'#7c3aed',
     trapezoid:'#059669',simpson:'#d97706',
-    gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490'
+    gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',
+    adaptive:'#be185d',romberg:'#1e40af'
   };
   var accent=METHOD_ACCENT[ST.method]||'#1d4ed8';
+
+  /* Adaptive: report f-evals + tolerance; step size is variable so we
+     omit it.  Romberg: report level count + final h. */
+  var nLbl='Subdivisions \\(n\\)', nVal=String(n);
+  var hLbl='Step size \\(h\\)', hVal=fmtN(h,8);
+  if(ST.method==='adaptive'){
+    nLbl='Function evals'; nVal=String(ST.result.nActual||n);
+    hLbl='Tolerance \\(\\varepsilon\\)';
+    hVal=(ST.result.tolerance!=null)?ST.result.tolerance.toExponential(0):'1e-10';
+  }else if(ST.method==='romberg'){
+    var lv=(ST.result.romberg||[]).length-1;
+    nLbl='Levels'; nVal=String(lv);
+    hLbl='Finest \\(h\\)'; hVal=fmtN(h,8);
+  }
 
   rc.innerHTML=
     '<div class="res-cell" style="border-left:3px solid '+accent+';"><div class="res-lbl">Method</div><div class="res-val" style="font-size:.8125rem;color:'+accent+';">'+METHOD_NAMES[ST.method]+'</div></div>'+
     '<div class="res-cell"><div class="res-lbl">Approximation</div><div class="res-val" style="color:'+accent+';">'+fmtN(approx,12)+'</div></div>'+
     '<div class="res-cell"><div class="res-lbl">'+exactLabel+'</div><div class="res-val">'+exactStr+'</div></div>'+
     '<div class="res-cell"><div class="res-lbl">Absolute Error</div><div class="res-val '+errorClass+'">'+errorStr+'</div></div>'+
-    '<div class="res-cell"><div class="res-lbl">Subdivisions \\(n\\)</div><div class="res-val">'+n+'</div></div>'+
-    '<div class="res-cell"><div class="res-lbl">Step size \\(h\\)</div><div class="res-val">'+fmtN(h,8)+'</div></div>';
+    '<div class="res-cell"><div class="res-lbl">'+nLbl+'</div><div class="res-val">'+nVal+'</div></div>'+
+    '<div class="res-cell"><div class="res-lbl">'+hLbl+'</div><div class="res-val">'+hVal+'</div></div>';
   mj([rc]);
 
   /* Formula */
@@ -1378,7 +1608,9 @@ var _convDirty=false;
 
 function drawConvergence(){
   var convPanel=document.getElementById('convergencePanel');
-  if(!ST.fn||ST.exact===null){
+  /* Adaptive Simpson is tolerance-driven (no useful "n vs error" curve)
+     so skip the convergence panel for it entirely. */
+  if(!ST.fn||ST.exact===null||ST.method==='adaptive'){
     convPanel.classList.add('hidden');_convDirty=false;return;
   }
   /* Show collapsed — actual work deferred to expand click */
@@ -1389,35 +1621,73 @@ function drawConvergence(){
   _convDirty=true;
 }
 
+/* n-grid for each method's convergence sweep — kept compact so the
+   sweep is fast even on phones. */
+var CONV_NGRID={
+  left:[1,2,4,8,16,32,64,128,256],
+  right:[1,2,4,8,16,32,64,128,256],
+  midpoint:[1,2,4,8,16,32,64,128,256],
+  trapezoid:[1,2,4,8,16,32,64,128,256],
+  simpson:[2,4,6,10,20,40,80],
+  gauss2:[1,2,4,6,10,20,40],
+  gauss3:[1,2,3,5,8,14,20],
+  gauss5:[1,2,3,5,8,12],
+  romberg:[3,4,5,6,7,8,9,10,11,12]
+};
+var METHOD_COLORS_CONV={
+  left:'#2563eb',right:'#0891b2',midpoint:'#7c3aed',trapezoid:'#059669',
+  simpson:'#d97706',gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',
+  romberg:'#1e40af'
+};
+
 function renderConvergencePlot(){
   if(!ST.fn||!ST.exact||!_convDirty)return;
   _convDirty=false;
   var f=ST.fn,a=ST.a,b=ST.b,method=ST.method;
-  var nVals=[],errors=[];
-  var nList=method==='simpson'?[2,4,6,10,20,40,80]
-    :method==='gauss2'?[1,2,4,6,10,20,40]
-    :method==='gauss3'?[1,2,3,5,8,14,20]
-    :method==='gauss5'?[1,2,3,5,8,12]
-    :[1,2,4,8,16,32,64,128,256];
-  for(var i=0;i<nList.length;i++){
-    var val=quadValFast(method,f,a,b,nList[i]);
-    var err=Math.abs(val-ST.exact);
-    if(err>0&&isFinite(err)){nVals.push(nList[i]);errors.push(err);}
+  if(!CONV_NGRID[method])return;  /* adaptive: tolerance-driven, single point — skip */
+
+  /* Active method first, then any extras the user has checked. */
+  var methods=[method];
+  document.querySelectorAll('#convCompare input[type=checkbox]').forEach(function(cb){
+    if(cb.checked && cb.dataset.cmp!==method) methods.push(cb.dataset.cmp);
+  });
+
+  var traces=[];
+  var first=null;  /* anchors the reference O(h^p) line */
+  methods.forEach(function(mk){
+    var grid=CONV_NGRID[mk];
+    if(!grid)return;
+    var ns=[],errs=[];
+    for(var i=0;i<grid.length;i++){
+      var val=quadValFast(mk,f,a,b,grid[i]);
+      var err=Math.abs(val-ST.exact);
+      if(err>0&&isFinite(err)){ns.push(grid[i]);errs.push(err);}
+    }
+    if(ns.length<2)return;
+    if(!first)first={method:mk,ns:ns,errs:errs};
+    var color=METHOD_COLORS_CONV[mk]||'#1d4ed8';
+    var isActive=(mk===method);
+    traces.push({
+      x:ns,y:errs,type:'scatter',mode:'lines+markers',
+      marker:{color:color,size:isActive?8:6,line:{color:'#fff',width:isActive?1.5:0.5}},
+      line:{color:color,width:isActive?2.5:1.5,dash:isActive?'solid':'dot'},
+      name:METHOD_NAMES[mk]||mk
+    });
+  });
+  if(traces.length===0)return;
+
+  var ref=first||{method:method,ns:[],errs:[]};
+  var order=METHOD_ORDER[ref.method]||2;
+  if(ref.ns.length>=2){
+    var ri=Math.min(2,ref.ns.length-1);
+    var refErrors=ref.ns.map(function(ni){return ref.errs[ri]*Math.pow(ref.ns[ri]/ni,order);});
+    traces.push({x:ref.ns,y:refErrors,type:'scatter',mode:'lines',
+      line:{color:'#dc2626',dash:'dash',width:2},name:'O(h^{-'+order+'})'});
   }
-  if(nVals.length<2)return;
-  var order=METHOD_ORDER[method]||2;
-  var ri=Math.min(2,nVals.length-1);
-  var refErrors=nVals.map(function(ni){return errors[ri]*Math.pow(nVals[ri]/ni,order);});
-  var C={left:'#2563eb',right:'#0891b2',midpoint:'#7c3aed',trapezoid:'#059669',
-    simpson:'#d97706',gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490'};
-  var traces=[
-    {x:nVals,y:errors,type:'scatter',mode:'markers',marker:{color:C[method]||'#1d4ed8',size:7},name:'Error'},
-    {x:nVals,y:refErrors,type:'scatter',mode:'lines',line:{color:'#dc2626',dash:'dash',width:2},name:'O(h\u207b'+order+')'}
-  ];
   var layout={title:'',
     xaxis:{title:'n',type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb'},
     yaxis:{title:'|Error|',type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',exponentformat:'e'},
-    showlegend:true,legend:{x:0.55,y:0.95,bgcolor:'rgba(255,255,255,.8)'},
+    showlegend:true,legend:{x:0.55,y:0.95,bgcolor:'rgba(255,255,255,.85)'},
     margin:{t:8,r:12,b:34,l:48},
     plot_bgcolor:'#fafafa',paper_bgcolor:'rgba(0,0,0,0)',
     font:{family:'-apple-system,Arial,sans-serif',size:10}};
@@ -1426,7 +1696,9 @@ function renderConvergencePlot(){
     Plotly.newPlot('convergencePlot',traces,layout,{responsive:true,displayModeBar:false,displaylogo:false});
   });
   var cc=document.getElementById('convCaption');
-  cc.innerHTML='Log-log convergence. Dashed: expected \\(O(h^{'+order+'})\\).';
+  cc.innerHTML='Log-log convergence \u2014 solid: '+METHOD_NAMES[method]+
+    (traces.length>2?', dotted: comparison methods':'')+
+    '. Dashed: expected \\(O(h^{'+order+'})\\).';
   mj([cc]);
 }
 
@@ -1603,6 +1875,24 @@ document.getElementById('convBtn').addEventListener('click',function(){
   document.getElementById('convIcon').textContent=exp?'+':'\u2212';
   /* Lazy: compute and render plot only when expanding */
   if(!exp&&_convDirty)renderConvergencePlot();
+});
+
+/* Signed-area toggle: just re-render the canvas. */
+document.getElementById('signedToggle').addEventListener('change', function(){
+  render();
+});
+
+/* Compare-method checkboxes: re-render the convergence plot whenever
+   the user toggles a method into/out of the overlay. */
+document.querySelectorAll('#convCompare input[type=checkbox]').forEach(function(cb){
+  cb.addEventListener('change',function(){
+    if(!ST.fn||ST.exact===null)return;
+    /* Only render if the panel body is currently expanded; otherwise
+       mark dirty so the next expand picks up the new selection. */
+    var expanded=document.getElementById('convBtn').getAttribute('aria-expanded')==='true';
+    _convDirty=true;
+    if(expanded)renderConvergencePlot();
+  });
 });
 
 document.getElementById('glInfoBtn').addEventListener('click',function(){
