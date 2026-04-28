@@ -169,6 +169,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .signed-toggle{display:inline-flex;align-items:center;gap:.3rem;font-size:.78rem;
   font-weight:600;color:var(--txt2);cursor:pointer;}
 .signed-toggle input{cursor:pointer;width:14px;height:14px;}
+/* Romberg extrapolation table — same visual language as the
+   divided-differences table on the interpolation page. */
+.rb-wrap{padding:.65rem .75rem .85rem;overflow-x:auto;}
+.rb-wrap table{border-collapse:collapse;background:var(--card);font-size:.8125rem;margin:0 auto;}
+.rb-hdr{background:var(--sect);font-weight:700;text-align:center;padding:.35rem .65rem;border:1px solid var(--bdr2);color:var(--txt2);white-space:nowrap;}
+.rb-cell{padding:.3rem .65rem;border:1px solid var(--bdr2);text-align:center;white-space:nowrap;color:var(--txt);font-variant-numeric:tabular-nums;}
+.rb-node{background:rgba(29,78,216,.04);font-weight:600;color:var(--bl2);}
+.rb-coef{background:rgba(127,29,29,.07);font-weight:800;color:#6b1010;border-color:#d1a0a0;}
+.rb-final{background:rgba(127,29,29,.14);}
+.rb-empty{padding:.3rem .65rem;border:1px solid transparent;background:rgba(0,0,0,.015);}
+.rb-caption{margin:.25rem .75rem .4rem;color:var(--muted);font-size:.8125rem;text-align:center;}
+
 /* Convergence */
 #convergencePlot{width:100%;height:240px;}
 .conv-compare{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .75rem;
@@ -417,6 +429,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <div id="formulaPanel" class="pwrap hidden">
         <div class="phdr"><span class="pdot" style="background:var(--green);" aria-hidden="true"></span>Quadrature Formula</div>
         <div id="formulaBox" class="formula-box"></div>
+      </div>
+
+      <!-- Romberg extrapolation table — only shown when Romberg is the
+           active method.  Visual style mirrors the Newton divided-
+           differences table on interpolation.html: first column tinted
+           (the trapezoid seeds R_{k,0}); diagonal highlighted in maroon
+           as the Romberg estimates; bottom-right cell is the final
+           approximation. -->
+      <div id="rombergPanel" class="pwrap hidden">
+        <div class="phdr"><span class="pdot" style="background:#1e40af;" aria-hidden="true"></span>Romberg Extrapolation Table</div>
+        <div id="rombergBox" class="rb-wrap"></div>
+        <p id="rombergCaption" class="rb-caption"></p>
       </div>
 
       <!-- Convergence plot — inside col-plot so it sits directly below the formula -->
@@ -1595,10 +1619,66 @@ function doCompute(){
   /* Show GL reference panel for Gauss methods */
   document.getElementById('glInfoPanel').classList.toggle('hidden',!ST.method.startsWith('gauss'));
 
+  /* Romberg extrapolation table — same visual language as the Newton
+     divided-differences table. */
+  drawRombergTable();
+
   announce('Computed: '+METHOD_NAMES[ST.method]+'. Approximation = '+fmtN(approx,10));
 
   /* Show convergence panel (collapsed) — actual plot is lazy on expand */
   drawConvergence();
+}
+
+/* ── Romberg extrapolation table ──────────────────────────────────────────────
+   Triangular table of Richardson extrapolations, styled identically to
+   the Newton divided-differences table on interpolation.html:
+     - Row k corresponds to 2^k trapezoid panels.
+     - Column j is the j-th Richardson extrapolation (order 2j+2).
+     - First column (R_{k,0}) tinted blue — the composite-trapezoid seeds.
+     - Diagonal (R_{k,k}) highlighted maroon — the Romberg estimates.
+     - Bottom-right cell receives extra emphasis as the final answer. */
+function drawRombergTable(){
+  var panel=document.getElementById('rombergPanel');
+  if(ST.method!=='romberg'||!ST.result||!ST.result.romberg){
+    panel.classList.add('hidden');return;
+  }
+  panel.classList.remove('hidden');
+  var box=document.getElementById('rombergBox');
+  var T=ST.result.romberg, rows=T.length;
+  var maxCols=rows;  // T[k].length === k+1; full triangle width
+  var html='<table>';
+  /* Header row: x_i column + R_{·,0}, R_{·,1}, … */
+  html+='<tr>';
+  html+='<th class="rb-hdr">\\(k\\)</th>';
+  html+='<th class="rb-hdr">\\(2^{k}\\)</th>';
+  for(var j=0;j<maxCols;j++){
+    html+='<th class="rb-hdr">\\(R_{\\cdot,'+j+'}\\)</th>';
+  }
+  html+='</tr>';
+  /* Data rows */
+  for(var k=0;k<rows;k++){
+    html+='<tr>';
+    html+='<td class="rb-cell rb-node">\\(k='+k+'\\)</td>';
+    html+='<td class="rb-cell rb-node">\\('+(1<<k)+'\\)</td>';
+    for(var jj=0;jj<maxCols;jj++){
+      if(jj<=k){
+        var isCoef=(jj===k);
+        var isFinal=(k===rows-1 && jj===k);
+        var cls='rb-cell'+(isCoef?' rb-coef':'')+(isFinal?' rb-final':'');
+        html+='<td class="'+cls+'">'+fmtN(T[k][jj],10)+'</td>';
+      }else{
+        html+='<td class="rb-empty"></td>';
+      }
+    }
+    html+='</tr>';
+  }
+  html+='</table>';
+  box.innerHTML=html;
+  var cap=document.getElementById('rombergCaption');
+  cap.innerHTML='\\(R_{k,0}=T_{2^k}\\) (composite trapezoid). Each column right is one Richardson step: '+
+    '\\(R_{k,j}=\\dfrac{4^{j}R_{k,j-1}-R_{k-1,j-1}}{4^{j}-1}\\). '+
+    'Diagonal entries \\(R_{k,k}\\) are the Romberg estimates; the bottom-right cell is the final approximation.';
+  mj([box,cap]);
 }
 
 
@@ -1822,6 +1902,7 @@ function clearResults(){
   document.getElementById('formulaPanel').classList.add('hidden');
   document.getElementById('convergencePanel').classList.add('hidden');
   document.getElementById('glInfoPanel').classList.add('hidden');
+  document.getElementById('rombergPanel').classList.add('hidden');
   document.getElementById('tolResult').classList.add('hidden');
   ST.result=null;
 }
