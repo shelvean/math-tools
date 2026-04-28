@@ -1088,23 +1088,29 @@ function render(){
 /* ── Prominent f(x) label inside the graph ──
    Rendered as an HTML overlay on top of the canvas (#fnLabel) and
    typeset by MathJax so the function appears in proper math notation
-   instead of the raw input string.  Cached so we only re-typeset
-   when the function actually changes — pan/zoom redraws are free. */
+   instead of the raw input string.  Reads the live integrand input
+   (so the label tracks every keystroke) and looks up curated LaTeX
+   by expression text — independent of ST.exId, which can be stale if
+   the user typed something after clicking an example.  Cached so
+   pan/zoom redraws don't re-typeset. */
 var _lastFnLatex=null;
 function drawFnLabel(){
   var el=document.getElementById('fnLabel');
   if(!el)return;
-  if(!ST.expr){el.innerHTML='';_lastFnLatex=null;return;}
-  /* Prefer the curated LaTeX for built-in examples; otherwise convert
-     the user's expression to proper LaTeX notation (sin -> \sin,
-     pi -> \pi, sqrt(...) -> \sqrt{...}, exp(...) -> e^{...}, etc.). */
-  var fnLatex;
-  var ex=EXAMPLES[ST.exId];
-  if(ex&&ex.latex&&ST.exId!=='custom'){
-    fnLatex=ex.latex;
-  }else{
-    fnLatex=exprToLatex(ST.expr);
+  var fnIn=document.getElementById('fnInput');
+  var expr=(fnIn?fnIn.value:'').trim()||ST.expr;
+  if(!expr){el.innerHTML='';_lastFnLatex=null;return;}
+  /* Match by expression text (not ST.exId) so the curated LaTeX is
+     used whenever the input matches a built-in example, even after
+     editing.  Custom/unmatched expressions go through exprToLatex
+     so sin/cos/pi/sqrt/etc. render with proper notation. */
+  var fnLatex=null;
+  var keys=Object.keys(EXAMPLES);
+  for(var i=0;i<keys.length;i++){
+    var ex=EXAMPLES[keys[i]];
+    if(keys[i]!=='custom' && ex.expr===expr && ex.latex){fnLatex=ex.latex;break;}
   }
+  if(!fnLatex)fnLatex=exprToLatex(expr);
   var latex='\\(\\displaystyle f(x) = '+fnLatex+'\\)';
   if(latex===_lastFnLatex)return;
   _lastFnLatex=latex;
@@ -1272,17 +1278,28 @@ function doCompute(){
   catch(e){announce('Error in function expression.');return;}
 
   ST.fn=fn;ST.expr=expr;ST.a=aVal;ST.b=bVal;ST.n=n;
-  /* Find exact value from examples */
+  /* Resolve the example id and exact value purely from the current
+     inputs, so editing fnInput after clicking an example doesn't
+     leave a stale ST.exId pointing at the old preset.  The id is
+     matched by expr text alone; the exact value also requires the
+     limits to match. */
+  ST.exId='custom';
   ST.exact=null;
   ST.exactIsRef=false;  /* true when using a numerical reference instead of a known exact */
   var exKeys=Object.keys(EXAMPLES);
   for(var k=0;k<exKeys.length;k++){
-    var ex=EXAMPLES[exKeys[k]];
-    if(ex.expr===expr&&ex.exact!==null){
-      var ea,eb;
-      try{ea=Function('return '+preprocess(ex.a))();}catch(e){ea=NaN;}
-      try{eb=Function('return '+preprocess(ex.b))();}catch(e){eb=NaN;}
-      if(Math.abs(ea-aVal)<1e-12&&Math.abs(eb-bVal)<1e-12){ST.exact=ex.exact;ST.exId=exKeys[k];break;}
+    var key=exKeys[k];
+    if(key==='custom')continue;
+    var ex=EXAMPLES[key];
+    if(ex.expr===expr){
+      ST.exId=key;
+      if(ex.exact!==null){
+        var ea,eb;
+        try{ea=Function('return '+preprocess(ex.a))();}catch(e){ea=NaN;}
+        try{eb=Function('return '+preprocess(ex.b))();}catch(e){eb=NaN;}
+        if(Math.abs(ea-aVal)<1e-12&&Math.abs(eb-bVal)<1e-12){ST.exact=ex.exact;}
+      }
+      break;
     }
   }
 
@@ -1630,6 +1647,13 @@ window.addEventListener('load',function(){
   document.getElementById(id).addEventListener('keydown',function(e){
     if(e.key==='Enter'){e.preventDefault();if(_computeTimer){clearTimeout(_computeTimer);_computeTimer=null;}doCompute();}
   });
+});
+
+/* Live LaTeX label update — drawFnLabel reads fnInput directly, so
+   refreshing it on every keystroke keeps the displayed f(x) in sync
+   with what the user is typing without running the full Compute. */
+document.getElementById('fnInput').addEventListener('input',function(){
+  drawFnLabel();
 });
 </script>
 </body>
