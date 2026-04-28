@@ -1132,22 +1132,48 @@ var METHOD_NAMES={
 
 var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss3:6,gauss5:10};
 
+/* Format a numeric value as a LaTeX rational multiple of pi when it
+   matches one to high precision (denominator up to 12); otherwise fall
+   back to fmtN.  Examples: pi -> "\pi", pi/2 -> "\dfrac{\pi}{2}",
+   3*pi/4 -> "\dfrac{3\pi}{4}", 2*pi -> "2\pi". */
+function numToPiLatex(v, dp){
+  if(!isFinite(v))return String(v);
+  if(v===0)return '0';
+  var pi=Math.PI;
+  for(var m=1;m<=12;m++){
+    var k=Math.round(v*m/pi);
+    if(k===0)continue;
+    if(Math.abs(v - k*pi/m) < 1e-9*Math.max(1,Math.abs(v))){
+      var sign=k<0?'-':'';
+      var ak=Math.abs(k);
+      if(m===1){
+        if(ak===1)return sign+'\\pi';
+        return sign+ak+'\\pi';
+      }
+      if(ak===1)return sign+'\\dfrac{\\pi}{'+m+'}';
+      return sign+'\\dfrac{'+ak+'\\pi}{'+m+'}';
+    }
+  }
+  return fmtN(v, dp==null?4:dp).replace(/\.?0+$/,'');
+}
+
 function formulaLatex(method,a,b,n,latex){
-  var aStr=fmtN(a,4).replace(/\.?0+$/,'');
-  var bStr=fmtN(b,4).replace(/\.?0+$/,'');
+  var aStr=numToPiLatex(a,4);
+  var bStr=numToPiLatex(b,4);
+  var hStr=numToPiLatex((b-a)/n,6);
   var integralStr='\\int_{'+aStr+'}^{'+bStr+'}'+latex+'\\,dx';
   switch(method){
     case 'left':
-      return integralStr+'\\;\\approx\\; h\\sum_{i=0}^{n-1}f(x_i),\\quad h=\\dfrac{b-a}{n}='+fmtN((b-a)/n,6);
+      return integralStr+'\\;\\approx\\; h\\sum_{i=0}^{n-1}f(x_i),\\quad h=\\dfrac{b-a}{n}='+hStr;
     case 'right':
-      return integralStr+'\\;\\approx\\; h\\sum_{i=1}^{n}f(x_i),\\quad h='+fmtN((b-a)/n,6);
+      return integralStr+'\\;\\approx\\; h\\sum_{i=1}^{n}f(x_i),\\quad h='+hStr;
     case 'midpoint':
-      return integralStr+'\\;\\approx\\; h\\sum_{i=0}^{n-1}f\\!\\left(\\dfrac{x_i+x_{i+1}}{2}\\right),\\quad h='+fmtN((b-a)/n,6);
+      return integralStr+'\\;\\approx\\; h\\sum_{i=0}^{n-1}f\\!\\left(\\dfrac{x_i+x_{i+1}}{2}\\right),\\quad h='+hStr;
     case 'trapezoid':
-      return integralStr+'\\;\\approx\\; \\dfrac{h}{2}\\left[f(a)+2\\sum_{i=1}^{n-1}f(x_i)+f(b)\\right],\\quad h='+fmtN((b-a)/n,6);
+      return integralStr+'\\;\\approx\\; \\dfrac{h}{2}\\left[f(a)+2\\sum_{i=1}^{n-1}f(x_i)+f(b)\\right],\\quad h='+hStr;
     case 'simpson':
       var ns=n%2!==0?n+1:n;
-      return integralStr+'\\;\\approx\\; \\dfrac{h}{3}\\left[f(x_0)+4f(x_1)+2f(x_2)+\\cdots+f(x_{'+ns+'})\\right],\\quad h='+fmtN((b-a)/ns,6);
+      return integralStr+'\\;\\approx\\; \\dfrac{h}{3}\\left[f(x_0)+4f(x_1)+2f(x_2)+\\cdots+f(x_{'+ns+'})\\right],\\quad h='+numToPiLatex((b-a)/ns,6);
     case 'gauss2':
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{2}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
     case 'gauss3':
