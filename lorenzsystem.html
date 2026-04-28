@@ -170,6 +170,11 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
    room as the phone allows. */
 @media(max-width:640px){#plot{height:max(520px, 80vh);}}
 
+/* Time series plot — three stacked subplots (x(t), y(t), z(t)) shown
+   below the 3D trajectory. Mirrors whatever's in the 3D plot. */
+#tsPlot{width:100%;height:360px;}
+@media(max-width:640px){#tsPlot{height:320px;}}
+
 /* Sensitive desc */
 .sens-desc{font-size:.8125rem;color:var(--txt2);line-height:1.6;
   background:rgba(29,78,216,.04);border-left:3px solid var(--blue);
@@ -494,6 +499,18 @@ if(document.referrer.includes('dynamical.html')){
           <div class="progress-label" id="progressLabel">t = 0.0 / 0.0</div>
         </div>
       </div>
+
+      <!-- Time series: x(t), y(t), z(t) shown as three separate stacked
+           subplots below the 3D trajectory.  Updates in lockstep with the
+           main plot for static renders, attractor animation, particle
+           animation, and the rho sweep. -->
+      <div class="pwrap">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>
+          Time Series &mdash; \(x(t),\ y(t),\ z(t)\)
+        </div>
+        <div id="tsPlot" role="img" aria-label="Time series of x, y, z components versus time"></div>
+      </div>
     </div>
 
   </div><!-- /main-layout -->
@@ -772,6 +789,64 @@ function make3DLayout(title){
   };
 }
 
+/* ── Time series subplots (x(t), y(t), z(t)) ─────────────────────────────────
+   Three stacked panels sharing a single time axis (anchored to the bottom
+   panel). Updated in lockstep with the 3D trajectory for static renders,
+   attractor animation, particle animation, and the rho sweep.
+   ──────────────────────────────────────────────────────────────────────────── */
+function tsLayout(){
+  var hc=document.documentElement.classList.contains('hc');
+  var bg=hc?'#fff':'#f9fafb';
+  var fg=hc?'#000':'#374151';
+  var grid=hc?'#000':'#e5e7eb';
+  var ax={gridcolor:grid,linecolor:fg,zerolinecolor:grid,
+    tickfont:{size:11,color:fg},titlefont:{size:12,color:fg}};
+  return{
+    showlegend:false,
+    paper_bgcolor:bg, plot_bgcolor:bg,
+    margin:{t:8,b:38,l:54,r:14},
+    hovermode:'x unified',
+    xaxis: Object.assign({domain:[0,1],anchor:'y3',title:'t'},ax),
+    yaxis: Object.assign({domain:[0.69,1.0],title:'x',anchor:'x'},ax),
+    yaxis2:Object.assign({domain:[0.345,0.655],title:'y',anchor:'x'},ax),
+    yaxis3:Object.assign({domain:[0,0.31],title:'z',anchor:'x'},ax),
+    uirevision:'ts'
+  };
+}
+
+function renderTimeSeries(tr,idx){
+  if(!tr||!tr.x)return;
+  var N=tr.x.length;
+  var to=(idx==null)?N:Math.max(1,Math.min(N,idx+1));
+  var times=new Array(to);
+  for(var i=0;i<to;i++)times[i]=i*DT;
+  Plotly.react('tsPlot',[
+    {x:times,y:tr.x.slice(0,to),type:'scattergl',mode:'lines',
+     line:{color:'#1d4ed8',width:1.5},xaxis:'x',yaxis:'y', name:'x',hovertemplate:'t=%{x:.2f}<br>x=%{y:.3f}<extra></extra>'},
+    {x:times,y:tr.y.slice(0,to),type:'scattergl',mode:'lines',
+     line:{color:'#15803d',width:1.5},xaxis:'x',yaxis:'y2',name:'y',hovertemplate:'t=%{x:.2f}<br>y=%{y:.3f}<extra></extra>'},
+    {x:times,y:tr.z.slice(0,to),type:'scattergl',mode:'lines',
+     line:{color:'#dc2626',width:1.5},xaxis:'x',yaxis:'y3',name:'z',hovertemplate:'t=%{x:.2f}<br>z=%{y:.3f}<extra></extra>'}
+  ],tsLayout());
+}
+
+function renderTimeSeriesDual(t1,t2,idx){
+  if(!t1||!t1.x)return;
+  var N=t1.x.length;
+  var to=(idx==null)?N:Math.max(1,Math.min(N,idx+1));
+  var times=new Array(to);
+  for(var i=0;i<to;i++)times[i]=i*DT;
+  function tr(arr,axis,color,dash){
+    return{x:times,y:arr.slice(0,to),type:'scattergl',mode:'lines',
+      line:{color:color,width:1.5,dash:dash||'solid'},xaxis:'x',yaxis:axis};
+  }
+  Plotly.react('tsPlot',[
+    tr(t1.x,'y', '#2196F3'), tr(t2.x,'y', '#F44336','dot'),
+    tr(t1.y,'y2','#2196F3'), tr(t2.y,'y2','#F44336','dot'),
+    tr(t1.z,'y3','#2196F3'), tr(t2.z,'y3','#F44336','dot')
+  ],tsLayout());
+}
+
 /* ── Read params ── */
 function readParams(){
   var v={};
@@ -820,6 +895,7 @@ var updatePlot=debounce(function(rhoOverride){
     [makeJetTrace(tr,2.5,N)],
     make3DLayout('Lorenz Attractor \u2014 \u03C1\u2009=\u2009'+fmtSig(v.rho)+', IC '+ic+', T = '+fmtSig(v.tend))
   );
+  renderTimeSeries(tr);
   setProgress(100, N-1, N);
   say('Plot updated. \u03C1 = '+fmtSig(v.rho));
 },100);
@@ -899,6 +975,7 @@ function renderParticleFrame(idx){
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#B71C1C'},showlegend:false}
   ],Object.assign(make3DLayout('Sensitive Dependence (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'),
     {showlegend:true,legend:{x:.02,y:.98,bgcolor:'rgba(255,255,255,.8)'}}));
+  renderTimeSeriesDual(t1,t2,idx);
 }
 
 // Incremental Lorenz-attractor renderer used by Animate Attractor.
@@ -918,6 +995,7 @@ function renderIncrementalFrame(idx, titlePrefix){
     {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
   ],make3DLayout(titlePrefix+' (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
+  renderTimeSeries(t1, idx);
 }
 function renderAttractorFrame(idx){ renderIncrementalFrame(idx, 'Lorenz Attractor'); }
 
@@ -1096,6 +1174,7 @@ document.addEventListener('DOMContentLoaded',function(){
             [makeJetTrace(frame.tr,3,ANIM_N)],
             make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(cur)+')')
           );
+          renderTimeSeries(frame.tr);
           RhoAnim.timerId=setTimeout(tick,delay);
         }
         tick();
@@ -1190,6 +1269,7 @@ document.addEventListener('DOMContentLoaded',function(){
       [makeJetTrace(tr0,2,N0)],
       make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v0.rho)+')')
     );
+    renderTimeSeries(tr0);
   }
 
   /* MathJax for sensitive-dep section */
