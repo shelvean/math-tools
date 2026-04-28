@@ -1823,16 +1823,17 @@ function renderBif(){
 
   var pRange=VBIF.pMax-VBIF.pMin, xRange=VBIF.xMax-VBIF.xMin;
 
-  /* Density accumulation: count iterate hits per pixel and remember the
-     hitting column's color. Each pixel column receives iterates from
-     exactly one parameter column (one px), so a single colour per pixel
-     is sufficient. The tone curve α = 1 − exp(−K·count) maps a few hits
-     to a soft tint and many hits (periodic windows) to a crisp line —
-     this is what makes chaos read as a smooth cloud rather than a harsh
-     uniform wash. */
+  /* Density accumulation with sub-pixel y-splatting. Each iterate's
+     vertical position is split between the two nearest pixel rows
+     proportional to its fractional offset — this anti-aliases the
+     periodic branches so they read as smooth lines instead of jagged
+     staircases when the attractor sits between rows. The colour for a
+     pixel is the colour of the (unique) column that wrote to it. */
   var nPix = imgW*imgH;
-  var count = new Uint16Array(nPix);
+  var count = new Float32Array(nPix);
   var pxColor = new Uint8Array(nPix*3);
+  var hasColor = new Uint8Array(nPix);
+  var hMax = imgH-1;
 
   for(var col=0;col<BDATA.N_done;col++){
     var p=BDATA.pArr[col];
@@ -1846,23 +1847,39 @@ function renderBif(){
     for(var j=0;j<BDATA.xCounts[col];j++){
       var xv=BDATA.xArrs[col][j];
       if(xv<VBIF.xMin||xv>VBIF.xMax)continue;
-      var py=imgH-1-Math.round((xv-VBIF.xMin)/xRange*(imgH-1));
-      if(py<0||py>=imgH)continue;
-      var idx=py*imgW+px;
-      if(count[idx]===0){
-        var ci=idx*3;
-        pxColor[ci]=R; pxColor[ci+1]=G; pxColor[ci+2]=B2;
+      var pyf = hMax - (xv-VBIF.xMin)/xRange*hMax;
+      if(pyf<0||pyf>hMax)continue;
+      var pyLo = Math.floor(pyf);
+      var frac = pyf - pyLo;
+      var pyHi = pyLo + 1;
+
+      if(pyLo>=0 && pyLo<imgH){
+        var idxL = pyLo*imgW + px;
+        count[idxL] += (1-frac);
+        if(!hasColor[idxL]){
+          var cL=idxL*3;
+          pxColor[cL]=R; pxColor[cL+1]=G; pxColor[cL+2]=B2;
+          hasColor[idxL]=1;
+        }
       }
-      if(count[idx]<65535) count[idx]++;
+      if(pyHi>=0 && pyHi<imgH && frac>0){
+        var idxH = pyHi*imgW + px;
+        count[idxH] += frac;
+        if(!hasColor[idxH]){
+          var cH=idxH*3;
+          pxColor[cH]=R; pxColor[cH+1]=G; pxColor[cH+2]=B2;
+          hasColor[idxH]=1;
+        }
+      }
     }
   }
 
   /* Tone-mapped composite onto the white background. K controls how
      quickly density saturates — small K keeps chaos soft, large K
-     darkens early. K≈0.35 gives ~30% alpha at 1 hit and ~97% at 10. */
-  var K = 0.35;
+     darkens early. K≈0.5 gives ~39% alpha at 1 hit, ~99% at 10. */
+  var K = 0.5;
   for(var i=0;i<nPix;i++){
-    var c=count[i]; if(c===0) continue;
+    var c=count[i]; if(c<=0) continue;
     var alpha = 1 - Math.exp(-c*K);
     var di=i*4, ci=i*3;
     var inv=1-alpha;
