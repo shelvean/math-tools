@@ -39,9 +39,9 @@
   --red:#b91c1c; --link:#1e40af;
   --r:.5rem; --r2:.75rem;
   --sh:0 1px 3px rgba(0,0,0,.10); --sh2:0 4px 12px rgba(0,0,0,.12);
-  --bif-stable:#1d4ed8;    /* blue dots: λ<0 */
-  --bif-neutral:#92400e;   /* amber dots: λ≈0 */
-  --bif-chaos:#b91c1c;     /* red dots: λ>0 */
+  --bif-stable:#0c2461;    /* deep navy: very stable */
+  --bif-neutral:#0f766e;   /* teal: λ≈0 */
+  --bif-chaos:#7f1d1d;     /* deep crimson: very chaotic */
   --bif-bg:#fafafa;
   --bif-grid:rgba(0,0,0,.07);
   --bif-axis:rgba(0,0,0,.3);
@@ -556,9 +556,12 @@ if(document.referrer.includes('dynamical.html')){
       Feigenbaum bifurcation points are marked with dashed vertical lines when the annotation option is enabled.
     </p>
     <div class="chips">
-      <span class="chip"><span class="csw" style="background:#1d4ed8"></span>Stable (\(\lambda&lt;0\))</span>
-      <span class="chip"><span class="csw" style="background:#92400e"></span>Neutral (\(\lambda\approx 0\))</span>
-      <span class="chip"><span class="csw" style="background:#b91c1c"></span>Chaotic (\(\lambda&gt;0\))</span>
+      <span class="chip" style="gap:.4rem;">
+        <span style="font-weight:700;color:var(--bif-stable)">Stable</span>
+        <span class="csw" aria-hidden="true" style="width:120px;height:11px;border-radius:6px;background:linear-gradient(to right,#0c2461,#1d4ed8,#0f766e,#b45309,#7f1d1d);"></span>
+        <span style="font-weight:700;color:var(--bif-chaos)">Chaotic</span>
+      </span>
+      <span class="chip" style="color:var(--txt2);font-size:.8125rem;">Color encodes Lyapunov exponent \(\lambda\); intensity encodes orbit density</span>
     </div>
     <div class="canvas-footer">
       <span class="zoom-hint" aria-hidden="true">Scroll/pinch: zoom &nbsp;&#183;&nbsp; Drag: pan &nbsp;&#183;&nbsp; Shift+drag: box-zoom &nbsp;&#183;&nbsp; Click: crosshair &nbsp;&#183;&nbsp; Dbl-click: reset</span>
@@ -1380,16 +1383,37 @@ function allocBDATA(N){
 }
 
 function getColColor(lya){
-  /* Returns [R,G,B,A] based on Lyapunov sign */
+  /* Returns [R,G,B,A] from a smooth 5-stop palette keyed off λ.
+     Stops: deep navy (very stable) → blue → teal (λ≈0) → amber → crimson (very chaotic).
+     λ is linearly mapped: t = 0.5 + λ/2.5, clamped to [0,1]. */
   var hc=document.documentElement.classList.contains('hc');
-  if(!isFinite(lya)) return [150,150,150,180];
-  if(lya < -0.01){
-    return hc?[0,0,200,220]:[29,78,216,200];
-  } else if(lya > 0.01){
-    return hc?[180,0,0,220]:[185,28,28,200];
-  } else {
-    return hc?[100,40,0,220]:[146,64,14,220];
-  }
+  if(!isFinite(lya)) return [120,120,120,255];
+
+  var t = Math.max(0, Math.min(1, 0.5 + lya / 2.5));
+
+  var stops = hc ? [
+    [10, 20, 70],    /* deep navy */
+    [0, 0, 200],     /* blue */
+    [0, 80, 80],     /* teal */
+    [120, 60, 0],    /* amber */
+    [120, 0, 0]      /* crimson */
+  ] : [
+    [12, 36, 97],    /* #0c2461 deep navy */
+    [29, 78, 216],   /* #1d4ed8 blue */
+    [15, 118, 110],  /* #0f766e teal */
+    [180, 83, 9],    /* #b45309 amber */
+    [127, 29, 29]    /* #7f1d1d crimson */
+  ];
+
+  var seg = Math.min(3, Math.floor(t*4));
+  var u = t*4 - seg;
+  var a = stops[seg], b = stops[seg+1];
+  return [
+    Math.round(a[0] + (b[0]-a[0])*u),
+    Math.round(a[1] + (b[1]-a[1])*u),
+    Math.round(a[2] + (b[2]-a[2])*u),
+    255
+  ];
 }
 
 function computeChunkSync(startCol, endCol){
@@ -1799,6 +1823,17 @@ function renderBif(){
 
   var pRange=VBIF.pMax-VBIF.pMin, xRange=VBIF.xMax-VBIF.xMin;
 
+  /* Density accumulation: count iterate hits per pixel and remember the
+     hitting column's color. Each pixel column receives iterates from
+     exactly one parameter column (one px), so a single colour per pixel
+     is sufficient. The tone curve α = 1 − exp(−K·count) maps a few hits
+     to a soft tint and many hits (periodic windows) to a crisp line —
+     this is what makes chaos read as a smooth cloud rather than a harsh
+     uniform wash. */
+  var nPix = imgW*imgH;
+  var count = new Uint16Array(nPix);
+  var pxColor = new Uint8Array(nPix*3);
+
   for(var col=0;col<BDATA.N_done;col++){
     var p=BDATA.pArr[col];
     if(p<VBIF.pMin||p>VBIF.pMax)continue;
@@ -1806,21 +1841,35 @@ function renderBif(){
     if(px<0||px>=imgW)continue;
 
     var R=BDATA.colColors[col*4], G=BDATA.colColors[col*4+1];
-    var B2=BDATA.colColors[col*4+2], A=BDATA.colColors[col*4+3];
+    var B2=BDATA.colColors[col*4+2];
 
     for(var j=0;j<BDATA.xCounts[col];j++){
       var xv=BDATA.xArrs[col][j];
       if(xv<VBIF.xMin||xv>VBIF.xMax)continue;
       var py=imgH-1-Math.round((xv-VBIF.xMin)/xRange*(imgH-1));
       if(py<0||py>=imgH)continue;
-      var idx=(py*imgW+px)*4;
-      /* alpha-blend onto white */
-      var alpha=A/255;
-      d[idx]  =Math.round(d[idx]  *(1-alpha)+R*alpha);
-      d[idx+1]=Math.round(d[idx+1]*(1-alpha)+G*alpha);
-      d[idx+2]=Math.round(d[idx+2]*(1-alpha)+B2*alpha);
-      d[idx+3]=255;
+      var idx=py*imgW+px;
+      if(count[idx]===0){
+        var ci=idx*3;
+        pxColor[ci]=R; pxColor[ci+1]=G; pxColor[ci+2]=B2;
+      }
+      if(count[idx]<65535) count[idx]++;
     }
+  }
+
+  /* Tone-mapped composite onto the white background. K controls how
+     quickly density saturates — small K keeps chaos soft, large K
+     darkens early. K≈0.35 gives ~30% alpha at 1 hit and ~97% at 10. */
+  var K = 0.35;
+  for(var i=0;i<nPix;i++){
+    var c=count[i]; if(c===0) continue;
+    var alpha = 1 - Math.exp(-c*K);
+    var di=i*4, ci=i*3;
+    var inv=1-alpha;
+    d[di]   = Math.round(d[di]  *inv + pxColor[ci]  *alpha);
+    d[di+1] = Math.round(d[di+1]*inv + pxColor[ci+1]*alpha);
+    d[di+2] = Math.round(d[di+2]*inv + pxColor[ci+2]*alpha);
+    d[di+3] = 255;
   }
 
   /* Draw ImageData at plot area offset */
