@@ -486,6 +486,71 @@ function announce(msg){var e=document.getElementById('liveRegion');e.textContent
 function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
 function renderMathInElement(el){mj([el]);}
 
+/* Convert a user-typed expression (same syntax as preprocess() accepts:
+   sin/cos/.../exp, pi, ^ for power, * for multiply, etc.) into LaTeX
+   so MathJax can render proper notation in the f(x) label and the
+   Quadrature Formula.  Uses balanced-paren walks for function calls
+   so nested arguments come out right. */
+function exprToLatex(s){
+  if(!s)return '';
+  var t=String(s);
+  /* Implicit multiplication so 2pi, 3sin(x), 2x become explicit and the
+     subsequent passes can find the function/constant tokens. */
+  t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+    if((l==='e'||l==='E')&&o+2<=str.length){
+      var c=str.charAt(o+2);
+      if((c>='0'&&c<='9')||c==='+'||c==='-')return m;
+    }
+    return d+'*'+l;
+  });
+  /* Replace function-call expressions with LaTeX equivalents.  Walks
+     matching parens so nested arguments work. */
+  function callMap(str,name,mapper){
+    var i=0,nlen=name.length;
+    while((i=str.indexOf(name+'(',i))!==-1){
+      if(i>0 && /[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+      var depth=1,j=i+nlen+1,len=str.length;
+      while(j<len){
+        var c=str.charAt(j);
+        if(c==='(')depth++;
+        else if(c===')'){depth--;if(depth===0)break;}
+        j++;
+      }
+      if(depth!==0)break;
+      var inner=str.slice(i+nlen+1,j);
+      var rep=mapper(exprToLatex(inner));
+      str=str.slice(0,i)+rep+str.slice(j+1);
+      i+=rep.length;
+    }
+    return str;
+  }
+  /* Order matters: longer names (asin, sinh, log10) before shorter
+     prefixes (sin, log) so the prefix isn't grabbed first. */
+  t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+  t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+  t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+  t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+  t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+  t=callMap(t,'log2', function(x){return '\\log_{2}\\!\\left('+x+'\\right)';});
+  /* JS Math.log is natural log, so render as \ln. */
+  t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+  t=callMap(t,'ln',   function(x){return '\\ln\\!\\left('+x+'\\right)';});
+  t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+  /* Constants */
+  t=t.replace(/\bpi\b/gi,'\\pi ');
+  /* Multiplication: a*b -> a\cdot b */
+  t=t.replace(/\*/g,'\\cdot ');
+  return t;
+}
+
 function preprocess(s){
   return s
     /* Implicit multiplication: 3x → 3*x, 2sin → 2*sin, 3( → 3*( , )( → )*( */
@@ -1031,13 +1096,14 @@ function drawFnLabel(){
   if(!el)return;
   if(!ST.expr){el.innerHTML='';_lastFnLatex=null;return;}
   /* Prefer the curated LaTeX for built-in examples; otherwise convert
-     the user's expression text (replace * with \cdot for readability). */
+     the user's expression to proper LaTeX notation (sin -> \sin,
+     pi -> \pi, sqrt(...) -> \sqrt{...}, exp(...) -> e^{...}, etc.). */
   var fnLatex;
   var ex=EXAMPLES[ST.exId];
   if(ex&&ex.latex&&ST.exId!=='custom'){
     fnLatex=ex.latex;
   }else{
-    fnLatex=String(ST.expr).replace(/\*/g,'\\cdot ');
+    fnLatex=exprToLatex(ST.expr);
   }
   var latex='\\(\\displaystyle f(x) = '+fnLatex+'\\)';
   if(latex===_lastFnLatex)return;
@@ -1270,8 +1336,12 @@ function doCompute(){
   /* Formula */
   var fp=document.getElementById('formulaPanel');fp.classList.remove('hidden');
   var fb=document.getElementById('formulaBox');
-  var ex=EXAMPLES[ST.exId]||{latex:expr.replace(/\*/g,'\\cdot ')};
-  fb.innerHTML='\\['+formulaLatex(ST.method,aVal,bVal,n,ex.latex||expr)+'\\]'+
+  /* For built-in examples use the curated LaTeX; for 'custom' (or
+     anything unrecognised) convert the user's expression with
+     exprToLatex so functions/constants render as proper notation. */
+  var ex=EXAMPLES[ST.exId];
+  var fnLatex=(ex && ex.latex && ST.exId!=='custom') ? ex.latex : exprToLatex(expr);
+  fb.innerHTML='\\['+formulaLatex(ST.method,aVal,bVal,n,fnLatex)+'\\]'+
     '<div style="text-align:center;font-size:1rem;margin-top:.35rem;">\\(\\approx '+fmtN(approx,10)+'\\)</div>';
   mj([fb]);
 
