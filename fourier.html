@@ -122,6 +122,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .pw-btn-add:hover,.pw-btn-add:focus-visible{background:rgba(21,128,61,.08);}
 .pw-btn-remove{color:var(--red);border-color:var(--red);}
 .pw-btn-remove:hover:not([disabled]),.pw-btn-remove:focus-visible:not([disabled]){background:rgba(220,38,38,.08);}
+.pw-btn-periodic{color:var(--blue);border-color:var(--blue);}
+.pw-btn-periodic:hover:not([disabled]),.pw-btn-periodic:focus-visible:not([disabled]){background:rgba(29,78,216,.08);}
 .pw-btn[disabled]{opacity:.45;cursor:not-allowed;}
 
 /* Math display */
@@ -294,6 +296,7 @@ if(document.referrer.includes('dynamical.html')){
         <li>Piece 1 <code>-1</code>, \(-pi/2\), Piece 2 <code>sin(x)</code>, \(pi/2\), Piece 3 <code>1</code> &nbsp;(clamped sine)</li>
       </ul>
       <p>Untick <strong>Piecewise</strong> to enter a single closed-form expression in the function box instead.</p>
+      <p>Click <strong>2π-periodic extension</strong> to tile the function across \([x_\min,x_\max]\) with period \(2\pi\). The base period is taken to be \([b_1,b_1+2\pi]\) (the first breakpoint marks the start of one period); the pieces and breakpoints inside that interval are replicated and shifted by integer multiples of \(2\pi\) until the plot domain is filled.</p>
 
       <h2>How to Use</h2>
       <ul>
@@ -348,6 +351,7 @@ if(document.referrer.includes('dynamical.html')){
     <div class="pw-actions">
       <button type="button" id="pwAddBtn" class="pw-btn pw-btn-add" aria-label="Add another piece">+ Add piece</button>
       <button type="button" id="pwRemoveBtn" class="pw-btn pw-btn-remove" aria-label="Remove the last piece" disabled>&minus; Remove last piece</button>
+      <button type="button" id="pwPeriodicBtn" class="pw-btn pw-btn-periodic" aria-label="Extend the function 2 pi periodically across the plot domain" title="Tile the pieces in [b₁, b₁+2π] across [x_min, x_max]">2π-periodic extension</button>
     </div>
   </div>
 
@@ -555,6 +559,80 @@ function pwRemovePiece(){
   PW_STATE.exprs.pop();
   PW_STATE.breaks.pop();
   rebuildPwRows();
+}
+
+/* ── 2π-periodic extension ──
+   Treats the user's pieces as defining f on the base period
+   [b₁, b₁+2π], where b₁ is the first breakpoint.  All breakpoints
+   strictly inside that interval, together with their flanking pieces,
+   form one period.  The base period is then tiled across [xMin, xMax]:
+   tile k spans [b₁+k·2π, b₁+(k+1)·2π] and uses the base pieces with
+   x → x − k·2π.  The resulting pieces overwrite PW_STATE. */
+function _shiftExprX(exprStr,k){
+  if(k===0)return exprStr;
+  var sign=k>0?'-':'+';
+  var mag=2*Math.abs(k);
+  var subStr='(x '+sign+' '+mag+'*pi)';
+  try{
+    var node=math.parse(exprStr);
+    var transformed=node.transform(function(n){
+      if(n.isSymbolNode&&n.name==='x')return math.parse(subStr);
+      return n;
+    });
+    return transformed.toString();
+  }catch(e){return exprStr;}
+}
+function _shiftBreakText(text,k){
+  if(k===0)return text;
+  var sign=k>0?'+':'-';
+  var mag=2*Math.abs(k);
+  var t=(text||'').trim();
+  if(!t||t==='0')return(k<0?'-':'')+mag+'*pi';
+  return t+' '+sign+' '+mag+'*pi';
+}
+function pwPeriodicExtend(){
+  _readPwInputs();
+  if(PW_STATE.exprs.length<2){say('Add a breakpoint first');return;}
+  var xMin=parseDomain(document.getElementById('xMin').value);
+  var xMax=parseDomain(document.getElementById('xMax').value);
+  if(!isFinite(xMin)||!isFinite(xMax)||xMin>=xMax){
+    say('Set valid x_min and x_max first');return;
+  }
+  var breakTexts=PW_STATE.breaks.slice();
+  var breaks=breakTexts.map(parseDomain);
+  if(breaks.some(function(v){return !isFinite(v);})){
+    say('Invalid breakpoint');return;
+  }
+  var P=2*Math.PI,b0=breaks[0],b0Text=breakTexts[0];
+  /* Pieces inside the base period [b₀, b₀+P]: piece 2 (after b₁) is
+     always included; subsequent pieces are appended whenever their
+     left breakpoint still lies strictly inside the period. */
+  var baseExprs=[PW_STATE.exprs[1]];
+  var baseBreakTexts=[];
+  for(var i=1;i<breaks.length;i++){
+    if(breaks[i]>b0+1e-9&&breaks[i]<b0+P-1e-9){
+      baseBreakTexts.push(breakTexts[i]);
+      baseExprs.push(PW_STATE.exprs[i+1]);
+    }
+  }
+  var kMin=Math.floor((xMin-b0)/P);
+  var kMax=Math.floor((xMax-b0)/P);
+  /* Need at least 2 pieces total for piecewise mode. */
+  while((kMax-kMin+1)*baseExprs.length<2)kMax++;
+  var newExprs=[],newBreakTexts=[];
+  for(var k=kMin;k<=kMax;k++){
+    for(var j=0;j<baseExprs.length;j++){
+      newExprs.push(_shiftExprX(baseExprs[j],k));
+      if(j<baseBreakTexts.length){
+        newBreakTexts.push(_shiftBreakText(baseBreakTexts[j],k));
+      }
+    }
+    if(k<kMax)newBreakTexts.push(_shiftBreakText(b0Text,k+1));
+  }
+  PW_STATE.exprs=newExprs;
+  PW_STATE.breaks=newBreakTexts;
+  rebuildPwRows();
+  say('Function extended 2 pi periodically across the plot domain');
 }
 
 /* ── Evaluate function at x ── */
@@ -924,6 +1002,9 @@ document.addEventListener('DOMContentLoaded',function(){
   });
   document.getElementById('pwRemoveBtn').addEventListener('click',function(){
     pwRemovePiece();schedPreview();
+  });
+  document.getElementById('pwPeriodicBtn').addEventListener('click',function(){
+    pwPeriodicExtend();schedPreview();
   });
 
   /* Buttons */
