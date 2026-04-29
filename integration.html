@@ -156,8 +156,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 #fnLabel{position:absolute;top:.5rem;left:.65rem;padding:.3rem .55rem;
   background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.12);
   border-radius:.375rem;color:#1e3a8a;font-size:1rem;line-height:1.1;
-  pointer-events:none;max-width:calc(100% - 1.4rem);overflow:hidden;
-  box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;
+  max-width:calc(100% - 1.4rem);overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+  transition:box-shadow .12s;}
+#fnLabel:hover{box-shadow:0 2px 6px rgba(0,0,0,.14);}
+#fnLabel.dragging{cursor:grabbing;box-shadow:0 4px 12px rgba(0,0,0,.20);}
 .hc #fnLabel{background:#fff;color:#000;border-color:rgba(0,0,0,.4);}
 #fnLabel:empty{display:none;}
 .canvas-footer{display:flex;align-items:center;justify-content:space-between;
@@ -413,7 +417,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
             aria-label="Graph showing the function and quadrature shapes (rectangles, trapezoids, or parabolas) used to approximate the integral."></canvas>
           <!-- LaTeX overlay for f(x), positioned over the top-left of the canvas
                where the previous canvas-drawn pill sat.  MathJax typesets it. -->
-          <div id="fnLabel" aria-hidden="true"></div>
+          <div id="fnLabel" aria-hidden="true" title="Drag to reposition"></div>
         </div>
         <div class="canvas-footer">
           <span class="view-hint" aria-hidden="true">Ctrl+Scroll: zoom &middot; Drag: pan &middot; Pinch: zoom</span>
@@ -1348,6 +1352,71 @@ function drawFnLabel(){
   el.innerHTML=latex;
   mj([el]);
 }
+
+/* ── Make the f(x) overlay draggable ──────────────────────────────────────────
+   The label is positioned absolutely inside #canvasWrap; users can grab it
+   with the mouse / pen / touch and drag anywhere within the canvas to keep
+   it from blocking the curve.  Position is constrained so the label stays
+   fully visible; it also re-clamps on window resize so a label dragged to
+   the right edge on desktop doesn't end up offscreen on a narrower view.
+   ──────────────────────────────────────────────────────────────────────────── */
+(function(){
+  var label=document.getElementById('fnLabel');
+  var wrap=document.getElementById('canvasWrap');
+  if(!label||!wrap)return;
+  var dragging=false, gx=0, gy=0;
+
+  function clampToWrap(){
+    var wr=wrap.getBoundingClientRect();
+    var lw=label.offsetWidth, lh=label.offsetHeight;
+    if(lw===0||lh===0)return;
+    var L=parseFloat(label.style.left), T=parseFloat(label.style.top);
+    if(isNaN(L)||isNaN(T))return;  /* still using initial CSS top/left */
+    L=Math.max(0,Math.min(wr.width-lw,L));
+    T=Math.max(0,Math.min(wr.height-lh,T));
+    label.style.left=L+'px';
+    label.style.top=T+'px';
+  }
+
+  label.addEventListener('pointerdown',function(e){
+    if(e.button!=null && e.button!==0)return;
+    e.preventDefault();
+    label.setPointerCapture(e.pointerId);
+    var lr=label.getBoundingClientRect();
+    var wr=wrap.getBoundingClientRect();
+    /* Pin to absolute pixel position before first drag move so the label
+       doesn't jump from the initial top/left rem-based anchor. */
+    label.style.left=(lr.left-wr.left)+'px';
+    label.style.top =(lr.top -wr.top )+'px';
+    label.style.right='auto';
+    label.style.bottom='auto';
+    gx=e.clientX-lr.left;
+    gy=e.clientY-lr.top;
+    label.classList.add('dragging');
+    dragging=true;
+  });
+  label.addEventListener('pointermove',function(e){
+    if(!dragging)return;
+    var wr=wrap.getBoundingClientRect();
+    var lw=label.offsetWidth, lh=label.offsetHeight;
+    var L=e.clientX-wr.left-gx, T=e.clientY-wr.top-gy;
+    L=Math.max(0,Math.min(wr.width-lw,L));
+    T=Math.max(0,Math.min(wr.height-lh,T));
+    label.style.left=L+'px';
+    label.style.top =T+'px';
+  });
+  function endDrag(e){
+    if(!dragging)return;
+    dragging=false;
+    try{label.releasePointerCapture(e.pointerId);}catch(_){}
+    label.classList.remove('dragging');
+  }
+  label.addEventListener('pointerup',endDrag);
+  label.addEventListener('pointercancel',endDrag);
+  /* On viewport changes, re-clamp so a previously-dragged label can't
+     drift offscreen when the canvas shrinks (e.g. rotating to portrait). */
+  window.addEventListener('resize',function(){setTimeout(clampToWrap,90);});
+})();
 
 /* ── Pan & zoom (matching bisection tool) ── */
 var DRAG={active:false,sx:0,sy:0,snap:null};
