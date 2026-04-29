@@ -104,6 +104,16 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 /* monospace for function input */
 .cfield input.fn{font-family:'Menlo','Monaco','Courier New',monospace;font-size:.875rem;font-weight:400;}
 
+/* Piecewise input — structured rows shown when the toggle is checked. */
+.pw-toggle{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:600;color:var(--txt2);cursor:pointer;}
+.pw-toggle input{cursor:pointer;width:16px;height:16px;}
+.pw-rows{display:flex;flex-direction:column;gap:.5rem;padding:.6rem .75rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);margin-bottom:.65rem;}
+.pw-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;}
+.pw-row label{font-size:.8125rem;font-weight:700;color:var(--txt2);min-width:54px;}
+.pw-row input.fn{flex:1 1 18rem;min-width:14rem;}
+.pw-row .pw-cond{font-size:.8125rem;color:var(--txt2);font-weight:600;}
+.pw-row input.pw-break{width:5.5rem;min-height:34px;text-align:center;font-family:'Menlo','Monaco','Courier New',monospace;}
+
 /* Math display */
 .math-display{text-align:center;background:var(--info);border:2px solid var(--inf-b);
   border-radius:var(--r);padding:.55rem .75rem;margin-bottom:.875rem;min-height:2.5rem;}
@@ -260,15 +270,19 @@ if(document.referrer.includes('dynamical.html')){
       </ul>
 
       <h2>Piecewise Functions</h2>
-      <p>Use one semicolon to separate two pieces. Supported syntax:</p>
-      <div class="syntax-box">expr1 if x&lt;a;&nbsp;&nbsp;expr2 if x&gt;=a</div>
-      <p>The four supported condition pairs are <code>x&lt;a</code>/<code>x&gt;=a</code>, <code>x&lt;=a</code>/<code>x&gt;a</code>, and their reverses. The breakpoint \(a\) must lie strictly inside the chosen domain. Examples:</p>
+      <p>Tick the <strong>Piecewise</strong> box next to <em>Load example</em> to switch the function input into structured pieces. You then enter:</p>
       <ul>
-        <li><code>(x+2)^2 if x&lt;0; 8-x if x&gt;=0</code> &mdash; quadratic then linear</li>
-        <li><code>-1 if x&lt;=0; 1 if x&gt;0</code> &mdash; step function (ideal for Gibbs phenomenon)</li>
-        <li><code>0 if x&lt;=-1; x^2 if x&gt;-1</code> &mdash; breakpoint at \(x=-1\)</li>
+        <li><strong>Piece 1</strong> &mdash; an expression in <code>x</code>, used when \(x \le a\).</li>
+        <li><strong>Breakpoint</strong> \(a\) &mdash; a single number; it should lie strictly inside the domain \([x_\min,x_\max]\).</li>
+        <li><strong>Piece 2</strong> &mdash; an expression in <code>x</code>, used when \(x &gt; a\).</li>
       </ul>
-      <p>Common mistakes: omitting the semicolon, writing spaces inside the condition (use <code>x&lt;0</code> not <code>x &lt; 0</code>), or placing the breakpoint outside the domain.</p>
+      <p>Each piece is parsed independently as a normal expression, so there is no special syntax to remember and no opportunity for the comparison condition to be mis-typed. Examples (Piece&nbsp;1 &mdash; breakpoint &mdash; Piece&nbsp;2):</p>
+      <ul>
+        <li><code>(x+2)^2</code> &mdash; \(0\) &mdash; <code>8-x</code> &nbsp;(quadratic then linear)</li>
+        <li><code>-1</code> &mdash; \(0\) &mdash; <code>1</code> &nbsp;(step function &mdash; ideal for Gibbs phenomenon)</li>
+        <li><code>0</code> &mdash; \(-1\) &mdash; <code>x^2</code> &nbsp;(breakpoint at \(x=-1\))</li>
+      </ul>
+      <p>Untick <strong>Piecewise</strong> to enter a single closed-form expression in the function box instead.</p>
 
       <h2>How to Use</h2>
       <ul>
@@ -288,11 +302,11 @@ if(document.referrer.includes('dynamical.html')){
 
   <!-- Row 1: function + example -->
   <div class="cbar" role="group" aria-label="Function input">
-    <div class="cfield cfield-fn">
+    <div class="cfield cfield-fn" id="singleFnField">
       <label for="functionInput">Function \(f(x)\)</label>
       <input type="text" id="functionInput" class="fn"
-        value="abs(x+3)+3*sin(5*x) if x&lt;0; -abs(x+3)-3*sin(2*x)-5 if x&gt;=0"
-        aria-label="Function expression, piecewise supported">
+        value="abs(x) + sin(3*x)"
+        aria-label="Function expression">
     </div>
     <div class="cfield cfield-med">
       <label for="exampleSel">Load example</label>
@@ -305,6 +319,31 @@ if(document.referrer.includes('dynamical.html')){
         <option value="absSin">|x| + sin(3x)</option>
         <option value="piecewise">Piecewise (default)</option>
       </select>
+    </div>
+    <div class="cfield cfield-sm" style="align-self:flex-end;">
+      <label class="pw-toggle" for="pwToggle">
+        <input type="checkbox" id="pwToggle" checked>
+        Piecewise
+      </label>
+    </div>
+  </div>
+
+  <!-- Structured piecewise input — visible when the toggle is on. Each
+       piece's expression is parsed independently by math.evaluate, so no
+       string-format errors are possible: the only thing the user types
+       inside a row is a plain expression in x. The breakpoint is a
+       separate numeric field. -->
+  <div id="pwRows" class="pw-rows" role="group" aria-label="Piecewise function pieces">
+    <div class="pw-row">
+      <label for="pwExpr1">Piece 1</label>
+      <input type="text" id="pwExpr1" class="fn" value="abs(x+3) + 3*sin(5*x)" aria-label="Expression for piece 1">
+      <span class="pw-cond">for \(x \le\)</span>
+      <input type="text" id="pwBreak" class="pw-break" value="0" aria-label="Breakpoint between pieces">
+    </div>
+    <div class="pw-row">
+      <label for="pwExpr2">Piece 2</label>
+      <input type="text" id="pwExpr2" class="fn" value="-abs(x+3) - 3*sin(2*x) - 5" aria-label="Expression for piece 2">
+      <span class="pw-cond">otherwise</span>
     </div>
   </div>
 
@@ -371,9 +410,13 @@ var GL_WGTS=[0.0666713443086881,0.1494513491505806,0.2190863625159820,0.26926671
 var sawtooth=function(x){return 2*(x/(2*Math.PI)-Math.floor(0.5+x/(2*Math.PI)));};
 var square=function(x){return Math.sin(x)>=0?1:-1;};
 
-/* ── Parse piecewise ── */
+/* ── Legacy "expr1 if x<a; expr2 if x>=a" parser ──
+   Still used to migrate older example strings into the new structured
+   inputs.  No longer the primary path: piecewise mode now reads its
+   pieces directly from #pwExpr1, #pwExpr2, and #pwBreak so there is
+   no syntax for the user to get wrong. */
 function parsePiecewise(func){
-  if(func.indexOf('if')===-1||func.indexOf(';')===-1)return null;
+  if(!func||func.indexOf('if')===-1||func.indexOf(';')===-1)return null;
   var parts=func.split(';').map(function(p){return p.trim();});
   if(parts.length!==2)return null;
   var sp1=parts[0].split('if').map(function(s){return s.trim();}),sp2=parts[1].split('if').map(function(s){return s.trim();});
@@ -387,18 +430,45 @@ function parsePiecewise(func){
   return{expr1:expr1,expr2:expr2,a:a1,cond1:c1};
 }
 
+/* ── Active piecewise UI state ──
+   Returns {expr1, expr2, a} when the Piecewise toggle is checked and
+   the breakpoint parses; otherwise null.  Convention: piece 1 is used
+   for x ≤ a, piece 2 for x > a.  No string format for users to get
+   wrong — each piece is a plain expression in x. */
+function getPiecewiseUI(){
+  var t=document.getElementById('pwToggle');
+  if(!t||!t.checked)return null;
+  var e1=document.getElementById('pwExpr1'),
+      e2=document.getElementById('pwExpr2'),
+      bk=document.getElementById('pwBreak');
+  if(!e1||!e2||!bk)return null;
+  var a=parseFloat(bk.value);
+  if(!isFinite(a))return null;
+  var s1=(e1.value||'').trim(), s2=(e2.value||'').trim();
+  if(!s1||!s2)return null;
+  return {expr1:s1, expr2:s2, a:a};
+}
+
 /* ── Evaluate function at x ── */
 function evalF(func,x){
   try{
+    /* Piecewise UI takes precedence over the single-input field. */
+    var pwUI=getPiecewiseUI();
+    if(pwUI){
+      var sc={x:x};
+      return (x<=pwUI.a) ? math.evaluate(pwUI.expr1,sc) : math.evaluate(pwUI.expr2,sc);
+    }
+    /* Backward-compat: still understand the legacy "if x<a" syntax in
+       the single-expression box (e.g. when an old example loads). */
     var pw=parsePiecewise(func);
     if(pw){
       var e1=pw.expr1,e2=pw.expr2,a=pw.a,c1=pw.cond1;
-      var sc={x:x};
-      if(Math.abs(x-a)<EPSILON)return(c1==='<='||c1==='>=')? math.evaluate(e1,sc):math.evaluate(e2,sc);
-      switch(c1){case'<':return x<a?math.evaluate(e1,sc):math.evaluate(e2,sc);
-        case'<=':return x<=a?math.evaluate(e1,sc):math.evaluate(e2,sc);
-        case'>':return x>a?math.evaluate(e1,sc):math.evaluate(e2,sc);
-        case'>=':return x>=a?math.evaluate(e1,sc):math.evaluate(e2,sc);}
+      var sc2={x:x};
+      if(Math.abs(x-a)<EPSILON)return(c1==='<='||c1==='>=')? math.evaluate(e1,sc2):math.evaluate(e2,sc2);
+      switch(c1){case'<':return x<a?math.evaluate(e1,sc2):math.evaluate(e2,sc2);
+        case'<=':return x<=a?math.evaluate(e1,sc2):math.evaluate(e2,sc2);
+        case'>':return x>a?math.evaluate(e1,sc2):math.evaluate(e2,sc2);
+        case'>=':return x>=a?math.evaluate(e1,sc2):math.evaluate(e2,sc2);}
     }
     if(func==='sawtooth(x)')return sawtooth(x);
     if(func==='square(x)')return square(x);
@@ -460,6 +530,13 @@ function toLaTeXSingle(f){
     .replace(/\*/g,'\\cdot ').replace(/sawtooth\(x\)/g,'\\text{sawtooth}(x)').replace(/square\(x\)/g,'\\text{square}(x)');
 }
 function toLaTeX(func){
+  /* Structured piecewise UI takes precedence. */
+  var pwUI=getPiecewiseUI();
+  if(pwUI){
+    return '\\begin{cases}'+toLaTeXSingle(pwUI.expr1)+'&\\text{if }x\\le '+pwUI.a+
+      '\\\\'+toLaTeXSingle(pwUI.expr2)+'&\\text{if }x>'+pwUI.a+'\\end{cases}';
+  }
+  /* Backward-compat for legacy strings. */
   var pw=parsePiecewise(func);
   if(pw){
     var sym={'<':'<','<=':'\\leq','>':'>','>=':'\\geq'};
@@ -612,22 +689,52 @@ document.addEventListener('DOMContentLoaded',function(){
     say('High contrast '+(document.documentElement.classList.contains('hc')?'on':'off'));
   });
 
-  /* Example dropdown */
+  /* Piecewise toggle — show/hide structured rows and the single-input
+     field, then re-preview.  Single field is only useful when the user
+     wants a non-piecewise expression. */
+  function applyPwToggle(){
+    var on=document.getElementById('pwToggle').checked;
+    document.getElementById('pwRows').hidden=!on;
+    var sf=document.getElementById('singleFnField');
+    if(sf)sf.style.display=on?'none':'';
+  }
+  document.getElementById('pwToggle').addEventListener('change',function(){
+    applyPwToggle();
+    previewPlot();
+  });
+  applyPwToggle();
+
+  /* Example dropdown — when the example uses the legacy "if x<a; …"
+     syntax, parse it once and populate the structured pieces so the
+     user never sees the raw string format. */
   document.getElementById('exampleSel').addEventListener('change',function(){
     var v=this.value;if(!v)return;
     var ex=EXAMPLES[v];if(!ex)return;
-    document.getElementById('functionInput').value=ex.f;
+    var legacy=parsePiecewise(ex.f);
+    var pwToggle=document.getElementById('pwToggle');
+    if(legacy){
+      document.getElementById('pwExpr1').value=legacy.expr1;
+      document.getElementById('pwExpr2').value=legacy.expr2;
+      document.getElementById('pwBreak').value=legacy.a;
+      pwToggle.checked=true;
+      document.getElementById('functionInput').value='';
+    }else{
+      pwToggle.checked=false;
+      document.getElementById('functionInput').value=ex.f;
+    }
+    applyPwToggle();
     document.getElementById('xMin').value=ex.xmin;
     document.getElementById('xMax').value=ex.xmax;
     previewPlot();
     this.value='';say('Example loaded: '+v);
   });
 
-  /* Function/domain inputs */
+  /* Function/domain/piecewise inputs all trigger a debounced re-preview. */
   var dPrev;
   function schedPreview(){clearTimeout(dPrev);dPrev=setTimeout(previewPlot,320);}
-  ['functionInput','xMin','xMax'].forEach(function(id){
-    document.getElementById(id).addEventListener('input',schedPreview);
+  ['functionInput','xMin','xMax','pwExpr1','pwExpr2','pwBreak'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.addEventListener('input',schedPreview);
   });
   document.getElementById('nInput').addEventListener('input',renderMathDisplay);
 
@@ -635,9 +742,10 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('btnStart').addEventListener('click',startAnimation);
   document.getElementById('btnStop').addEventListener('click',stopAnimation);
 
-  /* Enter key */
-  ['functionInput','nInput','xMin','xMax','speedInput'].forEach(function(id){
-    document.getElementById(id).addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();startAnimation();}});
+  /* Enter key — start animation from any input. */
+  ['functionInput','nInput','xMin','xMax','speedInput','pwExpr1','pwExpr2','pwBreak'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();startAnimation();}});
   });
 
   /* Initial preview */
