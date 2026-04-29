@@ -116,6 +116,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .pw-row input.fn{flex:1 1 18rem;min-width:14rem;}
 .pw-row .pw-cond{font-size:.8125rem;color:var(--txt2);font-weight:600;}
 .pw-row input.pw-break{width:5.5rem;min-height:34px;text-align:center;font-family:'Menlo','Monaco','Courier New',monospace;}
+.pw-actions{display:flex;gap:.5rem;margin-top:.25rem;flex-wrap:wrap;}
+.pw-btn{font-size:.8125rem;font-weight:700;border:2px solid var(--bdr);border-radius:.375rem;padding:.35rem .75rem;cursor:pointer;min-height:34px;background:var(--card);color:var(--txt);transition:background .12s,border-color .12s;}
+.pw-btn-add{color:var(--green);border-color:var(--green);}
+.pw-btn-add:hover,.pw-btn-add:focus-visible{background:rgba(21,128,61,.08);}
+.pw-btn-remove{color:var(--red);border-color:var(--red);}
+.pw-btn-remove:hover:not([disabled]),.pw-btn-remove:focus-visible:not([disabled]){background:rgba(220,38,38,.08);}
+.pw-btn[disabled]{opacity:.45;cursor:not-allowed;}
 
 /* Math display */
 .math-display{text-align:center;background:var(--info);border:2px solid var(--inf-b);
@@ -273,17 +280,17 @@ if(document.referrer.includes('dynamical.html')){
       </ul>
 
       <h2>Piecewise Functions</h2>
-      <p>Tick the <strong>Piecewise</strong> box next to <em>Load example</em> to switch the function input into structured pieces. You then enter:</p>
+      <p>Tick the <strong>Piecewise</strong> box next to <em>Load example</em> to switch the function input into structured pieces. The default layout has two pieces and one breakpoint; click <strong>+ Add piece</strong> to extend it to three, four, or more, and <strong>− Remove last piece</strong> to shrink it back. With \(N\) pieces and breakpoints \(b_1<b_2<\cdots<b_{N-1}\):</p>
       <ul>
-        <li><strong>Piece 1</strong> &mdash; an expression in <code>x</code>, used when \(x \le a\).</li>
-        <li><strong>Breakpoint</strong> \(a\) &mdash; a single number; it should lie strictly inside the domain \([x_\min,x_\max]\).</li>
-        <li><strong>Piece 2</strong> &mdash; an expression in <code>x</code>, used when \(x &gt; a\).</li>
+        <li>Piece 1 is used for \(x\le b_1\).</li>
+        <li>Piece \(i\) (for \(1<i<N\)) is used for \(b_{i-1}<x\le b_i\).</li>
+        <li>Piece \(N\) is used for \(x>b_{N-1}\).</li>
       </ul>
-      <p>Each piece is parsed independently as a normal expression, so there is no special syntax to remember and no opportunity for the comparison condition to be mis-typed. Examples (Piece&nbsp;1 &mdash; breakpoint &mdash; Piece&nbsp;2):</p>
+      <p>Each piece is parsed independently as a normal expression, and each breakpoint accepts a number or a <code>pi</code>-expression (e.g.&nbsp;<code>pi/2</code>, <code>2*pi</code>). Examples:</p>
       <ul>
-        <li><code>(x+2)^2</code> &mdash; \(0\) &mdash; <code>8-x</code> &nbsp;(quadratic then linear)</li>
-        <li><code>-1</code> &mdash; \(0\) &mdash; <code>1</code> &nbsp;(step function &mdash; ideal for Gibbs phenomenon)</li>
-        <li><code>0</code> &mdash; \(-1\) &mdash; <code>x^2</code> &nbsp;(breakpoint at \(x=-1\))</li>
+        <li>Piece 1 <code>(x+2)^2</code>, breakpoint \(0\), Piece 2 <code>8-x</code> &nbsp;(quadratic then linear)</li>
+        <li>Piece 1 <code>-1</code>, breakpoint \(0\), Piece 2 <code>1</code> &nbsp;(step function &mdash; ideal for Gibbs phenomenon)</li>
+        <li>Piece 1 <code>-1</code>, \(-pi/2\), Piece 2 <code>sin(x)</code>, \(pi/2\), Piece 3 <code>1</code> &nbsp;(clamped sine)</li>
       </ul>
       <p>Untick <strong>Piecewise</strong> to enter a single closed-form expression in the function box instead.</p>
 
@@ -333,20 +340,13 @@ if(document.referrer.includes('dynamical.html')){
 
   <!-- Structured piecewise input — visible when the toggle is on. Each
        piece's expression is parsed independently by math.evaluate, so no
-       string-format errors are possible: the only thing the user types
-       inside a row is a plain expression in x. The breakpoint is a
-       separate numeric field. -->
+       string-format errors are possible.  The Add / Remove buttons let
+       the user grow or shrink the number of pieces. -->
   <div id="pwRows" class="pw-rows" role="group" aria-label="Piecewise function pieces">
-    <div class="pw-row">
-      <label for="pwExpr1">Piece 1</label>
-      <input type="text" id="pwExpr1" class="fn" value="abs(x+3) + 3*sin(5*x)" aria-label="Expression for piece 1">
-      <span class="pw-cond">for \(x \le\)</span>
-      <input type="text" id="pwBreak" class="pw-break" value="0" placeholder="0, pi/2, 2*pi" title="Number or pi-expression (e.g. pi, pi/2, 2*pi)" aria-label="Breakpoint between pieces">
-    </div>
-    <div class="pw-row">
-      <label for="pwExpr2">Piece 2</label>
-      <input type="text" id="pwExpr2" class="fn" value="-abs(x+3) - 3*sin(2*x) - 5" aria-label="Expression for piece 2">
-      <span class="pw-cond">otherwise</span>
+    <!-- Piece rows are generated dynamically from PW_STATE. -->
+    <div class="pw-actions">
+      <button type="button" id="pwAddBtn" class="pw-btn pw-btn-add" aria-label="Add another piece">+ Add piece</button>
+      <button type="button" id="pwRemoveBtn" class="pw-btn pw-btn-remove" aria-label="Remove the last piece" disabled>&minus; Remove last piece</button>
     </div>
   </div>
 
@@ -433,36 +433,112 @@ function parsePiecewise(func){
   return{expr1:expr1,expr2:expr2,a:a1,cond1:c1};
 }
 
+/* ── Piecewise state ──
+   PW_STATE.exprs is the list of N piece expressions; PW_STATE.breaks is
+   the list of N-1 breakpoint strings (each parsed via parseDomain so
+   pi-expressions work).  Convention is:
+     piece 1     used for x ≤ b₁
+     piece i     used for b_{i-1} < x ≤ b_i   (1 < i < N)
+     piece N     used for x > b_{N-1}
+   Pieces are entered into UI inputs; the rebuildPwRows() function
+   regenerates those inputs from PW_STATE. */
+var PW_STATE={
+  exprs:['abs(x+3) + 3*sin(5*x)', '-abs(x+3) - 3*sin(2*x) - 5'],
+  breaks:['0']
+};
+
+function _esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function rebuildPwRows(){
+  var container=document.getElementById('pwRows');
+  if(!container)return;
+  /* Clear existing piece rows but keep the .pw-actions block. */
+  Array.prototype.slice.call(container.querySelectorAll('.pw-row'))
+    .forEach(function(r){r.parentNode.removeChild(r);});
+  var actions=container.querySelector('.pw-actions');
+  var n=PW_STATE.exprs.length;
+  for(var i=0;i<n;i++){
+    var row=document.createElement('div');
+    row.className='pw-row';
+    var num=i+1;
+    var html='<label for="pwExpr'+num+'">Piece '+num+'</label>'+
+      '<input type="text" id="pwExpr'+num+'" class="fn pw-expr" value="'+_esc(PW_STATE.exprs[i])+
+      '" aria-label="Expression for piece '+num+'">';
+    if(i<n-1){
+      /* Breakpoint after this piece. */
+      var condText=(i===0)?'for \\(x\\le\\)':'for \\(b_{'+i+'}<x\\le\\)';
+      html+='<span class="pw-cond">'+condText+'</span>'+
+        '<input type="text" id="pwBreak'+num+'" class="pw-break" value="'+_esc(PW_STATE.breaks[i])+
+        '" placeholder="0, pi/2, 2*pi" title="Number or pi-expression" aria-label="Breakpoint after piece '+num+'">';
+    }else{
+      html+='<span class="pw-cond">otherwise</span>';
+    }
+    row.innerHTML=html;
+    container.insertBefore(row,actions);
+  }
+  document.getElementById('pwRemoveBtn').disabled=(n<=2);
+  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([container]).catch(function(){});
+}
+
+function _readPwInputs(){
+  PW_STATE.exprs=Array.prototype.slice.call(document.querySelectorAll('#pwRows .pw-expr'))
+    .map(function(el){return el.value;});
+  PW_STATE.breaks=Array.prototype.slice.call(document.querySelectorAll('#pwRows .pw-break'))
+    .map(function(el){return el.value;});
+}
+
 /* ── Active piecewise UI state ──
-   Returns {expr1, expr2, a, aText} when the Piecewise toggle is checked
-   and the breakpoint parses; otherwise null.  Convention: piece 1 is
-   used for x ≤ a, piece 2 for x > a.  No string format for users to get
-   wrong — each piece is a plain expression in x.  The breakpoint is
-   parsed via parseDomain so it accepts pi-expressions (pi, pi/2, 3*pi/4
-   …); aText preserves the user's raw input for the LaTeX preview. */
+   Returns {exprs, breaks, breakTexts} when the toggle is on and every
+   breakpoint parses; otherwise null.  exprs has N entries, breaks/
+   breakTexts have N-1.  breakTexts preserves the raw user strings so
+   the LaTeX preview can keep "pi/2" rather than "1.5708". */
 function getPiecewiseUI(){
   var t=document.getElementById('pwToggle');
   if(!t||!t.checked)return null;
-  var e1=document.getElementById('pwExpr1'),
-      e2=document.getElementById('pwExpr2'),
-      bk=document.getElementById('pwBreak');
-  if(!e1||!e2||!bk)return null;
-  var aText=(bk.value||'').trim();
-  var a=parseDomain(aText);
-  if(!isFinite(a))return null;
-  var s1=(e1.value||'').trim(), s2=(e2.value||'').trim();
-  if(!s1||!s2)return null;
-  return {expr1:s1, expr2:s2, a:a, aText:aText};
+  _readPwInputs();
+  var n=PW_STATE.exprs.length;
+  if(n<2)return null;
+  var exprs=PW_STATE.exprs.map(function(s){return (s||'').trim();});
+  if(exprs.some(function(s){return !s;}))return null;
+  var breakTexts=PW_STATE.breaks.map(function(s){return (s||'').trim();});
+  if(breakTexts.length!==n-1)return null;
+  var breaks=breakTexts.map(parseDomain);
+  if(breaks.some(function(v){return !isFinite(v);}))return null;
+  return {exprs:exprs, breaks:breaks, breakTexts:breakTexts};
+}
+
+function pwAddPiece(){
+  _readPwInputs();
+  PW_STATE.exprs.push('0');
+  /* New breakpoint nudged past the previous one if numeric, else 1. */
+  var prev=parseFloat(PW_STATE.breaks[PW_STATE.breaks.length-1]);
+  PW_STATE.breaks.push(isFinite(prev)?String(prev+1):'1');
+  rebuildPwRows();
+}
+function pwRemovePiece(){
+  _readPwInputs();
+  if(PW_STATE.exprs.length<=2)return;
+  PW_STATE.exprs.pop();
+  PW_STATE.breaks.pop();
+  rebuildPwRows();
 }
 
 /* ── Evaluate function at x ── */
 function evalF(func,x){
   try{
-    /* Piecewise UI takes precedence over the single-input field. */
+    /* Piecewise UI takes precedence over the single-input field.
+       Walk the breakpoints in order: piece i is used when x ≤ b_i;
+       the last piece runs when x is past every breakpoint. */
     var pwUI=getPiecewiseUI();
     if(pwUI){
       var sc={x:x};
-      return (x<=pwUI.a) ? math.evaluate(pwUI.expr1,sc) : math.evaluate(pwUI.expr2,sc);
+      for(var i=0;i<pwUI.breaks.length;i++){
+        if(x<=pwUI.breaks[i])return math.evaluate(pwUI.exprs[i],sc);
+      }
+      return math.evaluate(pwUI.exprs[pwUI.exprs.length-1],sc);
     }
     /* Backward-compat: still understand the legacy "if x<a" syntax in
        the single-expression box (e.g. when an old example loads). */
@@ -537,14 +613,27 @@ function toLaTeXSingle(f){
     .replace(/\*/g,'\\cdot ').replace(/sawtooth\(x\)/g,'\\text{sawtooth}(x)').replace(/square\(x\)/g,'\\text{square}(x)');
 }
 function toLaTeX(func){
-  /* Structured piecewise UI takes precedence.  Breakpoint is rendered
-     from the raw user input via domLaTeX so "pi/2" displays as π/2,
-     not 1.5708. */
+  /* Structured piecewise UI takes precedence.  Breakpoints render via
+     domLaTeX so "pi/2" displays as π/2 rather than 1.5708. */
   var pwUI=getPiecewiseUI();
   if(pwUI){
-    var aTex=domLaTeX(pwUI.aText);
-    return '\\begin{cases}'+toLaTeXSingle(pwUI.expr1)+'&\\text{if }x\\le '+aTex+
-      '\\\\'+toLaTeXSingle(pwUI.expr2)+'&\\text{if }x>'+aTex+'\\end{cases}';
+    var n=pwUI.exprs.length;
+    var rows=[];
+    for(var i=0;i<n;i++){
+      var expr=toLaTeXSingle(pwUI.exprs[i]);
+      var cond;
+      if(n===1){
+        cond='';
+      }else if(i===0){
+        cond='\\text{if }x\\le '+domLaTeX(pwUI.breakTexts[0]);
+      }else if(i===n-1){
+        cond='\\text{if }x>'+domLaTeX(pwUI.breakTexts[n-2]);
+      }else{
+        cond='\\text{if }'+domLaTeX(pwUI.breakTexts[i-1])+'<x\\le '+domLaTeX(pwUI.breakTexts[i]);
+      }
+      rows.push(expr+'&'+cond);
+    }
+    return '\\begin{cases}'+rows.join('\\\\')+'\\end{cases}';
   }
   /* Backward-compat for legacy strings. */
   var pw=parsePiecewise(func);
@@ -713,6 +802,7 @@ document.addEventListener('DOMContentLoaded',function(){
     applyPwToggle();
     previewPlot();
   });
+  rebuildPwRows();
   applyPwToggle();
 
   /* Example dropdown — when the example uses the legacy "if x<a; …"
@@ -724,9 +814,9 @@ document.addEventListener('DOMContentLoaded',function(){
     var legacy=parsePiecewise(ex.f);
     var pwToggle=document.getElementById('pwToggle');
     if(legacy){
-      document.getElementById('pwExpr1').value=legacy.expr1;
-      document.getElementById('pwExpr2').value=legacy.expr2;
-      document.getElementById('pwBreak').value=legacy.a;
+      PW_STATE.exprs=[legacy.expr1, legacy.expr2];
+      PW_STATE.breaks=[String(legacy.a)];
+      rebuildPwRows();
       pwToggle.checked=true;
       document.getElementById('functionInput').value='';
     }else{
@@ -740,21 +830,40 @@ document.addEventListener('DOMContentLoaded',function(){
     this.value='';say('Example loaded: '+v);
   });
 
-  /* Function/domain/piecewise inputs all trigger a debounced re-preview. */
+  /* Function/domain inputs trigger a debounced re-preview.  Piecewise
+     inputs use event delegation since they are dynamic. */
   var dPrev;
   function schedPreview(){clearTimeout(dPrev);dPrev=setTimeout(previewPlot,320);}
-  ['functionInput','xMin','xMax','pwExpr1','pwExpr2','pwBreak'].forEach(function(id){
+  ['functionInput','xMin','xMax'].forEach(function(id){
     var el=document.getElementById(id);
     if(el)el.addEventListener('input',schedPreview);
   });
+  document.getElementById('pwRows').addEventListener('input',function(e){
+    if(e.target.matches('.pw-expr, .pw-break'))schedPreview();
+  });
   document.getElementById('nInput').addEventListener('input',renderMathDisplay);
+
+  /* Add / Remove piece buttons */
+  document.getElementById('pwAddBtn').addEventListener('click',function(){
+    pwAddPiece();schedPreview();
+  });
+  document.getElementById('pwRemoveBtn').addEventListener('click',function(){
+    pwRemovePiece();schedPreview();
+  });
 
   /* Buttons */
   document.getElementById('btnStart').addEventListener('click',startAnimation);
   document.getElementById('btnStop').addEventListener('click',stopAnimation);
 
+  /* Enter from any piecewise input fires the animation too. */
+  document.getElementById('pwRows').addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&e.target.matches('.pw-expr, .pw-break')){
+      e.preventDefault();startAnimation();
+    }
+  });
+
   /* Enter key — start animation from any input. */
-  ['functionInput','nInput','xMin','xMax','speedInput','pwExpr1','pwExpr2','pwBreak'].forEach(function(id){
+  ['functionInput','nInput','xMin','xMax','speedInput'].forEach(function(id){
     var el=document.getElementById(id);
     if(el)el.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();startAnimation();}});
   });
