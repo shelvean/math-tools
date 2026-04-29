@@ -315,7 +315,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <li>Choose a built-in example or enter a custom integrand, interval, and number of subintervals.</li>
         <li>Click <strong>Compute</strong> to see the quadrature formula, the numerical approximation, exact value (when known), absolute error, and the integration graph.</li>
         <li><strong>Convergence plot:</strong> A log-log plot of absolute error vs. number of subintervals, confirming the theoretical convergence rate.</li>
-        <li><strong>Tolerance calculator:</strong> Enter a desired accuracy \(\varepsilon\) and the tool computes the minimum number of subintervals \(n\) needed (using theoretical error bounds or Richardson extrapolation).</li>
+        <li><strong>Tolerance calculator:</strong> Enter a desired accuracy \(\varepsilon\) and the tool finds the smallest number of subintervals \(n\) for which the measured error \(|Q_n - I|\) drops below \(\varepsilon\), via doubling-then-bisection.</li>
       </ul>
     </div>
   </div>
@@ -1903,50 +1903,61 @@ function computeTolerance(){
   if(!isFinite(tol)||tol<=0)return;
 
   var f=ST.fn,a=ST.a,b=ST.b,method=ST.method;
-  var order=METHOD_ORDER[method]||2;
   var tolDiv=document.getElementById('tolResult');
   tolDiv.classList.remove('hidden');
 
-  /* Richardson extrapolation: compute at two small n values,
-     measure error at each, and extrapolate to find n for target ε.
-     Just 2 quadrature evaluations — instant on any device. */
-  var n1=16,n2=32;
-  if(method==='simpson'){n1=16;n2=32;}  /* must be even */
-  var Q1=quadValFast(method,f,a,b,n1);
-  var Q2=quadValFast(method,f,a,b,n2);
-  var E1=Math.abs(Q1-ST.exact);
-  var E2=Math.abs(Q2-ST.exact);
-
-  var nReq,found=false;
-  if(E2>0&&E2<E1){
-    /* Extrapolate: E ≈ C/n^p  →  n ≈ n2 * (E2/ε)^(1/p) */
-    nReq=Math.ceil(n2*Math.pow(E2/tol,1/order));
-    if(method==='simpson'&&nReq%2!==0)nReq++;
-    if(nReq<1)nReq=1;
-    found=true;
-    /* Sanity cap */
-    if(nReq>1e8){found=false;nReq=null;}
-  } else if(E2===0||E2<tol){
-    /* Already within tolerance at n=32 — find tightest n */
-    nReq=n2;
-    for(var ni=n2-1;ni>=1;ni--){
-      if(method==='simpson'&&ni%2!==0)continue;
-      var Ei=Math.abs(quadValFast(method,f,a,b,ni)-ST.exact);
-      if(Ei>=tol){nReq=ni+1;break;}
-      nReq=ni;
-    }
-    if(method==='simpson'&&nReq%2!==0)nReq++;
-    found=true;
+  /* Adaptive Simpson and Romberg are tolerance-driven by construction
+     (they refine until they meet their internal tolerance), so the
+     find-n calculator does not apply. */
+  if(method==='adaptive'||method==='romberg'){
+    tolDiv.innerHTML='<div class="tol-result">The <strong>'+METHOD_NAMES[method]+
+      '</strong> method is tolerance-driven by construction; there is no fixed \\(n\\) to solve for.</div>';
+    mj([tolDiv]);
+    return;
   }
 
-  var verifyNote=ST.exactIsRef?' (via Richardson extrapolation against GL\u20111k reference)':' (via Richardson extrapolation)';
-  if(found&&nReq!==null){
-    tolDiv.innerHTML='<div class="tol-result">For tolerance \\(\\varepsilon = '+tolStr+'\\) with the <strong>'+METHOD_NAMES[method]+'</strong> (convergence rate \\(O(h^{'+order+'})\\)):<br>'+
-      '<strong style="font-size:1.1rem;color:var(--teal);">\\(n \\geq '+nReq+'\\)</strong> subdivisions needed'+verifyNote+
-      '.<br>Step size: \\(h = '+fmtN((b-a)/nReq,8)+'\\).</div>';
-  } else {
-    tolDiv.innerHTML='<div class="tol-result" style="border-color:var(--red);background:rgba(220,38,38,.06);">Tolerance \\(\\varepsilon = '+tolStr+'\\) requires an impractically large \\(n\\) with the <strong>'+METHOD_NAMES[method]+'</strong>. Consider a higher-order method (Simpson or Gauss\u2013Legendre).</div>';
+  /* Direct measurement search:
+       1. Doubling: evaluate at n = step, 2·step, 4·step, ... until
+          |Q_n - exact| < epsilon (or n exceeds a practical cap).
+       2. Bisection: shrink the bracket [nLo, nHi] to the smallest n
+          that meets the tolerance.
+     Step is 2 for Simpson (so n stays even), 1 otherwise. */
+  var step=(method==='simpson')?2:1;
+  function errAt(n){
+    if(n<step)n=step;
+    if(method==='simpson'&&n%2!==0)n++;
+    return Math.abs(quadValFast(method,f,a,b,n)-ST.exact);
   }
+  var CAP=1<<22;  /* 4,194,304 — beyond this, a higher-order method is needed */
+  var nHi=step, err=errAt(nHi);
+  while(err>tol && nHi<CAP){
+    nHi*=2;
+    err=errAt(nHi);
+  }
+  if(err>tol){
+    tolDiv.innerHTML='<div class="tol-result" style="border-color:var(--red);background:rgba(220,38,38,.06);">'+
+      'Tolerance \\(\\varepsilon = '+tolStr+'\\) requires an impractically large \\(n\\) with the <strong>'+
+      METHOD_NAMES[method]+'</strong>. Consider a higher-order method (Simpson, Gauss\u2013Legendre, or Romberg).</div>';
+    mj([tolDiv]);
+    return;
+  }
+  /* Bracket: error too high at nLo, meets tolerance at nHi. */
+  var nLo=Math.max(step, Math.floor(nHi/2));
+  if(errAt(nLo)<=tol)nLo=step;  /* tolerance met from the start */
+  while(nHi-nLo>step){
+    var mid=Math.floor((nLo+nHi)/2);
+    if(method==='simpson'&&mid%2!==0)mid++;
+    if(mid<=nLo)mid=nLo+step;
+    if(mid>=nHi)break;
+    if(errAt(mid)>tol) nLo=mid; else nHi=mid;
+  }
+  var nReq=nHi;
+  if(method==='simpson'&&nReq%2!==0)nReq++;
+
+  var refNote=ST.exactIsRef?' (error measured against high-accuracy reference)':' (error measured against the exact value)';
+  tolDiv.innerHTML='<div class="tol-result">For tolerance \\(\\varepsilon = '+tolStr+'\\) with the <strong>'+METHOD_NAMES[method]+'</strong>:<br>'+
+    '<strong style="font-size:1.1rem;color:var(--teal);">\\(n = '+nReq+'\\)</strong> subdivisions are sufficient'+refNote+
+    '.<br>Step size: \\(h = '+fmtN((b-a)/nReq,8)+'\\). Measured error: \\(|E| = '+errAt(nReq).toExponential(2)+'\\).</div>';
   mj([tolDiv]);
 }
 
