@@ -126,7 +126,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 
 /* Math display */
 .math-display{text-align:center;background:var(--info);border:2px solid var(--inf-b);
-  border-radius:var(--r);padding:.55rem .75rem;margin-bottom:.875rem;min-height:2.5rem;}
+  border-radius:var(--r);padding:.55rem .75rem;margin-bottom:.875rem;min-height:2.5rem;
+  overflow-x:auto;}
 
 /* Action bar */
 .abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;
@@ -605,12 +606,44 @@ function parseDomain(s){
 }
 function domLaTeX(s){return(s||'').toString().trim().replace(/\bpi\b/g,'\\pi').replace(/(\d)\s*\*\s*\\pi/g,'$1\\pi');}
 
-/* ── LaTeX rendering ── */
+/* ── LaTeX rendering ──
+   Tries to map common expression syntax (sin, cos, tan, exp, sqrt, log,
+   abs, pi, …) to the matching LaTeX macro so what appears in the
+   math-display block looks like real math, not the raw input.  Order
+   matters: the longer hyperbolic and inverse-trig names are tried
+   before the bare trig names so e.g. asin doesn't get partially eaten
+   as a-sin.  Number-like exponents are wrapped in {…} for readability;
+   anything more elaborate is left for MathJax to handle. */
 function toLaTeXSingle(f){
-  return f.replace(/exp/g,'\\exp').replace(/(\w+)\^\(([^)]+)\)/g,'$1^{($2)}').replace(/(\w+)\^(\d+)/g,'$1^{$2}')
-    .replace(/sin/g,'\\sin').replace(/cos/g,'\\cos').replace(/abs\(([^)]+)\)/g,'\\left|$1\\right|')
+  return f
+    .replace(/\bsqrt\(([^()]*)\)/g,'\\sqrt{$1}')
+    .replace(/\bcbrt\(([^()]*)\)/g,'\\sqrt[3]{$1}')
+    .replace(/\babs\(([^()]*)\)/g,'\\left|$1\\right|')
+    .replace(/\bexp\b/g,'\\exp')
+    .replace(/\blog10\b/g,'\\log_{10}')
+    .replace(/\blog2\b/g,'\\log_{2}')
+    .replace(/\b(?:log|ln)\b/g,'\\ln')
+    .replace(/\basinh\b/g,'\\operatorname{arcsinh}')
+    .replace(/\bacosh\b/g,'\\operatorname{arccosh}')
+    .replace(/\batanh\b/g,'\\operatorname{arctanh}')
+    .replace(/\basin\b/g,'\\arcsin')
+    .replace(/\bacos\b/g,'\\arccos')
+    .replace(/\batan\b/g,'\\arctan')
+    .replace(/\bsinh\b/g,'\\sinh')
+    .replace(/\bcosh\b/g,'\\cosh')
+    .replace(/\btanh\b/g,'\\tanh')
+    .replace(/\bsin\b/g,'\\sin')
+    .replace(/\bcos\b/g,'\\cos')
+    .replace(/\btan\b/g,'\\tan')
+    .replace(/\bsec\b/g,'\\sec')
+    .replace(/\bcsc\b/g,'\\csc')
+    .replace(/\bcot\b/g,'\\cot')
     .replace(/\bpi\b/g,'\\pi ')
-    .replace(/\*/g,'\\cdot ').replace(/sawtooth\(x\)/g,'\\text{sawtooth}(x)').replace(/square\(x\)/g,'\\text{square}(x)');
+    .replace(/\bsawtooth\(x\)/g,'\\operatorname{sawtooth}(x)')
+    .replace(/\bsquare\(x\)/g,'\\operatorname{square}(x)')
+    .replace(/(\w+|\))\^\(([^()]+)\)/g,'$1^{$2}')
+    .replace(/(\w+|\))\^([+-]?\d+(?:\.\d+)?)/g,'$1^{$2}')
+    .replace(/\*/g,'\\cdot ');
 }
 function toLaTeX(func){
   /* Structured piecewise UI takes precedence.  Breakpoints render via
@@ -651,7 +684,10 @@ function renderMathDisplay(){
   var xmin=document.getElementById('xMin').value;
   var xmax=document.getElementById('xMax').value;
   var el=document.getElementById('katex-render');
-  el.innerHTML='\\(f(x)='+toLaTeX(func)+'\\)&emsp;\\(n='+n+'\\)&emsp;\\(x\\in['+domLaTeX(xmin)+','+domLaTeX(xmax)+']\\)';
+  /* \displaystyle keeps \begin{cases} from being squashed into inline
+     size when piecewise mode is active, and looks fine for non-piecewise
+     functions too. */
+  el.innerHTML='\\(\\displaystyle f(x)='+toLaTeX(func)+'\\)&emsp;\\(n='+n+'\\)&emsp;\\(x\\in['+domLaTeX(xmin)+','+domLaTeX(xmax)+']\\)';
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
 }
 
