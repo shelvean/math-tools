@@ -341,7 +341,7 @@ if(document.referrer.includes('dynamical.html')){
       <label for="pwExpr1">Piece 1</label>
       <input type="text" id="pwExpr1" class="fn" value="abs(x+3) + 3*sin(5*x)" aria-label="Expression for piece 1">
       <span class="pw-cond">for \(x \le\)</span>
-      <input type="text" id="pwBreak" class="pw-break" value="0" aria-label="Breakpoint between pieces">
+      <input type="text" id="pwBreak" class="pw-break" value="0" placeholder="0, pi/2, 2*pi" title="Number or pi-expression (e.g. pi, pi/2, 2*pi)" aria-label="Breakpoint between pieces">
     </div>
     <div class="pw-row">
       <label for="pwExpr2">Piece 2</label>
@@ -434,10 +434,12 @@ function parsePiecewise(func){
 }
 
 /* ── Active piecewise UI state ──
-   Returns {expr1, expr2, a} when the Piecewise toggle is checked and
-   the breakpoint parses; otherwise null.  Convention: piece 1 is used
-   for x ≤ a, piece 2 for x > a.  No string format for users to get
-   wrong — each piece is a plain expression in x. */
+   Returns {expr1, expr2, a, aText} when the Piecewise toggle is checked
+   and the breakpoint parses; otherwise null.  Convention: piece 1 is
+   used for x ≤ a, piece 2 for x > a.  No string format for users to get
+   wrong — each piece is a plain expression in x.  The breakpoint is
+   parsed via parseDomain so it accepts pi-expressions (pi, pi/2, 3*pi/4
+   …); aText preserves the user's raw input for the LaTeX preview. */
 function getPiecewiseUI(){
   var t=document.getElementById('pwToggle');
   if(!t||!t.checked)return null;
@@ -445,11 +447,12 @@ function getPiecewiseUI(){
       e2=document.getElementById('pwExpr2'),
       bk=document.getElementById('pwBreak');
   if(!e1||!e2||!bk)return null;
-  var a=parseFloat(bk.value);
+  var aText=(bk.value||'').trim();
+  var a=parseDomain(aText);
   if(!isFinite(a))return null;
   var s1=(e1.value||'').trim(), s2=(e2.value||'').trim();
   if(!s1||!s2)return null;
-  return {expr1:s1, expr2:s2, a:a};
+  return {expr1:s1, expr2:s2, a:a, aText:aText};
 }
 
 /* ── Evaluate function at x ── */
@@ -533,11 +536,14 @@ function toLaTeXSingle(f){
     .replace(/\*/g,'\\cdot ').replace(/sawtooth\(x\)/g,'\\text{sawtooth}(x)').replace(/square\(x\)/g,'\\text{square}(x)');
 }
 function toLaTeX(func){
-  /* Structured piecewise UI takes precedence. */
+  /* Structured piecewise UI takes precedence.  Breakpoint is rendered
+     from the raw user input via domLaTeX so "pi/2" displays as π/2,
+     not 1.5708. */
   var pwUI=getPiecewiseUI();
   if(pwUI){
-    return '\\begin{cases}'+toLaTeXSingle(pwUI.expr1)+'&\\text{if }x\\le '+pwUI.a+
-      '\\\\'+toLaTeXSingle(pwUI.expr2)+'&\\text{if }x>'+pwUI.a+'\\end{cases}';
+    var aTex=domLaTeX(pwUI.aText);
+    return '\\begin{cases}'+toLaTeXSingle(pwUI.expr1)+'&\\text{if }x\\le '+aTex+
+      '\\\\'+toLaTeXSingle(pwUI.expr2)+'&\\text{if }x>'+aTex+'\\end{cases}';
   }
   /* Backward-compat for legacy strings. */
   var pw=parsePiecewise(func);
