@@ -676,12 +676,28 @@ function updateReadout(){
 
 /* ── Formula box ── */
 var _fmp=false;
+function classifyOrbit(){
+  var o=ST.orbit;if(!o||!o.length)return{kind:'none'};
+  var last=o[o.length-1];
+  if(isFinite(last.x)&&isFinite(last.fx)&&Math.abs(last.fx)<1e-8)return{kind:'conv',x:last.x};
+  if(!isFinite(last.x)||!isFinite(last.fx)||Math.abs(last.x)>1e8||Math.abs(last.fx)>1e15||(isFinite(last.xn)&&Math.abs(last.xn)>1e8))return{kind:'div'};
+  if(isFinite(last.dx)&&Math.abs(last.dx)<1e-30)return{kind:'flat'};
+  if(o.length>ST.N)return{kind:'maxiter'};
+  return{kind:'partial'};
+}
 function updateFormula(){
   var ex=getEx();
   var h='<div style="text-align:center">\\[f(x)='+ex.lf+'\\]</div>';
   if(ex.ldf)h+='<div style="text-align:center;font-size:.875rem;color:var(--txt2)">\\(f\'(x)='+ex.ldf+'\\)</div>';
   if(isFinite(ex.root))h+='<div style="text-align:center;font-size:.875rem;color:var(--txt2);margin:.2rem 0">Root \\(x^*\\approx'+ex.root.toFixed(8)+'\\)</div>';
-  else h+='<div style="text-align:center;font-size:.875rem;color:#b91c1c;margin:.2rem 0">No real root \u2014 divergence expected</div>';
+  else{
+    var s=classifyOrbit(),msg='',col='var(--txt2)';
+    if(s.kind==='conv'){msg='Converged to \\(x\\approx'+s.x.toFixed(8)+'\\)';col='#15803d';}
+    else if(s.kind==='div'){msg='Diverged \u2014 iterates escaped';col='#b91c1c';}
+    else if(s.kind==='flat'){msg='Stalled \u2014 \\(f\'(x)\\approx0\\)';col='#b91c1c';}
+    else if(s.kind==='maxiter'){msg='Did not converge in '+ST.N+' iterations';col='#b45309';}
+    if(msg)h+='<div style="text-align:center;font-size:.875rem;color:'+col+';margin:.2rem 0">'+msg+'</div>';
+  }
   if(ST.m>1)h+='<div style="text-align:center;font-size:.875rem;color:var(--blue);margin:.2rem 0">Modified Newton: \\(m='+ST.m+'\\)</div>';
   h+='<div style="margin-top:.5rem;font-size:.8125rem;color:var(--txt2);line-height:1.65">'+ex.desc+'</div>';
   var box=document.getElementById('formulaBox');box.innerHTML=h;
