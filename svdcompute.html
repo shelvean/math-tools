@@ -679,23 +679,53 @@ function toSurd(val) {
   let absVal = Math.abs(val);
   let tol = 1e-6;
 
-  for (let rden = 1; rden <= 12; rden++) {
-    let scaled = absVal * rden;
-    for (let a = 2; a <= 100; a++) {
-      let sq = SQRT_CACHE[a];
-      let coeff = Math.round(scaled / sq);
-      if (coeff >= 1 && Math.abs(scaled - coeff * sq) < tol) {
-        return formatSurdLatex(sign, coeff, a, rden);
-      }
+  // Best rational p/q with q <= maxDen via continued-fraction convergents.
+  // O(log maxDen), reaches denominators the nested loops below can't.
+  function ratApprox(x, maxDen) {
+    let h0 = 1, k0 = 0, h1 = Math.floor(x), k1 = 1;
+    let frac = x - h1;
+    for (let i = 0; i < 64 && Math.abs(frac) > 1e-15; i++) {
+      let inv = 1 / frac;
+      let a = Math.floor(inv);
+      let h2 = a * h1 + h0, k2 = a * k1 + k0;
+      if (k2 > maxDen) break;
+      h0 = h1; k0 = k1;
+      h1 = h2; k1 = k2;
+      frac = inv - a;
+    }
+    return { p: h1, q: k1 };
+  }
+
+  // 1. Pure surd: if val² ≈ p/q then val = √(p·q)/q (rationalized).
+  // Run before the rational branch so values like 1/√14 don't accidentally
+  // match a high-denominator best-rational-approximation. simplifyRadicand
+  // inside formatSurdLatex pulls perfect squares out automatically, so
+  // e.g. val²=9/14 → radicand 126 → 3√14/14.
+  let sq = absVal * absVal;
+  let r2 = ratApprox(sq, 1000);
+  if (r2.p > 0 && r2.q > 0 && Math.abs(sq - r2.p / r2.q) < tol) {
+    let radicand = r2.p * r2.q;
+    let simp = simplifyRadicand(1, radicand);
+    if (simp.radicand > 1 && simp.radicand <= 1000 &&
+        Math.abs(simp.coeff * Math.sqrt(simp.radicand) / r2.q - absVal) < tol) {
+      return formatSurdLatex(sign, 1, radicand, r2.q);
     }
   }
 
+  // 2. Pure rational p/q. Tight tolerance so spurious convergents of
+  // irrationals (e.g. π ≈ 355/113 within 3e-7) don't false-match.
+  let r1 = ratApprox(absVal, 1000);
+  if (r1.q > 0 && Math.abs(absVal - r1.p / r1.q) < 1e-10) {
+    return formatSurdLatex(sign, r1.p, 1, r1.q);
+  }
+
+  // 3. Compound surd a ± b√c (rationalized) — narrow search as fallback.
   for (let rden = 1; rden <= 12; rden++) {
     let scaled = absVal * rden;
     for (let a = 2; a <= 50; a++) {
-      let sq = SQRT_CACHE[a];
+      let sq2 = SQRT_CACHE[a];
       for (let coeff = 1; coeff <= 5; coeff++) {
-        let csq = coeff * sq;
+        let csq = coeff * sq2;
         let intP = Math.round(scaled - csq);
         if (intP !== 0 && Math.abs(scaled - intP - csq) < tol) {
           return formatCompoundSurdLatex(isNeg, intP, coeff, a, rden);
