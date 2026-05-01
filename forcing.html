@@ -382,8 +382,13 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
         <div class="phdr">
           <span class="pdot" style="background:var(--green);" aria-hidden="true"></span>
           Spring-mass animation
+          <label for="oscillatorType" class="sr-only">Oscillator</label>
+          <select id="oscillatorType" style="margin-left:auto;min-height:26px;padding:.1rem .35rem;font-size:.75rem;font-weight:600;border:1.5px solid var(--bdr2);border-radius:.3rem;background:var(--card);color:var(--txt);cursor:pointer;" aria-label="Oscillator orientation">
+            <option value="vertical">Vertical</option>
+            <option value="horizontal">Horizontal</option>
+          </select>
         </div>
-        <div role="img" aria-label="Animated spring-mass-damper system. A mass oscillates vertically on a spring attached to a fixed support.">
+        <div role="img" aria-label="Animated spring-mass-damper system.">
           <canvas id="simulationCanvas" width="500" height="600" aria-hidden="true"></canvas>
         </div>
       </div>
@@ -426,6 +431,7 @@ var graphMaxTime=60;
 var STIFF_THRESH=5;
 var firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
+var oscillatorMode='vertical', H_WALL_W=28;
 
 /* ── Visual geometry (pixels) ── */
 var SUP_BOT=60;        /* y-pixel of support bottom — fixed */
@@ -439,11 +445,28 @@ var forcingExpr='5*delta(t-10)+u(t-35)*cos(2*(t-35))';
 
 /* ── Scale: fit spring + static sag + oscillation in canvas ── */
 function computeScale(){
-  /* Pin static-equilibrium pixel to canvas vertical midpoint */
-  var staticExt=(k>0)?m*9.81/k:0;
-  var midY=canvas.height/2;           /* 300 px for a 600-px canvas */
-  pxPerM=(midY-SUP_BOT)/(L0+staticExt);
-  pxPerM=Math.min(Math.max(pxPerM,20),200); /* safety clamp */
+  if(oscillatorMode==='horizontal'){
+    var availW=canvas.width-H_WALL_W-ballRadius-20;
+    pxPerM=(availW*0.45)/Math.max(L0,0.5);
+    pxPerM=Math.min(Math.max(pxPerM,20),200);
+  }else{
+    var staticExt=(k>0)?m*9.81/k:0;
+    var midY=canvas.height/2;
+    pxPerM=(midY-SUP_BOT)/(L0+staticExt);
+    pxPerM=Math.min(Math.max(pxPerM,20),200);
+  }
+}
+
+/* ── Apply oscillator orientation ── */
+function applyOscillatorMode(){
+  if(oscillatorMode==='horizontal'){
+    canvas.width=500;canvas.height=200;
+  }else{
+    canvas.width=500;canvas.height=600;
+  }
+  canvasCenterX=canvas.width/2;
+  simBG=null;graphBG=null;
+  computeScale();
 }
 
 /* ── Forcing function evaluation ── */
@@ -526,12 +549,21 @@ function updatePhysics(){
   }
   t+=dt;
   /* bounds check in pixel space */
-  var staticExt=(k>0)?m*9.81/k:0;
-  var massY=SUP_BOT+(L0+staticExt+y)*pxPerM;
-  if(massY>GROUND_Y+ballRadius||massY<SUP_BOT){
-    isRunning=false;
-    showAlert('Displacement exceeded canvas bounds. Try reducing \u007cy\u2080\u007c or increasing L\u2080.');
-    say('Simulation stopped: displacement exceeded canvas bounds.');
+  if(oscillatorMode==='horizontal'){
+    var massX=H_WALL_W+L0*pxPerM+y*pxPerM;
+    if(massX>canvas.width-ballRadius-8||massX<H_WALL_W+ballRadius){
+      isRunning=false;
+      showAlert('Displacement exceeded canvas bounds. Try reducing \u007cy\u2080\u007c or increasing L\u2080.');
+      say('Simulation stopped: displacement exceeded canvas bounds.');
+    }
+  }else{
+    var staticExt=(k>0)?m*9.81/k:0;
+    var massY=SUP_BOT+(L0+staticExt+y)*pxPerM;
+    if(massY>GROUND_Y+ballRadius||massY<SUP_BOT){
+      isRunning=false;
+      showAlert('Displacement exceeded canvas bounds. Try reducing \u007cy\u2080\u007c or increasing L\u2080.');
+      say('Simulation stopped: displacement exceeded canvas bounds.');
+    }
   }
 }
 
@@ -548,13 +580,19 @@ function updateEqDisplay(){
       .replace(/delta/gi,'\\delta')
       .replace(/\*/g,' \\cdot ')
       .replace(/(cos|sin|tan|exp|log|sqrt)/g,'\\$1');
-    el.innerHTML='\\('+m.toFixed(1)+'\\ddot{y}+'+userC.toFixed(1)+'\\dot{y}+'+k.toFixed(1)+'y='+df+'\\)';
+    var vn=oscillatorMode==='horizontal'?'x':'y';
+    el.innerHTML='\\('+m.toFixed(1)+'\\ddot{'+vn+'}+'+userC.toFixed(1)+'\\dot{'+vn+'}+'+k.toFixed(1)+vn+'='+df+'\\)';
     if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
   }catch(e){el.textContent=m.toFixed(1)+'y\'\'+'+userC.toFixed(1)+'y\'+'+k.toFixed(1)+'y='+func;}
 }
 
 /* ── Simulation background (static structural elements only) ── */
 function createSimBG(){
+  if(oscillatorMode==='horizontal')createSimBG_H();
+  else createSimBG_V();
+}
+
+function createSimBG_V(){
   simBG=document.createElement('canvas');simBG.width=canvas.width;simBG.height=canvas.height;
   var bg=simBG.getContext('2d');
   var grad=bg.createLinearGradient(0,0,0,canvas.height);
@@ -573,9 +611,44 @@ function createSimBG(){
   bg.fillStyle='#404040';
   for(var j=0;j<3;j++){var hx=sx+20+j*40,hy=sy+sh/2;bg.beginPath();bg.arc(hx,hy,4,0,2*Math.PI);bg.fill();}
   bg.fillStyle='#303030';bg.beginPath();bg.arc(canvasCenterX,sy+sh,5,0,2*Math.PI);bg.fill();
-  /* NOTE: equilibrium dashed line drawn dynamically in drawSim() */
 }
 
+function createSimBG_H(){
+  simBG=document.createElement('canvas');simBG.width=canvas.width;simBG.height=canvas.height;
+  var bg=simBG.getContext('2d');
+  var CY=canvas.height/2;
+  /* background */
+  var grad=bg.createLinearGradient(0,0,canvas.width,0);
+  grad.addColorStop(0,'#E3F2FD');grad.addColorStop(1,'#BBDEFB');
+  bg.fillStyle=grad;bg.fillRect(0,0,canvas.width,canvas.height);
+  /* floor */
+  bg.fillStyle='#795548';bg.fillRect(0,canvas.height-28,canvas.width,28);
+  bg.strokeStyle='#6D4C41';bg.lineWidth=2;
+  for(var xi=0;xi<canvas.width;xi+=20){bg.beginPath();bg.moveTo(xi,canvas.height-28);bg.lineTo(xi,canvas.height);bg.stroke();}
+  /* rail */
+  var railY=CY+ballRadius+2;
+  bg.fillStyle='#8B7355';bg.fillRect(H_WALL_W,railY,canvas.width-H_WALL_W-10,5);
+  bg.fillStyle='rgba(255,255,255,0.3)';bg.fillRect(H_WALL_W,railY,canvas.width-H_WALL_W-10,1);
+  /* left wall */
+  var wallTop=8,wallH=canvas.height-36;
+  var wg=bg.createLinearGradient(0,0,H_WALL_W,0);
+  wg.addColorStop(0,'#707070');wg.addColorStop(0.5,'#909090');wg.addColorStop(1,'#B0B0B0');
+  bg.fillStyle=wg;bg.fillRect(0,wallTop,H_WALL_W,wallH);
+  bg.strokeStyle='#606060';bg.lineWidth=2;bg.strokeRect(0,wallTop,H_WALL_W,wallH);
+  bg.save();bg.beginPath();bg.rect(0,wallTop,H_WALL_W,wallH);bg.clip();
+  bg.strokeStyle='#505050';bg.lineWidth=1;
+  for(var yi=wallTop-H_WALL_W;yi<wallTop+wallH;yi+=8){bg.beginPath();bg.moveTo(0,yi);bg.lineTo(H_WALL_W,yi+H_WALL_W);bg.stroke();}
+  bg.restore();
+  /* pin dot */
+  bg.fillStyle='#303030';bg.beginPath();bg.arc(H_WALL_W,CY,4,0,Math.PI*2);bg.fill();
+  /* equilibrium dashed vertical line */
+  var eqX=H_WALL_W+L0*pxPerM;
+  bg.strokeStyle='rgba(0,0,0,0.25)';bg.setLineDash([4,4]);bg.lineWidth=1;
+  bg.beginPath();bg.moveTo(eqX,8);bg.lineTo(eqX,canvas.height-30);bg.stroke();
+  bg.setLineDash([]);
+  bg.fillStyle='rgba(0,0,0,0.4)';bg.font='10px Arial';bg.textAlign='center';
+  bg.fillText('eq',eqX,3);
+}
 function drawSpring(startY,endY){
   /* 1 coil per ~25 px of rest-spring pixel length; adapts to any L0/scale */
   var springPx=L0*pxPerM;
@@ -600,30 +673,69 @@ function drawMass(massY){
 
 function drawSim(){
   if(!simBG)createSimBG();
+  if(oscillatorMode==='horizontal')drawSim_H();
+  else drawSim_V();
+}
+
+function drawSim_V(){
   ctx.drawImage(simBG,0,0);
-
-  /* equilibrium position (depends on m, k, L0, pxPerM — all dynamic) */
   var staticExt=(k>0)?m*9.81/k:0;
-  var eqY =SUP_BOT+(L0+staticExt)*pxPerM;   /* static equilibrium y=0  */
-  var massY=eqY+y*pxPerM;                    /* current mass position    */
-
-  /* draw equilibrium dashed line */
+  var eqY=SUP_BOT+(L0+staticExt)*pxPerM;
+  var massY=eqY+y*pxPerM;
   ctx.save();
-  ctx.strokeStyle='rgba(0,0,0,.35)';
-  ctx.setLineDash([6,5]);
-  ctx.lineWidth=1.5;
-  ctx.beginPath();
-  ctx.moveTo(46,eqY);
-  ctx.lineTo(canvas.width-46,eqY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
-
+  ctx.strokeStyle='rgba(0,0,0,.35)';ctx.setLineDash([6,5]);ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(46,eqY);ctx.lineTo(canvas.width-46,eqY);ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
   drawSpring(SUP_BOT,massY);
   drawMass(massY);
 }
 
-/* ── Graph ── */
+function drawSim_H(){
+  ctx.drawImage(simBG,0,0);
+  var CY=canvas.height/2;
+  var eqX=H_WALL_W+L0*pxPerM;
+  var massX=eqX+y*pxPerM;
+  /* force arrow (horizontal) */
+  var F=evaluateForcingFunction(y,t);
+  var arrowLen=Math.min(Math.abs(F)*15,55);
+  if(arrowLen>2){
+    var dir=F>0?1:-1;
+    var ax=massX+dir*(ballRadius+4),ay=CY-ballRadius-14,tipX=ax+dir*arrowLen;
+    ctx.strokeStyle='#c2410c';ctx.fillStyle='#c2410c';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(tipX,ay);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tipX,ay);ctx.lineTo(tipX-dir*7,ay-4);ctx.lineTo(tipX-dir*7,ay+4);
+    ctx.closePath();ctx.fill();
+    ctx.font='bold 9px Arial';ctx.textAlign='center';ctx.textBaseline='bottom';
+    ctx.fillText('F(t)',(ax+tipX)/2,ay-4);
+  }
+  drawHSpring(H_WALL_W,massX-ballRadius,CY);
+  drawMass_H(massX,CY);
+  ctx.fillStyle='#b91c1c';ctx.font='11px Arial';ctx.textAlign='center';ctx.textBaseline='top';
+  ctx.fillText('y = '+y.toFixed(2)+' m',massX,CY+ballRadius+10);
+}
+
+function drawHSpring(startX,endX,cy){
+  if(endX<=startX)endX=startX+1;
+  var len=endX-startX;
+  var coils=Math.max(4,Math.min(16,Math.round(len/18)));
+  var r=11,segs=20,total=coils*segs,pts=[];
+  for(var i=0;i<=total;i++){var p=i/total;pts.push({x:startX+p*len,y:cy+r*Math.sin(p*Math.PI*2*coils)});}
+  ctx.beginPath();ctx.strokeStyle='#181b59';ctx.lineWidth=3;ctx.lineCap='round';
+  for(var i=0;i<pts.length;i++){i===0?ctx.moveTo(pts[i].x,pts[i].y):ctx.lineTo(pts[i].x,pts[i].y);}
+  ctx.stroke();
+}
+
+function drawMass_H(cx,cy){
+  var side=ballRadius*2,bx=cx-ballRadius,by=cy-ballRadius;
+  var gr=ctx.createLinearGradient(bx,by,bx,by+side);
+  gr.addColorStop(0,'#A0522D');gr.addColorStop(0.5,'#8B4513');gr.addColorStop(1,'#654321');
+  ctx.fillStyle=gr;ctx.fillRect(bx,by,side,side);
+  ctx.strokeStyle='#5D4037';ctx.lineWidth=2;ctx.strokeRect(bx,by,side,side);
+  ctx.fillStyle='white';ctx.font='bold 12px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('m',cx,cy);
+}
+
+
 function createGraphBG(){
   graphBG=document.createElement('canvas');graphBG.width=graphCanvas.width;graphBG.height=graphCanvas.height;
   var bg=graphBG.getContext('2d');
@@ -765,6 +877,13 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('endTimeSlider','endTime');
 
   document.getElementById('forcingFunction').addEventListener('input',updateEqDisplay);
+
+  document.getElementById('oscillatorType').addEventListener('change',function(){
+    oscillatorMode=this.value;
+    applyOscillatorMode();
+    resetSimulation();
+    say('Oscillator: '+this.value);
+  });
 
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
   document.getElementById('pauseButton').addEventListener('click',function(){
