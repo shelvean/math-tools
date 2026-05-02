@@ -811,16 +811,26 @@ document.querySelectorAll('.pbtn[data-preset]').forEach(function(btn){
   });
 });
 
-/* ── HiDPI canvas sharpening ─────────────────────────────────────── */
-function sharpen(cv, ctx){
+/* ── HiDPI canvas sizing (fits the canvas to its container so it never
+   overflows .pwrap and gets clipped on the right edge). ──────────── */
+function fitCanvas(){
   var dpr = window.devicePixelRatio || 1;
-  var w = cv.width, h = cv.height;
-  cv.style.width = w + 'px'; cv.style.height = h + 'px';
-  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  /* Use the rendered (CSS) width of the canvas's parent rather than a
+     fixed attribute — the layout column may be narrower than 1200px. */
+  var availW = canvas.parentElement.clientWidth || canvas.clientWidth || 1200;
+  if(availW < 320) availW = 320;
+  var aspect = 1200/780;                /* keep original aspect ratio */
+  var logicalW = Math.floor(availW);
+  var logicalH = Math.round(logicalW / aspect);
+  canvas.style.width  = logicalW + 'px';
+  canvas.style.height = logicalH + 'px';
+  canvas.width  = Math.round(logicalW*dpr);
+  canvas.height = Math.round(logicalH*dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  cv._logW = w; cv._logH = h;
+  canvas._logW = logicalW; canvas._logH = logicalH;
 }
-sharpen(canvas, ctx);
+fitCanvas();
+window.addEventListener('resize', function(){ fitCanvas(); draw(); });
 
 /* ── Point store: typed arrays grow as needed ────────────────────── */
 /* Each point is (t, y0, y1, [y2]). For drawing we project to (xPlot, yPlot). */
@@ -867,8 +877,11 @@ function computeBounds(){
     if(y<yMin)yMin=y; if(y>yMax)yMax=y;
   }
   if(!isFinite(xMin)){ xMin=-1;xMax=1;yMin=-1;yMax=1; }
-  var xR = xMax-xMin || 1, yR = yMax-yMin || 1;
-  return {xMin:xMin-xR*0.04, xMax:xMax+xR*0.04, yMin:yMin-yR*0.04, yMax:yMax+yR*0.04};
+  var xR = xMax-xMin, yR = yMax-yMin;
+  if(xR < 1e-12){ xR = Math.max(1, Math.abs(xMin)); xMin -= 0.5*xR; xMax += 0.5*xR; xR = xMax-xMin; }
+  if(yR < 1e-12){ yR = Math.max(1, Math.abs(yMin)); yMin -= 0.5*yR; yMax += 0.5*yR; yR = yMax-yMin; }
+  /* 8% padding on each side so points never sit flush with the axis. */
+  return {xMin:xMin-xR*0.08, xMax:xMax+xR*0.08, yMin:yMin-yR*0.08, yMax:yMax+yR*0.08};
 }
 
 function jet(u){ /* u in [0,1] */
@@ -922,28 +935,23 @@ function draw(){
   ctx.fillText(axisLabel(ax), W/2, H-2);
   ctx.save(); ctx.translate(14, H/2); ctx.rotate(-Math.PI/2); ctx.textBaseline='top'; ctx.fillText(axisLabel(ay), 0, 0); ctx.restore();
 
-  /* Plot points */
+  /* Plot points (clipped to the axis box so any stray sample can't paint over the labels) */
   function toPx(v, lo, hi, off, len){ return off + (v-lo)/(hi-lo)*len; }
   var mode = colorSel.value;
   var simTLocal = simT || 1;
-  /* Density: light blue with low alpha so accumulation reveals fine fractal structure */
   var dotR = ptsCount > 50000 ? 0.7 : ptsCount > 10000 ? 1.0 : 1.4;
   var alpha = ptsCount > 50000 ? 0.32 : ptsCount > 10000 ? 0.45 : 0.6;
-  if(mode === 'density'){
-    ctx.fillStyle = 'rgba(29,78,216,'+alpha+')';
-    for(var i=0;i<ptsCount;i++){
-      var x = projectAxis(ax,i), y = projectAxis(ay,i);
-      var cx = toPx(x, b.xMin, b.xMax, pad.l, iw), cy = H-pad.b - (y-b.yMin)/(b.yMax-b.yMin)*ih;
-      ctx.beginPath(); ctx.arc(cx, cy, dotR, 0, 6.283185307); ctx.fill();
-    }
-  } else if(mode === 'time'){
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pad.l, pad.t, iw, ih); ctx.clip();
+  if(mode === 'time'){
     for(var i=0;i<ptsCount;i++){
       var x = projectAxis(ax,i), y = projectAxis(ay,i);
       var cx = toPx(x, b.xMin, b.xMax, pad.l, iw), cy = H-pad.b - (y-b.yMin)/(b.yMax-b.yMin)*ih;
       ctx.fillStyle = jet(ptsT[i]/simTLocal);
       ctx.beginPath(); ctx.arc(cx, cy, dotR, 0, 6.283185307); ctx.fill();
     }
-  } else { /* solid */
+  } else {
+    /* density and solid both use a single fill colour */
     ctx.fillStyle = 'rgba(29,78,216,'+alpha+')';
     for(var i=0;i<ptsCount;i++){
       var x = projectAxis(ax,i), y = projectAxis(ay,i);
@@ -951,6 +959,7 @@ function draw(){
       ctx.beginPath(); ctx.arc(cx, cy, dotR, 0, 6.283185307); ctx.fill();
     }
   }
+  ctx.restore();
 
   boundsLegend.textContent = ptsCount + ' pts • x ∈ ['+b.xMin.toFixed(2)+', '+b.xMax.toFixed(2)+'] • y ∈ ['+b.yMin.toFixed(2)+', '+b.yMax.toFixed(2)+']';
 }
