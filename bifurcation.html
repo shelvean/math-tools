@@ -508,6 +508,9 @@ if(document.referrer.includes('dynamical.html')){
     <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset view to default">
       <span aria-hidden="true">&#8635;</span> Reset view
     </button>
+    <button class="abtn abtn-zoom" id="btnSelfSim" type="button" aria-label="Show self-similarity: animate a chained zoom into a miniature copy of the diagram" style="background:#dc2626;">
+      <span aria-hidden="true">&#128270;</span> Self-similarity
+    </button>
     <div class="speed-wrap" style="margin-left:.25rem;">
       <input type="checkbox" id="autoRefineChk" checked style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue);">
       <label class="speed-lbl" for="autoRefineChk" style="cursor:pointer;">Auto-refine</label>
@@ -722,6 +725,12 @@ var MAPS = {
       {r:3.569946, label:'r\u221e\u22483.570',period:Infinity,color:'rgba(185,28,28,.85)'}
     ],
     period3r: 3.8284,
+    selfSim:[
+      {pMin:3.8275, pMax:3.8568, xMin:0.13,  xMax:0.20,
+       label:'Period-3 window — a miniature copy of the full diagram'},
+      {pMin:3.8540, pMax:3.8568, xMin:0.150, xMax:0.162,
+       label:'Period-doubling inside the copy — same cascade, smaller scale'}
+    ],
     desc:'The logistic map \\(f_r(x)=rx(1-x)\\) is the canonical example of period-doubling and chaos. At \\(r=3\\) the fixed point \\(x^*=(r-1)/r\\) loses stability (\\(|f\'(x^*)|=|2-r|=1\\)) and a period-2 orbit is born. The cascade of bifurcations converges at \\(r_\\infty\\approx3.5699\\) (the Feigenbaum point); beyond that the orbit is generically chaotic, with periodic windows interspersed. At \\(r=4\\) the map is conjugate to the full tent map and has Lyapunov exponent \\(\\lambda=\\ln 2\\).'
   },
 
@@ -745,6 +754,12 @@ var MAPS = {
       {r:3.569946, label:'r\u221e',      period:Infinity,color:'rgba(185,28,28,.85)'}
     ],
     period3r: 3.8284,
+    selfSim:[
+      {pMin:3.8275, pMax:3.8568, xMin:0.13,  xMax:0.20,
+       label:'Period-3 window — a miniature copy of the full diagram'},
+      {pMin:3.8540, pMax:3.8568, xMin:0.150, xMax:0.162,
+       label:'Period-doubling inside the copy — same cascade, smaller scale'}
+    ],
     desc:'Full view of the logistic map from \\(r=0\\) to \\(r=4\\). For \\(r<1\\) the orbit collapses to 0. At \\(r=1\\) the fixed point \\(x^*=(r-1)/r=0\\) becomes positive. For \\(1<r<3\\) the nonzero fixed point is stable. The bifurcation cascade begins at \\(r=3\\) and ends at \\(r_\\infty\\approx3.5699\\).'
   },
 
@@ -786,6 +801,12 @@ var MAPS = {
       {r:0.8617,label:'r\u2082\u22480.862',period:4, color:'rgba(15,118,110,.85)'},
       {r:0.8862,label:'r\u221e\u22480.886',period:Infinity,color:'rgba(185,28,28,.85)'}
     ],
+    selfSim:[
+      {pMin:0.83,  pMax:0.886,  xMin:0.50, xMax:0.85,
+       label:'Feigenbaum cascade approaching r\u221e \u2014 the same shape repeats'},
+      {pMin:0.873, pMax:0.886,  xMin:0.55, xMax:0.72,
+       label:'Deeper into the cascade \u2014 universal scaling by \u03b4\u22484.669'}
+    ],
     desc:'The sine map \\(f_r(x)=r\\sin(\\pi x)\\) is another smooth unimodal map on \\([0,1]\\) with a unique maximum at \\(x=1/2\\). It undergoes the same universal period-doubling cascade as the logistic map, with the same Feigenbaum constant \\(\\delta\\approx4.669\\), though at different parameter values. At \\(r=1\\) the map is fully chaotic on \\([0,1]\\).'
   },
 
@@ -807,6 +828,12 @@ var MAPS = {
       {r:-0.75,   label:'c=-\u00be',     period:2, color:'rgba(29,78,216,.85)'},
       {r:-1.25,   label:'c\u2248-1.25',  period:4, color:'rgba(15,118,110,.85)'},
       {r:-1.3681, label:'c_\u221e',      period:Infinity,color:'rgba(185,28,28,.85)'}
+    ],
+    selfSim:[
+      {pMin:-1.7911, pMax:-1.7487, xMin:1.05, xMax:1.45,
+       label:'Period-3 window (c\u2248-1.75) \u2014 a miniature copy of the diagram'},
+      {pMin:-1.7903, pMax:-1.7863, xMin:1.28, xMax:1.36,
+       label:'Period-doubling inside the copy \u2014 self-similarity at every scale'}
     ],
     desc:'The quadratic map \\(f_c(x)=x^2+c\\) is the real restriction of the complex map underlying the Mandelbrot set. Fixed points \\(x^*=\\tfrac{1\\pm\\sqrt{1-4c}}{2}\\) exist for \\(c\\le\\tfrac14\\). The smaller fixed point \\(x^*=\\tfrac{1-\\sqrt{1-4c}}{2}\\) is stable for \\(-\\tfrac34&lt;c\\le\\tfrac14\\). Period-doubling begins at \\(c=-\\tfrac34\\) and chaos onset is at \\(c_\\infty\\approx-1.3681\\). At \\(c=-2\\) the map is fully chaotic on \\([-2,2]\\) with \\(\\lambda=\\ln 2\\), conjugate to the logistic map at \\(r=4\\).'
   },
@@ -917,6 +944,13 @@ var AUTO_REFINE_MS = 380;
 /* Rubber-band box selection for zoom-to-region */
 var RUBBER = null;
 
+/* Self-similarity demo: animated chained zoom into a miniature copy
+   of the diagram. SS_BOX is the highlight overlay drawn on the canvas
+   (world coords); SS_DEMO carries the run state and a session counter
+   so stale callbacks from a previous run are ignored. */
+var SS_BOX  = null;
+var SS_DEMO = { running:false, session:0, raf:null, timer:null };
+
 /* =====================================================
    Canvas setup
 ===================================================== */
@@ -1017,6 +1051,7 @@ var lastDrag={x:0,y:0,down:false,canvas:null};
 function addCanvasEvents(canvas, isLya){
   canvas.addEventListener('wheel',function(e){
     e.preventDefault();
+    if(SS_DEMO.running) cancelSelfSimDemo(true);
     var rect=canvas.getBoundingClientRect();
     var cx=e.clientX-rect.left, cy=e.clientY-rect.top;
     var f=e.deltaY>0?1.12:0.88;
@@ -1027,6 +1062,7 @@ function addCanvasEvents(canvas, isLya){
   },{passive:false});
 
   canvas.addEventListener('mousedown',function(e){
+    if(SS_DEMO.running) cancelSelfSimDemo(true);
     /* Shift+drag on bifurcation canvas = rubber-band box zoom */
     if(!isLya && e.shiftKey && e.button===0){
       var rect=canvas.getBoundingClientRect();
@@ -1042,6 +1078,7 @@ function addCanvasEvents(canvas, isLya){
   });
   canvas.addEventListener('dblclick',function(e){
     e.preventDefault();
+    cancelSelfSimDemo(true);
     resetView(); renderAll();
     say('View reset');
   });
@@ -2175,6 +2212,198 @@ function renderBif(){
     ctx.setLineDash([]);
     ctx.restore();
   }
+
+  /* ── Self-similarity demo overlay ── */
+  drawSelfSimBox();
+}
+
+/* Draw the red highlight box used by the self-similarity demo. The
+   box lives in world (parameter, x) coords so it tracks the canvas
+   correctly even while VBIF is being tweened toward it. */
+function drawSelfSimBox(){
+  if(!SS_BOX) return;
+  var ctx = bCtx;
+  var PAD = PADDING;
+  var W = BW-PAD.l-PAD.r, H = BH-PAD.t-PAD.b;
+  if(W<10||H<10) return;
+  var pRange = VBIF.pMax-VBIF.pMin, xRange = VBIF.xMax-VBIF.xMin;
+  if(pRange<=0||xRange<=0) return;
+  var bx0 = PAD.l + (SS_BOX.pMin-VBIF.pMin)/pRange*W;
+  var bx1 = PAD.l + (SS_BOX.pMax-VBIF.pMin)/pRange*W;
+  var by0 = PAD.t + H - (SS_BOX.xMax-VBIF.xMin)/xRange*H;
+  var by1 = PAD.t + H - (SS_BOX.xMin-VBIF.xMin)/xRange*H;
+  var x = Math.min(bx0,bx1), y = Math.min(by0,by1);
+  var w = Math.abs(bx1-bx0), h = Math.abs(by1-by0);
+  var a = Math.max(0, Math.min(1, SS_BOX.alpha!=null?SS_BOX.alpha:1));
+
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(220,38,38,.10)';
+  ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle = '#dc2626';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8,4]);
+  ctx.strokeRect(x,y,w,h);
+  ctx.setLineDash([]);
+
+  if(SS_BOX.label){
+    ctx.font = 'bold 13px -apple-system,BlinkMacSystemFont,Arial,sans-serif';
+    var pad = 7;
+    var tw  = ctx.measureText(SS_BOX.label).width + pad*2;
+    var th  = 22;
+    /* Prefer label above the box; fall back to inside top if no room. */
+    var lx  = x;
+    if(lx + tw > PAD.l + W) lx = PAD.l + W - tw;
+    if(lx < PAD.l) lx = PAD.l;
+    var ly  = y - th - 4;
+    if(ly < PAD.t + 2) ly = y + 4;
+    ctx.fillStyle = 'rgba(220,38,38,.95)';
+    ctx.fillRect(lx, ly, tw, th);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(SS_BOX.label, lx+pad, ly+th/2);
+  }
+  ctx.restore();
+}
+
+/* =====================================================
+   Self-similarity demo
+   1. Reset to default view & recompute
+   2. For each level: red box appears → hold → animate
+      VBIF/VLYA into the box → recompute fresh detail
+   3. Each level pushes a zoom-history entry so the user
+      can walk back through the chain with the Back button.
+===================================================== */
+function cancelSelfSimDemo(silent){
+  SS_DEMO.session++;                /* invalidate any in-flight callbacks */
+  SS_DEMO.running = false;
+  if(SS_DEMO.raf!=null){
+    cancelAnimationFrame(SS_DEMO.raf);
+    SS_DEMO.raf = null;
+  }
+  if(SS_DEMO.timer!=null){
+    clearTimeout(SS_DEMO.timer);
+    SS_DEMO.timer = null;
+  }
+  SS_BOX = null;
+  if(!silent) renderAll();
+}
+
+function ssTween(durMs, sess, onFrame, onDone){
+  var t0 = performance.now();
+  function step(){
+    if(sess !== SS_DEMO.session){ return; }       /* superseded */
+    var t = (performance.now()-t0)/durMs;
+    if(t>1) t=1;
+    /* ease-in-out cubic */
+    var e = t<0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+    onFrame(e);
+    if(t<1){ SS_DEMO.raf = requestAnimationFrame(step); }
+    else   { SS_DEMO.raf = null; onDone && onDone(); }
+  }
+  SS_DEMO.raf = requestAnimationFrame(step);
+}
+
+function ssHold(ms, sess, onDone){
+  SS_DEMO.timer = setTimeout(function(){
+    SS_DEMO.timer = null;
+    if(sess !== SS_DEMO.session) return;
+    onDone && onDone();
+  }, ms);
+}
+
+function runSelfSimDemo(){
+  var ex = MAPS[ST.mapId];
+  if(!ex || !ex.selfSim || !ex.selfSim.length){
+    say('No self-similarity demo available for this map.');
+    return;
+  }
+  /* Restart cleanly if already running. */
+  cancelSelfSimDemo(true);
+  SS_DEMO.session++;
+  var sess = SS_DEMO.session;
+  SS_DEMO.running = true;
+
+  /* Reset to default view (no recompute yet — we drive that ourselves). */
+  if(VBIF.dflt){
+    VBIF.pMin = VBIF.dflt.pMin; VBIF.pMax = VBIF.dflt.pMax;
+    VBIF.xMin = VBIF.dflt.xMin; VBIF.xMax = VBIF.dflt.xMax;
+  }
+  if(VLYA.dflt){
+    VLYA.pMin   = VLYA.dflt.pMin;   VLYA.pMax   = VLYA.dflt.pMax;
+    VLYA.lyaMin = VLYA.dflt.lyaMin; VLYA.lyaMax = VLYA.dflt.lyaMax;
+  }
+  ST.pMin = VBIF.dflt.pMin; ST.pMax = VBIF.dflt.pMax;
+  ST.crosshairP = null;
+  ZOOM_HIST.length = 0;
+  updateBackBtn();
+  syncParamInputs();
+  SS_BOX = null;
+  renderAll();
+  say('Self-similarity demo: computing the default view…');
+
+  runCompute(function(){
+    if(sess !== SS_DEMO.session) return;
+    chainStep(0);
+  });
+
+  function chainStep(i){
+    if(sess !== SS_DEMO.session) return;
+    if(i >= ex.selfSim.length){
+      SS_DEMO.running = false;
+      SS_BOX = null;
+      renderAll();
+      say('Self-similarity demo complete — the same shape appears at every scale. Press Back to undo.');
+      return;
+    }
+    var target = ex.selfSim[i];
+    /* Snapshot starting view so we can interpolate. */
+    var s = {
+      pMin:VBIF.pMin, pMax:VBIF.pMax, xMin:VBIF.xMin, xMax:VBIF.xMax,
+      lpMin:VLYA.pMin, lpMax:VLYA.pMax
+    };
+    SS_BOX = {
+      pMin:target.pMin, pMax:target.pMax,
+      xMin:target.xMin, xMax:target.xMax,
+      label:target.label || '',
+      alpha:0
+    };
+    say(target.label || 'Highlighting self-similar region.');
+
+    /* (a) fade in the red box */
+    ssTween(450, sess, function(e){
+      if(SS_BOX) SS_BOX.alpha = e;
+      renderAll();
+    }, function(){
+      /* (b) hold so the viewer reads the label */
+      ssHold(800, sess, function(){
+        /* (c) animate VBIF/VLYA into the box; fade box out as we arrive */
+        ssTween(1300, sess, function(e){
+          VBIF.pMin = s.pMin + (target.pMin - s.pMin)*e;
+          VBIF.pMax = s.pMax + (target.pMax - s.pMax)*e;
+          VBIF.xMin = s.xMin + (target.xMin - s.xMin)*e;
+          VBIF.xMax = s.xMax + (target.xMax - s.xMax)*e;
+          VLYA.pMin = s.lpMin + (target.pMin - s.lpMin)*e;
+          VLYA.pMax = s.lpMax + (target.pMax - s.lpMax)*e;
+          if(SS_BOX) SS_BOX.alpha = 1 - e;
+          renderAll();
+        }, function(){
+          SS_BOX = null;
+          renderAll();
+          /* (d) push history, recompute fresh detail at the new depth */
+          pushZoomHistory();
+          ST.pMin = VBIF.pMin; ST.pMax = VBIF.pMax;
+          syncParamInputs();
+          say('Recomputing for fresh detail at this depth…');
+          runCompute(function(){
+            if(sess !== SS_DEMO.session) return;
+            ssHold(500, sess, function(){ chainStep(i+1); });
+          });
+        });
+      });
+    });
+  }
 }
 
 /* ── Draw Lyapunov exponent ── */
@@ -2588,9 +2817,20 @@ function resetView(){
 
 function switchMap(id){
   stopAll();
+  cancelSelfSimDemo(true);
   if(!MAPS[id])return;
   ST.mapId=id;
   var ex=MAPS[id];
+  /* Toggle the self-similarity button: disabled (and dimmed) for maps
+     without a defined chain (tent, Rössler, custom). */
+  var ssBtn=document.getElementById('btnSelfSim');
+  if(ssBtn){
+    var has=!!(ex.selfSim && ex.selfSim.length);
+    ssBtn.disabled=!has;
+    ssBtn.style.opacity=has?'1':'.45';
+    ssBtn.style.cursor=has?'pointer':'not-allowed';
+    ssBtn.title=has?'':'No miniature copy defined for this map';
+  }
   ST.pMin=parseFloat(document.getElementById('pMinNum').value)||ex.pMin;
   ST.pMax=parseFloat(document.getElementById('pMaxNum').value)||ex.pMax;
   ST.x0=ex.x0||0.5;
@@ -2702,7 +2942,11 @@ document.getElementById('btnBack').addEventListener('click',function(){
   popZoomHistory();
 });
 document.getElementById('btnReset').addEventListener('click',function(){
+  cancelSelfSimDemo(true);
   resetView();renderAll();say('View reset to default.');
+});
+document.getElementById('btnSelfSim').addEventListener('click',function(){
+  runSelfSimDemo();
 });
 document.getElementById('bifResetBtn').addEventListener('click',function(){
   resetView();renderAll();say('View reset.');
