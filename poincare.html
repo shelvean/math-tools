@@ -88,6 +88,8 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 .abtn-go{background:var(--teal);color:#fff;border-color:var(--teal);}.abtn-go:hover{background:#0d5f5a;}
 .abtn-stop{background:var(--red);color:#fff;border-color:var(--red);}.abtn-stop:hover{background:#b91c1c;}
 .abtn-clear{background:var(--muted);color:#fff;border-color:var(--muted);}.abtn-clear:hover{background:#374151;}
+.abtn-download{background:var(--blue);color:#fff;border-color:var(--blue);}.abtn-download:hover{background:var(--bl2);}
+.abtn:disabled{opacity:.45;cursor:not-allowed;}
 .abtn:disabled,.abtn[aria-disabled=true]{opacity:.55;cursor:not-allowed;}
 
 .tp-card{background:linear-gradient(180deg,#fff 0%,#f8fafc 100%);border:1.5px solid var(--bdr2);border-radius:var(--r2);padding:.55rem .8rem .65rem;box-shadow:var(--sh);margin-bottom:.5rem;}
@@ -339,6 +341,7 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
         <button id="runBtn" class="abtn abtn-go" type="button">▶ Run</button>
         <button id="stopBtn" class="abtn abtn-stop" type="button" disabled>■ Stop</button>
         <button id="clearBtn" class="abtn abtn-clear" type="button">Clear plot</button>
+        <button id="downloadBtn" class="abtn abtn-download" type="button" disabled aria-label="Download Poincaré section as PNG">⬇ PNG</button>
         <span id="pointCount" class="legend" style="margin-left:auto;">0 points</span>
       </div>
 
@@ -806,7 +809,7 @@ var worker = null;
 /* ── DOM refs ────────────────────────────────────────────────────── */
 var $ = function(id){ return document.getElementById(id); };
 var systemSel = $('systemSel'), sectionMode = $('sectionMode');
-var runBtn = $('runBtn'), stopBtn = $('stopBtn'), clearBtn = $('clearBtn');
+var runBtn = $('runBtn'), stopBtn = $('stopBtn'), clearBtn = $('clearBtn'), downloadBtn = $('downloadBtn');
 var canvas = $('poincareCanvas'), ctx = canvas.getContext('2d');
 var xAxisSel = $('xAxis'), yAxisSel = $('yAxis'), colorSel = $('colorMode');
 var pointCount = $('pointCount'), tpStats = $('tpStats'), tpFill = $('tpFill'), tpCard = $('tpCard');
@@ -1234,7 +1237,31 @@ function clearPlot(){
   pointCount.textContent = '0 points';
   tpFill.style.width = '0%'; tpStats.textContent = 'Idle.';
   tpCard.classList.remove('is-done');
+  if(downloadBtn) downloadBtn.disabled = true;
   draw();
+}
+
+function downloadPNG(){
+  if(ptsCount === 0) return;
+  var sys = systemSel.value || 'system';
+  var ts = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  var name = 'poincare-' + sys + '-' + ts + '.png';
+  if(canvas.toBlob){
+    canvas.toBlob(function(blob){
+      if(!blob){ return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    }, 'image/png');
+  } else {
+    var a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png'); a.download = name;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+  }
 }
 
 /* ── Axis projection ─────────────────────────────────────────────── */
@@ -1323,8 +1350,8 @@ function draw(){
   function toPx(v, lo, hi, off, len){ return off + (v-lo)/(hi-lo)*len; }
   var mode = colorSel.value;
   var simTLocal = simT || 1;
-  var dotR = ptsCount > 50000 ? 0.7 : ptsCount > 10000 ? 1.0 : 1.4;
-  var alpha = ptsCount > 50000 ? 0.32 : ptsCount > 10000 ? 0.45 : 0.6;
+  var dotR = ptsCount > 50000 ? 0.85 : ptsCount > 10000 ? 1.1 : 1.5;
+  var alpha = ptsCount > 50000 ? 0.55 : ptsCount > 10000 ? 0.7 : 0.85;
   ctx.save();
   ctx.beginPath(); ctx.rect(pad.l, pad.t, iw, ih); ctx.clip();
   if(mode === 'byIC' && ptsNIC > 1){
@@ -1332,7 +1359,7 @@ function draw(){
     var pal = new Array(ptsNIC);
     for(var k=0;k<ptsNIC;k++){
       var hue = (k * 360 / ptsNIC) % 360;
-      pal[k] = 'hsla('+hue.toFixed(0)+',75%,42%,'+alpha+')';
+      pal[k] = 'hsla('+hue.toFixed(0)+',78%,34%,'+alpha+')';
     }
     var lastIC = -1;
     for(var i=0;i<ptsCount;i++){
@@ -1360,6 +1387,7 @@ function draw(){
   ctx.restore();
 
   boundsLegend.textContent = ptsCount + ' pts • x ∈ ['+b.xMin.toFixed(2)+', '+b.xMax.toFixed(2)+'] • y ∈ ['+b.yMin.toFixed(2)+', '+b.yMax.toFixed(2)+']';
+  if(downloadBtn) downloadBtn.disabled = (ptsCount === 0);
 }
 
 function axisLabel(v){
@@ -1485,6 +1513,7 @@ function stopRun(){
 runBtn.addEventListener('click', startRun);
 stopBtn.addEventListener('click', stopRun);
 clearBtn.addEventListener('click', clearPlot);
+downloadBtn.addEventListener('click', downloadPNG);
 
 /* ── Info panel toggle ───────────────────────────────────────────── */
 $('infoBtn').addEventListener('click', function(){
