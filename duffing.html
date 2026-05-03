@@ -163,27 +163,25 @@ kbd{display:inline-block;padding:.05rem .32rem;border:1.5px solid var(--bdr2);bo
   gap:.7rem;
   align-items:start;
 }
-.col-controls{grid-column:1;grid-row:1 / span 4;min-width:0;}
+.col-controls{grid-column:1;grid-row:1 / span 3;min-width:0;}
 .col-sim{grid-column:2;grid-row:1;min-width:0;}
 .col-phase{grid-column:3;grid-row:1;min-width:0;}
 .col-graph{grid-column:2 / span 2;grid-row:2;min-width:0;}
-.col-poincare{grid-column:2 / span 2;grid-row:3;min-width:0;}
-.col-progress{grid-column:2 / span 2;grid-row:4;min-width:0;}
+.col-progress{grid-column:2 / span 2;grid-row:3;min-width:0;}
 
 /* At narrower widths fall back to a 2-col layout: controls beside sim, phase under */
 @media(max-width:1200px){
   .main-layout{grid-template-columns: 300px minmax(0,1fr);}
-  .col-controls{grid-column:1;grid-row:1 / span 5;}
+  .col-controls{grid-column:1;grid-row:1 / span 4;}
   .col-sim{grid-column:2;grid-row:1;}
   .col-phase{grid-column:2;grid-row:2;}
   .col-graph{grid-column:2;grid-row:3;}
-  .col-poincare{grid-column:2;grid-row:4;}
-  .col-progress{grid-column:2;grid-row:5;}
+  .col-progress{grid-column:2;grid-row:4;}
 }
 /* Mobile: stack everything */
 @media(max-width:840px){
   .main-layout{grid-template-columns: 1fr;}
-  .col-controls,.col-sim,.col-phase,.col-graph,.col-poincare,.col-progress{grid-column:1;grid-row:auto;}
+  .col-controls,.col-sim,.col-phase,.col-graph,.col-progress{grid-column:1;grid-row:auto;}
 }
 
 /* ── Elegant time progress bar ── */
@@ -249,7 +247,6 @@ kbd{display:inline-block;padding:.05rem .32rem;border:1.5px solid var(--bdr2);bo
 #simCanvas{display:block;width:100%;height:auto;background:#fff;}
 #graphCanvas{display:block;width:100%;height:auto;background:#f9fafb;}
 #phaseCanvas{display:block;width:100%;height:auto;background:#f9fafb;}
-#poincareCanvas{display:block;width:100%;height:auto;background:#f9fafb;}
 .panel-head{display:flex;align-items:center;gap:.4rem;}
 .panel-toggle{margin-left:auto;padding:.15rem .6rem;min-height:28px;border:1.5px solid var(--bdr2);
   border-radius:.3rem;background:var(--card);color:var(--txt2);font-size:.75rem;font-weight:700;
@@ -604,25 +601,7 @@ if(document.referrer.includes('dynamical.html')){
       </div>
     </div>
 
-    <!-- ═══ Row 3: Poincaré section (toggle show/hide) ═══ -->
-    <div class="col-poincare">
-      <div class="pwrap" id="poincareWrap" style="margin-bottom:0;">
-        <div class="phdr panel-head">
-          <span class="pdot" style="background:var(--vio);" aria-hidden="true"></span>
-          <span style="flex:1;">Poincaré section \((x,\,\dot{x})\) sampled at \(t=k\,T_f\), &nbsp; \(T_f=2\pi/\omega\)</span>
-          <button id="poincareToggleBtn" type="button" class="panel-toggle"
-            aria-expanded="false" aria-controls="poincareBody"
-            aria-label="Show or hide the Poincaré section">Show</button>
-        </div>
-        <div id="poincareBody" hidden>
-          <div role="img" aria-label="Poincaré section: stroboscopic samples of the trajectory at each forcing period.">
-            <canvas id="poincareCanvas" width="1200" height="240" aria-hidden="true"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ Row 4: simulation time progress bar ═══ -->
+    <!-- ═══ Row 3: simulation time progress bar ═══ -->
     <div class="col-progress">
       <div class="tp-card" id="tpCard">
         <div class="tp-head">
@@ -666,8 +645,8 @@ var rmq=window.matchMedia('(prefers-reduced-motion: reduce)');
 var prefersReducedMotion=rmq.matches;
 rmq.addEventListener('change',function(e){prefersReducedMotion=e.matches;if(prefersReducedMotion&&isRunning&&!isPaused){isPaused=true;updatePauseButton();say('Reduced-motion detected. Animation paused.');}});
 
-var simCanvas=document.getElementById('simCanvas'),graphCanvas=document.getElementById('graphCanvas'),phaseCanvas=document.getElementById('phaseCanvas'),poincareCanvas=document.getElementById('poincareCanvas');
-var simCtx=simCanvas.getContext('2d'),graphCtx=graphCanvas.getContext('2d'),phaseCtx=phaseCanvas.getContext('2d'),poincareCtx=poincareCanvas.getContext('2d');
+var simCanvas=document.getElementById('simCanvas'),graphCanvas=document.getElementById('graphCanvas'),phaseCanvas=document.getElementById('phaseCanvas');
+var simCtx=simCanvas.getContext('2d'),graphCtx=graphCanvas.getContext('2d'),phaseCtx=phaseCanvas.getContext('2d');
 
 /* ── Sharpen: scale canvas backing store for DPR + CSS scaling, keep logical coords ── */
 function sharpen(cv,ctx){
@@ -682,7 +661,6 @@ function sharpen(cv,ctx){
 sharpen(simCanvas,simCtx);
 sharpen(graphCanvas,graphCtx);
 sharpen(phaseCanvas,phaseCtx);
-sharpen(poincareCanvas,poincareCtx);
 
 var sol=null,animIdx=0,animTime=0,dtPerFrame=0.005,isPaused=false,isRunning=false;
 var trail=[],TRAIL_LEN=80,srFrameCount=0;
@@ -697,8 +675,6 @@ var axesGCv=null,axesPCv=null;
 var trailGCv=null,trailGCtx=null,trailPCv=null,trailPCtx=null;
 var gSc=null,pSc=null,lastGIdx=-1,lastPIdx=-1;
 
-/* Poincaré section: stroboscopic samples at multiples of the forcing period */
-var poincarePts=[],poiSc=null,poiAxesCv=null,poiTrailCv=null,poiTrailCtx=null,lastPoiIdx=-1;
 
 /* ── Speed → color (blue slow → magenta → red fast) ── */
 function speedColor(speed,maxSpeed){
@@ -1184,135 +1160,6 @@ function initTrailCanvases(solObj){
 function resetTrailOverlay(){
   if(trailGCv&&axesGCv){var GW=trailGCv._logW,GH=trailGCv._logH;trailGCtx.clearRect(0,0,GW,GH);trailGCtx.drawImage(axesGCv,0,0,GW,GH);lastGIdx=-1;}
   if(trailPCv&&axesPCv){var PW=trailPCv._logW,PH=trailPCv._logH;trailPCtx.clearRect(0,0,PW,PH);trailPCtx.drawImage(axesPCv,0,0,PW,PH);lastPIdx=-1;}
-  if(poiTrailCv&&poiAxesCv){var QW=poiTrailCv._logW,QH=poiTrailCv._logH;poiTrailCtx.clearRect(0,0,QW,QH);poiTrailCtx.drawImage(poiAxesCv,0,0,QW,QH);lastPoiIdx=-1;}
-}
-
-/* ════ POINCARÉ SECTION ════
-   Sample (x, ẋ) at t = k·T_f, T_f = 2π/ω. Linear interpolation between solver
-   samples gives sub-step accuracy. Coloring matches the displacement graph
-   (speed/solid/time, "fade" maps to speed). */
-function computePoincarePts(solObj){
-  if(!solObj||!solObj.pts||solObj.pts.length<2)return [];
-  var p=solObj.p,T=solObj.T,pts=solObj.pts;
-  var Tf=p.omega>0.01?2*Math.PI/p.omega:0;
-  if(!(Tf>0))return [];
-  var out=[],lo=0;
-  for(var k=1;k*Tf<=T+1e-9;k++){
-    var ts=k*Tf;
-    while(lo<pts.length-2&&pts[lo+1].t<ts) lo++;
-    var p0=pts[lo],p1=pts[Math.min(lo+1,pts.length-1)];
-    var frac=p1.t>p0.t?(ts-p0.t)/(p1.t-p0.t):0;
-    if(frac<0)frac=0;else if(frac>1)frac=1;
-    out.push({t:ts,x:p0.x+frac*(p1.x-p0.x),v:p0.v+frac*(p1.v-p0.v)});
-  }
-  return out;
-}
-
-function initPoincareCanvas(solObj){
-  poincarePts=computePoincarePts(solObj);
-  var p=solObj.p;
-  var W=poincareCanvas._logW||poincareCanvas.width,H=poincareCanvas._logH||poincareCanvas.height;
-  var pad={l:50,r:14,t:14,b:28};
-  /* Bounds: prefer the trajectory's full envelope so dots sit comfortably inside.
-     Fall back to Poincaré-only bounds when trajectory unavailable. */
-  var xMin=Infinity,xMax=-Infinity,vMin=Infinity,vMax=-Infinity;
-  var srcPts=(solObj.pts&&solObj.pts.length)?solObj.pts:poincarePts;
-  for(var i=0;i<srcPts.length;i++){
-    if(srcPts[i].x<xMin)xMin=srcPts[i].x;if(srcPts[i].x>xMax)xMax=srcPts[i].x;
-    if(srcPts[i].v<vMin)vMin=srcPts[i].v;if(srcPts[i].v>vMax)vMax=srcPts[i].v;
-  }
-  if(!isFinite(xMin)){xMin=-1;xMax=1;vMin=-1;vMax=1;}
-  var xR=xMax-xMin||1,vR=vMax-vMin||1;
-  xMin-=xR*0.08;xMax+=xR*0.08;vMin-=vR*0.10;vMax+=vR*0.10;
-  poiSc={pad:pad,xMin:xMin,xMax:xMax,vMin:vMin,vMax:vMax,W:W,H:H};
-
-  poiAxesCv=document.createElement('canvas');
-  poiAxesCv.width=W;poiAxesCv.height=H;
-  var bg=poiAxesCv.getContext('2d');
-  sharpen(poiAxesCv,bg);
-  bg.fillStyle='#f9fafb';bg.fillRect(0,0,W,H);
-  bg.strokeStyle='rgba(0,0,0,.06)';bg.lineWidth=0.5;
-  for(var i=1;i<8;i++){var gx=pad.l+i*(W-pad.l-pad.r)/8;bg.beginPath();bg.moveTo(gx,pad.t);bg.lineTo(gx,H-pad.b);bg.stroke();}
-  for(var i=1;i<5;i++){var gy=pad.t+i*(H-pad.t-pad.b)/4;bg.beginPath();bg.moveTo(pad.l,gy);bg.lineTo(W-pad.r,gy);bg.stroke();}
-  bg.strokeStyle='rgba(100,116,139,.22)';bg.lineWidth=1;
-  if(vMin<=0&&vMax>=0){var vy=H-pad.b-(0-vMin)/(vMax-vMin)*(H-pad.t-pad.b);bg.beginPath();bg.moveTo(pad.l,vy);bg.lineTo(W-pad.r,vy);bg.stroke();}
-  if(xMin<=0&&xMax>=0){var vx=pad.l+(0-xMin)/(xMax-xMin)*(W-pad.l-pad.r);bg.beginPath();bg.moveTo(vx,pad.t);bg.lineTo(vx,H-pad.b);bg.stroke();}
-  if(p.alpha<0&&p.beta>0){
-    var xe2=Math.sqrt(-p.alpha/p.beta);
-    bg.setLineDash([4,4]);bg.strokeStyle='rgba(29,78,216,.22)';
-    [xe2,-xe2].forEach(function(xv){if(xv<xMin||xv>xMax)return;var xp2=pad.l+(xv-xMin)/(xMax-xMin)*(W-pad.l-pad.r);bg.beginPath();bg.moveTo(xp2,pad.t);bg.lineTo(xp2,H-pad.b);bg.stroke();});
-    bg.setLineDash([]);
-  }
-  bg.strokeStyle='#374151';bg.lineWidth=1.5;bg.beginPath();bg.moveTo(pad.l,pad.t);bg.lineTo(pad.l,H-pad.b);bg.lineTo(W-pad.r,H-pad.b);bg.stroke();
-  bg.font='10px Arial';bg.fillStyle='#374151';bg.textAlign='right';bg.textBaseline='middle';
-  for(var i=0;i<=4;i++)bg.fillText((vMin+i*(vMax-vMin)/4).toFixed(vMax>10?1:2),pad.l-3,H-pad.b-i*(H-pad.t-pad.b)/4);
-  bg.textAlign='center';bg.textBaseline='top';
-  for(var i=0;i<=8;i++)bg.fillText((xMin+i*(xMax-xMin)/8).toFixed(2),pad.l+i*(W-pad.l-pad.r)/8,H-pad.b+3);
-  bg.font='bold 11px Arial';bg.textAlign='center';bg.textBaseline='bottom';bg.fillStyle='#374151';bg.fillText('x',W/2,H-1);
-  bg.save();bg.translate(12,H/2);bg.rotate(-Math.PI/2);bg.textBaseline='top';bg.fillText('ẋ',0,0);bg.restore();
-  /* Annotation: forcing period and total samples */
-  var Tf=p.omega>0.01?2*Math.PI/p.omega:0;
-  bg.font='10px Arial';bg.fillStyle='rgba(109,40,217,.75)';bg.textAlign='right';bg.textBaseline='top';
-  bg.fillText('T_f = '+Tf.toFixed(3)+' s   •   '+poincarePts.length+' samples',W-pad.r-2,pad.t+2);
-
-  poiTrailCv=document.createElement('canvas');
-  poiTrailCv.width=W;poiTrailCv.height=H;
-  poiTrailCtx=poiTrailCv.getContext('2d');
-  sharpen(poiTrailCv,poiTrailCtx);
-  poiTrailCtx.drawImage(poiAxesCv,0,0,W,H);
-  lastPoiIdx=-1;
-  poincareCtx.drawImage(poiAxesCv,0,0,W,H);
-}
-
-function drawPoincareFrame(solObj,animTime){
-  if(!poiSc||!poiAxesCv)return;
-  var W=poiSc.W,H=poiSc.H,pad=poiSc.pad;
-  var maxSpeed=solObj.maxSpeed||1,T=solObj.T||1;
-  function toCx(x){return pad.l+(x-poiSc.xMin)/(poiSc.xMax-poiSc.xMin)*(W-pad.l-pad.r);}
-  function toCy(v){return H-pad.b-(v-poiSc.vMin)/(poiSc.vMax-poiSc.vMin)*(H-pad.t-pad.b);}
-
-  /* Find latest Poincaré sample whose time <= animTime */
-  var idx=-1;
-  for(var i=lastPoiIdx+1;i<poincarePts.length;i++){
-    if(poincarePts[i].t<=animTime) idx=i; else break;
-  }
-  if(idx<0&&lastPoiIdx>=0) idx=lastPoiIdx;
-
-  /* Accumulate any new samples on the off-screen trail canvas */
-  if(idx>lastPoiIdx){
-    var effStyle=(trailStyle==='fade')?'speed':trailStyle;
-    for(var i=lastPoiIdx+1;i<=idx;i++){
-      var pp=poincarePts[i];
-      var col=(effStyle==='time')?jetColor(pp.t/T)
-             :(effStyle==='solid')?'#1d4ed8'
-             :speedColor(Math.abs(pp.v),maxSpeed);
-      var cx=toCx(pp.x),cy=toCy(pp.v);
-      poiTrailCtx.fillStyle=col;
-      poiTrailCtx.beginPath();poiTrailCtx.arc(cx,cy,2.4,0,2*Math.PI);poiTrailCtx.fill();
-      /* subtle ring for visibility on lighter colors */
-      poiTrailCtx.strokeStyle='rgba(0,0,0,.30)';poiTrailCtx.lineWidth=0.6;
-      poiTrailCtx.beginPath();poiTrailCtx.arc(cx,cy,2.4,0,2*Math.PI);poiTrailCtx.stroke();
-    }
-    lastPoiIdx=idx;
-  }
-  poincareCtx.drawImage(poiTrailCv,0,0,W,H);
-
-  /* Highlight the most recent stroboscopic sample */
-  if(idx>=0){
-    var pp=poincarePts[idx];
-    var cx=toCx(pp.x),cy=toCy(pp.v);
-    poincareCtx.strokeStyle='rgba(220,38,38,.95)';poincareCtx.lineWidth=1.6;
-    poincareCtx.beginPath();poincareCtx.arc(cx,cy,5.5,0,2*Math.PI);poincareCtx.stroke();
-  }
-}
-
-function drawPoincareDisabledPlaceholder(){
-  var W=poincareCanvas._logW||poincareCanvas.width,H=poincareCanvas._logH||poincareCanvas.height;
-  poincareCtx.fillStyle='#f9fafb';poincareCtx.fillRect(0,0,W,H);
-  poincareCtx.font='bold 14px -apple-system,Arial,sans-serif';
-  poincareCtx.textAlign='center';poincareCtx.textBaseline='middle';poincareCtx.fillStyle='#6d28d9';
-  poincareCtx.fillText('Poincaré section disabled in Multiple initial conditions scatter mode',W/2,H/2);
-  poiSc=null;poiAxesCv=null;poiTrailCv=null;poiTrailCtx=null;poincarePts=[];lastPoiIdx=-1;
 }
 
 /* ════ STATIC FULL-TRAJECTORY RENDERERS (used by "Show All") ════
@@ -1388,15 +1235,6 @@ function drawPhaseAll(solObj){
   }
 }
 
-function drawPoincareAll(solObj){
-  if(!poiSc||!poiAxesCv) return;
-  /* Reset trail and replay every sample at once */
-  poiTrailCtx.clearRect(0,0,poiSc.W,poiSc.H);
-  poiTrailCtx.drawImage(poiAxesCv,0,0,poiSc.W,poiSc.H);
-  lastPoiIdx=-1;
-  drawPoincareFrame(solObj, solObj.T+1e-3);
-}
-
 function showAll(){
   if(!sol) return;
   isPaused=true; updatePauseButton();
@@ -1410,10 +1248,8 @@ function showAll(){
   if(!sol.pts||sol.pts.length<2) return;
   /* Re-rasterise axes so a previous fade frame doesn't leak through. */
   initTrailCanvases(sol);
-  initPoincareCanvas(sol);
   drawDisplacementAll(sol);
   drawPhaseAll(sol);
-  drawPoincareAll(sol);
   /* Render the final mass position so the sim canvas isn't stuck on an old frame. */
   var pf=sol.pts[sol.pts.length-1];
   drawSim(pf, [], sol);
@@ -1422,7 +1258,7 @@ function showAll(){
   updateTimeProgress(sol.T, sol.T);
   /* Park the animation pointer at the end so a resume triggers the loop reset. */
   animIdx=Math.max(0,sol.pts.length-2); animTime=sol.T;
-  say('Full trajectory rendered: phase, displacement, and Poincaré section.');
+  say('Full trajectory rendered: phase and displacement.');
 }
 
 /* ════ DRAW GRAPH — O(new segments) per frame, accumulates on off-screen canvas ════ */
@@ -1610,7 +1446,6 @@ function resetSimulation(){
       var elapsed=((performance.now()-t0)/1000).toFixed(2);
       initMultiAxesCanvas(sol);
       drawMultiDisabledPlaceholder();
-      drawPoincareDisabledPlaceholder();
       dtPerFrame=computeDtPerFrame({p:p},q.speed);
       animIdx=0;animTime=0;trail=[];isRunning=true;srFrameCount=0;
       if(prefersReducedMotion){isPaused=true;updatePauseButton();}
@@ -1623,7 +1458,6 @@ function resetSimulation(){
       sol=masterSolve(p,q.x0,q.v0,q.tolMul,q.T);
       var elapsed=((performance.now()-t0)/1000).toFixed(2);
       initTrailCanvases(sol);
-      initPoincareCanvas(sol);
       dtPerFrame=computeDtPerFrame(sol,q.speed);
       animIdx=0;animTime=0;trail=[];isRunning=true;srFrameCount=0;
       if(prefersReducedMotion){isPaused=true;updatePauseButton();}
@@ -1664,7 +1498,6 @@ function animate(){
     drawSim(pt,trail,sol);
     drawGraphFrame(sol,animIdx,pt);
     drawPhaseFrame(sol,animIdx,pt);
-    drawPoincareFrame(sol,animTime);
     updateStatusLine(pt);
     updateTimeProgress(pt.t,sol.T);
     srFrameCount++;if(srFrameCount%60===0)updateSRData(pt,sol);
@@ -1672,7 +1505,6 @@ function animate(){
       /* Loop: re-init trail canvases so trajectory draws in fresh */
       animIdx=0;animTime=0;trail=[];
       initTrailCanvases(sol);
-      initPoincareCanvas(sol);
     }
   }
   requestAnimationFrame(animate);
@@ -1727,7 +1559,6 @@ document.addEventListener('DOMContentLoaded',function(){
   }
   setupPanelToggle('phaseToggleBtn',    'phaseBody',    'Phase portrait',   true);
   setupPanelToggle('graphToggleBtn',    'graphBody',    'Displacement plot', true);
-  setupPanelToggle('poincareToggleBtn', 'poincareBody', 'Poincar\u00e9 section',  false);
   document.getElementById('ctog').addEventListener('click',function(){var on=document.documentElement.classList.toggle('hc');say('High contrast '+(on?'on':'off')+'.');});
   document.addEventListener('keydown',function(e){var tag=e.target.tagName;if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;if(e.key===' '||e.key==='Spacebar'){e.preventDefault();document.getElementById('pauseBtn').click();}if((e.key==='r'||e.key==='R')&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();document.getElementById('resetBtn').click();}if((e.key==='a'||e.key==='A')&&!e.ctrlKey&&!e.metaKey&&!e.altKey){e.preventDefault();document.getElementById('showAllBtn').click();}});
   var initP={delta:0.3,alpha:-1,beta:1,gamma:0.37,omega:1.2};updateRegimeBadge(initP);updateEqDisplay(initP);updatePresetButtons(initP);
@@ -1735,7 +1566,6 @@ document.addEventListener('DOMContentLoaded',function(){
   simCtx.fillStyle='#EDE9FE';simCtx.fillRect(0,0,simCanvas._logW,simCanvas._logH);
   graphCtx.fillStyle='#f9fafb';graphCtx.fillRect(0,0,graphCanvas._logW,graphCanvas._logH);
   phaseCtx.fillStyle='#f9fafb';phaseCtx.fillRect(0,0,phaseCanvas._logW,phaseCanvas._logH);
-  poincareCtx.fillStyle='#f9fafb';poincareCtx.fillRect(0,0,poincareCanvas._logW,poincareCanvas._logH);
   animate();
   setTimeout(resetSimulation,100);
 });
