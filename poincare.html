@@ -168,6 +168,7 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
         <li><strong>Driven damped pendulum</strong>: \(\ddot\theta+\delta\dot\theta+\sin\theta=A\cos(\omega t)\). Stroboscopic section in \((\theta\bmod 2\pi,\dot\theta)\). Chaotic for \(A\approx 1.07,\omega=2/3,\delta=0.5\).</li>
         <li><strong>Lorenz</strong>: \(\dot x=\sigma(y-x),\dot y=x(\rho-z)-y,\dot z=xy-\beta z\). Hyperplane section at \(z=\rho-1\) (the famous &ldquo;cusp&rdquo; map): start from \((1,1,1)\), \(\sigma=10,\rho=28,\beta=8/3\).</li>
         <li><strong>Hénon map</strong>: \(x_{n+1}=1-ax_n^2+y_n,\;y_{n+1}=bx_n\). Discrete 2D map — every iterate is itself a section point. Dissipative for \(|b|&lt;1\) (the classical strange attractor at \(a=1.4,\,b=0.3\) has fractal dimension \(\approx1.26\)); area-preserving for \(|b|=1\), giving a Poincaré-like portrait of nested KAM tori and island chains.</li>
+        <li><strong>Ikeda map</strong>: \(t_n=c_1-\tfrac{c_2}{1+x_n^2+y_n^2},\;(x_{n+1},y_{n+1})=(1+u(x_n\cos t_n-y_n\sin t_n),\,u(x_n\sin t_n+y_n\cos t_n))\). Models a laser pulse circulating in a ring cavity. Dissipative for \(u&lt;1\) — produces the iconic folded-crescent strange attractor at \(u=0.9,\,c_1=0.4,\,c_2=6\).</li>
       </ul>
     </div>
   </div>
@@ -196,6 +197,10 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
     <button class="pbtn" type="button" data-preset="hm-period4" aria-pressed="false">a=1.0 (period-4)</button>
     <button class="pbtn" type="button" data-preset="hm-feigenbaum" aria-pressed="false">a≈1.058 (Feigenbaum)</button>
     <button class="pbtn" type="button" data-preset="hm-conservative" aria-pressed="false">a=0.42, b=−1 (KAM)</button>
+    <span class="preset-lbl" style="margin-left:.5rem;">Ikeda map:</span>
+    <button class="pbtn" type="button" data-preset="ik-period4" aria-pressed="false">u=0.6 (period-4)</button>
+    <button class="pbtn" type="button" data-preset="ik-classical" aria-pressed="false">u=0.9 (classic)</button>
+    <button class="pbtn" type="button" data-preset="ik-extended" aria-pressed="false">u=0.918 (extended)</button>
     <span class="preset-lbl" style="margin-left:.5rem;">Other:</span>
     <button class="pbtn" type="button" data-preset="doublepend-chaos" aria-pressed="false">Double pendulum</button>
     <button class="pbtn" type="button" data-preset="pendulum-chaos" aria-pressed="false">Driven pendulum</button>
@@ -225,6 +230,7 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
             <optgroup label="Discrete maps">
               <option value="standardmap">Chirikov standard map</option>
               <option value="henonmap">Hénon map</option>
+              <option value="ikedamap">Ikeda map</option>
             </optgroup>
           </select>
         </div>
@@ -291,6 +297,14 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
           <div class="row"><label class="lbl" for="hm-b">b</label><input class="num" id="hm-b" type="number" step="0.05" value="0.3"></div>
           <div class="row"><label class="lbl" for="hm-nIC">Trajectories</label><input class="num" id="hm-nIC" type="number" step="1" min="1" max="80" value="1"></div>
           <p class="help">Dissipative for \(|b|&lt;1\) (one IC fills the strange attractor). Area-preserving for \(|b|=1\) — use many ICs to reveal KAM tori and island chains.</p>
+        </div>
+        <!-- Ikeda map params -->
+        <div class="params-group" id="params-ikedamap">
+          <div class="row"><label class="lbl" for="ik-u">u</label><input class="num" id="ik-u" type="number" step="0.01" value="0.9"></div>
+          <div class="row"><label class="lbl" for="ik-c1">c₁</label><input class="num" id="ik-c1" type="number" step="0.05" value="0.4"></div>
+          <div class="row"><label class="lbl" for="ik-c2">c₂</label><input class="num" id="ik-c2" type="number" step="0.1" value="6"></div>
+          <div class="row"><label class="lbl" for="ik-nIC">Trajectories</label><input class="num" id="ik-nIC" type="number" step="1" min="1" max="40" value="1"></div>
+          <p class="help">Optical-cavity map; classic strange attractor at \(u=0.9,\,c_1=0.4,\,c_2=6\). Area-preserving at \(u=1\). \(|\det J|=u^2\).</p>
         </div>
       </div>
 
@@ -623,6 +637,52 @@ function runHenonMap(opts){
   self.postMessage({type:'done', total:totalPts, accepted:totalPts, rejected:0, tSim:0, stopped:stopRequested});
 }
 
+/* ── Ikeda map: complex 2D map from a laser ring cavity (Ikeda 1979).
+       t_n = c1 - c2 / (1 + x_n² + y_n²)
+       x_{n+1} = 1 + u (x_n cos t_n - y_n sin t_n)
+       y_{n+1} =      u (x_n sin t_n + y_n cos t_n)
+       Dissipative for u<1 (canonical strange attractor at u=0.9).
+       Each iteration is itself a section point. ─────────────────────── */
+function runIkedaMap(opts){
+  var u = +opts.params.u, c1 = +opts.params.c1, c2 = +opts.params.c2;
+  var ics = opts.icSets;
+  var maxPts = opts.maxPoints|0, transient = opts.transient|0;
+  var batch = [], totalPts = 0, lastProgress = performance.now();
+  var stopRequested = false;
+  self.onmessage = function(ev){ if(ev.data && ev.data.type === 'stop') stopRequested = true; };
+
+  var perIC = Math.ceil(maxPts / Math.max(1, ics.length));
+  for(var ic = 0; ic < ics.length && !stopRequested && totalPts < maxPts; ic++){
+    var x = ics[ic][0], y = ics[ic][1];
+    for(var i = 0; i < perIC && !stopRequested && totalPts < maxPts; i++){
+      var r2 = x*x + y*y;
+      var t = c1 - c2/(1 + r2);
+      var ct = Math.cos(t), st = Math.sin(t);
+      var xn = 1 + u*(x*ct - y*st);
+      var yn = u*(x*st + y*ct);
+      x = xn; y = yn;
+      /* Cull diverging orbits — they can happen for u≥1 with bad ICs. */
+      if(!isFinite(x) || !isFinite(y) || Math.abs(x) > 1e6 || Math.abs(y) > 1e6) break;
+      if(i >= transient){
+        totalPts++;
+        batch.push(i, x, y, ic);
+        if(batch.length >= 4*1000){
+          self.postMessage({type:'batch', pts:batch, total:totalPts, n:2, accepted:totalPts, rejected:0, h:0, t:i});
+          batch = [];
+        }
+      }
+      var now = performance.now();
+      if(now - lastProgress > 100){
+        lastProgress = now;
+        if(batch.length){ self.postMessage({type:'batch', pts:batch, total:totalPts, n:2, accepted:totalPts, rejected:0, h:0, t:i}); batch = []; }
+        self.postMessage({type:'progress', total:totalPts, target:maxPts, accepted:totalPts, rejected:0, h:0, tSim:i});
+      }
+    }
+  }
+  if(batch.length) self.postMessage({type:'batch', pts:batch, total:totalPts, n:2, accepted:totalPts, rejected:0, h:0, t:0});
+  self.postMessage({type:'done', total:totalPts, accepted:totalPts, rejected:0, tSim:0, stopped:stopRequested});
+}
+
 /* ── Driver: integrate, detect crossings, stream batches ────────────
    Supports multiple initial conditions (opts.icSets), one integrated
    after the other, with each section point tagged by its IC index so
@@ -630,6 +690,7 @@ function runHenonMap(opts){
 function run(opts){
   if(opts.system === 'standardmap'){ runStandardMap(opts); return; }
   if(opts.system === 'henonmap'){ runHenonMap(opts); return; }
+  if(opts.system === 'ikedamap'){ runIkedaMap(opts); return; }
   var sys = SYS[opts.system]; if(!sys){ self.postMessage({type:'error',msg:'Unknown system: '+opts.system}); return; }
   var p = opts.params, n = sys.n;
 
@@ -823,7 +884,8 @@ var SYS_META = {
   henon:      {compLabels:['x','y','p_x','p_y'], defaultAxes:[1,3], paramInputs:[], paramKeys:[], icInputs:[]},
   doublepend: {compLabels:['θ₁','θ₂','ω₁','ω₂'], defaultAxes:[1,3], paramInputs:['dp-g','dp-L1','dp-L2','dp-m1','dp-m2'], paramKeys:['g','L1','L2','m1','m2'], icInputs:['dp-th1','dp-th2','dp-w1','dp-w2']},
   standardmap:{compLabels:['θ','p'],           defaultAxes:[0,1], paramInputs:['sm-K'], paramKeys:['K'], icInputs:[]},
-  henonmap:   {compLabels:['x','y'],           defaultAxes:[0,1], paramInputs:['hm-a','hm-b'], paramKeys:['a','b'], icInputs:[]}
+  henonmap:   {compLabels:['x','y'],           defaultAxes:[0,1], paramInputs:['hm-a','hm-b'], paramKeys:['a','b'], icInputs:[]},
+  ikedamap:   {compLabels:['x','y'],           defaultAxes:[0,1], paramInputs:['ik-u','ik-c1','ik-c2'], paramKeys:['u','c1','c2'], icInputs:[]}
 };
 
 function readParams(sysName){
@@ -884,6 +946,21 @@ function henonMapICs(count, a, b){
   }
   return ics;
 }
+function ikedaMapICs(count, u){
+  /* Dissipative (u<1): all bounded orbits land on the same attractor —
+     a single seed at the origin suffices. Conservative limit (u≈1):
+     fan a small disk around the origin so each IC traces its own
+     invariant curve / island chain. */
+  if(count <= 1) return [[0, 0]];
+  var R = (Math.abs(u - 1) < 0.05) ? 0.6 : 0.8;
+  var ics = [];
+  for(var i=0;i<count;i++){
+    var phi = i*2.39996323;
+    var r = R * Math.sqrt((i + 0.5) / count);
+    ics.push([r*Math.cos(phi), r*Math.sin(phi)]);
+  }
+  return ics;
+}
 function standardMapICs(count){
   /* Mix of fixed θ values across a vertical line of p, plus a few off-grid
      seeds — gives both nested tori and chaotic-sea coverage. */
@@ -908,7 +985,7 @@ function rebuildAxisOptions(sysName){
     for(var i=0;i<labels.length;i++){
       var o = document.createElement('option'); o.value = 'comp:'+i; o.textContent = labels[i]; sel.appendChild(o);
     }
-    if(sysName !== 'standardmap' && sysName !== 'henonmap'){
+    if(sysName !== 'standardmap' && sysName !== 'henonmap' && sysName !== 'ikedamap'){
       var to = document.createElement('option'); to.value='t'; to.textContent='t'; sel.appendChild(to);
     }
     /* Wrapped-angle option for systems with periodic angles. */
@@ -925,7 +1002,7 @@ function rebuildAxisOptions(sysName){
 }
 
 function showParamsGroup(sysName){
-  ['duffing','pendulum','lorenz','henon','doublepend','standardmap','henonmap'].forEach(function(s){
+  ['duffing','pendulum','lorenz','henon','doublepend','standardmap','henonmap','ikedamap'].forEach(function(s){
     $('params-'+s).classList.toggle('active', s === sysName);
   });
 }
@@ -967,6 +1044,11 @@ function updateSectionUI(){
   if(sysName === 'henonmap'){
     setSectionPanelVisible(false);
     plotTitle.textContent = 'Hénon map iterations';
+    return;
+  }
+  if(sysName === 'ikedamap'){
+    setSectionPanelVisible(false);
+    plotTitle.textContent = 'Ikeda map iterations';
     return;
   }
   setSectionPanelVisible(true);
@@ -1031,6 +1113,10 @@ function updateEqDisplay(){
   } else if(s === 'henonmap'){
     var ha = parseFloat($('hm-a').value), hb = parseFloat($('hm-b').value);
     eq = '\\(x_{n+1}=1-'+ha.toFixed(2)+'\\,x_n^2+y_n,\\quad y_{n+1}='+hb.toFixed(2)+'\\,x_n\\)';
+  } else if(s === 'ikedamap'){
+    var iu = parseFloat($('ik-u').value), ic1 = parseFloat($('ik-c1').value), ic2 = parseFloat($('ik-c2').value);
+    eq = '\\(t_n='+ic1.toFixed(2)+'-\\tfrac{'+ic2.toFixed(1)+'}{1+x_n^2+y_n^2},\\ '
+       + '(x_{n+1},y_{n+1})=(1+'+iu.toFixed(3)+'(x_n\\cos t_n - y_n\\sin t_n),\\,'+iu.toFixed(3)+'(x_n\\sin t_n + y_n\\cos t_n))\\)';
   }
   eqDisplay.innerHTML = eq;
   if(window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([eqDisplay]).catch(function(){});
@@ -1161,6 +1247,33 @@ var PRESETS = {
     xAxisSel.value='comp:0'; yAxisSel.value='comp:1';
     colorSel.value='byIC';
     $('numCrossings').value=80000; $('transient').value=0;
+    updateEqDisplay();
+  },
+  'ik-period4': function(){
+    /* Mid-cascade: stable period-4 orbit, four crisp dots. */
+    systemSel.value='ikedamap'; onSystemChange();
+    $('ik-u').value=0.6; $('ik-c1').value=0.4; $('ik-c2').value=6; $('ik-nIC').value=1;
+    xAxisSel.value='comp:0'; yAxisSel.value='comp:1';
+    colorSel.value='byIC';
+    $('numCrossings').value=4000; $('transient').value=500;
+    updateEqDisplay();
+  },
+  'ik-classical': function(){
+    /* The canonical Ikeda strange attractor — a folded crescent in (x,y). */
+    systemSel.value='ikedamap'; onSystemChange();
+    $('ik-u').value=0.9; $('ik-c1').value=0.4; $('ik-c2').value=6; $('ik-nIC').value=1;
+    xAxisSel.value='comp:0'; yAxisSel.value='comp:1';
+    colorSel.value='density';
+    $('numCrossings').value=80000; $('transient').value=300;
+    updateEqDisplay();
+  },
+  'ik-extended': function(){
+    /* Hammel–Jones–Moloney value: a larger, more-developed chaotic attractor. */
+    systemSel.value='ikedamap'; onSystemChange();
+    $('ik-u').value=0.918; $('ik-c1').value=0.4; $('ik-c2').value=6; $('ik-nIC').value=1;
+    xAxisSel.value='comp:0'; yAxisSel.value='comp:1';
+    colorSel.value='density';
+    $('numCrossings').value=80000; $('transient').value=500;
     updateEqDisplay();
   },
   'doublepend-chaos': function(){
@@ -1426,6 +1539,10 @@ function buildOpts(){
     var n = parseInt($('hm-nIC').value,10)||1;
     var hmA = parseFloat($('hm-a').value), hmB = parseFloat($('hm-b').value);
     icSets = henonMapICs(n, hmA, hmB);
+  } else if(sysName === 'ikedamap'){
+    var n = parseInt($('ik-nIC').value,10)||1;
+    var ikU = parseFloat($('ik-u').value);
+    icSets = ikedaMapICs(n, ikU);
   } else {
     icSets = [rd.y0];
   }
@@ -1496,7 +1613,7 @@ function startRun(){
 
   var opts = buildOpts();
   if(opts.icSets.length === 0){ tpStats.textContent = 'Error: no initial conditions inside the energy shell. Lower E.'; return; }
-  if(systemSel.value !== 'standardmap' && systemSel.value !== 'henonmap' && opts.section.mode === 'strobe' && !(opts.section.period > 0)){
+  if(systemSel.value !== 'standardmap' && systemSel.value !== 'henonmap' && systemSel.value !== 'ikedamap' && opts.section.mode === 'strobe' && !(opts.section.period > 0)){
     tpStats.textContent = 'Error: stroboscopic period must be > 0.'; return;
   }
   ptsNIC = opts.icSets.length;
