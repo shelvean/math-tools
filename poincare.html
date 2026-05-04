@@ -152,24 +152,38 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
     </button>
     <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
       <h2>What is a Poincaré section?</h2>
-      <p>A <strong>Poincaré section</strong> reduces a continuous-time flow to a discrete map by sampling the trajectory whenever it returns to a chosen lower-dimensional surface in phase space. It exposes the topology of attractors that look like a tangled mess in the time series: a <em>limit cycle</em> becomes a single dot, a <em>period-\(k\)</em> orbit becomes \(k\) dots, an invariant <em>torus</em> becomes a closed curve, and a <em>strange attractor</em> shows fractal Cantor-like structure.</p>
-      <h2>Two section modes</h2>
+      <p>A <strong>Poincaré section</strong> reduces a continuous-time flow to a discrete map by sampling the trajectory whenever it returns to a chosen lower-dimensional surface in phase space. It exposes the topology of attractors that look like a tangled mess in the time series: a <em>limit cycle</em> becomes a single dot, a <em>period-\(k\)</em> orbit becomes \(k\) dots, an invariant <em>torus</em> becomes a closed curve, and a <em>strange attractor</em> reveals a fractal Cantor-like cross-section. For Hamiltonian systems with two degrees of freedom, the section is also the cleanest visualisation of <strong>KAM theory</strong>: integrable systems give perfectly nested invariant curves, while chaotic ones break those tori into resonance islands and chaotic seas.</p>
+      <h2>Three section modes</h2>
       <ul>
-        <li><strong>Stroboscopic</strong> (forced systems): sample \((x,\dot x)\) at \(t_k = t_0 + k\,T_f\), where \(T_f = 2\pi/\omega\) is the forcing period. The map is the time-\(T_f\) flow.</li>
-        <li><strong>Hyperplane crossing</strong> (autonomous systems): sample whenever \(g(\mathbf{y}) = y_i - c = 0\) is crossed in a chosen direction (\(\dot y_i &gt; 0\) for upward, \(&lt; 0\) for downward, or both). The crossing time is found by Brent root-finding on a quartic dense-output interpolant of the integrator step.</li>
+        <li><strong>Stroboscopic</strong> (forced systems): sample \((x,\dot x)\) at \(t_k = t_0 + k\,T_f\), where \(T_f = 2\pi/\omega\) is the forcing period. The Poincaré map is the time-\(T_f\) flow.</li>
+        <li><strong>Hyperplane crossing</strong> (autonomous systems): sample whenever \(g(\mathbf{y}) = y_i - c = 0\) is crossed in a chosen direction (\(\dot y_i &gt; 0\) for upward, \(&lt; 0\) for downward, or both). The crossing time is found by Brent root-finding on a quartic dense-output interpolant of the integrator step, giving sub-step accuracy without sub-step integration.</li>
+        <li><strong>Discrete iteration</strong> (already-discrete maps): every iterate is itself a section point — no integration or root-finding required. The Hénon, Ikeda, and Chirikov standard maps fall here.</li>
       </ul>
       <h2>Solver: Tsit5 (Tsitouras 5(4))</h2>
       <p>Adaptive 5th-order explicit Runge&ndash;Kutta with 4th-order embedded error estimator (Tsitouras, 2011). Seven stages with First-Same-As-Last (FSAL): the last derivative of an accepted step is reused as the first of the next, so the effective cost is six function evaluations per accepted step. Step size is controlled by a PI controller on the normalised error \(\|y_{\text{err}}\|/\bigl(\text{atol} + \text{rtol}\,\|y\|\bigr) \le 1\). Tight tolerances (\(\text{rtol} = 10^{-9}\), \(\text{atol} = 10^{-12}\)) keep section points sharp even after \(10^5\) crossings.</p>
       <h2>Why a Web Worker?</h2>
       <p>Computing \(10^5\)&ndash;\(10^6\) section points means integrating tens to hundreds of millions of derivative evaluations. Doing that on the UI thread would freeze the page for many seconds. The integrator runs in a <code>Worker</code> and streams batches of section points back to the main thread for incremental rendering, so you can pan, change axes, or stop the run at any time.</p>
+
       <h2>Example systems</h2>
+      <h3 style="margin-top:.6rem;">Forced 2D oscillators (stroboscopic section)</h3>
       <ul>
-        <li><strong>Duffing</strong>: \(\ddot{x}+\delta\dot x+\alpha x+\beta x^3=\gamma\cos(\omega t)\). Stroboscopic section in \((x,\dot x)\). Use \(\delta=0.3,\alpha=-1,\beta=1,\omega=1.2\) and vary \(\gamma\) for the period-doubling cascade.</li>
-        <li><strong>Driven damped pendulum</strong>: \(\ddot\theta+\delta\dot\theta+\sin\theta=A\cos(\omega t)\). Stroboscopic section in \((\theta\bmod 2\pi,\dot\theta)\). Chaotic for \(A\approx 1.07,\omega=2/3,\delta=0.5\).</li>
-        <li><strong>Lorenz</strong>: \(\dot x=\sigma(y-x),\dot y=x(\rho-z)-y,\dot z=xy-\beta z\). Hyperplane section at \(z=\rho-1\) (the famous &ldquo;cusp&rdquo; map): start from \((1,1,1)\), \(\sigma=10,\rho=28,\beta=8/3\).</li>
-        <li><strong>Swinging Atwood's machine</strong>: \(H=\dfrac{p_r^2}{2(\mu+1)}+\dfrac{p_\theta^2}{2r^2}+r(\mu-\cos\theta)\). A 2-DOF Hamiltonian where mass \(M\) hangs vertically while mass \(m\) swings as a pendulum of length \(r\); \(\mu=M/m\). Integrable at \(\mu=3\) (Tufillaro 1984) — perfectly nested KAM curves — and chaotic for most other \(\mu\). Section: \(\theta=0\) with \(p_\theta&gt;0\); plot \((r, p_r)\).</li>
-        <li><strong>Hénon map</strong>: \(x_{n+1}=1-ax_n^2+y_n,\;y_{n+1}=bx_n\). Discrete 2D map — every iterate is itself a section point. Dissipative for \(|b|&lt;1\) (the classical strange attractor at \(a=1.4,\,b=0.3\) has fractal dimension \(\approx1.26\)); area-preserving for \(|b|=1\), giving a Poincaré-like portrait of nested KAM tori and island chains.</li>
-        <li><strong>Ikeda map</strong>: \(t_n=c_1-\dfrac{c_2}{1+x_n^2+y_n^2},\;(x_{n+1},y_{n+1})=(1+u(x_n\cos t_n-y_n\sin t_n),\,u(x_n\sin t_n+y_n\cos t_n))\). Models a laser pulse circulating in a ring cavity. Dissipative for \(u&lt;1\) — produces the iconic folded-crescent strange attractor at \(u=0.9,\,c_1=0.4,\,c_2=6\).</li>
+        <li><strong>Duffing</strong>: \(\ddot{x}+\delta\dot x+\alpha x+\beta x^3=\gamma\cos(\omega t)\). With \(\delta=0.3,\alpha=-1,\beta=1,\omega=1.2\), increasing \(\gamma\) traces a period-doubling cascade culminating in a strange attractor near \(\gamma=0.5\). The Ueda chaotic case (\(\alpha=0,\gamma=7.5,\omega=1\)) shows the iconic asymmetric folded structure.</li>
+        <li><strong>Driven damped pendulum</strong>: \(\ddot\theta+\delta\dot\theta+\sin\theta=A\cos(\omega t)\). Stroboscopic section in \((\theta\bmod 2\pi,\dot\theta)\). Chaotic for \(A\approx 1.07,\omega=2/3,\delta=0.5\), with the strange attractor wrapping around the cylinder.</li>
+      </ul>
+
+      <h3 style="margin-top:.6rem;">Autonomous flows (hyperplane section)</h3>
+      <ul>
+        <li><strong>Lorenz</strong>: \(\dot x=\sigma(y-x),\dot y=x(\rho-z)-y,\dot z=xy-\beta z\). Hyperplane section at \(z=\rho-1\) (the famous &ldquo;cusp&rdquo; map): start from \((1,1,1)\), \(\sigma=10,\rho=28,\beta=8/3\). The 1D return map shows the unimodal "tent" structure that produces sensitive dependence on initial conditions.</li>
+        <li><strong>Hénon–Heiles</strong>: \(H=\dfrac{1}{2}(p_x^2+p_y^2)+\dfrac{1}{2}(x^2+y^2)+x^2y-\dfrac{1}{3}y^3\). A 2-DOF Hamiltonian originally proposed (1964) as a model of stellar motion in a galactic potential. Bounded motion exists only for \(E\le1/6\); the section at \(x=0,p_x&gt;0\) shows nested tori at low energy (\(E=1/12\)), mixed phase space at \(E=1/8\), and global chaos at \(E=1/6\).</li>
+        <li><strong>Double pendulum</strong> (equal mass and length): a textbook example of conservative chaos. Section forced to \(\theta_1=0,\dot\theta_1&gt;0\); plot \((\theta_2,\dot\theta_2)\). At high energy the section fills ergodically — KAM tori survive only for small swings.</li>
+        <li><strong>Swinging Atwood's machine</strong>: \(H=\dfrac{p_r^2}{2(\mu+1)}+\dfrac{p_\theta^2}{2r^2}+r(\mu-\cos\theta)\). Mass \(M\) hangs vertically while mass \(m\) swings as a pendulum of length \(r\); \(\mu=M/m\). <strong>Tufillaro (1984)</strong> proved the system is integrable at \(\mu=3\) — the Poincaré portrait is then perfectly nested KAM curves with no visible chaos. For other \(\mu\) the phase space is mixed or chaotic.</li>
+      </ul>
+
+      <h3 style="margin-top:.6rem;">Discrete maps (every iterate is a section point)</h3>
+      <ul>
+        <li><strong>Chirikov standard map</strong>: \(\theta_{n+1}=\theta_n+p_{n+1},\;p_{n+1}=p_n+K\sin\theta_n\) on the torus \([-\pi,\pi)^2\). Area-preserving for all \(K\). The golden-mean torus breaks at \(K\approx0.9716\) — Greene's residue criterion. \(K=1.5\) shows the canonical mixed phase space; \(K=5\) is fully ergodic.</li>
+        <li><strong>Hénon map</strong>: \(x_{n+1}=1-ax_n^2+y_n,\;y_{n+1}=bx_n\). Dissipative for \(|b|&lt;1\) — the classical strange attractor at \((a,b)=(1.4,0.3)\) has fractal dimension \(\approx1.26\) and Lyapunov exponent \(\lambda\approx0.42\). Area-preserving at \(|b|=1\), giving nested KAM tori with island chains.</li>
+        <li><strong>Ikeda map</strong>: \(t_n=c_1-\dfrac{c_2}{1+x_n^2+y_n^2},\;(x_{n+1},y_{n+1})=(1+u(x_n\cos t_n-y_n\sin t_n),\,u(x_n\sin t_n+y_n\cos t_n))\). Originally derived for a laser pulse circulating in a ring cavity (Ikeda 1979). Produces the iconic folded-crescent strange attractor at \(u=0.9,c_1=0.4,c_2=6\); \(|\det J|=u^2\), so it is dissipative for \(u&lt;1\) and area-preserving at \(u=1\).</li>
       </ul>
     </div>
   </div>
