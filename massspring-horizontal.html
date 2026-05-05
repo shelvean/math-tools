@@ -816,10 +816,14 @@ function updatePhysics() {
     x[i]  = newX[i];
   }
   t += dt;
+  /* Alert when a mass would visually overlap its neighbour. The available
+     spring-rest space per mass shrinks as numMasses grows, so the safe
+     amplitude does too — derive it from the geometry. */
+  const maxDisp = Math.max(1.0, (springRestLength - BALL_RADIUS) / DISP_SCALE);
   for (let i = 0; i < numMasses; i++) {
-    if (Math.abs(x[i]) > 4) {
+    if (Math.abs(x[i]) > maxDisp) {
       isRunning = false;
-      showAlert('Displacement has exceeded the maximum. Add damping');
+      showAlert('Displacement exceeded the visible window — try adding damping or reducing the forcing amplitude.');
       announce('Simulation stopped: displacement exceeded maximum.');
       return;
     }
@@ -1080,30 +1084,36 @@ function togglePause() {
 }
 
 /* ── Examples ──
-   m and k may be a scalar (broadcast to all masses/springs) or an array.
-   For arrays: m has length n; k has length n+1 (springs include both walls). */
+   m and k may be scalar (broadcast) or arrays (m length n, k length n+1).
+   T is an optional end-time override that bounds the viewing window — the
+   undamped resonance and forced cases use it so growth stays inside the
+   visible canvas. F may be a string (applied to ex.target) or per-mass array. */
 const EXAMPLES = {
-  shm1:          { n:1, m:4, k:16, c:0,   x:[1,0,0,0],  F:'0',               target:0 },
-  underdamped1:  { n:1, m:4, k:16, c:2,   x:[1,0,0,0],  F:'0',               target:0 },
-  res1_undamped: { n:1, m:4, k:16, c:0,   x:[0,0,0,0],  F:'cos(2.828*t)',     target:0 },
-  impulse1:      { n:1, m:4, k:16, c:0.5, x:[0,0,0,0],  F:'5*delta(t-3)',     target:0 },
+  shm1:          { n:1, m:4, k:16, c:0,   x:[1,0,0,0],  F:'0',                 target:0 },
+  underdamped1:  { n:1, m:4, k:16, c:2,   x:[1,0,0,0],  F:'0',                 target:0 },
+  res1_undamped: { n:1, m:4, k:16, c:0,   x:[0,0,0,0],  F:'cos(2.828*t)',      target:0, T:25 },
+  impulse1:      { n:1, m:4, k:16, c:0.5, x:[0,0,0,0],  F:'5*delta(t-3)',      target:0 },
   delayed1:      { n:1, m:4, k:16, c:0.5, x:[0,0,0,0],  F:'2*cos(2*t)*u(t-10)', target:0 },
-  res2:          { n:2, m:4, k:16, c:0,   x:[0,0,0,0],  F:'cos(2*t)',         target:0 },
-  inphase2:      { n:2, m:4, k:16, c:0,   x:[1,1,0,0],  F:'0',               target:0 },
-  outphase2:     { n:2, m:4, k:16, c:0,   x:[1,-1,0,0], F:'0',               target:0 },
-  beats2:        { n:2, m:4, k:16, c:0,   x:[1,0,0,0],  F:'0',               target:0 },
-  impulse2:      { n:2, m:4, k:16, c:0,   x:[0,0,0,0],  F:'10*delta(t-2)',    target:0 },
-  damped_res2:   { n:2, m:4, k:16, c:1,   x:[0,0,0,0],  F:'2*cos(2*t)',       target:0 },
+  res2:          { n:2, m:4, k:16, c:0,   x:[0,0,0,0],  F:'0.6*cos(2*t)',      target:0, T:35 },
+  inphase2:      { n:2, m:4, k:16, c:0,   x:[1,1,0,0],  F:'0',                 target:0 },
+  outphase2:     { n:2, m:4, k:16, c:0,   x:[1,-1,0,0], F:'0',                 target:0 },
+  beats2:        { n:2, m:4, k:16, c:0,   x:[1,0,0,0],  F:'0',                 target:0 },
+  impulse2:      { n:2, m:4, k:16, c:0,   x:[0,0,0,0],  F:'10*delta(t-2)',     target:0 },
+  damped_res2:   { n:2, m:4, k:16, c:1,   x:[0,0,0,0],  F:'2*cos(2*t)',        target:0, T:60 },
   /* Non-uniform: heavy middle mass — the slow mode is dominated by m_2. */
   heavy_mid3:    { n:3, m:[1,4,1],   k:8,            c:0,   x:[1,0,-1,0], F:'0', target:0 },
   /* Non-uniform: stiff middle spring couples m_2,m_3 tightly. */
   stiff_mid4:    { n:4, m:1,         k:[4,4,40,4,4], c:0,   x:[1,0,0,-1], F:'0', target:0 },
-  antisym3:      { n:3, m:4, k:16, c:0,   x:[1,0,-1,0], F:'0',               target:0 },
-  wave3:         { n:3, m:4, k:16, c:0,   x:[0,0,0,0],  F:'10*delta(t-2)',    target:0 },
-  forced3:       { n:3, m:4, k:16, c:0.5, x:[0,0,0,0],  F:'3*cos(2*t)',       target:0 },
-  wave4:         { n:4, m:4, k:16, c:0,   x:[0,0,0,0],  F:'10*delta(t-2)',    target:0 },
-  alt4:          { n:4, m:4, k:16, c:0,   x:[1,-1,1,-1],F:'0',               target:0 },
-  forced4:       { n:4, m:4, k:16, c:0,   x:[0,0,0,0],  F:'3*cos(2*t)',       target:0 }
+  antisym3:      { n:3, m:4, k:16, c:0,   x:[1,0,-1,0], F:'0',                 target:0 },
+  /* Smaller impulse: vx_1 = 6/4 = 1.5 m/s keeps the wave under the n=3 limit. */
+  wave3:         { n:3, m:4, k:16, c:0,   x:[0,0,0,0],  F:'6*delta(t-2)',      target:0, T:50 },
+  forced3:       { n:3, m:4, k:16, c:0.5, x:[0,0,0,0],  F:'3*cos(2*t)',        target:0 },
+  /* n=4 has the tightest visible space (~1.9 m). Reduce impulse and add a
+     touch of damping so the wave packet decays before reflecting forever. */
+  wave4:         { n:4, m:4, k:16, c:0.1, x:[0,0,0,0],  F:'5*delta(t-2)',      target:0, T:60 },
+  alt4:          { n:4, m:4, k:16, c:0,   x:[1,-1,1,-1],F:'0',                 target:0 },
+  /* Small forcing + light damping → bounded steady state inside n=4 limit. */
+  forced4:       { n:4, m:4, k:16, c:0.3, x:[0,0,0,0],  F:'1.2*cos(2*t)',      target:0, T:60 }
 };
 
 function loadExample() {
@@ -1130,6 +1140,9 @@ function loadExample() {
   document.getElementById('k4').value = kVals[3];          document.getElementById('k4Slider').value   = kVals[3];
   document.getElementById('k5').value = kVals[4];          document.getElementById('k5Slider').value   = kVals[4];
   document.getElementById('damping').value = ex.c;         document.getElementById('dampingSlider').value = ex.c;
+  var T_val = (typeof ex.T === 'number') ? ex.T : 85;
+  document.getElementById('endTime').value = T_val;
+  document.getElementById('endTimeSlider').value = T_val;
   document.getElementById('x1Init').value = ex.x[0];      document.getElementById('x1InitSlider').value = ex.x[0];
   document.getElementById('x2Init').value = ex.x[1];      document.getElementById('x2InitSlider').value = ex.x[1];
   document.getElementById('x3Init').value = ex.x[2];      document.getElementById('x3InitSlider').value = ex.x[2];
