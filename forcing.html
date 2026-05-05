@@ -162,7 +162,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 
 /* Canvas */
 #simulationCanvas{display:block;width:100%;height:auto;background:#fff;}
-#graphCanvas{display:block;width:100%;height:auto;background:#f9fafb;}
+#graphCanvas{display:block;width:100%;height:auto;background:#f9fafb;cursor:crosshair;}
 
 /* Footer */
 .footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);padding-top:1rem;
@@ -443,6 +443,7 @@ var y=0, v=0, t=0;
 var dt=0.01;
 var isRunning=true, isPaused=false;
 var graphData=[];
+var clickedPoint=null;
 var graphMaxTime=60;
 var STIFF_THRESH=5;
 var firstStep=true, prevState=null, currentState=null;
@@ -796,7 +797,42 @@ function drawGraph(){
     graphCtx.beginPath();graphCtx.moveTo(xp,graphCanvas.height-20);graphCtx.lineTo(xp,graphCanvas.height-12);graphCtx.stroke();
     graphCtx.fillText(tv.toFixed(1),xp,graphCanvas.height-10);
   }
+  if(clickedPoint){
+    var mgx=50+(clickedPoint.t/graphMaxTime)*(graphCanvas.width-70);
+    var mgy=graphCanvas.height-40-(clickedPoint.y-minY)*scaleY;
+    graphCtx.beginPath();graphCtx.arc(mgx,mgy,4,0,Math.PI*2);
+    graphCtx.fillStyle='#dc2626';graphCtx.fill();
+    graphCtx.strokeStyle='#fff';graphCtx.lineWidth=2;graphCtx.stroke();
+    var lbl='t='+clickedPoint.t.toFixed(2)+', y='+clickedPoint.y.toFixed(3);
+    graphCtx.font='11px -apple-system,Arial,sans-serif';
+    var tw=graphCtx.measureText(lbl).width+10, th=18;
+    var tx=mgx+8, ty=mgy-th-8;
+    if(tx+tw>graphCanvas.width-4)tx=mgx-tw-8;
+    if(tx<4)tx=4;
+    if(ty<4)ty=mgy+8;
+    graphCtx.fillStyle='rgba(17,24,39,0.92)';graphCtx.fillRect(tx,ty,tw,th);
+    graphCtx.fillStyle='#fff';graphCtx.textAlign='left';graphCtx.textBaseline='middle';
+    graphCtx.fillText(lbl,tx+5,ty+th/2);
+  }
 }
+
+graphCanvas.addEventListener('click',function(e){
+  var rect=graphCanvas.getBoundingClientRect();
+  var sx=graphCanvas.width/rect.width, sy=graphCanvas.height/rect.height;
+  var cx=(e.clientX-rect.left)*sx, cy=(e.clientY-rect.top)*sy;
+  if(!graphData.length||cx<50||cx>graphCanvas.width-20||cy<20||cy>graphCanvas.height-20){
+    if(clickedPoint){clickedPoint=null;drawGraph();}
+    return;
+  }
+  var tClick=(cx-50)/(graphCanvas.width-70)*graphMaxTime;
+  var nearest=graphData[0], bestD=Math.abs(graphData[0].t-tClick);
+  for(var i=1;i<graphData.length;i++){
+    var d=Math.abs(graphData[i].t-tClick);
+    if(d<bestD){bestD=d;nearest=graphData[i];}
+  }
+  clickedPoint=nearest;
+  drawGraph();
+});
 
 /* ── Alert ── */
 function showAlert(msg){
@@ -829,6 +865,7 @@ function readParams(){
 function resetSimulation(){
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});
+  clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;
   prevState=[y,v];currentState=[y,v];
   document.getElementById('pauseButton').textContent='Pause';
