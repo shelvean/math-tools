@@ -15,7 +15,7 @@
     gtag('js',new Date()); gtag('config','G-LEQE004C92');
   </script>
 
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 
   <script>
     window.MathJax={
@@ -289,6 +289,52 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
   .abtn,.pcard{transition:none;}
 }
 
+/* -- d3 plot ---------------------------- */
+.pplot{padding:0;background:#fafafa;}
+.pplot svg{display:block;width:100%;height:100%;}
+.pplot .axis path.domain{stroke:#6b7280;stroke-width:1;}
+.pplot .axis .tick line{stroke:#e5e7eb;stroke-width:1;}
+.pplot .axis .tick text{fill:#374151;font-size:11px;}
+.pplot .zero{stroke:#6b7280;stroke-width:1.6;}
+.pplot .curve{fill:none;}
+.pplot .curve.parent{stroke-width:2.2;stroke-dasharray:6 5;}
+.pplot .curve.trans{stroke-width:3;stroke-linecap:round;stroke-linejoin:round;}
+.pplot .axlbl{fill:#374151;font-size:13px;font-weight:600;font-style:italic;}
+.pplot .inv-line{stroke:rgba(15,118,110,.55);stroke-width:1.2;stroke-dasharray:2 4;}
+.pplot .zoom-pad{cursor:grab;}
+.pplot .zoom-pad:active{cursor:grabbing;}
+.hc .pplot .axis path.domain,.hc .pplot .zero{stroke:#000;}
+.hc .pplot .axis .tick text{fill:#000;}
+.hc .pplot .axlbl{fill:#000;}
+
+/* -- view bar --------------------------- */
+.vbar{
+  display:flex;flex-wrap:wrap;align-items:flex-end;gap:.55rem;
+  padding:.55rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);
+  margin-bottom:.75rem;
+}
+.vbar .vlbl{font-size:.8125rem;font-weight:700;color:var(--muted);
+  align-self:center;margin-right:.25rem;white-space:nowrap;}
+.vfield{display:flex;flex-direction:column;gap:.18rem;min-width:74px;flex:0 1 90px;}
+.vfield label{font-size:.78rem;font-weight:700;color:var(--muted);}
+.vfield input{
+  width:100%;min-height:34px;padding:.18rem .3rem;
+  font-size:.875rem;font-weight:600;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);text-align:center;
+}
+.vfield input:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.vbtn{
+  min-height:34px;padding:.3rem .7rem;
+  border:2px solid var(--bdr2);background:var(--card);color:var(--txt);
+  border-radius:.4rem;font-weight:700;cursor:pointer;
+  font-size:.95rem;line-height:1;
+}
+.vbtn:hover,.vbtn:focus-visible{border-color:var(--blue);color:var(--blue);}
+.vbtn-reset{background:var(--muted);color:#fff;border-color:var(--muted);font-size:.85rem;}
+.vbtn-reset:hover,.vbtn-reset:focus-visible{background:#374151;border-color:#374151;color:#fff;}
+
 /* ===== Back link ===== */
 .back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
   color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
@@ -473,6 +519,31 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <input type="range" id="progSld" min="0" max="1" step="0.01" value="1"
            aria-label="Transformation progress, 0 means parent function, 1 means full transformation">
     <span class="pct" id="progPct">100%</span>
+  </div>
+
+  <!-- View / range controls -->
+  <div class="vbar" role="group" aria-label="Plot view and zoom controls">
+    <span class="vlbl">View:</span>
+    <div class="vfield">
+      <label for="xMin">x min</label>
+      <input type="number" id="xMin" step="0.5" value="-5" aria-label="x minimum">
+    </div>
+    <div class="vfield">
+      <label for="xMax">x max</label>
+      <input type="number" id="xMax" step="0.5" value="5" aria-label="x maximum">
+    </div>
+    <div class="vfield">
+      <label for="yMin">y min</label>
+      <input type="number" id="yMin" step="0.5" value="-5" aria-label="y minimum">
+    </div>
+    <div class="vfield">
+      <label for="yMax">y max</label>
+      <input type="number" id="yMax" step="0.5" value="5" aria-label="y maximum">
+    </div>
+    <button type="button" class="vbtn" id="btnZoomIn"  aria-label="Zoom in">&plus;</button>
+    <button type="button" class="vbtn" id="btnZoomOut" aria-label="Zoom out">&minus;</button>
+    <button type="button" class="vbtn vbtn-reset" id="btnViewReset"
+            aria-label="Reset view to default for this parent">Reset view</button>
   </div>
 
   <!-- Plot -->
@@ -864,6 +935,8 @@ function selectParent(id){
   }
   ic.disabled=!allowInv;
   document.getElementById('invBox').style.opacity=allowInv?'1':'.5';
+  /* reset plot view to this parent's natural window */
+  setView(defaultViewForParent(id), false);
   say('Parent function: '+PARENTS[id].name);
   redraw();
 }
@@ -1016,145 +1089,253 @@ function gEval(x,parent,P){
   return P.a*y+P.k;
 }
 
-/* For inverse mode, we render the curve as parametric (y, f(y))
-   blended with normal (x,f(x)) by P.invFrac. */
-function buildCurves(){
-  var p=PARENTS[ST.parent];
-  var P=curParams();
-
-  /* x-domain — base on natural range expanded to fit shifts and scales */
-  var xMin=p.natRange[0]-2, xMax=p.natRange[1]+2;
-  /* expand to include shifted/scaled domain */
-  if(ST.h<0)xMin=Math.min(xMin,p.natRange[0]+ST.h-1);
-  if(ST.h>0)xMax=Math.max(xMax,p.natRange[1]+ST.h+1);
-  /* For domain-restricted parents, also include negative x for y-axis reflections */
-  if((ST.ry===1||ST.b<0)&&isFinite(p.domain[0])){
-    xMin=Math.min(xMin,-p.natRange[1]-2);
-  }
-  /* widen window slightly for nicer framing */
-  var span=Math.max(xMax-xMin,4);
-  var center=(xMax+xMin)/2;
-  xMin=center-span/2; xMax=center+span/2;
-  if(xMax-xMin<6){var c=(xMin+xMax)/2;xMin=c-3;xMax=c+3;}
-
-  var N=600;
-  var xs=linspace(xMin,xMax,N);
-
-  /* parent ghost (untransformed) */
-  var ghostX=xs.slice();
-  var ghostY=xs.map(function(x){var y=p.f(x);return (y==null||!isFinite(y))?null:y;});
-
-  /* transformed g(x) — handled in two regimes:
-     normal:  point (x, g(x))
-     inverse: at full inverse, point (g(x), x) i.e. swap
-     Blend swap fraction with invFrac
-  */
-  var alpha=P.invFrac; /* 0 normal, 1 fully inverse */
-  var gX=new Array(N), gY=new Array(N);
-  for(var i=0;i<N;i++){
-    var x=xs[i];
-    var y=gEval(x,ST.parent,P);
-    if(y==null){gX[i]=null;gY[i]=null;continue;}
-    /* For inverse blend, treat (x,y) and (y,x) endpoints */
-    gX[i]=(1-alpha)*x+alpha*y;
-    gY[i]=(1-alpha)*y+alpha*x;
-  }
-
-  return {
-    xs:xs, ghostX:ghostX, ghostY:ghostY,
-    gX:gX, gY:gY,
-    xMin:xMin, xMax:xMax, parentName:p.name
-  };
-}
-
 /* ---------------------------------------------------
-   Plot — Plotly
+   Plot — D3
 --------------------------------------------------- */
-var CFG={responsive:true,displaylogo:false,displayModeBar:false};
-function lay(){
-  return {
-    margin:{t:14,r:18,b:48,l:54},
-    plot_bgcolor:'#fafafa', paper_bgcolor:'rgba(0,0,0,0)',
-    font:{family:'-apple-system,BlinkMacSystemFont,Arial,sans-serif',size:12,color:'#374151'},
-    xaxis:{title:{text:'x',font:{size:13}},
-      gridcolor:'#e5e7eb',zerolinecolor:'#6b7280',zerolinewidth:1.6,
-      automargin:true,scaleanchor:'y',scaleratio:1,
-      showspikes:true,spikethickness:1,spikedash:'dot',spikecolor:'#9ca3af',spikemode:'across'},
-    yaxis:{title:{text:'y',font:{size:13}},
-      gridcolor:'#e5e7eb',zerolinecolor:'#6b7280',zerolinewidth:1.6,
-      automargin:true,
-      showspikes:true,spikethickness:1,spikedash:'dot',spikecolor:'#9ca3af',spikemode:'across'},
-    showlegend:false,autosize:true,
-    hovermode:'closest'
-  };
-}
+var DEFAULT_VIEW={xMin:-5, xMax:5, yMin:-5, yMax:5};
+var VIEW={xMin:-5, xMax:5, yMin:-5, yMax:5};
+
+var D3PLOT={
+  svg:null, g:null, gXAxis:null, gYAxis:null,
+  gZeroX:null, gZeroY:null, gParent:null, gTrans:null, gInv:null,
+  zoomPad:null,
+  xScale:null, yScale:null,
+  W:0, H:0, plotW:0, plotH:0,
+  margin:{top:14, right:18, bottom:50, left:58},
+  zoom:null
+};
 
 function colorOf(varName){
   var s=getComputedStyle(document.documentElement);
   return s.getPropertyValue(varName).trim()||'#1d4ed8';
 }
 
-function clipForPlot(arr){
-  /* Clip y-values that escape window so we don't get huge spikes */
-  return arr.map(function(v){return v==null||!isFinite(v)?null:v;});
+function defaultViewForParent(id){
+  var p=PARENTS[id];
+  if(!p||!p.natRange||!p.natY) return {xMin:-5,xMax:5,yMin:-5,yMax:5};
+  return {xMin:p.natRange[0], xMax:p.natRange[1],
+          yMin:p.natY[0],     yMax:p.natY[1]};
 }
 
-function rangeAuto(curves){
-  /* Compute symmetric-ish y range using transformed curve values */
-  var ys=[];
-  curves.gY.forEach(function(v){if(v!=null&&isFinite(v))ys.push(v);});
-  if(ST.showGhost)curves.ghostY.forEach(function(v){if(v!=null&&isFinite(v))ys.push(v);});
-  if(!ys.length)return {x:[curves.xMin,curves.xMax],y:[-5,5]};
-  ys.sort(function(a,b){return a-b;});
-  var lo=ys[Math.floor(ys.length*0.02)], hi=ys[Math.floor(ys.length*0.98)];
-  if(!isFinite(lo)||!isFinite(hi)){lo=-5;hi=5;}
-  if(lo===hi){lo-=1;hi+=1;}
-  var pad=(hi-lo)*0.18;
-  /* Widen to also include shifted parent range for context */
-  var p=PARENTS[ST.parent];
-  if(p.natY){lo=Math.min(lo,p.natY[0]); hi=Math.max(hi,p.natY[1]);}
-  return {x:[curves.xMin,curves.xMax],y:[lo-pad,hi+pad]};
+function syncViewInputs(){
+  function fx(v){return (Math.round(v*100)/100).toString();}
+  document.getElementById('xMin').value=fx(VIEW.xMin);
+  document.getElementById('xMax').value=fx(VIEW.xMax);
+  document.getElementById('yMin').value=fx(VIEW.yMin);
+  document.getElementById('yMax').value=fx(VIEW.yMax);
+}
+
+function setView(v, redraw){
+  VIEW.xMin=+v.xMin; VIEW.xMax=+v.xMax;
+  VIEW.yMin=+v.yMin; VIEW.yMax=+v.yMax;
+  if(!isFinite(VIEW.xMin)||!isFinite(VIEW.xMax)||VIEW.xMax<=VIEW.xMin){
+    VIEW.xMin=-5; VIEW.xMax=5;
+  }
+  if(!isFinite(VIEW.yMin)||!isFinite(VIEW.yMax)||VIEW.yMax<=VIEW.yMin){
+    VIEW.yMin=-5; VIEW.yMax=5;
+  }
+  syncViewInputs();
+  if(redraw!==false) drawPlot();
+}
+
+function plotInit(){
+  var P=D3PLOT;
+  var container=document.getElementById('plotMain');
+  d3.select(container).selectAll('*').remove();
+
+  var box=container.getBoundingClientRect();
+  P.W=Math.max(320, Math.round(box.width||800));
+  P.H=Math.max(260, Math.round(box.height||420));
+  P.plotW=P.W - P.margin.left - P.margin.right;
+  P.plotH=P.H - P.margin.top - P.margin.bottom;
+
+  P.svg=d3.select(container).append('svg')
+    .attr('width','100%').attr('height','100%')
+    .attr('viewBox','0 0 '+P.W+' '+P.H)
+    .attr('preserveAspectRatio','xMidYMid meet')
+    .attr('role','img')
+    .attr('aria-label','Graph showing dashed parent function and animated transformed function');
+
+  P.svg.append('defs').append('clipPath').attr('id','pclip')
+    .append('rect').attr('width',P.plotW).attr('height',P.plotH);
+
+  P.g=P.svg.append('g')
+    .attr('transform','translate('+P.margin.left+','+P.margin.top+')');
+
+  P.gXAxis=P.g.append('g').attr('class','axis x-axis')
+    .attr('transform','translate(0,'+P.plotH+')');
+  P.gYAxis=P.g.append('g').attr('class','axis y-axis');
+  P.gZeroX=P.g.append('line').attr('class','zero zero-x');
+  P.gZeroY=P.g.append('line').attr('class','zero zero-y');
+
+  var gClip=P.g.append('g').attr('clip-path','url(#pclip)');
+  P.gInv   =gClip.append('line').attr('class','inv-line').style('display','none');
+  P.gParent=gClip.append('path').attr('class','curve parent');
+  P.gTrans =gClip.append('path').attr('class','curve trans');
+
+  /* axis labels */
+  P.svg.append('text').attr('class','axlbl x-lbl')
+    .attr('x', P.margin.left + P.plotW/2)
+    .attr('y', P.H - 12)
+    .attr('text-anchor','middle')
+    .text('x');
+  P.svg.append('text').attr('class','axlbl y-lbl')
+    .attr('transform','translate(16,'+(P.margin.top + P.plotH/2)+') rotate(-90)')
+    .attr('text-anchor','middle')
+    .text('y');
+
+  P.xScale=d3.scaleLinear().range([0, P.plotW]);
+  P.yScale=d3.scaleLinear().range([P.plotH, 0]);
+
+  /* zoom overlay (mouse wheel + drag pan) */
+  P.zoomPad=P.g.append('rect').attr('class','zoom-pad')
+    .attr('width',P.plotW).attr('height',P.plotH)
+    .attr('fill','none').attr('pointer-events','all');
+
+  P.zoom=d3.zoom().scaleExtent([0.02, 500]).on('zoom', function(ev){
+    var t=ev.transform;
+    var bx=d3.scaleLinear().domain([VIEW.xMin,VIEW.xMax]).range([0,P.plotW]);
+    var by=d3.scaleLinear().domain([VIEW.yMin,VIEW.yMax]).range([P.plotH,0]);
+    var nx=t.rescaleX(bx), ny=t.rescaleY(by);
+    var dx=nx.domain(), dy=ny.domain();
+    VIEW.xMin=dx[0]; VIEW.xMax=dx[1];
+    VIEW.yMin=dy[0]; VIEW.yMax=dy[1];
+    syncViewInputs();
+    P.zoomPad.call(P.zoom.transform, d3.zoomIdentity); /* avoid compounding */
+    drawPlot();
+  });
+  P.zoomPad.call(P.zoom);
+}
+
+function makeLine(xs, ys){
+  var P=D3PLOT;
+  var data=[];
+  for(var i=0;i<xs.length;i++) data.push([xs[i], ys[i]]);
+  /* break the path across asymptotes / out-of-view spikes */
+  var ySpan=VIEW.yMax-VIEW.yMin;
+  var yLo=VIEW.yMin - ySpan*8, yHi=VIEW.yMax + ySpan*8;
+  return d3.line()
+    .defined(function(d){
+      if(d[0]==null||d[1]==null||!isFinite(d[1])) return false;
+      return d[1]>=yLo && d[1]<=yHi;
+    })
+    .x(function(d){return P.xScale(d[0]);})
+    .y(function(d){return P.yScale(d[1]);})
+    .curve(d3.curveMonotoneX)
+    (data);
 }
 
 function drawPlot(){
-  var curves=buildCurves();
-  var R=rangeAuto(curves);
-  var L=lay();
-  L.xaxis.range=R.x; L.yaxis.range=R.y;
+  if(!D3PLOT.svg) plotInit();
+  var P=D3PLOT;
+  var p=PARENTS[ST.parent];
+  var prm=curParams();
 
-  /* Optional axis-helper for inverse: draw y=x line when inv on */
-  L.shapes=[];
+  /* sample x over the visible window plus a small padding */
+  var span=VIEW.xMax-VIEW.xMin;
+  var xLo=VIEW.xMin - span*0.05, xHi=VIEW.xMax + span*0.05;
+  var N=720;
+  var xs=linspace(xLo, xHi, N);
+
+  /* parent ghost */
+  var ghostY=xs.map(function(x){var y=p.f(x);return (y==null||!isFinite(y))?null:y;});
+
+  /* transformed g(x) blended with inverse swap by invFrac */
+  var alpha=prm.invFrac;
+  var gX=new Array(N), gY=new Array(N);
+  for(var i=0;i<N;i++){
+    var x=xs[i];
+    var y=gEval(x,ST.parent,prm);
+    if(y==null){gX[i]=null;gY[i]=null;continue;}
+    gX[i]=(1-alpha)*x+alpha*y;
+    gY[i]=(1-alpha)*y+alpha*x;
+  }
+
+  /* update scales */
+  P.xScale.domain([VIEW.xMin, VIEW.xMax]);
+  P.yScale.domain([VIEW.yMin, VIEW.yMax]);
+
+  /* axes + grid (negative tickSize draws grid) */
+  P.gXAxis.call(d3.axisBottom(P.xScale).ticks(8)
+    .tickSizeInner(-P.plotH).tickPadding(8));
+  P.gYAxis.call(d3.axisLeft(P.yScale).ticks(8)
+    .tickSizeInner(-P.plotW).tickPadding(8));
+
+  /* zero lines */
+  if(VIEW.yMin<=0 && VIEW.yMax>=0){
+    P.gZeroX.style('display',null)
+      .attr('x1',0).attr('x2',P.plotW)
+      .attr('y1',P.yScale(0)).attr('y2',P.yScale(0));
+  } else P.gZeroX.style('display','none');
+  if(VIEW.xMin<=0 && VIEW.xMax>=0){
+    P.gZeroY.style('display',null)
+      .attr('y1',0).attr('y2',P.plotH)
+      .attr('x1',P.xScale(0)).attr('x2',P.xScale(0));
+  } else P.gZeroY.style('display','none');
+
+  /* y = x reference line for inverse mode */
   if(ST.inv===1){
-    var lo=Math.min(R.x[0],R.y[0]), hi=Math.max(R.x[1],R.y[1]);
-    L.shapes.push({type:'line',x0:lo,x1:hi,y0:lo,y1:hi,
-      line:{color:'rgba(15,118,110,.45)',width:1.2,dash:'dot'}});
-  }
+    var lo=Math.min(VIEW.xMin, VIEW.yMin), hi=Math.max(VIEW.xMax, VIEW.yMax);
+    P.gInv.style('display',null)
+      .attr('x1',P.xScale(lo)).attr('y1',P.yScale(lo))
+      .attr('x2',P.xScale(hi)).attr('y2',P.yScale(hi));
+  } else P.gInv.style('display','none');
 
-  var cParent=colorOf('--cparent');
-  var cTrans =colorOf('--ctrans');
-
-  var traces=[];
+  /* parent ghost */
   if(ST.showGhost){
-    traces.push({
-      x:curves.ghostX, y:clipForPlot(curves.ghostY),
-      type:'scatter', mode:'lines',
-      name:'parent f(x)',
-      line:{color:cParent,width:2.2,dash:'dash'},
-      connectgaps:false,
-      hovertemplate:'parent: x=%{x:.3f}<br>f=%{y:.4f}<extra></extra>'
-    });
-  }
-  traces.push({
-    x:curves.gX, y:clipForPlot(curves.gY),
-    type:'scatter', mode:'lines',
-    name:'transformed g(x)',
-    line:{color:cTrans,width:3,shape:'spline',smoothing:0.6},
-    connectgaps:false,
-    hovertemplate:'g: x=%{x:.3f}<br>g=%{y:.4f}<extra></extra>'
-  });
+    P.gParent.style('display',null)
+      .attr('stroke',colorOf('--cparent'))
+      .attr('d', makeLine(xs, ghostY));
+  } else P.gParent.style('display','none');
 
-  Plotly.react('plotMain',traces,L,CFG);
+  /* transformed */
+  P.gTrans.attr('stroke',colorOf('--ctrans'))
+          .attr('d', makeLine(gX, gY));
 }
+
+/* ---------------------------------------------------
+   View / range controls
+--------------------------------------------------- */
+function bindView(id, key){
+  var el=document.getElementById(id);
+  function s(){
+    var v=parseFloat(el.value);
+    if(!isFinite(v))return;
+    VIEW[key]=v;
+    if(VIEW.xMax<=VIEW.xMin){VIEW.xMax=VIEW.xMin+1;}
+    if(VIEW.yMax<=VIEW.yMin){VIEW.yMax=VIEW.yMin+1;}
+    syncViewInputs();
+    drawPlot();
+  }
+  el.addEventListener('change', s);
+  el.addEventListener('keydown', function(e){if(e.key==='Enter'){e.preventDefault();s();}});
+}
+bindView('xMin','xMin'); bindView('xMax','xMax');
+bindView('yMin','yMin'); bindView('yMax','yMax');
+
+document.getElementById('btnZoomIn').addEventListener('click', function(){
+  var cx=(VIEW.xMin+VIEW.xMax)/2, cy=(VIEW.yMin+VIEW.yMax)/2;
+  var hx=(VIEW.xMax-VIEW.xMin)/2, hy=(VIEW.yMax-VIEW.yMin)/2;
+  setView({xMin:cx-hx*0.7, xMax:cx+hx*0.7, yMin:cy-hy*0.7, yMax:cy+hy*0.7});
+});
+document.getElementById('btnZoomOut').addEventListener('click', function(){
+  var cx=(VIEW.xMin+VIEW.xMax)/2, cy=(VIEW.yMin+VIEW.yMax)/2;
+  var hx=(VIEW.xMax-VIEW.xMin)/2, hy=(VIEW.yMax-VIEW.yMin)/2;
+  setView({xMin:cx-hx/0.7, xMax:cx+hx/0.7, yMin:cy-hy/0.7, yMax:cy+hy/0.7});
+});
+document.getElementById('btnViewReset').addEventListener('click', function(){
+  setView(defaultViewForParent(ST.parent));
+  say('View reset');
+});
+
+/* Re-init plot on resize */
+(function(){
+  var to=null;
+  window.addEventListener('resize', function(){
+    if(to)clearTimeout(to);
+    to=setTimeout(function(){plotInit();drawPlot();},150);
+  });
+})();
 
 /* ---------------------------------------------------
    Formula generation
@@ -1380,6 +1561,8 @@ function loadExample(id){
   var allowInv=!!PARENTS[ST.parent].oneToOne;
   document.getElementById('invChk').disabled=!allowInv;
   document.getElementById('invBox').style.opacity=allowInv?'1':'.5';
+  /* reset plot view to this parent's natural window */
+  setView(defaultViewForParent(ST.parent), false);
 
   redraw();
   say('Loaded: '+ex.group);
