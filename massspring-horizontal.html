@@ -632,6 +632,25 @@ function updateGraphLayout() {
   g1.style.gridColumn = (numMasses === 1) ? '1 / -1' : '';
 }
 
+/* Resize graph canvases so the pixel buffer matches the actual displayed
+   size (CSS sets width:100%, so the buffer would otherwise be stretched —
+   making lines fuzzy, especially when the n=1 plot spans both columns). */
+function resizeGraphCanvases() {
+  var dprL = window.devicePixelRatio || 1;
+  for (var i = 0; i < graphCanvases.length; i++) {
+    var c = graphCanvases[i];
+    var rect = c.getBoundingClientRect();
+    if (rect.width <= 0) continue; /* hidden — skip */
+    var W = Math.round(rect.width * dprL);
+    var H = Math.round(rect.height * dprL);
+    if (c.width !== W || c.height !== H) {
+      c.width = W; c.height = H;
+    }
+  }
+  needsRedrawGraphBg = true;
+  if (graphBgCanvas) { graphBgCanvas.width = 0; graphBgCanvas = null; }
+}
+
 /* ── Input wiring ── */
 function linkSlider(sliderId, inputId, callback) {
   const slider = document.getElementById(sliderId);
@@ -680,6 +699,7 @@ function setupInputLinks() {
     needsRedrawSimBg = true;
     updateGraphLayout();
     computeLayout();
+    resizeGraphCanvases();
     resetSimulation();
     announce('Number of masses changed to ' + numMasses);
   });
@@ -990,64 +1010,94 @@ function drawSimulation() {
 }
 
 /* ── Drawing: graph background (shared offscreen canvas) ── */
+/* "Nice" tick step for axis labels — picks 1/2/5×10^k near span/target. */
+function niceTickStep(span, target) {
+  if (!(span > 0)) return 1;
+  var raw = span / Math.max(1, target);
+  var pow = Math.pow(10, Math.floor(Math.log10(raw)));
+  var n = raw / pow;
+  var step = (n < 1.5) ? 1 : (n < 3) ? 2 : (n < 7) ? 5 : 10;
+  return step * pow;
+}
+
 function createGraphBackground() {
   const refCanvas = graphCanvases[0];
   if (!graphBgCanvas) {
     graphBgCanvas = document.createElement('canvas');
-    graphBgCanvas.width  = refCanvas.width;
-    graphBgCanvas.height = refCanvas.height;
   }
+  graphBgCanvas.width  = refCanvas.width;
+  graphBgCanvas.height = refCanvas.height;
   const bg = graphBgCanvas.getContext('2d');
   const W = graphBgCanvas.width, H = graphBgCanvas.height;
+  /* All pixel-space coords are in *device* pixels. The CSS-px paddings
+     were 50/20/40/20 in the original; scale them by dpr so the layout
+     stays visually identical at higher buffer resolutions. */
+  const dprL = window.devicePixelRatio || 1;
+  const padL = 50 * dprL, padR = 20 * dprL, padT = 20 * dprL, padB = 40 * dprL;
   const grad = bg.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, '#f8f9fa'); grad.addColorStop(1, '#e9ecef');
   bg.fillStyle = grad; bg.fillRect(0, 0, W, H);
-  bg.strokeStyle = '#ddd'; bg.lineWidth = 0.5;
+  bg.strokeStyle = '#ddd'; bg.lineWidth = 0.5 * dprL;
   for (let i = 1; i < 7; i++) {
-    const gx = 50 + (i * (W - 70)) / 6;
-    bg.beginPath(); bg.moveTo(gx, 20); bg.lineTo(gx, H - 20); bg.stroke();
+    const gx = padL + (i * (W - padL - padR)) / 6;
+    bg.beginPath(); bg.moveTo(gx, padT); bg.lineTo(gx, H - padB); bg.stroke();
   }
   for (let i = 1; i < 5; i++) {
-    const gy = 20 + (i * (H - 40)) / 4;
-    bg.beginPath(); bg.moveTo(50, gy); bg.lineTo(W - 20, gy); bg.stroke();
+    const gy = padT + (i * (H - padT - padB)) / 4;
+    bg.beginPath(); bg.moveTo(padL, gy); bg.lineTo(W - padR, gy); bg.stroke();
   }
-  bg.beginPath(); bg.moveTo(50, 20); bg.lineTo(50, H - 20); bg.lineTo(W - 20, H - 20);
-  bg.strokeStyle = '#333'; bg.lineWidth = 2; bg.stroke();
+  bg.beginPath(); bg.moveTo(padL, padT); bg.lineTo(padL, H - padB); bg.lineTo(W - padR, H - padB);
+  bg.strokeStyle = '#333'; bg.lineWidth = 1.5 * dprL; bg.stroke();
   needsRedrawGraphBg = false;
 }
 
 function drawSingleGraph(gCanvas, gCtx, data, color) {
-  if (needsRedrawGraphBg || !graphBgCanvas) createGraphBackground();
+  if (needsRedrawGraphBg || !graphBgCanvas
+      || graphBgCanvas.width !== graphCanvases[0].width
+      || graphBgCanvas.height !== graphCanvases[0].height) createGraphBackground();
   gCtx.drawImage(graphBgCanvas, 0, 0);
   if (data.length === 0) return;
   const W = gCanvas.width, H = gCanvas.height;
+  const dprL = window.devicePixelRatio || 1;
+  const padL = 50 * dprL, padR = 20 * dprL, padT = 20 * dprL, padB = 40 * dprL;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
   const maxY = Math.max(...data.map(d => d.y));
   const minY = Math.min(...data.map(d => d.y));
   const yRange = maxY - minY || 0.1;
-  const scaleY = (H - 60) / yRange;
-  gCtx.beginPath(); gCtx.strokeStyle = color; gCtx.lineWidth = 2;
+  const scaleY = plotH / yRange;
+  /* Thin sharp line. lineWidth ~1.25 CSS px (≈ 1.25*dpr device px) at
+     1.5 dpr renders crisp without the chunky 2 CSS px look the canvas
+     had when its 420-pixel buffer was being stretched to ~1200 CSS px. */
+  gCtx.lineCap = 'round'; gCtx.lineJoin = 'round';
+  gCtx.beginPath();
+  gCtx.strokeStyle = color;
+  gCtx.lineWidth = 1.25 * dprL;
   for (let i = 0; i < data.length; i++) {
-    const px = 50 + (data[i].t / graphMaxTime) * (W - 70);
-    const py = H - 40 - (data[i].y - minY) * scaleY;
+    const px = padL + (data[i].t / graphMaxTime) * plotW;
+    const py = H - padB - (data[i].y - minY) * scaleY;
     if (i === 0) gCtx.moveTo(px, py); else gCtx.lineTo(px, py);
   }
   gCtx.stroke();
-  gCtx.fillStyle = '#000'; gCtx.font = '10px Arial';
+  gCtx.fillStyle = '#000'; gCtx.font = (10 * dprL) + 'px Arial';
   gCtx.textAlign = 'right'; gCtx.textBaseline = 'middle';
-  const marks = 5, yStep = (maxY - minY) / marks;
-  for (let i = 0; i <= marks; i++) {
-    const val = minY + i * yStep, py = H - 40 - (val - minY) * scaleY;
-    gCtx.beginPath(); gCtx.moveTo(50, py); gCtx.lineTo(40, py);
-    gCtx.strokeStyle = '#000'; gCtx.lineWidth = 1; gCtx.stroke();
-    gCtx.fillText(val.toFixed(2), 38, py);
+  const yMarks = 5, yStep = (maxY - minY) / yMarks;
+  for (let i = 0; i <= yMarks; i++) {
+    const val = minY + i * yStep, py = H - padB - (val - minY) * scaleY;
+    gCtx.beginPath(); gCtx.moveTo(padL, py); gCtx.lineTo(padL - 10 * dprL, py);
+    gCtx.strokeStyle = '#000'; gCtx.lineWidth = 1 * dprL; gCtx.stroke();
+    gCtx.fillText(val.toFixed(2), padL - 12 * dprL, py);
   }
+  /* Time axis: ticks at multiples of a nice step (e.g. 0,10,20,…) so the
+     labels are physically meaningful round numbers regardless of T. */
   gCtx.textAlign = 'center'; gCtx.textBaseline = 'top';
-  const xMarks = 7, xStep = (W - 70) / (xMarks - 1);
-  for (let i = 0; i < xMarks; i++) {
-    const px = 50 + i * xStep, val = (i * graphMaxTime) / (xMarks - 1);
-    gCtx.beginPath(); gCtx.moveTo(px, H - 20); gCtx.lineTo(px, H - 10);
-    gCtx.strokeStyle = '#000'; gCtx.lineWidth = 1; gCtx.stroke();
-    gCtx.fillText(val.toFixed(0), px, H - 8);
+  const tStep = niceTickStep(graphMaxTime, 7);
+  const decimals = (tStep < 1) ? Math.max(0, -Math.floor(Math.log10(tStep))) : 0;
+  for (let v = 0; v <= graphMaxTime + 1e-9; v += tStep) {
+    const px = padL + (v / graphMaxTime) * plotW;
+    gCtx.beginPath(); gCtx.moveTo(px, H - padB); gCtx.lineTo(px, H - padB + 10 * dprL);
+    gCtx.strokeStyle = '#000'; gCtx.lineWidth = 1 * dprL; gCtx.stroke();
+    gCtx.fillText(v.toFixed(decimals), px, H - padB + 12 * dprL);
   }
 }
 
@@ -1163,6 +1213,7 @@ function loadExample() {
   needsRedrawSimBg = true;
   updateGraphLayout();
   computeLayout();
+  resizeGraphCanvases();
   resetSimulation();
   announce('Loaded example: ' + sel.options[sel.selectedIndex].text);
 }
@@ -1243,13 +1294,21 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('pauseButton').addEventListener('click', togglePause);
   document.getElementById('exampleSelect').addEventListener('change', loadExample);
 
+  // Re-render graphs at native resolution on window resize so the curves
+  // stay crisp even if the column width changes.
+  var resizeT = null;
+  window.addEventListener('resize', function() {
+    if (resizeT) clearTimeout(resizeT);
+    resizeT = setTimeout(function() { resizeGraphCanvases(); drawAllGraphs(); }, 80);
+  });
+
   // Wait for MathJax then start
   function init() {
     if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
       MathJax.typesetPromise().then(function() {
-        computeLayout(); resetSimulation(); animate();
+        computeLayout(); resizeGraphCanvases(); resetSimulation(); animate();
       }).catch(function() {
-        computeLayout(); resetSimulation(); animate();
+        computeLayout(); resizeGraphCanvases(); resetSimulation(); animate();
       });
     } else {
       setTimeout(init, 100);
