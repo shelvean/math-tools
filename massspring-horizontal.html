@@ -388,6 +388,34 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
           </div>
 
           <hr class="sl-divider">
+          <div class="sl-sect">Forcing Functions \(F_i(t)\)</div>
+
+          <div class="sl-block">
+            <div class="sl-row">
+              <label class="sl-lbl" for="F1">\(F_1(t)\)</label>
+              <input type="text" id="F1" class="sl-num" style="flex:1 1 140px;min-width:120px;text-align:left;font-family:monospace;" value="cos(2*t)" placeholder="0 or e.g. 3*cos(2*t)" aria-label="Forcing on mass 1">
+            </div>
+          </div>
+          <div class="sl-block mass2-plus">
+            <div class="sl-row">
+              <label class="sl-lbl" for="F2">\(F_2(t)\)</label>
+              <input type="text" id="F2" class="sl-num" style="flex:1 1 140px;min-width:120px;text-align:left;font-family:monospace;" value="0" placeholder="0 or e.g. delta(t-2)" aria-label="Forcing on mass 2">
+            </div>
+          </div>
+          <div class="sl-block mass3-plus">
+            <div class="sl-row">
+              <label class="sl-lbl" for="F3">\(F_3(t)\)</label>
+              <input type="text" id="F3" class="sl-num" style="flex:1 1 140px;min-width:120px;text-align:left;font-family:monospace;" value="0" placeholder="0 or e.g. u(t-5)*sin(3*t)" aria-label="Forcing on mass 3">
+            </div>
+          </div>
+          <div class="sl-block mass4-only">
+            <div class="sl-row">
+              <label class="sl-lbl" for="F4">\(F_4(t)\)</label>
+              <input type="text" id="F4" class="sl-num" style="flex:1 1 140px;min-width:120px;text-align:left;font-family:monospace;" value="0" placeholder="0 or expression in t" aria-label="Forcing on mass 4">
+            </div>
+          </div>
+
+          <hr class="sl-divider">
 
           <!-- End time -->
           <div class="sl-block">
@@ -401,23 +429,8 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
         </div>
       </div>
 
-      <!-- Forcing function + examples -->
+      <!-- Examples -->
       <div class="cbar">
-        <div class="cfield" style="flex:0 0 120px;">
-          <label for="forceTarget" class="clbl">Apply force to</label>
-          <select id="forceTarget" aria-label="Which mass receives the external force">
-            <option value="0" selected>Mass 1</option>
-            <option value="1">Mass 2</option>
-            <option value="2">Mass 3</option>
-            <option value="3">Mass 4</option>
-          </select>
-        </div>
-        <div class="cfield" style="flex:2 1 175px;">
-          <label for="forcingFunction" class="clbl">Forcing \(F(t)\)</label>
-          <input type="text" id="forcingFunction" value="cos(2*t)"
-            placeholder="e.g. 3*cos(2*t) or delta(t-5)"
-            aria-label="Forcing function expression using t">
-        </div>
         <div class="cfield" style="flex:1 1 130px;">
           <label for="exampleSelect" class="clbl">Load example</label>
           <select id="exampleSelect" aria-label="Load a preset example">
@@ -585,8 +598,8 @@ let c = 0.0;
 let x  = [0, 0, 0, 0];
 let vx = [0, 0, 0, 0];
 let x0 = [0, 0, 0, 0];
-let forcingFunction = 'cos(2*t)';
-let forceTarget = 0;
+/* Per-mass forcing expressions in t. forcingFns[i] is applied to mass i. */
+let forcingFns = ['cos(2*t)', '0', '0', '0'];
 let t = 0;
 let isRunning = true, isPaused = false;
 const graphData = [[], [], [], []];
@@ -644,10 +657,9 @@ function setupInputLinks() {
   linkSlider('x4InitSlider',         'x4Init',         updateParams);
   linkSlider('endTimeSlider',        'endTime',        updateParams);
 
-  document.getElementById('forcingFunction').addEventListener('change', function() { updateParams(); });
-  document.getElementById('forceTarget').addEventListener('change', function() {
-    forceTarget = parseInt(this.value);
-    updateParams();
+  ['F1','F2','F3','F4'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', updateParams);
   });
 
   document.getElementById('numMasses').addEventListener('change', function() {
@@ -665,11 +677,6 @@ function setupInputLinks() {
     document.querySelectorAll('.mass4-only').forEach(el => {
       el.style.display = (numMasses >= 4) ? '' : 'none';
     });
-    var ftSel = document.getElementById('forceTarget');
-    ftSel.options[1].style.display = (numMasses >= 2) ? '' : 'none';
-    ftSel.options[2].style.display = (numMasses >= 3) ? '' : 'none';
-    ftSel.options[3].style.display = (numMasses >= 4) ? '' : 'none';
-    if (parseInt(ftSel.value) >= numMasses) ftSel.value = '0';
     needsRedrawSimBg = true;
     updateGraphLayout();
     computeLayout();
@@ -695,8 +702,10 @@ function updateParams() {
   x0[2] = parseFloat(document.getElementById('x3Init').value) || 0;
   x0[3] = parseFloat(document.getElementById('x4Init').value) || 0;
   graphMaxTime = Math.min(parseFloat(document.getElementById('endTime').value) || 60, 600);
-  forcingFunction = document.getElementById('forcingFunction').value;
-  forceTarget = parseInt(document.getElementById('forceTarget').value) || 0;
+  for (var fi = 0; fi < 4; fi++) {
+    var el = document.getElementById('F' + (fi+1));
+    forcingFns[fi] = el ? (el.value.trim() || '0') : '0';
+  }
   needsRedrawGraphBg = true;
   updateEquationDisplay();
 }
@@ -716,10 +725,8 @@ function updateEquationDisplay() {
   const eq = document.getElementById('equation');
   if (!eq) return;
   const cStr = c.toFixed(1);
-  const targetIdx = Math.min(forceTarget, numMasses - 1);
-  const fLatex = formatForcingLatex(forcingFunction);
   function num(v) { return (Math.round(v * 10) / 10).toString(); }
-  function rhs(i) { return (i === targetIdx) ? fLatex : '0'; }
+  function rhs(i) { return formatForcingLatex(forcingFns[i] || '0'); }
   function row(i) {
     /* m_i \ddot x_i + c \dot x_i + (k_i+k_{i+1}) x_i - k_i x_{i-1} - k_{i+1} x_{i+1} = F_i */
     var kL = kArr[i], kR = kArr[i + 1];
@@ -746,8 +753,8 @@ function updateEquationDisplay() {
 }
 
 /* ── Forcing function evaluation ── */
-function evaluateForcingFunction(time) {
-  var func = forcingFunction.trim();
+function evaluateForcingFunction(time, fnStr) {
+  var func = (fnStr || '').trim();
   if (!func || func === '0') return 0;
   try {
     var safeFunc = func
@@ -767,16 +774,18 @@ function evaluateForcingFunction(time) {
 }
 
 function applyDeltaImpulse() {
-  var matches = forcingFunction.match(/(?:(\d*\.?\d*)\*)?delta\(t(?:-([\d.]+))?\)/gi);
-  if (!matches) return false;
   var applied = false;
-  var targetIdx = Math.min(forceTarget, numMasses - 1);
-  for (var mi = 0; mi < matches.length; mi++) {
-    var parts = matches[mi].match(/(?:(\d*\.?\d*)\*)?delta\(t(?:-([\d.]+))?\)/i);
-    if (!parts) continue;
-    var amp = parseFloat(parts[1]) || 1;
-    var dTime = parseFloat(parts[2]) || 0;
-    if (Math.abs(t - dTime) < dt / 2) { vx[targetIdx] += amp / mArr[targetIdx]; applied = true; }
+  for (var i = 0; i < numMasses; i++) {
+    var fn = forcingFns[i] || '0';
+    var matches = fn.match(/(?:(\d*\.?\d*)\*)?delta\(t(?:-([\d.]+))?\)/gi);
+    if (!matches) continue;
+    for (var mi = 0; mi < matches.length; mi++) {
+      var parts = matches[mi].match(/(?:(\d*\.?\d*)\*)?delta\(t(?:-([\d.]+))?\)/i);
+      if (!parts) continue;
+      var amp = parseFloat(parts[1]) || 1;
+      var dTime = parseFloat(parts[2]) || 0;
+      if (Math.abs(t - dTime) < dt / 2) { vx[i] += amp / mArr[i]; applied = true; }
+    }
   }
   return applied;
 }
@@ -789,8 +798,7 @@ function accel(i, pos, vel, time) {
   const left  = (i === 0)             ? 0 : pos[i - 1];
   const right = (i === numMasses - 1) ? 0 : pos[i + 1];
   const kL = kArr[i], kR = kArr[i + 1];
-  const targetIdx = Math.min(forceTarget, numMasses - 1);
-  const F = (i === targetIdx) ? evaluateForcingFunction(time) : 0;
+  const F = evaluateForcingFunction(time, forcingFns[i]);
   return (kL * (left - pos[i]) + kR * (right - pos[i]) - c * vel[i] + F) / mArr[i];
 }
 
@@ -958,11 +966,11 @@ function drawSimulation() {
     ctx.fillStyle = MASS_COLORS[i];
     ctx.fillText('x' + (i + 1) + ' = ' + x[i].toFixed(2) + ' m', massCenters[i], CENTER_Y + BALL_RADIUS + 12);
   }
-  // Force arrow
-  const fi = Math.min(forceTarget, numMasses - 1);
-  const F = evaluateForcingFunction(t);
-  const arrowLen = Math.min(Math.abs(F) * 15, 60);
-  if (arrowLen > 2) {
+  // Force arrows — one above each mass with non-zero F_i(t)
+  for (let fi = 0; fi < numMasses; fi++) {
+    const F = evaluateForcingFunction(t, forcingFns[fi]);
+    const arrowLen = Math.min(Math.abs(F) * 15, 60);
+    if (arrowLen <= 2) continue;
     const dir = F > 0 ? 1 : -1;
     const ax = massCenters[fi] + dir * (BALL_RADIUS + 4);
     const ay = CENTER_Y - BALL_RADIUS - 18;
@@ -973,7 +981,7 @@ function drawSimulation() {
     ctx.lineTo(tipX - dir * 8, ay - 5); ctx.lineTo(tipX - dir * 8, ay + 5);
     ctx.closePath(); ctx.fill();
     ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText('F(t)', (ax + tipX) / 2, ay - 6);
+    ctx.fillText('F' + (fi + 1), (ax + tipX) / 2, ay - 6);
   }
 }
 
@@ -1107,10 +1115,6 @@ function loadExample() {
   document.querySelectorAll('.mass2-plus').forEach(el => { el.style.display = (numMasses >= 2) ? '' : 'none'; });
   document.querySelectorAll('.mass3-plus').forEach(el => { el.style.display = (numMasses >= 3) ? '' : 'none'; });
   document.querySelectorAll('.mass4-only').forEach(el => { el.style.display = (numMasses >= 4) ? '' : 'none'; });
-  var ftSel = document.getElementById('forceTarget');
-  ftSel.options[1].style.display = (numMasses >= 2) ? '' : 'none';
-  ftSel.options[2].style.display = (numMasses >= 3) ? '' : 'none';
-  ftSel.options[3].style.display = (numMasses >= 4) ? '' : 'none';
   /* Broadcast scalar m/k to arrays of the right length, or copy arrays. */
   var mVals = Array.isArray(ex.m) ? ex.m.slice() : [];
   var kVals = Array.isArray(ex.k) ? ex.k.slice() : [];
@@ -1130,8 +1134,19 @@ function loadExample() {
   document.getElementById('x2Init').value = ex.x[1];      document.getElementById('x2InitSlider').value = ex.x[1];
   document.getElementById('x3Init').value = ex.x[2];      document.getElementById('x3InitSlider').value = ex.x[2];
   document.getElementById('x4Init').value = ex.x[3];      document.getElementById('x4InitSlider').value = ex.x[3];
-  document.getElementById('forcingFunction').value = ex.F;
-  document.getElementById('forceTarget').value = ex.target;
+  /* Forcing: ex.F may be (a) an array of length n with per-mass expressions,
+     or (b) a single string applied to mass `ex.target`. */
+  var Fvals = ['0','0','0','0'];
+  if (Array.isArray(ex.F)) {
+    for (var fi = 0; fi < Math.min(4, ex.F.length); fi++) Fvals[fi] = ex.F[fi];
+  } else {
+    var ti = (typeof ex.target === 'number') ? ex.target : 0;
+    Fvals[Math.min(ti, 3)] = ex.F;
+  }
+  document.getElementById('F1').value = Fvals[0];
+  document.getElementById('F2').value = Fvals[1];
+  document.getElementById('F3').value = Fvals[2];
+  document.getElementById('F4').value = Fvals[3];
   needsRedrawSimBg = true;
   updateGraphLayout();
   computeLayout();
@@ -1177,11 +1192,6 @@ document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.mass2-plus').forEach(el => { el.style.display = (numMasses >= 2) ? '' : 'none'; });
   document.querySelectorAll('.mass3-plus').forEach(el => { el.style.display = (numMasses >= 3) ? '' : 'none'; });
   document.querySelectorAll('.mass4-only').forEach(el => { el.style.display = (numMasses >= 4) ? '' : 'none'; });
-  var ftSel = document.getElementById('forceTarget');
-  ftSel.options[1].style.display = (numMasses >= 2) ? '' : 'none';
-  ftSel.options[2].style.display = (numMasses >= 3) ? '' : 'none';
-  ftSel.options[3].style.display = (numMasses >= 4) ? '' : 'none';
-
   updateGraphLayout();
   setupInputLinks();
 
