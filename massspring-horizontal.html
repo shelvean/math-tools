@@ -164,7 +164,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 /* Graph grid — 2×2 */
 .graph-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.5rem;}
 .graph-grid .pwrap{margin-bottom:0;}
-.graph-grid canvas{display:block;width:100%;height:auto;background:#f9fafb;}
+.graph-grid canvas{display:block;width:100%;height:auto;background:#f9fafb;cursor:crosshair;}
 @media(max-width:580px){.graph-grid{grid-template-columns:1fr;}}
 
 /* Footer */
@@ -603,6 +603,8 @@ let forcingFns = ['cos(2*t)', '0', '0', '0'];
 let t = 0;
 let isRunning = true, isPaused = false;
 const graphData = [[], [], [], []];
+/* Per-graph clicked sample (or null). Indexed by mass: clickedPoints[i]. */
+const clickedPoints = [null, null, null, null];
 let alertBox = null;
 
 /* ── Layout ── */
@@ -679,6 +681,32 @@ function setupInputLinks() {
   ['F1','F2','F3','F4'].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.addEventListener('change', updateParams);
+  });
+
+  /* Click on a displacement plot to mark the nearest sampled point;
+     click outside the plot area to clear. */
+  graphCanvases.forEach(function(canvas, idx) {
+    canvas.addEventListener('click', function(e) {
+      var data = graphData[idx];
+      var rect = canvas.getBoundingClientRect();
+      var sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+      var cx = (e.clientX - rect.left) * sx, cy = (e.clientY - rect.top) * sy;
+      var dprL = window.devicePixelRatio || 1;
+      var padL = 50 * dprL, padR = 20 * dprL, padT = 20 * dprL, padB = 40 * dprL;
+      if (!data.length || cx < padL || cx > canvas.width - padR
+                       || cy < padT || cy > canvas.height - padB) {
+        if (clickedPoints[idx]) { clickedPoints[idx] = null; drawAllGraphs(); }
+        return;
+      }
+      var tClick = (cx - padL) / (canvas.width - padL - padR) * graphMaxTime;
+      var nearest = data[0], bestD = Math.abs(data[0].t - tClick);
+      for (var i = 1; i < data.length; i++) {
+        var d = Math.abs(data[i].t - tClick);
+        if (d < bestD) { bestD = d; nearest = data[i]; }
+      }
+      clickedPoints[idx] = { t: nearest.t, y: nearest.y };
+      drawAllGraphs();
+    });
   });
 
   document.getElementById('numMasses').addEventListener('change', function() {
@@ -1099,6 +1127,27 @@ function drawSingleGraph(gCanvas, gCtx, data, color) {
     gCtx.strokeStyle = '#000'; gCtx.lineWidth = 1 * dprL; gCtx.stroke();
     gCtx.fillText(v.toFixed(decimals), px, H - padB + 12 * dprL);
   }
+  /* Clicked-coordinate marker + tooltip. clickedPoints[i] is set by the
+     canvas click handler; cleared by reset or by clicking outside the plot. */
+  const idx = graphCanvases.indexOf(gCanvas);
+  const cp = (idx >= 0) ? clickedPoints[idx] : null;
+  if (cp) {
+    const mgx = padL + (cp.t / graphMaxTime) * plotW;
+    const mgy = H - padB - (cp.y - minY) * scaleY;
+    gCtx.beginPath(); gCtx.arc(mgx, mgy, 4 * dprL, 0, Math.PI * 2);
+    gCtx.fillStyle = '#dc2626'; gCtx.fill();
+    gCtx.strokeStyle = '#fff'; gCtx.lineWidth = 2 * dprL; gCtx.stroke();
+    const lbl = 't=' + cp.t.toFixed(2) + ', x=' + cp.y.toFixed(3);
+    gCtx.font = (11 * dprL) + 'px -apple-system,Arial,sans-serif';
+    const tw = gCtx.measureText(lbl).width + 10 * dprL, th = 18 * dprL;
+    let tx = mgx + 8 * dprL, ty = mgy - th - 8 * dprL;
+    if (tx + tw > W - 4 * dprL) tx = mgx - tw - 8 * dprL;
+    if (tx < 4 * dprL) tx = 4 * dprL;
+    if (ty < 4 * dprL) ty = mgy + 8 * dprL;
+    gCtx.fillStyle = 'rgba(17,24,39,0.92)'; gCtx.fillRect(tx, ty, tw, th);
+    gCtx.fillStyle = '#fff'; gCtx.textAlign = 'left'; gCtx.textBaseline = 'middle';
+    gCtx.fillText(lbl, tx + 5 * dprL, ty + th / 2);
+  }
 }
 
 function drawAllGraphs() {
@@ -1224,7 +1273,7 @@ function resetSimulation() {
   computeLayout();
   for (let i = 0; i < 4; i++) { x[i] = x0[i]; vx[i] = 0; }
   t = 0;
-  for (let i = 0; i < 4; i++) graphData[i].length = 0;
+  for (let i = 0; i < 4; i++) { graphData[i].length = 0; clickedPoints[i] = null; }
   for (let i = 0; i < numMasses; i++) graphData[i].push({ t, y: x[i] });
   isRunning = true; isPaused = false;
   document.getElementById('pauseButton').textContent = '⏸ Pause';
