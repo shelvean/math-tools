@@ -638,6 +638,35 @@ function drawMachine(){
   drawPulley(lp_x,py);
   drawPulley(rp_x,py);
 
+  /* Dynamic angle indicator at the right pulley: dashed vertical reference, arc, and θ label */
+  const arcR=Math.max(38, pulleyR + 26);
+  const refLen=Math.max(arcR + 14, r*scale*0.55);
+  machineCtx.save();
+  machineCtx.setLineDash([5,4]);
+  machineCtx.strokeStyle=dark?'rgba(180,200,255,0.55)':'rgba(37,99,235,0.45)';
+  machineCtx.lineWidth=1.4;
+  machineCtx.beginPath();
+  machineCtx.moveTo(rp_x, py + pulleyR);
+  machineCtx.lineTo(rp_x, py + refLen);
+  machineCtx.stroke();
+  machineCtx.restore();
+  if(Math.abs(th)>0.02){
+    machineCtx.strokeStyle=dark?'rgba(120,190,255,0.85)':'rgba(37,99,235,0.75)';
+    machineCtx.lineWidth=2.2;
+    machineCtx.beginPath();
+    if(th>0) machineCtx.arc(rp_x, py, arcR, Math.PI/2 - th, Math.PI/2);
+    else     machineCtx.arc(rp_x, py, arcR, Math.PI/2, Math.PI/2 - th);
+    machineCtx.stroke();
+    /* θ label at the arc midpoint */
+    machineCtx.fillStyle=dark?'#9ec8ff':'#1d4ed8';
+    machineCtx.font='italic bold 18px serif';
+    machineCtx.textAlign='center';machineCtx.textBaseline='middle';
+    const lblR=arcR + 14;
+    machineCtx.fillText('θ',
+      rp_x + lblR*Math.sin(th/2),
+      py + lblR*Math.cos(th/2));
+  }
+
   /* Counterweight M (rectangular block, sized by mass^(1/3) — relative to a 1 kg reference) */
   const Mratio=Math.cbrt(Math.max(M,0.1));
   const Mw=44+18*Math.min(Mratio,3.5);
@@ -676,17 +705,23 @@ function drawMachine(){
   machineCtx.textAlign='center';machineCtx.textBaseline='middle';
   machineCtx.fillText('m', bx, by);
 
-  /* Time + status pill */
-  const tStr='t = '+t.toFixed(2)+' s'+(isRunning?'':'  (paused)');
-  machineCtx.font='bold 14px Arial';
+  /* Multi-line readout pill: t, r, θ — updates dynamically each frame */
+  const lines=[
+    't = '+t.toFixed(2)+' s'+(isRunning?'':'  (paused)'),
+    'r = '+state[0].toFixed(3)+' m',
+    'θ = '+state[2].toFixed(3)+' rad'
+  ];
+  machineCtx.font='bold 14px monospace';
   machineCtx.textAlign='left';machineCtx.textBaseline='top';
-  const tw=machineCtx.measureText(tStr).width;
-  machineCtx.fillStyle='rgba(0,0,0,0.48)';
+  const lineH=18;
+  let pillW=0;
+  lines.forEach(function(s){pillW=Math.max(pillW, machineCtx.measureText(s).width);});
+  machineCtx.fillStyle='rgba(0,0,0,0.52)';
   machineCtx.beginPath();
-  machineCtx.roundRect(8,8,tw+14,22,4);
+  machineCtx.roundRect(8,8,pillW+18,lines.length*lineH+10,5);
   machineCtx.fill();
-  machineCtx.fillStyle='rgba(255,255,255,0.94)';
-  machineCtx.fillText(tStr, 15, 11);
+  machineCtx.fillStyle='rgba(255,255,255,0.95)';
+  lines.forEach(function(s,i){machineCtx.fillText(s, 16, 13+i*lineH);});
 
   if(stopReason){
     machineCtx.font='bold 13px Arial';
