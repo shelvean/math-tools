@@ -374,6 +374,7 @@ canvas{display:block;width:100%;height:auto;}
         <div class="pbody" style="padding:.5rem .75rem;font-size:.85rem;color:var(--txt2);" id="readout">
           <div>\(r\): <strong id="rOut">—</strong> m &nbsp;·&nbsp; \(\theta\): <strong id="thOut">—</strong> rad</div>
           <div>\(\dot r\): <strong id="rdOut">—</strong> m/s &nbsp;·&nbsp; \(\dot\theta\): <strong id="thdOut">—</strong> rad/s</div>
+          <div>\(T\): <strong id="tOut">—</strong> N &nbsp;·&nbsp; \(T_y = T\cos\theta\): <strong id="tyOut">—</strong> N</div>
           <div>Energy drift \(|\Delta E/E_0|\): <strong id="eOut">—</strong></div>
         </div>
       </div>
@@ -713,11 +714,47 @@ function drawMachine(){
   machineCtx.textAlign='center';machineCtx.textBaseline='middle';
   machineCtx.fillText('m', bx, by);
 
-  /* Multi-line readout pill: t, r, θ — updates dynamically each frame */
+  /* Vertical-tension vector on the bob: arrow whose length scales with |T cos θ|/(M g)
+     and whose direction is +y_canvas-up when T cos θ > 0 (tension pulls the bob up). */
+  {
+    const Tnow=tension(state);
+    const Tyv=Tnow*Math.cos(state[2]);
+    const refMag=Math.max(M*G, 1e-3);
+    const maxArrow=Math.min(120, scale*0.9);
+    const arrowLen=Math.max(8, Math.min(maxArrow, Math.abs(Tyv)/refMag*maxArrow));
+    const dir=Tyv>=0 ? -1 : 1;            /* canvas y is down, so up tension → −y on canvas */
+    const ax0=bx, ay0=by;
+    const ax1=bx, ay1=by + dir*arrowLen;
+    machineCtx.strokeStyle=dark?'#34d399':'#047857';
+    machineCtx.fillStyle=dark?'#34d399':'#047857';
+    machineCtx.lineWidth=3;
+    machineCtx.beginPath();
+    machineCtx.moveTo(ax0, ay0);machineCtx.lineTo(ax1, ay1);
+    machineCtx.stroke();
+    /* arrowhead */
+    const head=8;
+    machineCtx.beginPath();
+    machineCtx.moveTo(ax1, ay1);
+    machineCtx.lineTo(ax1 - head*0.6, ay1 - dir*head);
+    machineCtx.lineTo(ax1 + head*0.6, ay1 - dir*head);
+    machineCtx.closePath();
+    machineCtx.fill();
+    /* label */
+    machineCtx.font='italic bold 13px serif';
+    machineCtx.textAlign='left';machineCtx.textBaseline='middle';
+    machineCtx.fillText('T_y', ax1 + 6, ay1);
+  }
+
+  /* Multi-line readout pill: t, r, θ, T_y — updates dynamically each frame.
+     T_y is the vertical (upward) component of the string-tension force on the bob. */
+  const Tcur=tension(state);
+  const Ty=Tcur*Math.cos(state[2]);
   const lines=[
     't = '+t.toFixed(2)+' s'+(isRunning?'':'  (paused)'),
     'r = '+state[0].toFixed(3)+' m',
-    'θ = '+state[2].toFixed(3)+' rad'
+    'θ = '+state[2].toFixed(3)+' rad',
+    'T = '+Tcur.toFixed(2)+' N',
+    'T_y = '+Ty.toFixed(2)+' N'
   ];
   machineCtx.font='bold 14px monospace';
   machineCtx.textAlign='left';machineCtx.textBaseline='top';
@@ -813,12 +850,25 @@ function drawTrail(){
   }
 }
 
+/* ── String tension on the bob.
+   From Newton's 2nd law on the counterweight (vertical motion):
+   M r̈ = T − M g  ⇒  T = M(g + r̈).
+   Equivalent to T = m(g cos θ + r θ̇² − r̈) from the radial equation on the bob. */
+function tension(s){
+  const r=s[0], thd=s[3], cosT=Math.cos(s[2]);
+  const rdd=(m*r*thd*thd - G*(M - m*cosT))/(M+m);
+  return M*(G + rdd);
+}
+
 /* ── Live readout ── */
 function updateReadout(){
   document.getElementById('rOut').textContent=state[0].toFixed(3);
   document.getElementById('rdOut').textContent=state[1].toFixed(3);
   document.getElementById('thOut').textContent=state[2].toFixed(3);
   document.getElementById('thdOut').textContent=state[3].toFixed(3);
+  const T=tension(state);
+  document.getElementById('tOut').textContent=T.toFixed(2);
+  document.getElementById('tyOut').textContent=(T*Math.cos(state[2])).toFixed(2);
   document.getElementById('eOut').textContent=energyDrift.toExponential(2);
 }
 
