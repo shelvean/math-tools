@@ -393,6 +393,9 @@ if(document.referrer.includes('projects.html')){
     <button type="button" id="btnReset" class="abtn abtn-reset" aria-label="Reset simulation state">
       <span aria-hidden="true">&#8635;</span> Reset
     </button>
+    <button type="button" id="btnDownload" class="abtn abtn-go" aria-label="Download the waterwheel image as PNG">
+      <span aria-hidden="true">&#x2B07;</span> Download PNG
+    </button>
     <fieldset class="speed-row" style="border:none;padding:0;margin:0;">
       <legend class="sr-only">Simulation speed</legend>
       <span style="font-weight:700;color:var(--txt2);font-size:.8125rem;">Speed:</span>
@@ -1057,7 +1060,7 @@ function drawOmegaPlot() {
     xaxis:{title:{text:'t', font:{size:11}}, gridcolor:grid, zerolinecolor:grid},
     yaxis:{title:{text:'ω', font:{size:11}}, gridcolor:grid, zerolinecolor: hc?'#000':'#9ca3af', zerolinewidth:1.5},
     showlegend:false
-  }, {responsive:true, displaylogo:false, displayModeBar:false});
+  }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
 }
 
 function drawPhasePlot() {
@@ -1115,7 +1118,7 @@ function drawPhasePlot() {
     font:{color: hc?'#000':'#374151', size:10},
     hovermode:false,
     uirevision:'camera3d-v2'
-  }, {responsive:true, displaylogo:false, displayModeBar:false});
+  }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
 }
 
 /* =====================================================
@@ -1375,6 +1378,43 @@ document.addEventListener('DOMContentLoaded', function() {
     var pr = ST.currentPreset && PRESETS[ST.currentPreset] ? PRESETS[ST.currentPreset] : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
     resetState({ N: parseFloat(document.getElementById('N').value), omega0: 0.5 });
     say('Simulation reset');
+  });
+
+  /* Download waterwheel as PNG (rasterizes the live SVG at 2x for crisp output) */
+  document.getElementById('btnDownload').addEventListener('click', function(){
+    var svg = document.getElementById('wheelSvg');
+    if (!svg) return;
+    var SCALE = 2;
+    var W = 500 * SCALE, H = 500 * SCALE;
+    var clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', SVG_NS);
+    clone.setAttribute('width', W);
+    clone.setAttribute('height', H);
+    /* Bake background color so the PNG isn't transparent */
+    var bg = document.createElementNS(SVG_NS, 'rect');
+    bg.setAttribute('width', '100%');
+    bg.setAttribute('height', '100%');
+    bg.setAttribute('fill', getComputedStyle(svg).backgroundColor || '#ffffff');
+    clone.insertBefore(bg, clone.firstChild);
+    var src = new XMLSerializer().serializeToString(clone);
+    var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+    var img = new Image();
+    img.onload = function(){
+      var canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      canvas.getContext('2d').drawImage(img, 0, 0, W, H);
+      canvas.toBlob(function(blob){
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'malkus-waterwheel-t' + (ST && ST.t ? ST.t.toFixed(2) : '0') + '.png';
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 0);
+      }, 'image/png');
+    };
+    img.onerror = function(){ say('Image download failed'); };
+    img.src = url;
+    say('Downloading waterwheel image');
   });
 
   /* Speed */
