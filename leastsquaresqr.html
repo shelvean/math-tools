@@ -320,6 +320,7 @@
           <li>Provides minimum-norm solution for underdetermined systems</li>
           <li>Uses Householder reflections for robust computation</li>
         </ul>
+        <p><strong>Display modes:</strong> Surd (default) — shows entries of \(Q\), \(R\), and \(c=Q^T\mathbf{b}\) as exact radicals like \(\tfrac{1}{\sqrt{2}}\) when possible, falling back to fractions or decimals otherwise. Decimal and Fraction modes are also available.</p>
       </div>
     </div>
 
@@ -342,10 +343,13 @@
     <fieldset class="display-mode" aria-label="Result display format">
       <legend>Display values as:</legend>
       <label class="radio-label">
+        <input type="radio" name="displayMode" value="surd" checked> Surd
+      </label>
+      <label class="radio-label">
         <input type="radio" name="displayMode" value="decimal"> Decimal
       </label>
       <label class="radio-label">
-        <input type="radio" name="displayMode" value="fraction" checked> Fraction
+        <input type="radio" name="displayMode" value="fraction"> Fraction
       </label>
     </fieldset>
 
@@ -439,7 +443,7 @@ function attachMatrixKeyNav(tableEl) {
 // ============================================================
 //  STATE
 // ============================================================
-var currentDisplayMode = 'fraction';
+var currentDisplayMode = 'surd';
 document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
   radio.addEventListener('change', function() { currentDisplayMode = this.value; });
 });
@@ -563,8 +567,8 @@ function clearAll() {
   document.getElementById('n').value = '';
   document.getElementById('matrixInput').innerHTML = '';
   document.getElementById('result').innerHTML = '';
-  document.querySelector('input[name="displayMode"][value="fraction"]').checked = true;
-  currentDisplayMode = 'fraction';
+  document.querySelector('input[name="displayMode"][value="surd"]').checked = true;
+  currentDisplayMode = 'surd';
   announce('All inputs and results cleared.');
 }
 
@@ -696,12 +700,73 @@ function getFractionParts(str) {
   return { sign: sign, num: parseInt(parts[0]) || 0, den: parseInt(parts[1]) || 1 };
 }
 
+// ----- Surd detection / formatting (adapted from qrfactor.html) -----
+function isPerfectSquare(n) {
+  if (n < 0) return false;
+  var root = Math.round(Math.sqrt(n));
+  return Math.abs(root * root - n) < 1e-12;
+}
+
+function formatSurd(val) {
+  // Try to express val as a*sqrt(b)/c for small integers a (|a|<=MAX), b (2..MAX, not square), c (1..MAX).
+  var MAX = 100;
+  for (var b = 2; b <= MAX; b++) {
+    if (isPerfectSquare(b)) continue;
+    var sqrtb = Math.sqrt(b);
+    for (var c = 1; c <= MAX; c++) {
+      var aApprox = (val * c) / sqrtb;
+      if (Math.abs(aApprox - Math.round(aApprox)) < 1e-9 && Math.abs(Math.round(aApprox)) <= MAX) {
+        var a = Math.round(aApprox);
+        if (a === 0) continue;
+        var sign = a < 0 ? '-' : '';
+        var aAbs = Math.abs(a);
+        var sqrtPart = '\\sqrt{' + b + '}';
+        if (c === 1) {
+          return aAbs === 1 ? sign + sqrtPart : sign + aAbs + sqrtPart;
+        }
+        var coeff = aAbs === 1 ? '' : aAbs;
+        return sign + '\\dfrac{' + coeff + sqrtPart + '}{' + c + '}';
+      }
+    }
+  }
+  return null;
+}
+
+function canBeSimpleFraction(val) {
+  // Continued-fraction reconstruction with denominator <= 100; check it's actually close.
+  var sign = val < 0 ? -1 : 1;
+  var x = Math.abs(val);
+  var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+  for (var i = 0; i < 50; i++) {
+    var a = Math.floor(b);
+    var h = a * h1 + h2;
+    var k = a * k1 + k2;
+    if (k > 100) break;
+    if (Math.abs(x - h / k) < 1e-9) {
+      return Math.abs(h) <= 100 && k > 1;
+    }
+    h2 = h1; h1 = h;
+    k2 = k1; k1 = k;
+    if (b - a === 0) break;
+    b = 1 / (b - a);
+  }
+  return false;
+}
+
 function formatNumber(num, forceDecimal) {
   var epsilon = 1e-10;
+  if (Math.abs(num) < epsilon) return '0';
   if (Math.abs(num - Math.round(num)) < epsilon) return Math.round(num).toString();
   if (forceDecimal || currentDisplayMode === 'decimal') {
     return parseFloat(num.toFixed(6)).toString();
   }
+  if (currentDisplayMode === 'surd') {
+    var surd = formatSurd(num);
+    if (surd !== null) return surd;
+    if (canBeSimpleFraction(num)) return toFraction(num);
+    return parseFloat(num.toFixed(6)).toString();
+  }
+  // fraction mode
   return toFraction(num);
 }
 
@@ -1033,13 +1098,14 @@ function renderResults(input) {
   var c_col = matrixMultiply(QT, b_col);
   var c = c_col.map(function(row) { return row[0]; });
 
-  // Back substitution
+  // Back substitution — let descriptions respect display mode (surd/fraction/decimal)
   var augmented = thinR.map(function(row, i) { return row.concat(c[i]); });
-  var rrefResult = computeRREF(augmented, true);
+  var rrefResult = computeRREF(augmented, false);
   var steps = rrefResult.steps;
   steps[0].description = '\\text{Initial augmented matrix } [R | c]';
 
-  var solution = extractSolution(rrefResult.matrix, n, true);
+  // forceDecimal=false so min-norm details (xp, NᵀN, α, etc.) also respect the surd/fraction/decimal mode
+  var solution = extractSolution(rrefResult.matrix, n, false);
 
   // === Display Least Squares Solution first ===
   var summaryDiv = document.createElement('div');
@@ -1067,7 +1133,8 @@ function renderResults(input) {
         latex = '\\mathbf{x} = \\begin{bmatrix} ' + components.join(' \\\\ ') + ' \\end{bmatrix}';
       }
     } else {
-      latex = '\\mathbf{x} = \\begin{bmatrix} ' + x.map(function(val) { return formatNumber(val, true); }).join(' \\\\ ') + ' \\end{bmatrix}';
+      // surd or decimal mode — let formatNumber pick (surds in surd mode, decimal otherwise)
+      latex = '\\mathbf{x} = \\begin{bmatrix} ' + x.map(function(val) { return formatNumber(val, false); }).join(' \\\\ ') + ' \\end{bmatrix}';
     }
     summaryDiv.innerHTML =
       '<p class="step-title" style="text-align:center;">Least Squares Solution (minimum-norm):</p>' +
@@ -1094,10 +1161,10 @@ function renderResults(input) {
     '<div style="text-align:center;">\\[ \\mathbf{b} = \\begin{bmatrix} ' + b.map(function(val) { return formatNumber(val, true); }).join(' \\\\ ') + ' \\end{bmatrix} \\]</div>';
   resultDiv.appendChild(inputDiv);
 
-  // === QR decomposition details ===
-  var thinQ_latex = matrixToLatex(thinQ, false, 0, true);
-  var thinR_latex = matrixToLatex(thinR, false, 0, true);
-  var c_latex = '\\begin{bmatrix} ' + c.map(function(val) { return formatNumber(val, true); }).join(' \\\\ ') + ' \\end{bmatrix}';
+  // === QR decomposition details (Q, R, c respect display mode so surds appear when possible) ===
+  var thinQ_latex = matrixToLatex(thinQ, false, 0, false);
+  var thinR_latex = matrixToLatex(thinR, false, 0, false);
+  var c_latex = '\\begin{bmatrix} ' + c.map(function(val) { return formatNumber(val, false); }).join(' \\\\ ') + ' \\end{bmatrix}';
 
   var qrDiv = document.createElement('div');
   qrDiv.className = 'step-block';
@@ -1126,7 +1193,7 @@ function renderResults(input) {
       var descText = idx === 0 ? step.description : '\\text{Step ' + idx + ': } ' + step.description;
       stepDiv.innerHTML =
         '<div style="text-align:center;">\\[ ' + descText + ' \\]</div>' +
-        '<div style="text-align:center;">\\[ ' + matrixToLatex(step.matrix, true, n, true) + ' \\]</div>';
+        '<div style="text-align:center;">\\[ ' + matrixToLatex(step.matrix, true, n, false) + ' \\]</div>';
       resultDiv.appendChild(stepDiv);
     }
   }
