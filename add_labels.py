@@ -85,7 +85,7 @@ projects_additions = [
     ("Exponential Decay</a>", ["Autonomous"]),
     # 19. Bifurcation — add Stability, Nonlinear
     ("Feigenbaum", ["Stability", "Nonlinear"]),
-    # 20. Pendulum Wave — add Oscillations
+    # 20. Pendulum Phase Array — add Oscillations
     ("Emergent Behavior", ["Oscillations"]),
 ]
 
