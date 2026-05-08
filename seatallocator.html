@@ -424,8 +424,14 @@ function allocate(usable,n,layout,lhSeats){
      as possible both horizontally and vertically.
      Runs in O(n·m) time.  Three independent random seeds are tried;
      the best result (highest achieved minimum distance) is kept.
-     When `keepOneEmpty` holds, seats that would fully fill their row
-     are skipped so each row keeps at least one vacant seat. */
+     Two row-aware constraints are layered on top, in priority order:
+       (1) `keepOneEmpty`: when n ≤ pool − non-empty-rows, skip any
+           seat that would fully fill its row.
+       (2) `noInRowAdj`:   skip any seat that would sit immediately next
+           to (|Δc|=1, same row) an already-selected seat, IF some other
+           row still has ≥ 2 unselected seats — i.e., we have slack
+           elsewhere and there's no need to crowd within a row.
+     Each constraint can be relaxed in turn if no candidate qualifies. */
   function greedyRun(seedIdx){
     var avail=pool.slice();
     var sel=[avail.splice(seedIdx,1)[0]];
@@ -434,32 +440,67 @@ function allocate(usable,n,layout,lhSeats){
     avail.forEach(function(s){minD[s]=mdist(s,sel[0]);});
     var selectedInRow=new Array(nRows).fill(0);
     selectedInRow[coords[sel[0]].r]++;
+    /* selByRow[r] = Set of column indices already selected in row r,
+       so the in-row-adjacency test is O(1) per candidate. */
+    var selByRow=new Array(nRows);
+    for(var rr=0;rr<nRows;rr++) selByRow[rr]=Object.create(null);
+    selByRow[coords[sel[0]].r][coords[sel[0]].c]=true;
+
     while(sel.length<n&&avail.length){
+      /* Per-iteration: count available seats in each row, find the top
+         two — enough to answer "does some row r' ≠ ri have ≥ 2 empties?"
+         in O(1) per candidate. */
+      var rowAvail=new Array(nRows).fill(0);
+      for(var ai=0;ai<avail.length;ai++) rowAvail[coords[avail[ai]].r]++;
+      var top1=-1,top2=-1;
+      for(var rIt=0;rIt<nRows;rIt++){
+        if(top1<0||rowAvail[rIt]>rowAvail[top1]){top2=top1;top1=rIt;}
+        else if(top2<0||rowAvail[rIt]>rowAvail[top2]){top2=rIt;}
+      }
+      function otherRowMultiEmpty(ri){
+        if(top1>=0 && top1!==ri && rowAvail[top1]>=2) return true;
+        if(top2>=0 && top2!==ri && rowAvail[top2]>=2) return true;
+        return false;
+      }
+      function hasInRowAdj(s){
+        var cs=coords[s], row=selByRow[cs.r];
+        return row[cs.c-1]===true || row[cs.c+1]===true;
+      }
+
       var best=-Infinity,bi=-1;
+      /* Pass 1: full constraints — keepOneEmpty AND no-in-row-adj-with-slack */
       for(var i=0;i<avail.length;i++){
-        var s=avail[i];
-        var ri=coords[s].r;
-        /* Hard constraint: leave ≥1 empty per row if the total fits */
+        var s=avail[i], ri=coords[s].r;
         if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) continue;
+        if(hasInRowAdj(s) && otherRowMultiEmpty(ri)) continue;
         /* Min-distance (primary) + uniform random tiebreaker < 0.5 so all
            rows are treated equally — neither the front nor the back is
            favoured when several seats achieve the same min-distance. */
         var sc=minD[s]+Math.random()*0.5;
         if(sc>best){best=sc;bi=i;}
       }
+      /* Pass 2: relax in-row-adjacency only (still respect keepOneEmpty) */
       if(bi<0){
-        /* Defensive fallback (shouldn't fire when keepOneEmpty was correctly
-           determined): relax the constraint and pick the best available. */
-        best=-Infinity;
-        for(var j=0;j<avail.length;j++){
-          var sc2=minD[avail[j]]+Math.random()*0.5;
-          if(sc2>best){best=sc2;bi=j;}
+        for(var i2=0;i2<avail.length;i2++){
+          var s2=avail[i2], r2=coords[s2].r;
+          if(keepOneEmpty && selectedInRow[r2]+1>=rowCap[r2]) continue;
+          var sc2=minD[s2]+Math.random()*0.5;
+          if(sc2>best){best=sc2;bi=i2;}
+        }
+      }
+      /* Pass 3: relax everything (defensive — both feasibility checks
+         have already been computed, so this is rarely needed). */
+      if(bi<0){
+        for(var i3=0;i3<avail.length;i3++){
+          var sc3=minD[avail[i3]]+Math.random()*0.5;
+          if(sc3>best){best=sc3;bi=i3;}
         }
         if(bi<0) bi=0;
       }
       var pick=avail.splice(bi,1)[0];
       sel.push(pick);
       selectedInRow[coords[pick].r]++;
+      selByRow[coords[pick].r][coords[pick].c]=true;
       /* Update minimum distances now that 'pick' is selected */
       avail.forEach(function(s){
         var d=mdist(s,pick);
