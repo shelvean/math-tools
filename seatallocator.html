@@ -405,6 +405,14 @@ function allocate(usable,n,layout,lhSeats){
   if(pool.length<n&&lhSeats) lhSeats.forEach(function(s){pool.push(s);});
 
   var nRows=layout.rows.length;
+  /* Column index is the layout cell index (interleaves seats with aisles
+     and tables), so |Δc|=1 in this space means two seats with no
+     separator between them.  nCols is just the widest row's cell count. */
+  var nCols=0;
+  layout.rows.forEach(function(r){
+    var len=(layout.grid[r]||[]).length;
+    if(len>nCols) nCols=len;
+  });
 
   /* ── Per-row usable capacity, used to keep at least one empty seat per row.
      If n ≤ Σ(rowCap[r] − 1) over non-empty rows, we treat "no row fully
@@ -418,24 +426,32 @@ function allocate(usable,n,layout,lhSeats){
   var keepOneEmpty=(n<=pool.length-nonEmptyRows);
 
   /* ── Greedy farthest-first traversal (k-dispersion) ─────────────────
-     At each step, pick the available seat that maximises a layered
-     score.  The score is constructed from a constraint TIER (high digit)
-     plus the min-distance to the already-selected set (low digit) plus
-     a small random tiebreaker, so harder constraints always dominate
-     softer ones, but within a tier the algorithm still spreads picks
-     as far apart as possible.
+     At each step, pick the available seat that maximises a layered score
+     constructed from an additive PENALTY (constraint cost) plus the
+     min-distance to the already-selected set plus a small random
+     tiebreaker.  The penalty dominates min-distance differences, so
+     harder constraints always win, but within a penalty class the
+     algorithm still spreads picks as far apart as possible.
 
-     Constraint tiers (higher = better; ties relaxed gracefully):
-       4 — keepOneEmpty AND no-in-row-adjacency-with-slack
-           (also implies no-3-run, since no pair ⇒ no triple)
-       3 — keepOneEmpty AND no-3-run-with-slack but a pair is created
-           (allow a side-by-side pair when slack elsewhere is gone for
-            avoiding pairs, but still forbid extending to a triple)
-       2 — keepOneEmpty only (a triple is being created)
-       1 — keepOneEmpty itself violated (last-resort fallback)
+     The penalty sums independent costs along the row and column axes;
+     each cost is gated by "slack" in its own axis (some other row /
+     other column has ≥ 2 unselected seats — i.e., we have room to
+     redirect there instead of crowding here):
 
-     "with-slack" means some row r' ≠ ri still has ≥ 2 unselected seats.
-     `keepOneEmpty` is feasible whenever n ≤ pool − non-empty-rows. */
+         keepOneEmpty violated     +100   (worst — last-resort only)
+         row 3-run created (slack)   +4
+         row pair  created (slack)   +1
+         col 3-run created (slack)   +4
+         col pair  created (slack)   +1
+
+     Two pairs (one row, one col) cost 1+1 = 2, still strictly better
+     than a single 3-run (cost 4) — so the greedy never chooses to form
+     a triple to avoid two pairs, but happily accepts isolated pairs
+     once slack runs out.
+
+     "with-slack" means some other row / column still has ≥ 2 unselected
+     seats; once both axes are out of slack the rules relax automatically
+     and only the keepOneEmpty constraint remains. */
   function greedyRun(seedIdx){
     var avail=pool.slice();
     var sel=[avail.splice(seedIdx,1)[0]];
@@ -444,60 +460,95 @@ function allocate(usable,n,layout,lhSeats){
     avail.forEach(function(s){minD[s]=mdist(s,sel[0]);});
     var selectedInRow=new Array(nRows).fill(0);
     selectedInRow[coords[sel[0]].r]++;
-    /* selByRow[r] = plain object used as a Set of selected column
-       indices, so adjacency / 3-run tests are O(1) per candidate. */
+    /* selByRow[r] / selByCol[c]: plain objects used as sets of
+       selected column / row indices, so adjacency and 3-run tests are
+       O(1) per candidate. */
     var selByRow=new Array(nRows);
     for(var rr=0;rr<nRows;rr++) selByRow[rr]=Object.create(null);
     selByRow[coords[sel[0]].r][coords[sel[0]].c]=true;
+    var selByCol=new Array(nCols);
+    for(var cc=0;cc<nCols;cc++) selByCol[cc]=Object.create(null);
+    selByCol[coords[sel[0]].c][coords[sel[0]].r]=true;
 
     while(sel.length<n&&avail.length){
-      /* Per-iteration: count available seats in each row, find the top
-         two — enough to answer "does some row r' ≠ ri have ≥ 2 empties?"
-         in O(1) per candidate. */
+      /* Per-iteration: count available seats per row and per column,
+         find top two of each — enough to answer "does some other
+         row / column have ≥ 2 empties?" in O(1) per candidate. */
       var rowAvail=new Array(nRows).fill(0);
-      for(var ai=0;ai<avail.length;ai++) rowAvail[coords[avail[ai]].r]++;
-      var top1=-1,top2=-1;
-      for(var rIt=0;rIt<nRows;rIt++){
-        if(top1<0||rowAvail[rIt]>rowAvail[top1]){top2=top1;top1=rIt;}
-        else if(top2<0||rowAvail[rIt]>rowAvail[top2]){top2=rIt;}
+      var colAvail=new Array(nCols).fill(0);
+      for(var ai=0;ai<avail.length;ai++){
+        rowAvail[coords[avail[ai]].r]++;
+        colAvail[coords[avail[ai]].c]++;
       }
-      function otherRowMultiEmpty(ri){
-        if(top1>=0 && top1!==ri && rowAvail[top1]>=2) return true;
-        if(top2>=0 && top2!==ri && rowAvail[top2]>=2) return true;
+      var topR1=-1,topR2=-1;
+      for(var rIt=0;rIt<nRows;rIt++){
+        if(topR1<0||rowAvail[rIt]>rowAvail[topR1]){topR2=topR1;topR1=rIt;}
+        else if(topR2<0||rowAvail[rIt]>rowAvail[topR2]){topR2=rIt;}
+      }
+      var topC1=-1,topC2=-1;
+      for(var cIt=0;cIt<nCols;cIt++){
+        if(topC1<0||colAvail[cIt]>colAvail[topC1]){topC2=topC1;topC1=cIt;}
+        else if(topC2<0||colAvail[cIt]>colAvail[topC2]){topC2=cIt;}
+      }
+      function otherRowSlack(ri){
+        if(topR1>=0 && topR1!==ri && rowAvail[topR1]>=2) return true;
+        if(topR2>=0 && topR2!==ri && rowAvail[topR2]>=2) return true;
         return false;
       }
-      function hasInRowAdj(s){
+      function otherColSlack(ci){
+        if(topC1>=0 && topC1!==ci && colAvail[topC1]>=2) return true;
+        if(topC2>=0 && topC2!==ci && colAvail[topC2]>=2) return true;
+        return false;
+      }
+      function rowPair(s){
         var cs=coords[s], row=selByRow[cs.r];
         return row[cs.c-1]===true || row[cs.c+1]===true;
       }
-      function wouldCreate3Run(s){
+      function rowRun3(s){
         var cs=coords[s], row=selByRow[cs.r], c=cs.c;
         return (row[c-1]===true && row[c-2]===true) ||
                (row[c-1]===true && row[c+1]===true) ||
                (row[c+1]===true && row[c+2]===true);
       }
-      function tier(s){
-        var ri=coords[s].r;
-        if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) return 1;
-        var slack=otherRowMultiEmpty(ri);
-        if(!(hasInRowAdj(s) && slack)) return 4;          /* no pair while slack remains */
-        if(!(wouldCreate3Run(s) && slack)) return 3;      /* pair OK, but no 3-run */
-        return 2;                                         /* 3-run forced; keepOneEmpty still holds */
+      function colPair(s){
+        var cs=coords[s], col=selByCol[cs.c];
+        return col[cs.r-1]===true || col[cs.r+1]===true;
+      }
+      function colRun3(s){
+        var cs=coords[s], col=selByCol[cs.c], r=cs.r;
+        return (col[r-1]===true && col[r-2]===true) ||
+               (col[r-1]===true && col[r+1]===true) ||
+               (col[r+1]===true && col[r+2]===true);
+      }
+      function penalty(s){
+        var ri=coords[s].r, ci=coords[s].c, p=0;
+        if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) p+=100;
+        if(otherRowSlack(ri)){
+          if(rowRun3(s)) p+=4;
+          else if(rowPair(s)) p+=1;
+        }
+        if(otherColSlack(ci)){
+          if(colRun3(s)) p+=4;
+          else if(colPair(s)) p+=1;
+        }
+        return p;
       }
 
       var best=-Infinity,bi=0;
       for(var i=0;i<avail.length;i++){
         var s=avail[i];
-        /* tier × 1000 dominates any min-distance difference (Manhattan
+        /* −penalty × 1000 dominates any min-distance difference (Manhattan
            distance on a classroom grid is well under 100); the random
-           offset < 0.5 only breaks ties so all rows are treated equally. */
-        var sc=tier(s)*1000 + minD[s] + Math.random()*0.5;
+           offset < 0.5 only breaks ties so all rows / columns are treated
+           equally. */
+        var sc=-penalty(s)*1000 + minD[s] + Math.random()*0.5;
         if(sc>best){best=sc;bi=i;}
       }
       var pick=avail.splice(bi,1)[0];
       sel.push(pick);
       selectedInRow[coords[pick].r]++;
       selByRow[coords[pick].r][coords[pick].c]=true;
+      selByCol[coords[pick].c][coords[pick].r]=true;
       /* Update minimum distances now that 'pick' is selected */
       avail.forEach(function(s){
         var d=mdist(s,pick);
