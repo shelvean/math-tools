@@ -1277,8 +1277,18 @@ function drawPhaseAll(solObj){
   }
 }
 
+/* If the user changes T and clicks Show All without first clicking Reset,
+   Show All would otherwise draw from the stale sol.  Detect a T mismatch
+   and recompute first; once resetSimulation finishes, replay Show All. */
+var pendingShowAll=false;
 function showAll(){
   if(!sol) return;
+  var q=readParams();
+  if(Math.abs(q.T-sol.T)>0.5){
+    pendingShowAll=true;
+    resetSimulation();
+    return;
+  }
   isPaused=true; updatePauseButton();
   if(sol.multi){
     /* Multi-IC: draw the final frame at t=T (zoomed-in attractor view). */
@@ -1526,6 +1536,12 @@ function resetSimulation(){
       var Tf=p.omega>0.01?2*Math.PI/p.omega:0;
       say('Ready. Regime: '+getRegime(p).lbl+'. Forcing period '+Tf.toFixed(2)+' s. '+(isPaused?'Paused.':'Running.'));
       updateSRData(sol.pts[0],sol);
+    }
+    /* If the user clicked Show All while T was stale, replay it now that
+       the new sol matches the current T (and other params). */
+    if(pendingShowAll){
+      pendingShowAll=false;
+      setTimeout(showAll,0);
     }
   },20);
 }
