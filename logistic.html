@@ -813,6 +813,7 @@ var MAPS = {
       {label:'μ = 1.0 (period-2)',         mu:1.00,        aria:'mu equals 1.0, period-2 cycle'},
       {label:'μ = 1.25 (period-4)',        mu:1.25,        aria:'mu equals 1.25, period-4 cycle'},
       {label:'μ = 1.401 (Feigenbaum)',     mu:1.40115519,  aria:'mu equals 1.40115, Feigenbaum accumulation point'},
+      {label:'μ = 1.6254 (superstable period-5)', mu:1.6254, x0:0, aria:'mu equals 1.6254, superstable period-5 orbit, x0 equals 0'},
       {label:'μ = 1.75 (period-3 window)', mu:1.75,        aria:'mu equals 1.75, period-3 window'},
       {label:'μ = 1.9 (chaos)',            mu:1.90,        aria:'mu equals 1.9, chaos'},
       {label:'μ = 2.0 (full chaos)',       mu:2.00,        aria:'mu equals 2.0, full chaos, conjugate to logistic r equals 4'}
@@ -835,7 +836,8 @@ var MAPS = {
       if(mu<1.25) return 'Past the first period-doubling at \\(\\mu=\\tfrac{3}{4}\\) (where \\(f\'(x^*)=-1\\) at \\(x^*=\\tfrac{2}{3}\\)). The fixed point is now <strong>unstable</strong> and a stable <strong>period-2 orbit</strong> exists. The cobweb traces a rectangle.';
       if(mu<1.368) return 'At \\(\\mu=\\tfrac{5}{4}\\) the period-2 orbit doubled. The orbit now has <strong>period 4</strong> and the cobweb visits four distinct values in succession.';
       if(mu<1.401) return 'Deep in the <strong>period-doubling cascade</strong> approaching \\(\\mu_\\infty\\approx1.40115518909\\). Successive bifurcation intervals shrink by the universal Feigenbaum ratio \\(\\delta\\approx4.669\\) — the same constant as for the logistic and sine maps.';
-      if(mu<1.75) return 'Past the Feigenbaum point — the orbit is <strong>chaotic</strong> with Lyapunov exponent \\(\\lambda>0\\). The bifurcation diagram contains a dense attractor punctuated by narrow periodic windows.';
+      if(mu>=1.6240 && mu<=1.6268) return 'Inside a narrow <strong>period-5 window</strong> in the chaotic regime. At \\(\\mu=1.6254\\) starting from the critical point \\(x_0=0\\), the orbit is <strong>superstable</strong> with period 5: \\(0\\to1\\to-0.6254\\to0.3643\\to0.7843\\to\\approx 0\\). Because \\(0\\) is in the cycle and \\(f\'(0)=0\\), the multiplier \\(\\prod_{i=0}^{4}f\'(x_i)=0\\), so nearby orbits collapse onto the cycle in finitely many steps. Conjugate to \\(x^2+c\\) with \\(c=-1.6254\\) on the real Mandelbrot axis.';
+      if(mu<1.75) return 'Past the Feigenbaum point — the orbit is <strong>chaotic</strong> with Lyapunov exponent \\(\\lambda>0\\). The bifurcation diagram contains a dense attractor punctuated by narrow periodic windows (e.g., a period-5 window near \\(\\mu\\approx1.6254\\)).';
       if(mu<1.79) return 'Near \\(\\mu\\approx1.75\\): a <strong>period-3 window</strong>. By Sharkovsky/Li-Yorke, period-3 implies chaos in the topological sense — every other period coexists.';
       if(mu<2)    return 'Chaotic regime with \\(\\lambda>0\\). The map \\(f(x)=1-\\mu x^2\\) is in the same universality class as the logistic and sine maps — same Feigenbaum constants, same bifurcation skeleton.';
       return 'At \\(\\mu=2\\): <strong>fully chaotic</strong> on \\([-1,1]\\). Conjugate to the logistic map at \\(r=4\\) via \\(x=-\\cos(\\pi\\theta)\\); Lyapunov exponent exactly \\(\\lambda=\\ln 2\\approx0.693\\). Almost every orbit is dense in \\([-1,1]\\).';
@@ -1458,15 +1460,21 @@ function buildPresets(mapId){
     btn.textContent=pr.label;
     btn.setAttribute('aria-label',pr.aria);
     btn.setAttribute('aria-pressed','false');
-    /* store param value */
-    var paramKey=Object.keys(pr).find(function(k){return k!=='label'&&k!=='aria';});
+    /* store param value (skip label, aria, and the optional x0 override) */
+    var paramKey=Object.keys(pr).find(function(k){return k!=='label'&&k!=='aria'&&k!=='x0';});
     btn.dataset.val=pr[paramKey];
+    if(pr.x0!==undefined) btn.dataset.x0=pr.x0;
     btn.addEventListener('click',function(){
       var v=parseFloat(this.dataset.val);
       ST.param=v;
       document.getElementById('paramRange').value=v;
       document.getElementById('paramRange').setAttribute('aria-valuetext',v.toFixed(3));
       document.getElementById('paramNum').value=v;
+      if(this.dataset.x0!==undefined){
+        var x0=parseFloat(this.dataset.x0);
+        ST.x0=x0;
+        document.getElementById('x0Num').value=x0;
+      }
       document.querySelectorAll('.preset-btn').forEach(function(b){b.setAttribute('aria-pressed','false');});
       this.setAttribute('aria-pressed','true');
       stopAnim();buildOrbit();ST.nDraw=0;render();drawOrbit();updateReadout();updateFormula();
@@ -1481,7 +1489,9 @@ function buildPresets(mapId){
 ===================================================== */
 document.getElementById('x0Num').addEventListener('change',function(){
   var v=parseFloat(this.value);if(!isFinite(v))return;
-  v=clamp(v,-0.05,1.05);this.value=v;ST.x0=v;
+  /* clamp to the current map's domain so the Quadratic tab (domain [-1.1, 1.1]) accepts negative x₀ */
+  var d=MAPS[ST.mapId].domain;
+  v=clamp(v,d[0],d[1]);this.value=v;ST.x0=v;
   stopAnim();buildOrbit();ST.nDraw=0;render();drawOrbit();updateReadout();updateFormula();
 });
 document.getElementById('nIterNum').addEventListener('change',function(){
