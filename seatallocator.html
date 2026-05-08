@@ -404,6 +404,19 @@ function allocate(usable,n,layout,lhSeats){
   var pool=usable.slice();
   if(pool.length<n&&lhSeats) lhSeats.forEach(function(s){pool.push(s);});
 
+  var nRows=layout.rows.length;
+
+  /* ── Per-row usable capacity, used to keep at least one empty seat per row.
+     If n ≤ Σ(rowCap[r] − 1) over non-empty rows, we treat "no row fully
+     filled" as a hard constraint inside the greedy step.  This replaces the
+     previous front-row bias, which had the side-effect of packing the front
+     of the room when allocations approached capacity. */
+  var rowCap=new Array(nRows).fill(0);
+  pool.forEach(function(s){ rowCap[coords[s].r]++; });
+  var nonEmptyRows=0;
+  for(var rIdx=0;rIdx<nRows;rIdx++) if(rowCap[rIdx]>0) nonEmptyRows++;
+  var keepOneEmpty=(n<=pool.length-nonEmptyRows);
+
   /* ── Greedy farthest-first traversal (k-dispersion) ─────────────────
      At each step, pick the available seat with the MAXIMUM minimum
      distance to the already-selected set.  This directly maximises
@@ -411,27 +424,37 @@ function allocate(usable,n,layout,lhSeats){
      as possible both horizontally and vertically.
      Runs in O(n·m) time.  Three independent random seeds are tried;
      the best result (highest achieved minimum distance) is kept.
-     Front-row bias: a fractional bonus < 0.5 is added for seats closer
-     to the front (higher row index).  Since all real distance differences
-     are integers ≥ 1, this bonus never overrides a genuine spacing
-     advantage — it only breaks ties in favour of the front of the room. */
-  var nRows=layout.rows.length;
+     When `keepOneEmpty` holds, seats that would fully fill their row
+     are skipped so each row keeps at least one vacant seat. */
   function greedyRun(seedIdx){
     var avail=pool.slice();
     var sel=[avail.splice(seedIdx,1)[0]];
     /* minD[s] = distance from s to its nearest selected neighbour */
     var minD={};
     avail.forEach(function(s){minD[s]=mdist(s,sel[0]);});
+    var selectedInRow=new Array(nRows).fill(0);
+    selectedInRow[coords[sel[0]].r]++;
     while(sel.length<n&&avail.length){
-      /* Score = min-distance (primary) + front-row bias (tiebreaker only) */
-      var best=-1,bi=0;
+      var best=-Infinity,bi=-1;
       for(var i=0;i<avail.length;i++){
         var s=avail[i];
-        var sc=minD[s]+0.5*coords[s].r/(nRows-1||1);
-        if(sc>best){best=sc;bi=i;}
+        var ri=coords[s].r;
+        /* Hard constraint: leave ≥1 empty per row if the total fits */
+        if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) continue;
+        if(minD[s]>best){best=minD[s];bi=i;}
+      }
+      if(bi<0){
+        /* Defensive fallback (shouldn't fire when keepOneEmpty was correctly
+           determined): relax the constraint and pick the best available. */
+        best=-Infinity;
+        for(var j=0;j<avail.length;j++){
+          if(minD[avail[j]]>best){best=minD[avail[j]];bi=j;}
+        }
+        if(bi<0) bi=0;
       }
       var pick=avail.splice(bi,1)[0];
       sel.push(pick);
+      selectedInRow[coords[pick].r]++;
       /* Update minimum distances now that 'pick' is selected */
       avail.forEach(function(s){
         var d=mdist(s,pick);
