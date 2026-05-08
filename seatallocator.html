@@ -418,20 +418,24 @@ function allocate(usable,n,layout,lhSeats){
   var keepOneEmpty=(n<=pool.length-nonEmptyRows);
 
   /* ── Greedy farthest-first traversal (k-dispersion) ─────────────────
-     At each step, pick the available seat with the MAXIMUM minimum
-     distance to the already-selected set.  This directly maximises
-     the minimum pairwise distance — spreading students as far apart
-     as possible both horizontally and vertically.
-     Runs in O(n·m) time.  Three independent random seeds are tried;
-     the best result (highest achieved minimum distance) is kept.
-     Two row-aware constraints are layered on top, in priority order:
-       (1) `keepOneEmpty`: when n ≤ pool − non-empty-rows, skip any
-           seat that would fully fill its row.
-       (2) `noInRowAdj`:   skip any seat that would sit immediately next
-           to (|Δc|=1, same row) an already-selected seat, IF some other
-           row still has ≥ 2 unselected seats — i.e., we have slack
-           elsewhere and there's no need to crowd within a row.
-     Each constraint can be relaxed in turn if no candidate qualifies. */
+     At each step, pick the available seat that maximises a layered
+     score.  The score is constructed from a constraint TIER (high digit)
+     plus the min-distance to the already-selected set (low digit) plus
+     a small random tiebreaker, so harder constraints always dominate
+     softer ones, but within a tier the algorithm still spreads picks
+     as far apart as possible.
+
+     Constraint tiers (higher = better; ties relaxed gracefully):
+       4 — keepOneEmpty AND no-in-row-adjacency-with-slack
+           (also implies no-3-run, since no pair ⇒ no triple)
+       3 — keepOneEmpty AND no-3-run-with-slack but a pair is created
+           (allow a side-by-side pair when slack elsewhere is gone for
+            avoiding pairs, but still forbid extending to a triple)
+       2 — keepOneEmpty only (a triple is being created)
+       1 — keepOneEmpty itself violated (last-resort fallback)
+
+     "with-slack" means some row r' ≠ ri still has ≥ 2 unselected seats.
+     `keepOneEmpty` is feasible whenever n ≤ pool − non-empty-rows. */
   function greedyRun(seedIdx){
     var avail=pool.slice();
     var sel=[avail.splice(seedIdx,1)[0]];
@@ -440,8 +444,8 @@ function allocate(usable,n,layout,lhSeats){
     avail.forEach(function(s){minD[s]=mdist(s,sel[0]);});
     var selectedInRow=new Array(nRows).fill(0);
     selectedInRow[coords[sel[0]].r]++;
-    /* selByRow[r] = Set of column indices already selected in row r,
-       so the in-row-adjacency test is O(1) per candidate. */
+    /* selByRow[r] = plain object used as a Set of selected column
+       indices, so adjacency / 3-run tests are O(1) per candidate. */
     var selByRow=new Array(nRows);
     for(var rr=0;rr<nRows;rr++) selByRow[rr]=Object.create(null);
     selByRow[coords[sel[0]].r][coords[sel[0]].c]=true;
@@ -466,36 +470,29 @@ function allocate(usable,n,layout,lhSeats){
         var cs=coords[s], row=selByRow[cs.r];
         return row[cs.c-1]===true || row[cs.c+1]===true;
       }
+      function wouldCreate3Run(s){
+        var cs=coords[s], row=selByRow[cs.r], c=cs.c;
+        return (row[c-1]===true && row[c-2]===true) ||
+               (row[c-1]===true && row[c+1]===true) ||
+               (row[c+1]===true && row[c+2]===true);
+      }
+      function tier(s){
+        var ri=coords[s].r;
+        if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) return 1;
+        var slack=otherRowMultiEmpty(ri);
+        if(!(hasInRowAdj(s) && slack)) return 4;          /* no pair while slack remains */
+        if(!(wouldCreate3Run(s) && slack)) return 3;      /* pair OK, but no 3-run */
+        return 2;                                         /* 3-run forced; keepOneEmpty still holds */
+      }
 
-      var best=-Infinity,bi=-1;
-      /* Pass 1: full constraints — keepOneEmpty AND no-in-row-adj-with-slack */
+      var best=-Infinity,bi=0;
       for(var i=0;i<avail.length;i++){
-        var s=avail[i], ri=coords[s].r;
-        if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) continue;
-        if(hasInRowAdj(s) && otherRowMultiEmpty(ri)) continue;
-        /* Min-distance (primary) + uniform random tiebreaker < 0.5 so all
-           rows are treated equally — neither the front nor the back is
-           favoured when several seats achieve the same min-distance. */
-        var sc=minD[s]+Math.random()*0.5;
+        var s=avail[i];
+        /* tier × 1000 dominates any min-distance difference (Manhattan
+           distance on a classroom grid is well under 100); the random
+           offset < 0.5 only breaks ties so all rows are treated equally. */
+        var sc=tier(s)*1000 + minD[s] + Math.random()*0.5;
         if(sc>best){best=sc;bi=i;}
-      }
-      /* Pass 2: relax in-row-adjacency only (still respect keepOneEmpty) */
-      if(bi<0){
-        for(var i2=0;i2<avail.length;i2++){
-          var s2=avail[i2], r2=coords[s2].r;
-          if(keepOneEmpty && selectedInRow[r2]+1>=rowCap[r2]) continue;
-          var sc2=minD[s2]+Math.random()*0.5;
-          if(sc2>best){best=sc2;bi=i2;}
-        }
-      }
-      /* Pass 3: relax everything (defensive — both feasibility checks
-         have already been computed, so this is rarely needed). */
-      if(bi<0){
-        for(var i3=0;i3<avail.length;i3++){
-          var sc3=minD[avail[i3]]+Math.random()*0.5;
-          if(sc3>best){best=sc3;bi=i3;}
-        }
-        if(bi<0) bi=0;
       }
       var pick=avail.splice(bi,1)[0];
       sel.push(pick);
