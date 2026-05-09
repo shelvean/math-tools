@@ -337,10 +337,10 @@
     <fieldset class="display-mode" aria-label="Result display format">
       <legend>Display values as:</legend>
       <label class="radio-label">
-        <input type="radio" name="displayMode" value="fractions" checked> Fractions
+        <input type="radio" name="displayMode" value="decimal" checked> Decimal
       </label>
       <label class="radio-label">
-        <input type="radio" name="displayMode" value="decimals"> Decimals
+        <input type="radio" name="displayMode" value="surd"> Surd / Fraction
       </label>
     </fieldset>
 
@@ -433,7 +433,7 @@ function attachMatrixKeyNav(tableEl) {
 // ============================================================
 //  STATE
 // ============================================================
-var currentDisplayMode = 'fractions';
+var currentDisplayMode = 'decimal';
 document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
   radio.addEventListener('change', function() { currentDisplayMode = this.value; });
 });
@@ -446,9 +446,9 @@ class Fraction {
     if (denominator === 0) throw new Error('Denominator cannot be zero');
     const absNum = Math.abs(numerator);
     const absDen = Math.abs(denominator);
-    const gcd = this.gcd(absNum, absDen);
-    this.numerator = (numerator < 0 ? -absNum : absNum) / gcd * Math.sign(denominator);
-    this.denominator = absDen / gcd;
+    const g = this.gcd(absNum, absDen);
+    this.numerator = (numerator < 0 ? -absNum : absNum) / g * Math.sign(denominator);
+    this.denominator = absDen / g;
     if (this.denominator < 0) {
       this.numerator = -this.numerator;
       this.denominator = -this.denominator;
@@ -468,21 +468,31 @@ class Fraction {
     return value instanceof Fraction ? value : new Fraction(value);
   }
 
-  static fromDecimal(decimal, maxDenominator = 5000) {
+  static fromDecimal(decimal, maxDenominator = 100) {
     if (Number.isInteger(decimal)) return new Fraction(decimal);
     let sign = decimal < 0 ? -1 : 1;
     decimal = Math.abs(decimal);
     let bestNum = 1, bestDen = 1, bestError = Math.abs(decimal - 1);
     for (let den = 1; den <= maxDenominator; den++) {
       let num = Math.round(decimal * den);
-      let error = Math.abs(decimal - num / den);
-      if (error < bestError) {
-        bestNum = num;
-        bestDen = den;
-        bestError = error;
+      if (Math.abs(num) <= 500 && den <= 500) {
+        let error = Math.abs(decimal - num / den);
+        if (error < bestError) {
+          bestNum = num;
+          bestDen = den;
+          bestError = error;
+        }
       }
     }
     return new Fraction(sign * bestNum, bestDen);
+  }
+
+  toLatex() {
+    if (this.numerator === 0) return "0";
+    const sign = this.numerator < 0 ? "-" : "";
+    const absNum = Math.abs(this.numerator);
+    if (this.denominator === 1) return sign + absNum.toString();
+    return sign + "\\dfrac{" + absNum + "}{" + this.denominator + "}";
   }
 }
 
@@ -559,8 +569,8 @@ function clearAll() {
   document.getElementById('n').value = '';
   document.getElementById('matrixInput').innerHTML = '';
   document.getElementById('result').innerHTML = '';
-  document.querySelector('input[value="fractions"]').checked = true;
-  currentDisplayMode = 'fractions';
+  document.querySelector('input[value="decimal"]').checked = true;
+  currentDisplayMode = 'decimal';
   announce('All inputs and results cleared.');
 }
 
@@ -604,14 +614,155 @@ function readMatrix() {
   return A;
 }
 
-function formatForLatex(val) {
-  if (Math.abs(val) < 1e-10) {
-    return "0";
-  } else if (Math.abs(val - Math.round(val)) < 1e-10) {
-    return Math.round(val).toString();
-  } else {
-    return parseFloat(val.toFixed(6)).toString();
+// ============================================================
+//  SURD & LATEX FORMATTING
+// ============================================================
+const SQRT_CACHE = Array.from({length: 101}, (_, i) => Math.sqrt(i));
+
+function simplifyRadicand(coeff, radicand) {
+  let c = coeff, r = radicand;
+  for (let p = 2; p * p <= r; p++) {
+    while (r % (p * p) === 0) { r /= (p * p); c *= p; }
   }
+  return { coeff: c, radicand: r };
+}
+
+function gcdInt(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+
+function formatSurdLatex(sign, coeff, radicand, rden) {
+  let { coeff: c, radicand: r } = simplifyRadicand(coeff, radicand);
+  if (r === 1) {
+    let g = gcdInt(c, rden); c /= g; rden /= g;
+    if (rden === 1) return sign + c;
+    return sign + "\\dfrac{" + c + "}{" + rden + "}";
+  }
+  let sqrtPart = (c === 1 ? "" : c) + "\\sqrt{" + r + "}";
+  if (rden === 1) return sign + sqrtPart;
+  return sign + "\\dfrac{" + (c === 1 ? "" : c) + "\\sqrt{" + r + "}}{" + rden + "}";
+}
+
+function formatCompoundSurdLatex(isNeg, intPart, surdCoeff, radicand, rden) {
+  let { radicand: r } = simplifyRadicand(1, radicand);
+  let dispInt = isNeg ? -intPart : intPart;
+  let dispSC = isNeg ? -surdCoeff : surdCoeff;
+  let sc = simplifyRadicand(Math.abs(dispSC), radicand).coeff;
+  let sqrtPart = (sc === 1 ? "" : sc) + "\\sqrt{" + r + "}";
+  let numStr;
+  if (dispInt < 0 && dispSC < 0) {
+    numStr = Math.abs(dispInt) + " + " + sqrtPart;
+    if (rden === 1) return "-(" + numStr + ")";
+    return "-\\dfrac{" + numStr + "}{" + rden + "}";
+  } else if (dispInt > 0 && dispSC > 0) {
+    numStr = dispInt + " + " + sqrtPart;
+  } else if (dispInt > 0 && dispSC < 0) {
+    numStr = dispInt + " - " + sqrtPart;
+  } else {
+    numStr = sqrtPart + " - " + Math.abs(dispInt);
+  }
+  if (rden === 1) return numStr;
+  return "\\dfrac{" + numStr + "}{" + rden + "}";
+}
+
+function toSurd(val) {
+  if (Math.abs(val) < 1e-7) return "0";
+  let isNeg = val < 0;
+  let sign = isNeg ? "-" : "";
+  let absVal = Math.abs(val);
+  let tol = 1e-6;
+
+  // Best rational p/q with q <= maxDen via continued-fraction convergents.
+  function ratApprox(x, maxDen) {
+    let h0 = 1, k0 = 0, h1 = Math.floor(x), k1 = 1;
+    let frac = x - h1;
+    for (let i = 0; i < 64 && Math.abs(frac) > 1e-15; i++) {
+      let inv = 1 / frac;
+      let a = Math.floor(inv);
+      let h2 = a * h1 + h0, k2 = a * k1 + k0;
+      if (k2 > maxDen) break;
+      h0 = h1; k0 = k1;
+      h1 = h2; k1 = k2;
+      frac = inv - a;
+    }
+    return { p: h1, q: k1 };
+  }
+
+  // 1. Pure surd: if val² ≈ p/q then val = √(p·q)/q (rationalized).
+  let sq = absVal * absVal;
+  let r2 = ratApprox(sq, 1000);
+  if (r2.p > 0 && r2.q > 0 && Math.abs(sq - r2.p / r2.q) < tol) {
+    let radicand = r2.p * r2.q;
+    let simp = simplifyRadicand(1, radicand);
+    if (simp.radicand > 1 && simp.radicand <= 1000 &&
+        Math.abs(simp.coeff * Math.sqrt(simp.radicand) / r2.q - absVal) < tol) {
+      return formatSurdLatex(sign, 1, radicand, r2.q);
+    }
+  }
+
+  // 2. Pure rational p/q.
+  let r1 = ratApprox(absVal, 1000);
+  if (r1.q > 0 && Math.abs(absVal - r1.p / r1.q) < 1e-10) {
+    return formatSurdLatex(sign, r1.p, 1, r1.q);
+  }
+
+  // 3. Compound surd a ± b√c (rationalized).
+  for (let rden = 1; rden <= 12; rden++) {
+    let scaled = absVal * rden;
+    for (let a = 2; a <= 50; a++) {
+      let sq2 = SQRT_CACHE[a];
+      for (let coeff = 1; coeff <= 5; coeff++) {
+        let csq = coeff * sq2;
+        let intP = Math.round(scaled - csq);
+        if (intP !== 0 && Math.abs(scaled - intP - csq) < tol) {
+          return formatCompoundSurdLatex(isNeg, intP, coeff, a, rden);
+        }
+        intP = Math.round(scaled + csq);
+        if (intP !== 0 && Math.abs(scaled - intP + csq) < tol) {
+          return formatCompoundSurdLatex(isNeg, intP, -coeff, a, rden);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function isRepeatingOrShortDecimal(val) {
+  if (Math.abs(val) < 1e-7) return false;
+  const frac = Fraction.fromDecimal(val, 100);
+  const decimalVal = frac.numerator / frac.denominator;
+  if (Math.abs(decimalVal - val) < 1e-6 && Math.abs(frac.numerator) <= 500 && frac.denominator <= 500) {
+    return frac;
+  }
+  return false;
+}
+
+function formatForLatex(val) {
+  if (Math.abs(val) < 1e-7) return "0";
+  if (currentDisplayMode === 'surd') {
+    let surd = toSurd(val);
+    if (surd) return surd;
+    const frac = isRepeatingOrShortDecimal(val);
+    if (frac) return frac.toLatex();
+  } else {
+    const frac = isRepeatingOrShortDecimal(val);
+    if (frac) return frac.toLatex();
+    let surd = toSurd(val);
+    if (surd) return surd;
+  }
+  return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function matrixToLatex(M) {
+  const r = M.length, c = M[0].length;
+  const rows = [];
+  for (let i = 0; i < r; i++) {
+    const cells = [];
+    for (let j = 0; j < c; j++) {
+      cells.push(formatForLatex(M[i][j]));
+    }
+    rows.push(cells.join(" & "));
+  }
+  return "\\begin{pmatrix}" + rows.join(" \\\\[0.5em] ") + "\\end{pmatrix}";
 }
 
 // ============================================================
@@ -663,118 +814,6 @@ function isZeroMatrix(A) {
     }
   }
   return true;
-}
-
-function lcm(a, b) {
-  const gcd = (x, y) => (!y ? x : gcd(y, x % y));
-  return Math.abs(a * b) / gcd(a, b);
-}
-
-function computeLCM(numbers) {
-  if (numbers.length === 0) return 1;
-  return numbers.reduce((a, b) => lcm(a, b));
-}
-
-// ============================================================
-//  LATEX FORMATTING
-// ============================================================
-function matrixToDecimalLatex(M) {
-  const rows = M.length;
-  const cols = M[0].length;
-  let latex = "\\begin{pmatrix}";
-  for (let i = 0; i < rows; i++) {
-    for (let j = 0; j < cols; j++) {
-      const formattedVal = formatForLatex(M[i][j]);
-      latex += formattedVal;
-      if (j < cols - 1) latex += " & ";
-    }
-    if (i < rows - 1) latex += " \\\\ ";
-  }
-  latex += "\\end{pmatrix}";
-  return latex;
-}
-
-function decimalToFraction(decimal, tol, maxDenom) {
-  tol = tol || 1e-10;
-  maxDenom = maxDenom || 5000;
-  if (Math.abs(decimal) < tol) {
-    return { numerator: 0, denominator: 1 };
-  }
-  const sign = decimal < 0 ? -1 : 1;
-  decimal = Math.abs(decimal);
-  let n0 = 0, d0 = 1, n1 = 1, d1 = 0;
-  let x = decimal;
-  while (d1 <= maxDenom) {
-    const a = Math.floor(x);
-    const n = a * n1 + n0;
-    const d = a * d1 + d0;
-    const error = Math.abs(decimal - n / d);
-    if (error < tol || d > maxDenom) {
-      const gcd = (a, b) => b ? gcd(b, a % b) : a;
-      const common = gcd(Math.abs(n), d);
-      return { numerator: sign * (n / common), denominator: d / common };
-    }
-    n0 = n1; d0 = d1; n1 = n; d1 = d;
-    const fracPart = x - a;
-    if (fracPart < tol) break;
-    x = 1 / fracPart;
-  }
-  const gcd = (a, b) => b ? gcd(b, a % b) : a;
-  const common = gcd(Math.abs(n1), d1);
-  return { numerator: sign * (n1 / common), denominator: d1 / common };
-}
-
-function matrixToFractionLatex(M, tol, maxDenom) {
-  tol = tol || 1e-10;
-  maxDenom = maxDenom || 5000;
-  const rows = M.length;
-  const cols = M[0].length;
-  const fractions = M.map(row => row.map(val => Fraction.fromDecimal(val, maxDenom)));
-  let allSimple = true;
-  const denominators = [];
-  for (let i = 0; i < rows; i++) {
-    for (let j = 0; j < cols; j++) {
-      const frac = fractions[i][j];
-      if (frac.numerator !== 0 && frac.denominator !== 1) {
-        if (Math.abs(frac.numerator) >= 5000 || frac.denominator >= 5000) allSimple = false;
-        denominators.push(frac.denominator);
-      }
-    }
-  }
-  if (allSimple && denominators.length > 0) {
-    const commonDen = computeLCM(denominators);
-    let latex = `\\dfrac{1}{${commonDen}} \\begin{pmatrix}`;
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        const frac = fractions[i][j];
-        const scaledNum = frac.numerator * (commonDen / (frac.denominator || 1));
-        latex += scaledNum.toString();
-        if (j < cols - 1) latex += " & ";
-      }
-      if (i < rows - 1) latex += " \\\\[0.5em] ";
-    }
-    latex += "\\end{pmatrix}";
-    return latex;
-  }
-  let latex = "\\begin{pmatrix}";
-  for (let i = 0; i < rows; i++) {
-    for (let j = 0; j < cols; j++) {
-      const frac = fractions[i][j];
-      const sign = frac.numerator < 0 ? "-" : "";
-      const absNum = Math.abs(frac.numerator);
-      if (frac.numerator === 0) {
-        latex += "0";
-      } else if (frac.denominator === 1) {
-        latex += sign + absNum.toString();
-      } else {
-        latex += sign + "\\dfrac{" + absNum + "}{" + frac.denominator + "}";
-      }
-      if (j < cols - 1) latex += " & ";
-    }
-    if (i < rows - 1) latex += " \\\\[0.5em] ";
-  }
-  latex += "\\end{pmatrix}";
-  return latex;
 }
 
 // ============================================================
@@ -929,18 +968,56 @@ document.getElementById('calcBtn').addEventListener('click', function() {
   var Sigma_plus_Ut = multiplyMatrices(Sigma_plus, U_transpose);
   var A_plus = multiplyMatrices(V, Sigma_plus_Ut);
 
-  var displayType = currentDisplayMode;
-  var A_plus_latex;
-  if (displayType === 'fractions') {
-    A_plus_latex = matrixToFractionLatex(A_plus);
-  } else {
-    A_plus_latex = matrixToDecimalLatex(A_plus);
-  }
+  var A_latex = matrixToLatex(A);
+  var U_latex = matrixToLatex(U);
+  var Sigma_latex = matrixToLatex(Sigma);
+  var Vt_latex = matrixToLatex(Vt);
+  var Sigma_plus_latex = matrixToLatex(Sigma_plus);
+  var V_latex = matrixToLatex(V);
+  var Ut_latex = matrixToLatex(U_transpose);
+  var Sigma_plus_Ut_latex = matrixToLatex(Sigma_plus_Ut);
+  var A_plus_latex = matrixToLatex(A_plus);
 
-  var block = document.createElement('div');
-  block.className = 'step-block';
-  block.innerHTML = '<div style="text-align:center;">\\[ A^{\\dagger} = ' + A_plus_latex + ' \\]</div>';
-  resultDiv.appendChild(block);
+  var html = '';
+
+  // Final pseudoinverse summary up top
+  html += '<div class="step-block">';
+  html += '<p class="step-title" style="text-align:center;font-size:1.1rem;">Moore-Penrose Pseudoinverse \\( A^{\\dagger} \\):</p>';
+  html += '<div style="text-align:center;">\\[ A^{\\dagger} = ' + A_plus_latex + ' \\]</div>';
+  html += '</div>';
+
+  // Input matrix
+  html += '<div class="step-block">';
+  html += '<p class="step-title" style="text-align:center;">Input Matrix \\(A\\)</p>';
+  html += '<div style="text-align:center;">\\[ A = ' + A_latex + ' \\]</div>';
+  html += '</div>';
+
+  // SVD
+  html += '<div class="step-block">';
+  html += '<p class="step-title" style="text-align:center;">SVD Decomposition: \\( A = U \\Sigma V^T \\)</p>';
+  html += '<div style="text-align:center;">\\[ U = ' + U_latex + ' \\]</div>';
+  html += '<div style="text-align:center;">\\[ \\Sigma = ' + Sigma_latex + ' \\]</div>';
+  html += '<div style="text-align:center;">\\[ V^T = ' + Vt_latex + ' \\]</div>';
+  html += '</div>';
+
+  // Pseudoinverse — step by step
+  html += '<div class="step-block">';
+  html += '<p class="step-title" style="text-align:center;">Pseudoinverse \\( A^{\\dagger} = V \\Sigma^+ U^T \\)</p>';
+
+  html += '<p class="step-title" style="margin-top:0.75rem;">Step 1. Form \\(\\Sigma^+\\) by transposing \\(\\Sigma\\) and inverting each non-zero singular value:</p>';
+  html += '<div style="text-align:center;">\\[ \\Sigma = ' + Sigma_latex + ' \\;\\longrightarrow\\; \\Sigma^+ = ' + Sigma_plus_latex + ' \\]</div>';
+
+  html += '<p class="step-title" style="margin-top:0.75rem;">Step 2. Transpose \\(V^T\\) to get \\(V\\), and transpose \\(U\\) to get \\(U^T\\):</p>';
+  html += '<div style="text-align:center;">\\[ V = ' + V_latex + ', \\quad U^T = ' + Ut_latex + ' \\]</div>';
+
+  html += '<p class="step-title" style="margin-top:0.75rem;">Step 3. Compute \\(\\Sigma^+ U^T\\):</p>';
+  html += '<div style="text-align:center;">\\[ \\Sigma^+ U^T = ' + Sigma_plus_latex + ' \\; ' + Ut_latex + ' = ' + Sigma_plus_Ut_latex + ' \\]</div>';
+
+  html += '<p class="step-title" style="margin-top:0.75rem;">Step 4. Multiply by \\(V\\) on the left to obtain \\(A^{\\dagger}\\):</p>';
+  html += '<div style="text-align:center;">\\[ A^{\\dagger} = V \\,(\\Sigma^+ U^T) = ' + V_latex + ' \\; ' + Sigma_plus_Ut_latex + ' = ' + A_plus_latex + ' \\]</div>';
+  html += '</div>';
+
+  resultDiv.innerHTML = html;
 
   if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
     MathJax.typesetPromise([resultDiv]).catch(function(err) { console.warn('MathJax error:', err); });
