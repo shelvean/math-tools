@@ -885,6 +885,40 @@ function jacobiEigenDecomposition(S, maxIter, tol) {
 // ============================================================
 //  COMPUTE SVD
 // ============================================================
+function dot(a, b) { return a.reduce((s, v, i) => s + v * b[i], 0); }
+function norm2(v) { return Math.sqrt(dot(v, v)); }
+function scalarMult(v, s) { return v.map(e => e * s); }
+function addVecs(a, b) { return a.map((e, i) => e + b[i]); }
+
+// Extend a partial orthonormal column set to `outCount` orthonormal
+// columns by Gram-Schmidt-orthogonalizing standard basis vectors against
+// the existing set. Used to fill U columns for zero singular values so
+// the result is genuinely orthogonal even when A is rank-deficient.
+function gramSchmidtColumns(vecs, outCount) {
+  let m = vecs[0] ? vecs[0].length : outCount;
+  let Q = [];
+  for (let v of vecs) {
+    let u = v.slice();
+    for (let q of Q) {
+      let proj = dot(u, q);
+      u = addVecs(u, scalarMult(q, -proj));
+    }
+    let nu = norm2(u);
+    if (nu > 1e-7) Q.push(scalarMult(u, 1 / nu));
+  }
+  for (let i = 0; Q.length < outCount && i < m; i++) {
+    let e = Array(m).fill(0);
+    e[i] = 1;
+    for (let q of Q) {
+      let proj = dot(e, q);
+      e = addVecs(e, scalarMult(q, -proj));
+    }
+    let ne = norm2(e);
+    if (ne > 1e-7) Q.push(scalarMult(e, 1 / ne));
+  }
+  return Q;
+}
+
 function computeSVD(A) {
   const m = A.length;
   const n = A[0].length;
@@ -911,29 +945,31 @@ function computeSVD(A) {
     }
   }
   const Sigma = Array(m).fill().map(() => Array(n).fill(0));
-  for (let i = 0; i < Math.min(m, n); i++) {
-    Sigma[i][i] = sortedSingularValues[i];
-  }
-  const U = Array(m).fill().map(() => Array(m).fill(0));
-  for (let i = 0; i < Math.min(m, n); i++) {
-    if (Math.abs(Sigma[i][i]) > 1e-10) {
+  const k = Math.min(m, n);
+  for (let i = 0; i < k; i++) Sigma[i][i] = sortedSingularValues[i];
+
+  // Build U columns from A·v_i / σ_i for each non-zero σ; then extend to
+  // an orthonormal basis of R^m via Gram-Schmidt against the standard
+  // basis. This avoids leaving null-space columns as zeros.
+  let Ucols = [];
+  for (let i = 0; i < k; i++) {
+    if (sortedSingularValues[i] > 1e-7) {
+      const v = sorted_V.map(r => r[i]);
       const Av = Array(m).fill(0);
-      for (let k = 0; k < m; k++) {
-        for (let l = 0; l < n; l++) {
-          Av[k] += A[k][l] * sorted_V[l][i];
-        }
-      }
-      const sigma = Sigma[i][i];
-      for (let k = 0; k < m; k++) {
-        U[k][i] = Av[k] / sigma;
-      }
+      for (let r = 0; r < m; r++)
+        for (let c = 0; c < n; c++)
+          Av[r] += A[r][c] * v[c];
+      let u = scalarMult(Av, 1 / sortedSingularValues[i]);
+      const nu = norm2(u);
+      if (nu > 1e-7) Ucols.push(scalarMult(u, 1 / nu));
     }
   }
-  for (let i = Math.min(m, n); i < m; i++) {
-    for (let j = 0; j < m; j++) {
-      U[j][i] = i === j ? 1 : 0;
-    }
-  }
+  Ucols = gramSchmidtColumns(Ucols, m);
+  const U = Array.from({length: m}, () => new Array(m));
+  for (let j = 0; j < m; j++)
+    for (let i = 0; i < m; i++)
+      U[i][j] = Ucols[j][i];
+
   const Vt = transposeMatrix(sorted_V);
   return { U: U, Sigma: Sigma, Vt: Vt };
 }
