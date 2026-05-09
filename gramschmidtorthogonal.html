@@ -753,24 +753,13 @@ function formatScalarForLatex(formatted) {
 // ============================================================
 //  VECTOR / BASIS LATEX
 // ============================================================
-function vectorToLatex(vec, isNormalized, norm2) {
-    isNormalized = isNormalized || false;
-    norm2 = norm2 || null;
-    const absNums = vec.map(function(f) { return Math.abs(f.numerator); });
-    const vecGcd = gcdMultiple(absNums);
-    let adjustedVec = vec;
-    if (!isNormalized && vecGcd > 1) {
-        adjustedVec = vec.map(function(f) { return f.divide(new Fraction(vecGcd)); });
-    }
+function vectorToLatex(vec) {
     let latex = "\\begin{bmatrix}\n";
-    latex += adjustedVec.map(function(num) {
+    latex += vec.map(function(num) {
         const formatted = formatNumber(num, true);
         return formatScalarForLatex(formatted);
     }).join(" \\\\ \n");
     latex += "\n\\end{bmatrix}";
-    if (isNormalized && vecGcd > 1) {
-        latex = formatNumber(new Fraction(vecGcd), true) + ' ' + latex;
-    }
     return latex;
 }
 
@@ -892,15 +881,21 @@ function computeGramSchmidt(origMatrix) {
             dependent = true;
             continue;
         }
+        // u is the exact orthogonal vector from the formula (with fractions).
+        // Build u_int = (lcm_den / vecGcd) * u, the integer-vector representative,
+        // then factor = vecGcd / lcm_den is the scalar with u = factor * u_int.
+        // Projection is invariant under scaling, so subsequent steps may use u_int.
+        const u_true = u.slice();
         const dens = u.map(function(frac) { return frac.denominator; });
         const lcm_den = lcmMultiple(dens);
-        const scale = new Fraction(lcm_den);
-        u = u.map(function(frac) { return frac.multiply(scale); });
-        const absNums = u.map(function(f) { return Math.abs(f.numerator); });
+        let u_int = u.map(function(frac) { return frac.multiply(new Fraction(lcm_den)); });
+        const absNums = u_int.map(function(f) { return Math.abs(f.numerator); });
         const vecGcd = gcdMultiple(absNums);
         if (vecGcd > 1) {
-            u = u.map(function(f) { return f.divide(new Fraction(vecGcd)); });
+            u_int = u_int.map(function(f) { return f.divide(new Fraction(vecGcd)); });
         }
+        const factor = new Fraction(vecGcd, lcm_den); // u_true = factor * u_int
+        const factor_is_one = (factor.numerator === 1 && factor.denominator === 1);
         if (innerTerms.length > 0) {
             const subtractTerms = innerTerms.join(' - ');
             abstractRhs += ' - ' + subtractTerms;
@@ -909,8 +904,25 @@ function computeGramSchmidt(origMatrix) {
             formula = '\\mathbf{u}_{' + u_index + '} = \\mathbf{v}_{' + (j + 1) + '}';
         }
         steps.push({desc: formula, type: "latex"});
-        steps.push({desc: '\\mathbf{u}_{' + u_index + '} = ', uvec: u, type: "vec"});
-        orthogonal.push(u);
+        if (factor_is_one) {
+            steps.push({desc: '\\mathbf{u}_{' + u_index + '} = ', uvec: u_int, type: "vec"});
+        } else {
+            // Show the exact result first, then pull out the scalar factor
+            // and drop it from the final u_k that subsequent steps will use.
+            steps.push({
+                desc: '\\mathbf{u}_{' + u_index + '} = ',
+                uvec: u_true,
+                factor: factor,
+                u_int: u_int,
+                type: "vec_with_factor"
+            });
+            steps.push({
+                desc: 'Dropping the scalar factor, take \\(\\mathbf{u}_{' + u_index + '} = \\)',
+                uvec: u_int,
+                type: "vec_drop"
+            });
+        }
+        orthogonal.push(u_int);
     }
     steps.push({desc: "Orthogonal Basis (not normalized)", basis: orthogonal, type: "textbasis", label: "\\mathbf{u}"});
     const orthonormal = orthogonal.map(function(u) { return { vector: u, norm2: dot(u, u) }; });
@@ -973,6 +985,15 @@ function renderSteps(steps, dependent) {
             stepDiv.innerHTML = '<div style="text-align:center;">\\[' + step.desc + '\\]</div>';
         } else if (step.type === "vec") {
             stepDiv.innerHTML = '<div style="text-align:center;">\\[' + step.desc + vectorToLatex(step.uvec) + '\\]</div>';
+        } else if (step.type === "vec_with_factor") {
+            const factorLatex = formatNumber(step.factor, true);
+            stepDiv.innerHTML = '<div style="text-align:center;">\\['
+                + step.desc + vectorToLatex(step.uvec)
+                + ' = ' + factorLatex + ' \\, ' + vectorToLatex(step.u_int)
+                + '\\]</div>';
+        } else if (step.type === "vec_drop") {
+            stepDiv.innerHTML = '<div style="text-align:center;">' + step.desc
+                + '\\(' + vectorToLatex(step.uvec) + '\\)</div>';
         } else if (step.type === "text") {
             stepDiv.innerHTML = '<div class="dependent-note">' + step.desc + '\\(' + step.formula + '\\)' + step.suffix + '</div>';
         }
