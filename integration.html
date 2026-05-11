@@ -1886,11 +1886,46 @@ var METHOD_LATEX={
   romberg:'$R_{m,m}$'
 };
 
+/* Pre-warm MathJax with the legend's LaTeX strings.  MathJax 3 caches
+   typeset output keyed on the input string, so once these have been
+   rendered into an off-screen probe div, Plotly's later typesetPromise
+   calls for the same labels are near-instant.  Without this, the first
+   expand of the convergence panel waits on MathJax to render every
+   legend item from scratch. */
+var _convMathPrewarmed=false;
+function prewarmConvergenceMath(){
+  if(_convMathPrewarmed)return;
+  if(!(window.MathJax&&MathJax.typesetPromise))return;
+  var probe=document.getElementById('convMathProbe');
+  if(!probe){
+    probe=document.createElement('div');
+    probe.id='convMathProbe';
+    probe.setAttribute('aria-hidden','true');
+    probe.style.cssText='position:absolute;left:-9999px;top:-9999px;visibility:hidden;';
+    document.body.appendChild(probe);
+  }
+  var bits=[];
+  Object.keys(METHOD_LATEX).forEach(function(k){bits.push(METHOD_LATEX[k]);});
+  [1,2,3,4,5,6,8,10].forEach(function(p){bits.push('$O(h^{'+p+'})$');});
+  probe.innerHTML=bits.join(' ');
+  MathJax.typesetPromise([probe]).then(function(){_convMathPrewarmed=true;}).catch(function(){});
+}
+
 function renderConvergencePlot(){
   if(!ST.fn||!ST.exact||!_convDirty)return;
+  if(!CONV_NGRID[ST.method])return;  /* adaptive: tolerance-driven, single point — skip */
   _convDirty=false;
+
+  /* Paint a "Computing…" placeholder immediately so the expand click
+     feels responsive, then defer the heavy compute + Plotly draw to
+     the next tick so the placeholder actually paints first. */
+  var plotEl=document.getElementById('convergencePlot');
+  plotEl.innerHTML='<div role="status" aria-live="polite" style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-size:.95rem;">Computing convergence&hellip;</div>';
+  setTimeout(_renderConvergenceNow,0);
+}
+
+function _renderConvergenceNow(){
   var f=ST.fn,a=ST.a,b=ST.b,method=ST.method;
-  if(!CONV_NGRID[method])return;  /* adaptive: tolerance-driven, single point — skip */
 
   /* Active method first, then any extras the user has checked. */
   var methods=[method];
@@ -1952,14 +1987,14 @@ function renderConvergencePlot(){
     margin:{t:8,r:12,b:42,l:56},
     plot_bgcolor:'#fafafa',paper_bgcolor:'rgba(0,0,0,0)',
     font:{family:'-apple-system,Arial,sans-serif',size:12}};
-  requestAnimationFrame(function(){
-    if(typeof Plotly==='undefined')return;
-    /* edits:'legendPosition':true keeps Plotly's drag-the-legend
-       interaction enabled even when displayModeBar is hidden. */
-    Plotly.newPlot('convergencePlot',traces,layout,
-      {responsive:true,displayModeBar:false,displaylogo:false,
-       edits:{legendPosition:true}});
-  });
+  if(typeof Plotly==='undefined')return;
+  /* Plotly.react diffs against the previous frame and avoids a full
+     re-init on subsequent renders (toggling compare methods, recomputing
+     with a new function, etc.).  First call falls through to a newPlot
+     internally.  edits:'legendPosition':true keeps drag-the-legend on. */
+  Plotly.react('convergencePlot',traces,layout,
+    {responsive:true,displayModeBar:false,displaylogo:false,
+     edits:{legendPosition:true}});
   var cc=document.getElementById('convCaption');
   cc.innerHTML='Log-log convergence \u2014 solid: '+METHOD_NAMES[method]+
     (traces.length>2?', dotted: comparison methods':'')+
@@ -2297,6 +2332,9 @@ window.addEventListener('load',function(){
   if(window.MathJax&&MathJax.startup)
     MathJax.startup.promise.then(function(){
       MathJax.typesetPromise().catch(function(){});
+      /* Cache the convergence-plot legend symbols so the first expand
+         doesn't have to wait on MathJax to render $T_n$, $O(h^p)$, etc. */
+      prewarmConvergenceMath();
     }).catch(function(){});
 });
 
