@@ -1916,11 +1916,17 @@ function renderConvergencePlot(){
   if(!CONV_NGRID[ST.method])return;  /* adaptive: tolerance-driven, single point — skip */
   _convDirty=false;
 
-  /* Paint a "Computing…" placeholder immediately so the expand click
-     feels responsive, then defer the heavy compute + Plotly draw to
-     the next tick so the placeholder actually paints first. */
+  /* Only show a placeholder on the FIRST render of this div.  On
+     subsequent renders Plotly has already built its DOM inside the
+     div; replacing innerHTML with a placeholder would destroy it and
+     force a full re-init instead of letting Plotly.react diff. */
   var plotEl=document.getElementById('convergencePlot');
-  plotEl.innerHTML='<div role="status" aria-live="polite" style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-size:.95rem;">Computing convergence&hellip;</div>';
+  var hasPriorPlot=plotEl.classList.contains('js-plotly-plot');
+  if(!hasPriorPlot){
+    plotEl.innerHTML='<div role="status" aria-live="polite" style="display:flex;align-items:center;justify-content:center;height:100%;color:#6b7280;font-size:.95rem;">Loading plot&hellip;</div>';
+  }
+  /* Defer compute + Plotly.react to the next tick so the placeholder
+     paints first and the click feels responsive. */
   setTimeout(_renderConvergenceNow,0);
 }
 
@@ -2335,8 +2341,37 @@ window.addEventListener('load',function(){
       /* Cache the convergence-plot legend symbols so the first expand
          doesn't have to wait on MathJax to render $T_n$, $O(h^p)$, etc. */
       prewarmConvergenceMath();
+      /* Warm up Plotly with an offscreen 2-trace scatter that uses the
+         same scale type and legend math the convergence plot does.
+         Plotly's first newPlot on a page pays init costs (SVG layer
+         setup, MathJax-in-SVG bootstrap, font loading) that we move
+         to background time so the user's first real expand is fast.
+         Done after MathJax is ready so the math-in-legend path warms
+         up too. */
+      setTimeout(prewarmPlotly,800);
     }).catch(function(){});
 });
+
+function prewarmPlotly(){
+  if(typeof Plotly==='undefined')return;
+  if(window._plotlyPrewarmed)return;
+  var warm=document.createElement('div');
+  warm.setAttribute('aria-hidden','true');
+  warm.style.cssText='position:fixed;left:-9999px;top:-9999px;width:240px;height:140px;pointer-events:none;';
+  document.body.appendChild(warm);
+  Plotly.newPlot(warm,
+    [{x:[1,2,4,8],y:[1,0.5,0.25,0.125],type:'scatter',mode:'lines+markers',name:'$T_n$'},
+     {x:[1,2,4,8],y:[1,0.25,0.0625,0.0156],type:'scatter',mode:'lines',name:'$O(h^{2})$'}],
+    {showlegend:true,xaxis:{type:'log'},yaxis:{type:'log'},margin:{t:4,r:4,b:24,l:32}},
+    {responsive:false,displayModeBar:false,staticPlot:true}
+  ).then(function(){
+    try{Plotly.purge(warm);}catch(e){}
+    if(warm.parentNode)warm.parentNode.removeChild(warm);
+    window._plotlyPrewarmed=true;
+  }).catch(function(){
+    if(warm.parentNode)warm.parentNode.removeChild(warm);
+  });
+}
 
 /* Enter key triggers compute from input fields */
 ['fnInput','aInput','bInput','nInput'].forEach(function(id){
