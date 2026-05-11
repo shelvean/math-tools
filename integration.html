@@ -195,6 +195,19 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .conv-compare label{display:inline-flex;align-items:center;gap:.25rem;
   font-size:.78rem;font-weight:600;color:var(--txt2);cursor:pointer;}
 .conv-compare input[type=checkbox]{cursor:pointer;width:14px;height:14px;}
+
+/* Custom HTML legend for the convergence plot.  Replaces Plotly's
+   built-in legend so MathJax doesn't have to re-render legend labels
+   inside the SVG every time a compare-method checkbox is toggled. */
+#convLegend{display:flex;flex-wrap:wrap;justify-content:center;column-gap:1.1rem;row-gap:.35rem;
+  margin:.5rem .75rem 0;padding:.45rem .6rem;border:1px solid var(--bdr2);border-radius:.375rem;
+  background:rgba(255,255,255,.92);font-size:.85rem;color:var(--txt1);}
+.cleg-item{display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap;}
+.cleg-item.active .cleg-label{font-weight:700;}
+.cleg-swatch{display:inline-block;width:22px;height:0;border-top-width:3px;border-top-style:solid;}
+.cleg-swatch.dotted{border-top-style:dotted;border-top-width:3px;}
+.cleg-swatch.dashed{border-top-style:dashed;border-top-width:2.5px;}
+.cleg-label{color:var(--txt1);}
 /* Tolerance section */
 .tol-result{background:rgba(15,118,110,.06);border:2px solid var(--teal);border-radius:var(--r);
   padding:.75rem 1rem;margin-top:.5rem;font-size:.9375rem;color:var(--txt);}
@@ -533,6 +546,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
             <label><input type="checkbox" data-cmp="romberg">Romberg</label>
           </fieldset>
           <div id="convergencePlot"></div>
+          <div id="convLegend" role="list" aria-label="Convergence plot legend"></div>
           <p id="convCaption" style="margin:.25rem .75rem .4rem;color:var(--muted);font-size:.8125rem;text-align:center;"></p>
         </div>
       </div>
@@ -1930,6 +1944,21 @@ function renderConvergencePlot(){
   setTimeout(_renderConvergenceNow,0);
 }
 
+function buildConvLegend(items){
+  var leg=document.getElementById('convLegend');
+  if(!leg)return;
+  /* Each item: {color, style: 'solid'|'dotted'|'dashed', latex, active} */
+  leg.innerHTML=items.map(function(it){
+    return '<span class="cleg-item'+(it.active?' active':'')+'" role="listitem">'+
+           '<span class="cleg-swatch '+it.style+'" style="border-top-color:'+it.color+';" aria-hidden="true"></span>'+
+           '<span class="cleg-label">'+it.latex+'</span>'+
+           '</span>';
+  }).join('');
+  /* Single MathJax pass for the few legend labels \u2014 far cheaper than
+     making Plotly re-render math inside its SVG legend on every toggle. */
+  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([leg]).catch(function(){});
+}
+
 function _renderConvergenceNow(){
   var f=ST.fn,a=ST.a,b=ST.b,method=ST.method;
 
@@ -1940,6 +1969,7 @@ function _renderConvergenceNow(){
   });
 
   var traces=[];
+  var legendItems=[];
   var first=null;  /* anchors the reference O(h^p) line */
   methods.forEach(function(mk){
     var grid=CONV_NGRID[mk];
@@ -1958,8 +1988,13 @@ function _renderConvergenceNow(){
       x:ns,y:errs,type:'scatter',mode:'lines+markers',
       marker:{color:color,size:isActive?8:6,line:{color:'#fff',width:isActive?1.5:0.5}},
       line:{color:color,width:isActive?2.5:1.5,dash:isActive?'solid':'dot'},
-      name:METHOD_LATEX[mk]||METHOD_NAMES[mk]||mk
+      /* Plain hovertemplate keeps the on-hover tooltip readable; the
+         legend is drawn separately in HTML so trace.name is just a
+         hover/screen-reader fallback. */
+      name:METHOD_NAMES[mk]||mk,
+      showlegend:false
     });
+    legendItems.push({color:color,style:isActive?'solid':'dotted',latex:METHOD_LATEX[mk]||METHOD_NAMES[mk]||mk,active:isActive});
   });
   if(traces.length===0)return;
 
@@ -1970,26 +2005,22 @@ function _renderConvergenceNow(){
     var refErrors=ref.ns.map(function(ni){return ref.errs[ri]*Math.pow(ref.ns[ri]/ni,order);});
     traces.push({x:ref.ns,y:refErrors,type:'scatter',mode:'lines',
       line:{color:'#dc2626',dash:'dash',width:2},
-      name:'$O(h^{'+order+'})$'});
+      name:'O(h^'+order+')',
+      showlegend:false});
+    legendItems.push({color:'#dc2626',style:'dashed',latex:'$O(h^{'+order+'})$',active:false});
   }
+  /* Render the custom HTML legend now \u2014 it paints independently of the
+     Plotly SVG and only this small node goes through MathJax. */
+  buildConvLegend(legendItems);
+
   var layout={title:'',
     xaxis:{title:{text:'n',font:{size:14}},type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}},
     yaxis:{title:{text:'|Error|',font:{size:14}},type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',exponentformat:'e',tickfont:{size:12}},
-    showlegend:true,
-    /* Bigger, more legible legend.  Plotly's legend is draggable by
-       default \u2014 clicking and holding anywhere inside the legend box and
-       moving relocates it.  Bumped padding/border so the affordance is
-       obvious and the symbols/text are easy to read. */
-    legend:{
-      x:0.55, y:0.95,
-      bgcolor:'rgba(255,255,255,0.94)',
-      bordercolor:'rgba(0,0,0,0.30)',
-      borderwidth:1,
-      font:{size:14, family:'-apple-system,Arial,sans-serif'},
-      itemsizing:'constant',
-      itemwidth:34,
-      tracegroupgap:6
-    },
+    /* Plotly's built-in legend is hidden \u2014 we draw our own HTML legend
+       below the plot.  Avoids MathJax having to re-render legend labels
+       inside the SVG on every compare-toggle, which was the dominant
+       cost. */
+    showlegend:false,
     margin:{t:8,r:12,b:42,l:56},
     plot_bgcolor:'#fafafa',paper_bgcolor:'rgba(0,0,0,0)',
     font:{family:'-apple-system,Arial,sans-serif',size:12}};
@@ -1997,15 +2028,13 @@ function _renderConvergenceNow(){
   /* Plotly.react diffs against the previous frame and avoids a full
      re-init on subsequent renders (toggling compare methods, recomputing
      with a new function, etc.).  First call falls through to a newPlot
-     internally.  edits:'legendPosition':true keeps drag-the-legend on. */
+     internally. */
   Plotly.react('convergencePlot',traces,layout,
-    {responsive:true,displayModeBar:false,displaylogo:false,
-     edits:{legendPosition:true}});
+    {responsive:true,displayModeBar:false,displaylogo:false});
   var cc=document.getElementById('convCaption');
   cc.innerHTML='Log-log convergence \u2014 solid: '+METHOD_NAMES[method]+
     (traces.length>2?', dotted: comparison methods':'')+
-    '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\). '+
-    '<em>Drag the legend to reposition it.</em>';
+    '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\).';
   mj([cc]);
 }
 
@@ -2360,9 +2389,9 @@ function prewarmPlotly(){
   warm.style.cssText='position:fixed;left:-9999px;top:-9999px;width:240px;height:140px;pointer-events:none;';
   document.body.appendChild(warm);
   Plotly.newPlot(warm,
-    [{x:[1,2,4,8],y:[1,0.5,0.25,0.125],type:'scatter',mode:'lines+markers',name:'$T_n$'},
-     {x:[1,2,4,8],y:[1,0.25,0.0625,0.0156],type:'scatter',mode:'lines',name:'$O(h^{2})$'}],
-    {showlegend:true,xaxis:{type:'log'},yaxis:{type:'log'},margin:{t:4,r:4,b:24,l:32}},
+    [{x:[1,2,4,8],y:[1,0.5,0.25,0.125],type:'scatter',mode:'lines+markers'},
+     {x:[1,2,4,8],y:[1,0.25,0.0625,0.0156],type:'scatter',mode:'lines'}],
+    {showlegend:false,xaxis:{type:'log'},yaxis:{type:'log'},margin:{t:4,r:4,b:24,l:32}},
     {responsive:false,displayModeBar:false,staticPlot:true}
   ).then(function(){
     try{Plotly.purge(warm);}catch(e){}
