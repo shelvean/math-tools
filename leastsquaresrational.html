@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1d4ed8">
   <meta name="color-scheme" content="light">
   <title>Rational Least Squares Approximation &mdash; Numerical Methods</title>
-  <meta name="description" content="Rational function least squares calculator. Fit a Padé / rational approximation y = p(x)/q(x) to data points step by step.">
+  <meta name="description" content="Rational function least squares calculator. Fit a Padé / rational approximation y = p(x)/q(x) to a real- or complex-valued function via a stable SVD solver.">
   <meta name="keywords" content="rational least squares, rational approximation, Pade, curve fitting, SVD, numerical methods">
   <script>
     window.MathJax = {
@@ -19,6 +19,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjs@11.9.1/lib/browser/math.js"></script>
+  <script src="complex-arith.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
@@ -216,7 +217,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 <a href="numerical.html" class="back-link" aria-label="Back to Numerical Methods">&larr; Back to Numerical Methods</a>
 <main id="main" class="card" role="main">
   <h1>Rational Least Squares Approximation</h1>
-  <p class="subtitle">Compute least squares rational approximations \(R(x) = P(x)/Q(x)\) for continuous functions using a stable SVD-based solver. Visualize, assess errors, detect poles, and export.</p>
+  <p class="subtitle">Compute least squares rational approximations \(R(x) = P(x)/Q(x)\) for continuous functions using a stable SVD-based solver. Visualize, assess errors, detect poles, and export. Real-valued \(f(x)\) gives a real \(R(x)\); complex-valued \(f(x)\) (e.g. <span style="font-family:monospace">exp(i*x)</span>) produces complex coefficients (plotting/pole detection are then disabled).</p>
 
   <!-- About panel -->
   <div class="info-panel">
@@ -243,6 +244,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <li><strong>Tikhonov regularisation:</strong> Adds \(\lambda\|\mathbf{q}\|^2\) penalty on denominator coefficients to improve conditioning in near-degenerate cases.</li>
       </ul>
 
+      <h2>Complex-valued \(f(x)\)</h2>
+      <p>If \(f(x)\) returns complex values at the sample points (for instance \(f(x) = \mathrm{e}^{ix}\)), the linearised system has a complex right-hand side \(\mathbf{b}\) but a real Vandermonde-like matrix \(A\). The least-squares problem then splits into independent real systems for the real and imaginary parts of the coefficient vector — \(A\mathbf{x}_{\mathrm{re}} = \mathbf{b}_{\mathrm{re}}\) and \(A\mathbf{x}_{\mathrm{im}} = \mathbf{b}_{\mathrm{im}}\) — both solved with the same SVD pseudoinverse. The resulting \(R(x)\) has complex coefficients; plotting and real-axis pole detection are skipped because they no longer apply.</p>
       <h2>Why Rational over Polynomial?</h2>
       <p>Rational approximations often converge much faster than polynomials for functions with poles, branch points, or steep gradients near \([a,b]\). They are the backbone of Pad&eacute; approximation and are widely used for special functions (exponential, trigonometric, Bessel, etc.).</p>
 
@@ -386,7 +389,33 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       }
     };
 
-    function svdLeastSquares(A, b, tol = 1e-12) {
+    // Solves min ||Ax - b||_2 via the SVD pseudoinverse. For real b the
+    // solution is real. If any element of b is a Complex (or has non-zero
+    // imaginary part), we solve A x_re = b_re and A x_im = b_im in parallel
+    // — A is real so this is exact — and combine into a complex solution.
+    function _isComplexVec(v) {
+      for (var k = 0; k < v.length; k++) {
+        var z = v[k];
+        if (z instanceof Complex) { if (Math.abs(z.im) > 1e-12) return true; }
+        else if (z && typeof z === 'object' && 'im' in z) {
+          if (Math.abs(z.im) > 1e-12) return true;
+        }
+      }
+      return false;
+    }
+    function _splitVec(v) {
+      var re = [], im = [];
+      for (var k = 0; k < v.length; k++) {
+        var z = v[k];
+        if (z instanceof Complex) { re.push(z.re); im.push(z.im); }
+        else if (z && typeof z === 'object' && 'im' in z) { re.push(z.re); im.push(z.im); }
+        else { re.push(+z); im.push(0); }
+      }
+      return { re: re, im: im };
+    }
+
+    function svdLeastSquaresReal(A, b, tol) {
+      tol = tol == null ? 1e-12 : tol;
       const m = A.length;
       const n = A.length > 0 && A[0] ? A[0].length : 0;
       if (m === 0 || n === 0) {
@@ -414,6 +443,15 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       return { solution: x, singularValues: S, conditionNumber: conditionNumber, effectiveRank: effectiveRank };
     }
 
+    function svdLeastSquares(A, b, tol = 1e-12) {
+      if (!_isComplexVec(b)) return svdLeastSquaresReal(A, b, tol);
+      const split = _splitVec(b);
+      const re = svdLeastSquaresReal(A, split.re, tol);
+      const im = svdLeastSquaresReal(A, split.im, tol);
+      const sol = re.solution.map(function(v, i){ return new Complex(v, im.solution[i]); });
+      return { solution: sol, singularValues: re.singularValues, conditionNumber: re.conditionNumber, effectiveRank: re.effectiveRank, isComplex: true };
+    }
+
     function generateChebyshevNodes(a, b, N) {
       const nodes = [];
       for (let i = 0; i < N; i++) {
@@ -439,9 +477,31 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     }
 
     function formatPolynomial(coeffs, variable = 'x') {
+      // Detect whether any coefficient is complex.
+      const isComplex = coeffs.some(function(c){
+        return c instanceof Complex && Math.abs(c.im) > 1e-12;
+      });
+      if (isComplex) {
+        let terms = [];
+        for (let i = coeffs.length - 1; i >= 0; i--) {
+          let c = coeffs[i] instanceof Complex ? coeffs[i] : new Complex(+coeffs[i], 0);
+          if (c.isZero(1e-12)) continue;
+          let coeffStr = c.toLaTeX(6, 'decimal');
+          let power = '';
+          if (i === 1) power = variable;
+          else if (i > 1) power = `${variable}^{${i}}`;
+          // Wrap a true complex coefficient in parens when there's a power factor.
+          if (power && /[+\-]/.test(coeffStr.slice(1))) coeffStr = '(' + coeffStr + ')';
+          if (terms.length === 0) terms.push(coeffStr + (power ? ' ' + power : ''));
+          else terms.push(' + ' + coeffStr + (power ? ' ' + power : ''));
+        }
+        let poly = terms.join('').trim();
+        return poly || '0';
+      }
       let terms = [];
       for (let i = coeffs.length - 1; i >= 0; i--) {
         let c = coeffs[i];
+        if (c instanceof Complex) c = c.re;
         if (Math.abs(c - Math.round(c)) <= 1e-9) c = Math.round(c);
         if (Math.abs(c) < 1e-12) continue;
 
@@ -471,26 +531,48 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       return `\\dfrac{${num}}{${den}}`;
     }
 
+    function _coefToPyComplex(c) {
+      if (c instanceof Complex) return '(' + c.re.toFixed(12) + (c.im >= 0 ? '+' : '') + c.im.toFixed(12) + 'j)';
+      return Number(c).toFixed(12);
+    }
+    function _coefToMatlabComplex(c) {
+      if (c instanceof Complex) return '(' + c.re.toFixed(12) + (c.im >= 0 ? '+' : '') + c.im.toFixed(12) + 'i)';
+      return Number(c).toFixed(12);
+    }
+    function _hasComplex(coeffs) {
+      return coeffs.some(function(c){ return c instanceof Complex && Math.abs(c.im) > 1e-12; });
+    }
+
     function rationalToPython(numCoeffs, denCoeffs) {
+      const isC = _hasComplex(numCoeffs) || _hasComplex(denCoeffs);
       let lines = [];
       lines.push("import numpy as np");
       lines.push("");
       lines.push("def r(x):");
-      lines.push("    \"\"\"Rational approximation [m/n]\"\"\"");
-      lines.push(`    num = np.polyval([${numCoeffs.map(c => c.toFixed(12)).join(', ')}], x)`);
-      lines.push(`    den = np.polyval([${denCoeffs.map(c => c.toFixed(12)).join(', ')}], x)`);
-      lines.push("    return np.where(np.abs(den) > 1e-14, num / den, np.sign(num) * np.inf)");
+      lines.push("    \"\"\"Rational approximation [m/n]" + (isC ? " (complex coefficients)" : "") + "\"\"\"");
+      lines.push(`    num = np.polyval([${numCoeffs.map(_coefToPyComplex).join(', ')}], x)`);
+      lines.push(`    den = np.polyval([${denCoeffs.map(_coefToPyComplex).join(', ')}], x)`);
+      if (isC) {
+        lines.push("    return np.where(np.abs(den) > 1e-14, num / den, np.nan + 1j*np.nan)");
+      } else {
+        lines.push("    return np.where(np.abs(den) > 1e-14, num / den, np.sign(num) * np.inf)");
+      }
       return lines.join('\n');
     }
 
     function rationalToMATLAB(numCoeffs, denCoeffs) {
+      const isC = _hasComplex(numCoeffs) || _hasComplex(denCoeffs);
       let lines = [];
-      lines.push("% Rational approximation [m/n]");
+      lines.push("% Rational approximation [m/n]" + (isC ? " (complex coefficients)" : ""));
       lines.push("function y = r(x)");
-      lines.push(`    num = polyval([${numCoeffs.map(c => c.toFixed(12)).join(' ')}], x);`);
-      lines.push(`    den = polyval([${denCoeffs.map(c => c.toFixed(12)).join(' ')}], x);`);
+      lines.push(`    num = polyval([${numCoeffs.map(_coefToMatlabComplex).join(' ')}], x);`);
+      lines.push(`    den = polyval([${denCoeffs.map(_coefToMatlabComplex).join(' ')}], x);`);
       lines.push("    y = num ./ den;");
-      lines.push("    y(abs(den) <= 1e-14) = sign(num(abs(den) <= 1e-14)) * Inf;");
+      if (isC) {
+        lines.push("    y(abs(den) <= 1e-14) = NaN + 1i*NaN;");
+      } else {
+        lines.push("    y(abs(den) <= 1e-14) = sign(num(abs(den) <= 1e-14)) * Inf;");
+      }
       lines.push("end");
       return lines.join('\n');
     }
@@ -667,10 +749,37 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         const lambda = document.getElementById('use_regularization').checked ? parseFloat(document.getElementById('lambda').value) : 0;
         const N_fit = Math.max(500, Math.floor((b - a) * 150));
         const fitX = useChebyshev ? generateChebyshevNodes(a, b, N_fit) : Array.from({length: N_fit}, (_, i) => a + (b - a) * i / (N_fit - 1));
-        const fitY = fitX.map(func);
+        // mathjs evaluate may return Complex objects (e.g. for f(x) = exp(i*x)).
+        // Normalise to either plain numbers (real path) or Complex (complex path).
+        const fitYraw = fitX.map(func);
+        let isComplexFit = false;
+        const fitY = fitYraw.map(function(v){
+          if (v && typeof v === 'object' && 'im' in v) {
+            if (Math.abs(v.im) > 1e-12) { isComplexFit = true; return new Complex(v.re, v.im); }
+            return v.re;
+          }
+          return Number(v);
+        });
         const res = rationalLeastSquaresSVD(fitX, fitY, m, n, lambda);
-        const numCoeffs = res.numCoeffs;
-        const denCoeffs = res.denCoeffs;
+        let numCoeffs = res.numCoeffs;
+        let denCoeffs = res.denCoeffs;
+        // Complex pipeline: skip pole detection / plotting / error analysis.
+        if (isComplexFit || (res.solution && res.solution[0] instanceof Complex)) {
+          // The denCoeffs in rationalLeastSquaresSVD start with the literal 1.
+          // Promote everything to Complex for uniform display.
+          numCoeffs = numCoeffs.map(function(c){ return c instanceof Complex ? c : new Complex(+c, 0); });
+          denCoeffs = denCoeffs.map(function(c){ return c instanceof Complex ? c : new Complex(+c, 0); });
+          let messageHTML = '<div class="condition-info"><strong>SVD (complex):</strong> cond &asymp; ' + res.conditionNumber.toExponential(3)
+            + ', rank ' + res.effectiveRank + '/' + (m + n + 1) + '. Plotting and pole detection are disabled because \\(f\\) is complex-valued.</div>';
+          document.getElementById('messages').innerHTML = messageHTML;
+          const latex = 'R(x) = ' + formatRational(numCoeffs, denCoeffs);
+          document.getElementById('result').innerHTML = '<div class="font-bold text-lg mb-2">Rational approximant [' + m + '/' + n + '] (complex coefficients)</div><div id="latex-result">' + latex + '</div>';
+          katex.render(document.getElementById('latex-result').textContent, document.getElementById('latex-result'), {displayMode: false});
+          document.getElementById('copy-section').style.display = 'block';
+          updateRationalOutput(numCoeffs, denCoeffs, document.getElementById('format-select').value);
+          window.current = { approxFunc: null, func: func, a: a, b: b, plotX: [], plotApproxY: [], numCoeffs: numCoeffs, denCoeffs: denCoeffs, isComplex: true };
+          return;
+        }
         const approxFunc = x => evaluateRational(numCoeffs, denCoeffs, x);
         const poles = detectPoles(denCoeffs, a, b);
         const internalPoles = poles.filter(p => p > a + 1e-8 && p < b - 1e-8);

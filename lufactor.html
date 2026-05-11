@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="LU decomposition calculator. Factor a square matrix as A = LU with partial pivoting (PA = LU) step by step.">
-  <meta name="keywords" content="LU decomposition, PA = LU factorization, matrix factorization, linear algebra, matrix calculator, numerical analysis, partial pivoting, scaled partial pivoting, no pivoting">
+  <meta name="description" content="LU decomposition calculator. Factor a real or complex square matrix as PA = LU with partial pivoting, scaled partial pivoting, or no pivoting.">
+  <meta name="keywords" content="LU decomposition, PA = LU factorization, matrix factorization, linear algebra, complex matrix, matrix calculator, numerical analysis, partial pivoting, scaled partial pivoting, no pivoting">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>
@@ -30,6 +30,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
+  <script src="complex-arith.js"></script>
   <style>
     :root {
       --bg-page: #f3f4f6;
@@ -299,8 +300,8 @@
     <h1>PA = LU Factorization</h1>
     <p class="subtitle">
       Compute the <strong>PA = LU factorization</strong><a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
-      of a square matrix with various pivoting strategies.<br>
-      <small>Essential for solving linear systems<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>, computing determinants, and matrix inversion.</small>
+      of a real or complex square matrix with various pivoting strategies.<br>
+      <small>Essential for solving linear systems<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>, computing determinants, and matrix inversion. Cells accept complex literals such as <span style="font-family:monospace">2+3i</span> or <span style="font-family:monospace">-1/2-i</span>.</small>
     </p>
 
     <!-- About panel -->
@@ -325,6 +326,7 @@
           <li><strong>No Pivoting:</strong> No row exchanges (may fail for some matrices)</li>
         </ul>
         <p>Used to solve \(Ax = b\) by solving \(Ly = Pb\) then \(Ux = y\) (both triangular systems).</p>
+        <p><strong>Complex entries:</strong> the same algorithm extends directly to matrices over \(\mathbb{C}\). Pivot selection compares moduli \(|a_{ik}|\), which is well-defined for complex values.</p>
       </div>
     </div>
 
@@ -511,10 +513,11 @@ function generateMatrix() {
       var td = document.createElement('td');
       td.setAttribute('role', 'gridcell');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any';
+      inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+      inp.inputMode = 'text';
       inp.className = 'matrix-cell';
       inp.id = 'A_' + i + '_' + j;
-      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1) + ' (real or complex value)');
       td.appendChild(inp);
       tr.appendChild(td);
     }
@@ -549,23 +552,8 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT (using mathjs@14.6.0)
+//  PARSE / FORMAT  (real or complex)
 // ============================================================
-function parseFraction(str) {
-  str = str.trim();
-  if (str === '') return 0;
-  try {
-    var evaluated = math.evaluate(str);
-    if (typeof evaluated === 'number') {
-      return evaluated;
-    } else {
-      return 0;
-    }
-  } catch (e) {
-    return 0;
-  }
-}
-
 function readMatrix() {
   var n = parseInt(document.getElementById('n').value, 10);
   var A = [];
@@ -574,12 +562,13 @@ function readMatrix() {
     for (var j = 0; j < n; j++) {
       var cell = document.getElementById('A_' + i + '_' + j);
       var value = cell.value.trim();
-      var num = parseFraction(value);
-      if (isNaN(num)) {
-        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Please enter valid numbers, fractions, or mathematical expressions.');
+      var z;
+      try { z = value === '' ? Complex.zero() : Complex.parse(value); }
+      catch (e) {
+        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Please enter a real number, fraction, or complex value such as 2+3i.');
         return null;
       }
-      row.push(num);
+      row.push(z);
     }
     A.push(row);
   }
@@ -597,102 +586,28 @@ function identityMatrix(size) {
   for (var i = 0; i < size; i++) {
     I[i] = [];
     for (var j = 0; j < size; j++) {
-      I[i][j] = (i === j) ? 1 : 0;
+      I[i][j] = (i === j) ? Complex.one() : Complex.zero();
     }
   }
   return I;
 }
 
-function gcd(a, b) {
-  a = Math.abs(a);
-  b = Math.abs(b);
-  while (b !== 0) {
-    var temp = b;
-    b = a % b;
-    a = temp;
+function zerosMatrix(size) {
+  var Z = [];
+  for (var i = 0; i < size; i++) {
+    Z[i] = [];
+    for (var j = 0; j < size; j++) Z[i][j] = Complex.zero();
   }
-  return a;
-}
-
-function lcm(a, b) {
-  return Math.abs(a * b) / gcd(a, b);
-}
-
-function isShortDecimal(num) {
-  if (Math.abs(num) < 1e-12) return false;
-  var str = num.toFixed(10).replace(/\.?0+$/, '');
-  var decimalPart = str.split('.')[1];
-  if (!decimalPart) return false;
-  var nonZeroCount = (decimalPart.match(/[1-9]/g) || []).length;
-  return nonZeroCount <= 4;
-}
-
-function floatToFraction(num, tolerance, maxIter) {
-  tolerance = tolerance || 1e-6;
-  maxIter = maxIter || 30;
-  if (Math.abs(num) < 1e-12) return { numer: 0, denom: 1 };
-  var sign = num < 0 ? -1 : 1;
-  num = Math.abs(num);
-  var a = Math.floor(num);
-  var h = a;
-  var k = 1;
-  var hPrev = 1;
-  var kPrev = 0;
-  var x = num - a;
-  var iter = 0;
-  while (x > tolerance && iter < maxIter) {
-    x = 1 / x;
-    a = Math.floor(x);
-    var hTemp = a * h + hPrev;
-    var kTemp = a * k + kPrev;
-    hPrev = h;
-    kPrev = k;
-    h = hTemp;
-    k = kTemp;
-    x -= a;
-    iter++;
-    if (Math.abs(num - h / k) < tolerance) break;
-  }
-  return { numer: sign * h, denom: k };
+  return Z;
 }
 
 function formatForLatex(val) {
-  if (typeof val === 'number') {
-    if (Math.abs(val) < 1e-12) return "0";
-    if (Math.abs(val - Math.round(val)) < 1e-12) return Math.round(val).toString();
-    if (currentDisplayMode === 'fraction') {
-      var fraction = floatToFraction(val);
-      var isFraction = Math.abs(val - fraction.numer / fraction.denom) < 1e-6;
-      if ((isShortDecimal(val) || isFraction) && Math.abs(fraction.numer) < 500 && fraction.denom < 500) {
-        if (fraction.denom === 1) return fraction.numer.toString();
-        return fraction.numer + '/' + fraction.denom;
-      }
-    }
-    if (currentDisplayMode === 'decimal') {
-      return parseFloat(val.toFixed(4).replace(/\.?0+$/, '')).toString();
-    }
-    // fallback for fraction mode when fraction didn't match criteria
-    var frac = floatToFraction(val);
-    var isFrac = Math.abs(val - frac.numer / frac.denom) < 1e-6;
-    if ((isShortDecimal(val) || isFrac) && Math.abs(frac.numer) < 500 && frac.denom < 500) {
-      if (frac.denom === 1) return frac.numer.toString();
-      return frac.numer + '/' + frac.denom;
-    }
-    return val.toFixed(4).replace(/\.?0+$/, '');
-  } else if (val.re !== undefined && val.im !== undefined) {
-    var re_part = formatForLatex(val.re);
-    var im_abs = Math.abs(val.im);
-    var im_part = formatForLatex(im_abs);
-    if (im_part === "0") return re_part;
-    var im_sign = val.im < 0 ? '-' : '+';
-    if (im_part === '1') im_part = '';
-    var im_str = im_part ? im_part + 'i' : 'i';
-    if (re_part === '0') {
-      return (val.im < 0 ? '-' : '') + im_str;
-    }
-    return re_part + im_sign + im_str;
+  if (val instanceof Complex) return val.toLaTeX(4, currentDisplayMode === 'fraction' ? 'fraction' : 'decimal');
+  if (typeof val === 'number') return new Complex(val, 0).toLaTeX(4, currentDisplayMode === 'fraction' ? 'fraction' : 'decimal');
+  if (val && typeof val === 'object' && 're' in val && 'im' in val) {
+    return new Complex(val.re, val.im).toLaTeX(4, currentDisplayMode === 'fraction' ? 'fraction' : 'decimal');
   }
-  return val.toString();
+  return String(val);
 }
 
 function matrixToLatex(M) {
@@ -714,24 +629,23 @@ function matrixToLatex(M) {
 // ============================================================
 //  LU DECOMPOSITION FUNCTIONS
 // ============================================================
+function cloneMat(M) {
+  return M.map(function(row){ return row.map(function(z){ return z.clone(); }); });
+}
+
 function luDecompositionPartial(A) {
   var n = A.length;
   var P = identityMatrix(n);
-  var L = [];
-  for (var ii = 0; ii < n; ii++) { L[ii] = []; for (var jj = 0; jj < n; jj++) L[ii][jj] = 0; }
-  var U = A.map(function(row) { return row.slice(); });
+  var L = zerosMatrix(n);
+  var U = cloneMat(A);
   for (var k = 0; k < n; k++) {
     var maxIndex = k;
-    var maxValue = Math.abs(U[k][k]);
+    var maxValue = U[k][k].abs();
     for (var i = k + 1; i < n; i++) {
-      if (Math.abs(U[i][k]) > maxValue) {
-        maxValue = Math.abs(U[i][k]);
-        maxIndex = i;
-      }
+      var av = U[i][k].abs();
+      if (av > maxValue) { maxValue = av; maxIndex = i; }
     }
-    if (maxValue === 0) {
-      continue;
-    }
+    if (maxValue === 0) continue;
     swapRows(U, k, maxIndex);
     swapRows(P, k, maxIndex);
     for (var col = 0; col < k; col++) {
@@ -739,93 +653,84 @@ function luDecompositionPartial(A) {
       L[k][col] = L[maxIndex][col];
       L[maxIndex][col] = temp;
     }
+    var pivot = U[k][k];
     for (var j = k + 1; j < n; j++) {
-      L[j][k] = U[j][k] / U[k][k];
+      L[j][k] = U[j][k].div(pivot);
       for (var m = k; m < n; m++) {
-        U[j][m] -= L[j][k] * U[k][m];
+        U[j][m] = U[j][m].sub(L[j][k].mul(U[k][m]));
       }
     }
   }
-  for (var i2 = 0; i2 < n; i2++) {
-    L[i2][i2] = 1;
-  }
-  return { P: P, L: L, U: U, message: "" };
+  for (var i2 = 0; i2 < n; i2++) L[i2][i2] = Complex.one();
+  return { P: P, L: L, U: U, message: '' };
 }
 
 function luDecompositionScaled(A) {
   var n = A.length;
-  var s = A.map(function(row) { return Math.max.apply(null, row.map(Math.abs)); });
+  var s = A.map(function(row){
+    return row.reduce(function(acc, z){ var a = z.abs(); return a > acc ? a : acc; }, 0);
+  });
   var P = identityMatrix(n);
-  var L = [];
-  for (var ii = 0; ii < n; ii++) { L[ii] = []; for (var jj = 0; jj < n; jj++) L[ii][jj] = 0; }
-  var U = A.map(function(row) { return row.slice(); });
+  var L = zerosMatrix(n);
+  var U = cloneMat(A);
   for (var k = 0; k < n; k++) {
     var maxRatio = -1;
     var maxIndex = k;
     for (var i = k; i < n; i++) {
       if (s[i] > 0) {
-        var ratio = Math.abs(U[i][k]) / s[i];
-        if (ratio > maxRatio) {
-          maxRatio = ratio;
-          maxIndex = i;
-        }
+        var ratio = U[i][k].abs() / s[i];
+        if (ratio > maxRatio) { maxRatio = ratio; maxIndex = i; }
       }
     }
     if (maxRatio > 0) {
       swapRows(U, k, maxIndex);
       swapRows(P, k, maxIndex);
+      var ts = s[k]; s[k] = s[maxIndex]; s[maxIndex] = ts;
       for (var col = 0; col < k; col++) {
-        var temp = L[k][col];
-        L[k][col] = L[maxIndex][col];
-        L[maxIndex][col] = temp;
+        var tmp = L[k][col]; L[k][col] = L[maxIndex][col]; L[maxIndex][col] = tmp;
       }
     }
+    if (U[k][k].isZero()) continue;
+    var pivot = U[k][k];
     for (var j = k + 1; j < n; j++) {
-      L[j][k] = U[j][k] / U[k][k];
+      L[j][k] = U[j][k].div(pivot);
       for (var m = k; m < n; m++) {
-        U[j][m] -= L[j][k] * U[k][m];
+        U[j][m] = U[j][m].sub(L[j][k].mul(U[k][m]));
       }
     }
   }
-  for (var i2 = 0; i2 < n; i2++) {
-    L[i2][i2] = 1;
-  }
-  return { P: P, L: L, U: U, message: "" };
+  for (var i2 = 0; i2 < n; i2++) L[i2][i2] = Complex.one();
+  return { P: P, L: L, U: U, message: '' };
 }
 
 function luDecompositionNoPivoting(A) {
   var n = A.length;
   var P = identityMatrix(n);
-  var L = [];
-  for (var ii = 0; ii < n; ii++) { L[ii] = []; for (var jj = 0; jj < n; jj++) L[ii][jj] = 0; }
-  var U = A.map(function(row) { return row.slice(); });
-  var message = "";
+  var L = zerosMatrix(n);
+  var U = cloneMat(A);
+  var message = '';
   for (var k = 0; k < n; k++) {
-    if (Math.abs(U[k][k]) < 1e-10) {
+    if (U[k][k].isZero()) {
       var hasNonZeroBelow = false;
       for (var j = k + 1; j < n; j++) {
-        if (Math.abs(U[j][k]) > 1e-10) {
-          hasNonZeroBelow = true;
-          break;
-        }
+        if (!U[j][k].isZero()) { hasNonZeroBelow = true; break; }
       }
       if (hasNonZeroBelow) {
-        message = "Zero pivot encountered at step " + (k + 1) + " with non-zero entries below. LU decomposition cannot be completed without pivoting.";
+        message = 'Zero pivot encountered at step ' + (k + 1) + ' with non-zero entries below. LU decomposition cannot be completed without pivoting.';
         break;
       }
     } else {
+      var pivot = U[k][k];
       for (var j2 = k + 1; j2 < n; j2++) {
-        L[j2][k] = U[j2][k] / U[k][k];
+        L[j2][k] = U[j2][k].div(pivot);
         for (var m = k; m < n; m++) {
-          U[j2][m] -= L[j2][k] * U[k][m];
+          U[j2][m] = U[j2][m].sub(L[j2][k].mul(U[k][m]));
         }
       }
     }
   }
-  if (message === "") {
-    for (var i = 0; i < n; i++) {
-      L[i][i] = 1;
-    }
+  if (message === '') {
+    for (var i = 0; i < n; i++) L[i][i] = Complex.one();
   }
   return { P: P, L: L, U: U, message: message };
 }

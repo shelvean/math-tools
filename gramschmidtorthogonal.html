@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Gram-Schmidt calculator. Orthogonalize and orthonormalize a set of vectors in R^n step by step using the Gram-Schmidt process.">
+  <meta name="description" content="Gram-Schmidt calculator for real or complex vectors. Orthogonalize and orthonormalize a set of vectors in R^n or C^n step by step.">
   <meta name="keywords" content="Gram-Schmidt, Orthogonal Basis, Orthonormal Basis, Projections, Linear Algebra">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
@@ -29,6 +29,7 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <script src="complex-arith.js"></script>
   <style>
     :root {
       --bg-page: #f3f4f6;
@@ -287,7 +288,7 @@
       and <strong>orthonormal</strong><a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>
       bases using the <strong>Gram-Schmidt process</strong><a href="#fn3" id="fnref3" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>3</sup></a>.<br>
       <small>Enter matrix dimensions \(m \times n\), generate input matrix \(A\), fill values, and calculate.
-      Columns of \(A\) are the vectors. If linearly dependent, a subset will be used.</small>
+      Columns of \(A\) are the vectors. If linearly dependent, a subset will be used. Entries may be real or complex (e.g. <span style="font-family:monospace">2+3i</span>); complex inputs use the Hermitian inner product \(\langle u,v\rangle = \sum_i \bar{u_i}\, v_i\).</small>
     </p>
 
     <!-- About panel -->
@@ -311,7 +312,7 @@
           <li>Solving least squares problems</li>
           <li>Finding orthonormal bases for subspaces</li>
         </ul>
-        <p>This calculator uses exact arithmetic via a custom Fraction class and displays results using surd notation<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> when possible.</p>
+        <p>This calculator uses exact arithmetic for real inputs (custom Fraction class with surd notation<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> where possible). For complex inputs, results use the Hermitian inner product \(\langle u, v\rangle = \sum_i \bar{u_i} v_i\) and display in decimal/fraction form.</p>
       </div>
     </div>
 
@@ -618,10 +619,11 @@ function generateMatrix() {
             var td = document.createElement('td');
             td.setAttribute('role', 'gridcell');
             var inp = document.createElement('input');
-            inp.type = 'number'; inp.step = 'any';
+            inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+            inp.inputMode = 'text';
             inp.className = 'matrix-cell';
             inp.id = 'cell_' + i + '_' + j;
-            inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+            inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1) + ' (real or complex value)');
             td.appendChild(inp);
             tr.appendChild(td);
         }
@@ -655,42 +657,18 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT
+//  PARSE / FORMAT  (real or complex)
 // ============================================================
-function parseFraction(str) {
-    str = str.trim();
-    if (str === "") return new Fraction(0);
-    if (str.match(/^-?\d*\.?\d+$/)) {
-        let num = parseFloat(str);
-        if (!isNaN(num)) {
-            return Fraction.fromDecimal(num);
-        }
-    }
-    if (str.includes('/')) {
-        let parts = str.split('/');
-        if (parts.length === 2) {
-            let numerator = parseInt(parts[0], 10);
-            let denominator = parseInt(parts[1], 10);
-            if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
-                return new Fraction(numerator, denominator);
-            }
-        }
-    } else {
-        let num = parseInt(str, 10);
-        if (!isNaN(num)) {
-            return new Fraction(num);
-        }
-    }
-    announce('Invalid entry. Please enter valid integers, fractions, or decimals in all matrix cells.');
-    return null;
-}
-
+// readMatrix returns an object { matrix, isComplex }.
+// For all-real input, matrix entries are Fraction (exact rational arithmetic
+// + surd display). If any cell is complex, the entire matrix is promoted to
+// Complex and isComplex = true; in that mode the surd display is bypassed.
 function readMatrix() {
     var m = parseInt(document.getElementById("rows").value, 10);
     var n = parseInt(document.getElementById("cols").value, 10);
     if (isNaN(m) || isNaN(n) || m <= 0 || n <= 0) return null;
 
-    // Pre-cache all DOM elements to avoid repeated lookups
+    // Pre-cache DOM elements
     var elements = [];
     for (var i = 0; i < m; i++) {
         elements[i] = [];
@@ -703,24 +681,60 @@ function readMatrix() {
         }
     }
 
-    // Now read the values
-    var matrix = [];
+    // First pass: parse every cell as Complex.
+    var raw = [];
     for (var i = 0; i < m; i++) {
         var row = [];
         for (var j = 0; j < n; j++) {
             var value = elements[i][j].value.trim();
-            var num = parseFraction(value);
-            if (num === null) return null;
-            row.push(num);
+            var z;
+            try { z = value === '' ? Complex.zero() : Complex.parse(value); }
+            catch (e) {
+                announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Try a real or complex value such as 2+3i.');
+                return null;
+            }
+            row.push(z);
         }
-        matrix.push(row);
+        raw.push(row);
     }
-    return matrix;
+
+    // Detect whether any entry is genuinely complex.
+    var isComplex = false;
+    for (var i2 = 0; i2 < m; i2++) for (var j2 = 0; j2 < n; j2++) {
+        if (Math.abs(raw[i2][j2].im) > 1e-12) { isComplex = true; break; }
+    }
+
+    if (!isComplex) {
+        // Real-only path: convert to Fraction for exact arithmetic + surd display.
+        var matrix = [];
+        for (var i3 = 0; i3 < m; i3++) {
+            var row3 = [];
+            for (var j3 = 0; j3 < n; j3++) row3.push(Fraction.fromDecimal(raw[i3][j3].re));
+            matrix.push(row3);
+        }
+        return { matrix: matrix, isComplex: false };
+    }
+    return { matrix: raw, isComplex: true };
+}
+
+function parseFraction(str) {
+    // Kept for backward-compatibility; not used by readMatrix anymore.
+    str = str.trim();
+    if (str === "") return new Fraction(0);
+    try {
+        var z = Complex.parse(str);
+        if (Math.abs(z.im) < 1e-12) return Fraction.fromDecimal(z.re);
+        return z;
+    } catch (e) { return null; }
 }
 
 function formatNumber(num, useDfrac, returnSign) {
     useDfrac = useDfrac || false;
     returnSign = returnSign || false;
+    if (num instanceof Complex) {
+        if (returnSign) return ''; // sign extraction not meaningful for complex
+        return num.toLaTeX(3, currentDisplayMode === "decimal" ? 'decimal' : 'fraction');
+    }
     if (num instanceof Fraction) {
         if (currentDisplayMode === "decimal") {
             return parseFloat(num.valueOf().toFixed(3)).toString();
@@ -777,6 +791,16 @@ function basisToLatex(basis, isOrthonormal, labelPrefix) {
     if (isOrthonormal) {
         const vectorsLatex = basis.map(function(item, index) {
             const vec = item.vector;
+            // Complex path: norm² is a real Complex; we display 1 / sqrt(||u||²·)
+            // numerically and don't try to extract integer factors.
+            if (vec[0] instanceof Complex) {
+                const norm2real = item.norm2 instanceof Complex ? item.norm2.re : item.norm2;
+                const normVal = Math.sqrt(Math.max(0, norm2real));
+                const normStr = parseFloat(normVal.toFixed(4)).toString();
+                const scalarLatex = '\\dfrac{1}{' + normStr + '}';
+                return scalarLatex + ' \\, ' + vectorToLatex(vec);
+            }
+            // Real (Fraction) path: original surd / fraction display logic.
             const absNums = vec.map(function(f) { return Math.abs(f.numerator); });
             const vecGcd = gcdMultiple(absNums);
             let adjustedVec = vec;
@@ -818,25 +842,52 @@ function basisToLatex(basis, isOrthonormal, labelPrefix) {
 // ============================================================
 //  GRAM-SCHMIDT COMPUTATION
 // ============================================================
+// dot(u, v) is the inner product. For real Fraction entries this is the
+// usual sum u_i * v_i. For complex (Complex) entries we use the Hermitian
+// inner product <u, v> = sum conj(u_i) * v_i (returns a Complex with im≈0
+// when u == v, i.e. the squared norm is real).
 function dot(u, v) {
-    let sum = new Fraction(0);
-    for (let i = 0; i < u.length; i++) {
-        sum = sum.add(u[i].multiply(v[i]));
+    if (u[0] instanceof Complex) {
+        let sum = Complex.zero();
+        for (let i = 0; i < u.length; i++) sum = sum.add(u[i].conj().mul(v[i]));
+        return sum;
     }
+    let sum = new Fraction(0);
+    for (let i = 0; i < u.length; i++) sum = sum.add(u[i].multiply(v[i]));
     return sum;
 }
 
 function scalarMult(s, v) {
+    if (s instanceof Complex || v[0] instanceof Complex) {
+        const sC = (s instanceof Complex) ? s : new Complex(s.valueOf(), 0);
+        return v.map(function(val){
+            const vC = (val instanceof Complex) ? val : new Complex(val.valueOf(), 0);
+            return sC.mul(vC);
+        });
+    }
     return v.map(function(val) { return s.multiply(val); });
 }
 
 function subtractVec(u, v) {
+    if (u[0] instanceof Complex || v[0] instanceof Complex) {
+        return u.map(function(val, idx){
+            const a = (val instanceof Complex) ? val : new Complex(val.valueOf(), 0);
+            const b = (v[idx] instanceof Complex) ? v[idx] : new Complex(v[idx].valueOf(), 0);
+            return a.sub(b);
+        });
+    }
     return u.map(function(val, idx) { return val.subtract(v[idx]); });
+}
+
+function _isZeroEntry(z) {
+    if (z instanceof Complex) return z.isZero();
+    return z.numerator === 0;
 }
 
 function computeGramSchmidt(origMatrix) {
     const m = origMatrix.length;
     const n = origMatrix[0].length;
+    const isComplex = origMatrix[0][0] instanceof Complex;
     // Extract column vectors
     const vectors = [];
     for (let j = 0; j < n; j++) {
@@ -860,42 +911,34 @@ function computeGramSchmidt(origMatrix) {
         for (let i = 0; i < orthogonal.length; i++) {
             const innerVU = dot(vectors[j], orthogonal[i]);
             const innerUU = dot(orthogonal[i], orthogonal[i]);
-            if (innerUU.numerator === 0) continue;
-            const coef = innerVU.divide(innerUU);
-            if (coef.numerator === 0) continue;
-            const formattedCoef = formatNumber(coef, true);
+            if (_isZeroEntry(innerUU)) continue;
+            const coef = isComplex ? innerVU.div(innerUU) : innerVU.divide(innerUU);
+            if (_isZeroEntry(coef)) continue;
             const innerTerm = '\\dfrac{\\langle \\mathbf{v}_{' + (j+1) + '}, \\mathbf{u}_{' + (i+1) + '} \\rangle}{\\langle \\mathbf{u}_{' + (i+1) + '}, \\mathbf{u}_{' + (i+1) + '} \\rangle} \\mathbf{u}_{' + (i+1) + '}';
             innerTerms.push(innerTerm);
-            const effectiveCoef = coef;
-            const termSign = effectiveCoef.numerator >= 0 ? ' - ' : ' + ';
-            const absNumer = Math.abs(effectiveCoef.numerator);
-            const absEffective = new Fraction(absNumer, effectiveCoef.denominator);
-            const formattedAbsCoef = formatNumber(absEffective, true);
+            // For real entries we split the coefficient sign so the formula reads
+            // "v_j - c u_i". For complex entries we always print " - (coef) u_i"
+            // to keep the formula unambiguous.
+            let formattedAbsCoef, termSign;
+            if (isComplex) {
+                termSign = ' - ';
+                formattedAbsCoef = '(' + formatNumber(coef, true) + ')';
+            } else {
+                termSign = coef.numerator >= 0 ? ' - ' : ' + ';
+                const absNumer = Math.abs(coef.numerator);
+                const absEffective = new Fraction(absNumer, coef.denominator);
+                formattedAbsCoef = formatNumber(absEffective, true);
+            }
             const uTerm = formattedAbsCoef + ' \\mathbf{u}_{' + (i + 1) + '}';
             simplifiedRhs += termSign + uTerm;
             u = subtractVec(u, scalarMult(coef, orthogonal[i]));
         }
         const norm2U = dot(u, u);
-        if (norm2U.numerator === 0) {
+        if (_isZeroEntry(norm2U)) {
             steps.push({ desc: "Vector ", formula: '\\mathbf{v}_{' + (j + 1) + '}', suffix: " is linearly dependent. Skipping.", type: "text" });
             dependent = true;
             continue;
         }
-        // u is the exact orthogonal vector from the formula (with fractions).
-        // Build u_int = (lcm_den / vecGcd) * u, the integer-vector representative,
-        // then factor = vecGcd / lcm_den is the scalar with u = factor * u_int.
-        // Projection is invariant under scaling, so subsequent steps may use u_int.
-        const u_true = u.slice();
-        const dens = u.map(function(frac) { return frac.denominator; });
-        const lcm_den = lcmMultiple(dens);
-        let u_int = u.map(function(frac) { return frac.multiply(new Fraction(lcm_den)); });
-        const absNums = u_int.map(function(f) { return Math.abs(f.numerator); });
-        const vecGcd = gcdMultiple(absNums);
-        if (vecGcd > 1) {
-            u_int = u_int.map(function(f) { return f.divide(new Fraction(vecGcd)); });
-        }
-        const factor = new Fraction(vecGcd, lcm_den); // u_true = factor * u_int
-        const factor_is_one = (factor.numerator === 1 && factor.denominator === 1);
         if (innerTerms.length > 0) {
             const subtractTerms = innerTerms.join(' - ');
             abstractRhs += ' - ' + subtractTerms;
@@ -904,30 +947,48 @@ function computeGramSchmidt(origMatrix) {
             formula = '\\mathbf{u}_{' + u_index + '} = \\mathbf{v}_{' + (j + 1) + '}';
         }
         steps.push({desc: formula, type: "latex"});
-        if (factor_is_one) {
-            steps.push({desc: '\\mathbf{u}_{' + u_index + '} = ', uvec: u_int, type: "vec"});
+
+        if (isComplex) {
+            // Skip the integer-vector extraction trick (it requires Fraction
+            // numerator/denominator); just record u as is.
+            steps.push({desc: '\\mathbf{u}_{' + u_index + '} = ', uvec: u.slice(), type: "vec"});
+            orthogonal.push(u.slice());
         } else {
-            // Show the exact result first, then pull out the scalar factor
-            // and drop it from the final u_k that subsequent steps will use.
-            steps.push({
-                desc: '\\mathbf{u}_{' + u_index + '} = ',
-                uvec: u_true,
-                factor: factor,
-                u_int: u_int,
-                type: "vec_with_factor"
-            });
-            steps.push({
-                desc: 'Dropping the scalar factor, take \\(\\mathbf{u}_{' + u_index + '} = \\)',
-                uvec: u_int,
-                type: "vec_drop"
-            });
+            // Real path: pull out a common rational factor for readable display.
+            const u_true = u.slice();
+            const dens = u.map(function(frac) { return frac.denominator; });
+            const lcm_den = lcmMultiple(dens);
+            let u_int = u.map(function(frac) { return frac.multiply(new Fraction(lcm_den)); });
+            const absNums = u_int.map(function(f) { return Math.abs(f.numerator); });
+            const vecGcd = gcdMultiple(absNums);
+            if (vecGcd > 1) {
+                u_int = u_int.map(function(f) { return f.divide(new Fraction(vecGcd)); });
+            }
+            const factor = new Fraction(vecGcd, lcm_den); // u_true = factor * u_int
+            const factor_is_one = (factor.numerator === 1 && factor.denominator === 1);
+            if (factor_is_one) {
+                steps.push({desc: '\\mathbf{u}_{' + u_index + '} = ', uvec: u_int, type: "vec"});
+            } else {
+                steps.push({
+                    desc: '\\mathbf{u}_{' + u_index + '} = ',
+                    uvec: u_true,
+                    factor: factor,
+                    u_int: u_int,
+                    type: "vec_with_factor"
+                });
+                steps.push({
+                    desc: 'Dropping the scalar factor, take \\(\\mathbf{u}_{' + u_index + '} = \\)',
+                    uvec: u_int,
+                    type: "vec_drop"
+                });
+            }
+            orthogonal.push(u_int);
         }
-        orthogonal.push(u_int);
     }
     steps.push({desc: "Orthogonal Basis (not normalized)", basis: orthogonal, type: "textbasis", label: "\\mathbf{u}"});
     const orthonormal = orthogonal.map(function(u) { return { vector: u, norm2: dot(u, u) }; });
-    steps.push({desc: "Orthonormal Basis", basis: orthonormal, type: "textorthonormal", label: "\\mathbf{q}"});
-    return { steps: steps, dependent: dependent };
+    steps.push({desc: "Orthonormal Basis", basis: orthonormal, type: "textorthonormal", label: "\\mathbf{q}", isComplex: isComplex});
+    return { steps: steps, dependent: dependent, isComplex: isComplex };
 }
 
 // ============================================================
@@ -1024,9 +1085,9 @@ function renderSteps(steps, dependent) {
 document.getElementById('genBtn').addEventListener('click', generateMatrix);
 document.getElementById('exampleBtn').addEventListener('click', loadExample);
 document.getElementById('calcBtn').addEventListener('click', function() {
-    const matrix = readMatrix();
-    if (matrix !== null) {
-        const computation = computeGramSchmidt(matrix);
+    const result = readMatrix();
+    if (result !== null) {
+        const computation = computeGramSchmidt(result.matrix);
         renderSteps(computation.steps, computation.dependent);
     }
 });

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Reduced row echelon form (RREF) calculator. Reduce a matrix to RREF using Gauss-Jordan elimination, step by step.">
-  <meta name="keywords" content="Gauss-Jordan Elimination Calculator, Gaussian Elimination, RREF Calculator, Reduced Row Echelon, Compute RREF online step by step, Calculate RREF with steps, Matrices">
+  <meta name="description" content="Reduced row echelon form (RREF) calculator for real or complex matrices. Reduce a matrix to RREF using Gauss-Jordan elimination, step by step.">
+  <meta name="keywords" content="Gauss-Jordan Elimination Calculator, Gaussian Elimination, RREF Calculator, Reduced Row Echelon, Compute RREF online step by step, Calculate RREF with steps, Matrices, complex matrices">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>
@@ -29,6 +29,7 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <script src="complex-arith.js"></script>
   <style>
     :root {
       --bg-page: #f3f4f6;
@@ -275,8 +276,8 @@
     <h1>Reduced Row Echelon Form (RREF) Solver</h1>
     <p class="subtitle">
       Compute the <strong>Reduced Row Echelon Form</strong><a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
-      of a matrix using <strong>Gauss-Jordan elimination</strong><a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a> with detailed step-by-step output.<br>
-      <small>Useful for solving systems of linear equations, finding matrix rank, and determining linear independence.</small>
+      of a real or complex matrix using <strong>Gauss-Jordan elimination</strong><a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a> with detailed step-by-step output.<br>
+      <small>Useful for solving systems of linear equations, finding matrix rank, and determining linear independence. Cells accept complex literals such as <span style="font-family:monospace">2+3i</span>, <span style="font-family:monospace">-1/2-i</span>, or <span style="font-family:monospace">0.2i</span>.</small>
     </p>
 
     <!-- About panel -->
@@ -300,6 +301,7 @@
           <li>Determining linear independence of vectors</li>
           <li>Finding basis for row space and null space<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a></li>
         </ul>
+        <p><strong>Real or complex entries:</strong> Gauss-Jordan elimination is purely algebraic — it relies only on the field operations \(+,-,\times,\div\) — so the same algorithm applies over \(\mathbb{C}\). Pivot selection uses the first non-zero entry (using \(|z|\) to test against zero).</p>
       </div>
     </div>
 
@@ -455,10 +457,11 @@ function generateMatrix() {
       var td = document.createElement('td');
       td.setAttribute('role', 'gridcell');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any';
+      inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+      inp.inputMode = 'text';
       inp.className = 'matrix-cell';
       inp.id = 'cell_' + i + '_' + j;
-      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1) + ' (real or complex value)');
       td.appendChild(inp);
       tr.appendChild(td);
     }
@@ -493,21 +496,8 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT
+//  PARSE / FORMAT  (real or complex)
 // ============================================================
-function parseFraction(str) {
-  str = str.trim();
-  if (str.includes('/')) {
-    var parts = str.split('/');
-    if (parts.length === 2) {
-      var num = parseFloat(parts[0]);
-      var den = parseFloat(parts[1]);
-      if (!isNaN(num) && !isNaN(den) && den !== 0) return num / den;
-    }
-  }
-  return parseFloat(str);
-}
-
 function readMatrix() {
   var rows = parseInt(document.getElementById('rows').value, 10);
   var cols = parseInt(document.getElementById('cols').value, 10);
@@ -517,64 +507,47 @@ function readMatrix() {
     for (var j = 0; j < cols; j++) {
       var cell = document.getElementById('cell_' + i + '_' + j);
       var value = cell.value.trim();
-      var num;
-      if (value === '') {
-        num = 0;
-      } else {
-        num = parseFraction(value);
-        if (isNaN(num)) {
-          announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '.');
-          return null;
-        }
+      var z;
+      try { z = value === '' ? Complex.zero() : Complex.parse(value); }
+      catch (e) {
+        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Try a real or complex value such as 2+3i.');
+        return null;
       }
-      row.push(num);
+      row.push(z);
     }
     matrix.push(row);
   }
   return matrix;
 }
 
-function toFraction(x, tolerance, maxIterations) {
-  tolerance = tolerance || 1e-6;
-  maxIterations = maxIterations || 20;
-  if (x === 0) return '0';
-  var sign = x < 0 ? '-' : '';
-  x = Math.abs(x);
-  var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
-  for (var i = 0; i < maxIterations; i++) {
-    var a = Math.floor(b);
-    var h = a * h1 + h2;
-    var k = a * k1 + k2;
-    if (Math.abs(x - h / k) < tolerance) return sign + h + '/' + k;
-    h2 = h1; h1 = h;
-    k2 = k1; k1 = k;
-    b = 1 / (b - a);
-  }
-  return sign + h1 + '/' + k1;
+function formatNumber(z) {
+  if (typeof z === 'number') z = new Complex(z, 0);
+  return z.toLaTeX(4, currentDisplayMode === 'fraction' ? 'fraction' : 'decimal');
 }
 
-function formatNumber(num) {
-  var epsilon = 1e-10;
-  if (Math.abs(num - Math.round(num)) < epsilon) return Math.round(num).toString();
-  if (currentDisplayMode === 'fraction') return toFraction(num);
-  return parseFloat(num.toFixed(3)).toString();
-}
-
-function formatScalarForLatex(formatted, isOperation) {
-  if (isOperation && formatted.includes('/')) {
-    var parts = formatted.split('/');
-    var numerator = parts[0].charAt(0) === '-' ? parts[0].slice(1) : parts[0];
-    var denominator = parts[1];
-    var sign = parts[0].charAt(0) === '-' ? '-' : '';
-    return sign + '\\dfrac{' + numerator + '}{' + denominator + '}';
+// Wrap a scalar for use as a coefficient in row-operation labels.
+// If it's a single real fraction "a/b" we render as \dfrac; if it's a
+// complex with both parts (or starts with '-'), we wrap in parentheses.
+function formatScalarLabel(z) {
+  var s = formatNumber(z);
+  // Real fraction in fraction mode -> nice \dfrac
+  if (/^-?[0-9]+\/[0-9]+$/.test(s)) {
+    var sign = s[0] === '-' ? '-' : '';
+    var rest = sign ? s.slice(1) : s;
+    var p = rest.split('/');
+    return sign + '\\dfrac{' + p[0] + '}{' + p[1] + '}';
   }
-  return formatted;
+  // Complex with both parts (e.g. "1+2i", "1/2-i") -> wrap in parens
+  if (/[+\-]/.test(s.slice(1))) return '(' + s + ')';
+  return s;
 }
 
 // ============================================================
 //  MATRIX OPERATIONS
 // ============================================================
-function cloneMatrix(matrix) { return matrix.map(function(row) { return row.slice(); }); }
+function cloneMatrix(matrix) {
+  return matrix.map(function(row){ return row.map(function(z){ return z.clone(); }); });
+}
 
 function matrixToLatex(matrix) {
   if (matrix.length === 0 || matrix[0].length === 0) return '';
@@ -582,18 +555,15 @@ function matrixToLatex(matrix) {
   var colSpec = '';
   for (var i = 0; i < cols; i++) colSpec += 'c';
   var latex = '\\left[ \\begin{array}{' + colSpec + '}\n';
-  latex += matrix.map(function(row) {
-    return row.map(function(num) {
-      var formatted = formatNumber(num);
-      return formatScalarForLatex(formatted, false);
-    }).join(' & ');
+  latex += matrix.map(function(row){
+    return row.map(function(z){ return formatNumber(z); }).join(' & ');
   }).join(' \\\\ \n');
   latex += '\n\\end{array} \\right]';
   return latex;
 }
 
 // ============================================================
-//  COMPUTE RREF
+//  COMPUTE RREF  (works over R or C)
 // ============================================================
 function computeRREF(origMatrix) {
   var matrix = cloneMatrix(origMatrix);
@@ -606,7 +576,7 @@ function computeRREF(origMatrix) {
   for (var r = 0; r < m; r++) {
     if (lead >= n) break;
     var i = r;
-    while (Math.abs(matrix[i][lead]) < 1e-10) {
+    while (matrix[i][lead].isZero()) {
       i++;
       if (i === m) { i = r; lead++; if (lead === n) break; }
     }
@@ -616,26 +586,21 @@ function computeRREF(origMatrix) {
       steps.push({ desc: '\\(R_{' + (r+1) + '} \\leftrightarrow R_{' + (i+1) + '}\\)', matrix: cloneMatrix(matrix) });
     }
     var pivotValue = matrix[r][lead];
-    if (Math.abs(pivotValue - 1) > 1e-10) {
-      var reciprocal = 1 / pivotValue;
-      var formattedReciprocal = formatNumber(reciprocal);
-      var latexScalar = formatScalarForLatex(formattedReciprocal, true);
-      for (var j = 0; j < n; j++) matrix[r][j] /= pivotValue;
+    if (!pivotValue.equals(Complex.one())) {
+      var reciprocal = pivotValue.inv();
+      var latexScalar = formatScalarLabel(reciprocal);
+      for (var j = 0; j < n; j++) matrix[r][j] = matrix[r][j].mul(reciprocal);
       steps.push({ desc: '\\(' + latexScalar + ' R_{' + (r+1) + '} \\to R_{' + (r+1) + '}\\)', matrix: cloneMatrix(matrix) });
     }
     for (var ii = 0; ii < m; ii++) {
       if (ii !== r) {
         var factor = matrix[ii][lead];
-        if (Math.abs(factor) > 1e-10) {
-          var formattedFactor = formatNumber(factor);
-          var latexFactor = formatScalarForLatex(formattedFactor, true);
-          var absFactor = Math.abs(factor);
-          var formattedAbsFactor = formatNumber(absFactor);
-          var latexAbsFactor = formatScalarForLatex(formattedAbsFactor, true);
-          var msg = factor >= 0
-            ? '\\(R_{' + (ii+1) + '} - ' + latexFactor + ' R_{' + (r+1) + '} \\to R_{' + (ii+1) + '}\\)'
-            : '\\(R_{' + (ii+1) + '} + ' + latexAbsFactor + ' R_{' + (r+1) + '} \\to R_{' + (ii+1) + '}\\)';
-          for (var j2 = 0; j2 < n; j2++) matrix[ii][j2] -= factor * matrix[r][j2];
+        if (!factor.isZero()) {
+          var latexFactor = formatScalarLabel(factor);
+          var msg = '\\(R_{' + (ii+1) + '} - ' + latexFactor + ' R_{' + (r+1) + '} \\to R_{' + (ii+1) + '}\\)';
+          for (var j2 = 0; j2 < n; j2++) {
+            matrix[ii][j2] = matrix[ii][j2].sub(factor.mul(matrix[r][j2]));
+          }
           steps.push({ desc: msg, matrix: cloneMatrix(matrix) });
         }
       }

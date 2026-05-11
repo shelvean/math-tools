@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Cholesky decomposition calculator. Factor a symmetric positive-definite matrix as A = LL^T step by step, with a worked example.">
+  <meta name="description" content="Cholesky decomposition calculator. Factor a symmetric (or Hermitian) positive-definite real or complex matrix as A = LL^T or A = LL^H step by step.">
   <meta name="keywords" content="Cholesky decomposition, matrix calculator, linear algebra, symmetric matrix, positive definite matrix, matrix decomposition, math tool">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
@@ -30,6 +30,7 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
+  <script src="complex-arith.js"></script>
   <style>
     :root {
       --bg-page: #f3f4f6;
@@ -291,9 +292,9 @@
   <main id="main-content" class="card" role="main">
     <h1>Cholesky Decomposition</h1>
     <p class="subtitle">
-      Factor a symmetric positive definite<a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
-      matrix as \(A = LL^T\).<br>
-      <small>Efficient method for solving linear systems and optimization problems.<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a></small>
+      Factor a symmetric (or Hermitian) positive definite<a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
+      matrix as \(A = LL^T\) (or \(A = LL^H\) for complex \(A\)).<br>
+      <small>Efficient method for solving linear systems and optimization problems.<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a> Cells accept complex literals such as <span style="font-family:monospace">2+3i</span>; for complex inputs the matrix must be Hermitian (so its diagonal is real).</small>
     </p>
 
     <!-- About panel -->
@@ -303,13 +304,13 @@
         <span class="info-toggle-icon" aria-hidden="true">&minus;</span>
       </button>
       <div id="infoBody" class="info-body" role="region" aria-labelledby="infoToggle">
-        <p>The <strong>Cholesky decomposition</strong> factors a symmetric positive definite matrix \(A\) as:</p>
-        <p style="text-align:center;">\[ A = LL^T \]</p>
-        <p>where \(L\) is a lower triangular matrix with positive diagonal entries.</p>
+        <p>The <strong>Cholesky decomposition</strong> factors a symmetric (or Hermitian) positive definite matrix \(A\) as:</p>
+        <p style="text-align:center;">\[ A = LL^T \quad\text{(real)}, \qquad A = LL^H \quad\text{(complex)} \]</p>
+        <p>where \(L\) is a lower triangular matrix with positive real diagonal entries.</p>
         <p><strong>Requirements:</strong></p>
         <ul>
-          <li>\(A\) must be symmetric: \(A = A^T\)</li>
-          <li>\(A\) must be positive definite: \(\mathbf{x}^T A \mathbf{x} > 0\) for all \(\mathbf{x} \neq \mathbf{0}\)</li>
+          <li>\(A\) must be symmetric (real) or Hermitian (complex): \(A^H = A\), so the diagonal of \(A\) is real.</li>
+          <li>\(A\) must be positive definite: \(\mathbf{x}^H A \mathbf{x} > 0\) for all \(\mathbf{x} \neq \mathbf{0}\)</li>
         </ul>
         <p><strong>Applications:</strong></p>
         <ul>
@@ -318,7 +319,7 @@
           <li>Generating correlated random variables</li>
           <li>Numerical optimization (Newton's method)</li>
         </ul>
-        <p><strong>This calculator</strong> computes \(L\) entry-by-entry using the standard Cholesky algorithm<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a>, and displays the result in decimal or surd/fraction form.</p>
+        <p><strong>This calculator</strong> computes \(L\) entry-by-entry using the standard Cholesky algorithm<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a>, and displays the result in decimal or surd/fraction form. For complex inputs the Hermitian variant is used: \(L_{jj} = \sqrt{a_{jj} - \sum_{k<j} |L_{jk}|^2}\) (real, positive) and \(L_{ij} = (a_{ij} - \sum_{k<j} L_{ik}\overline{L_{jk}}) / L_{jj}\).</p>
       </div>
     </div>
 
@@ -490,10 +491,11 @@ function generateMatrix() {
       var td = document.createElement('td');
       td.setAttribute('role', 'gridcell');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any';
+      inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+      inp.inputMode = 'text';
       inp.className = 'matrix-cell';
       inp.id = 'A_' + i + '_' + j;
-      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1) + ' (real or complex value)');
       td.appendChild(inp);
       tr.appendChild(td);
     }
@@ -527,24 +529,8 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT
+//  PARSE / FORMAT  (Complex storage; real or complex input)
 // ============================================================
-function parseFraction(str) {
-  str = str.trim();
-  if (str === '') return 0;
-  try {
-    var evaluated = math.evaluate(str);
-    if (typeof evaluated === 'number') {
-      return evaluated;
-    } else {
-      return 0;
-    }
-  } catch (e) {
-    announce('Please enter valid numbers, fractions, or mathematical expressions in all cells.');
-    return null;
-  }
-}
-
 function readMatrix() {
   var n = parseInt(document.getElementById('n').value, 10);
   if (isNaN(n) || n <= 0) {
@@ -561,39 +547,51 @@ function readMatrix() {
         return null;
       }
       var value = cell.value.trim();
-      var num = parseFraction(value);
-      if (num === null) {
+      var z;
+      try { z = value === '' ? Complex.zero() : Complex.parse(value); }
+      catch (e) {
+        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Try a real or complex value such as 2+3i.');
         return null;
       }
-      row.push(num);
+      row.push(z);
     }
     A.push(row);
   }
   return A;
 }
 
+function matrixIsComplex(A) {
+  for (var i = 0; i < A.length; i++)
+    for (var j = 0; j < A[i].length; j++)
+      if (Math.abs(A[i][j].im) > 1e-12) return true;
+  return false;
+}
+
 // ============================================================
-//  SYMMETRY & POSITIVE DEFINITENESS CHECKS
+//  HERMITIAN-SYMMETRY & POSITIVE DEFINITENESS CHECKS
 // ============================================================
-function isSymmetric(A) {
+// A is Hermitian if A[i][j] == conj(A[j][i]). This generalises symmetry
+// to the complex case and reduces to the usual A == A^T when A is real.
+function isHermitian(A) {
   var n = A.length;
   for (var i = 0; i < n; i++) {
     for (var j = 0; j < n; j++) {
-      if (Math.abs(A[i][j] - A[j][i]) > 1e-14) {
-        return false;
-      }
+      var expected = A[j][i].conj();
+      if (Math.abs(A[i][j].re - expected.re) > 1e-12) return false;
+      if (Math.abs(A[i][j].im - expected.im) > 1e-12) return false;
     }
   }
   return true;
 }
 
+// Determinant via cofactor expansion (Complex-valued).
 function determinant(A) {
   var n = A.length;
-  if (n === 1) return A[0][0];
-  if (n === 2) return A[0][0] * A[1][1] - A[0][1] * A[1][0];
-  var det = 0;
+  if (n === 1) return A[0][0].clone();
+  if (n === 2) return A[0][0].mul(A[1][1]).sub(A[0][1].mul(A[1][0]));
+  var det = Complex.zero();
   for (var j = 0; j < n; j++) {
-    det += A[0][j] * cofactor(A, 0, j);
+    det = det.add(A[0][j].mul(cofactor(A, 0, j)));
   }
   return det;
 }
@@ -610,60 +608,69 @@ function cofactor(A, i, j) {
     }
     subMatrix.push(row);
   }
-  var sign = ((i + j) % 2 === 0) ? 1 : -1;
-  return sign * determinant(subMatrix);
+  var sign = ((i + j) % 2 === 0) ? Complex.one() : new Complex(-1, 0);
+  return sign.mul(determinant(subMatrix));
 }
 
+// For a Hermitian matrix every leading principal minor is real, so we
+// check that its real part is positive (and the imaginary part vanishes).
 function isPositiveDefinite(A) {
   var n = A.length;
   for (var k = 1; k <= n; k++) {
     var subMatrix = A.slice(0, k).map(function(row) { return row.slice(0, k); });
     var det = determinant(subMatrix);
-    if (det <= 1e-14) {
-      return false;
-    }
+    if (Math.abs(det.im) > 1e-10) return false;
+    if (det.re <= 1e-14) return false;
   }
   return true;
 }
 
 // ============================================================
-//  CHOLESKY DECOMPOSITION
+//  CHOLESKY DECOMPOSITION  (real or complex / Hermitian)
 // ============================================================
-function matrixTranspose(A) {
+// Conjugate transpose; for real A this is the ordinary transpose.
+function matrixCTranspose(A) {
   var m = A.length, n = A[0].length;
   var At = [];
   for (var i = 0; i < n; i++) {
     At[i] = [];
-    for (var j = 0; j < m; j++) {
-      At[i][j] = A[j][i];
-    }
+    for (var j = 0; j < m; j++) At[i][j] = A[j][i].conj();
   }
   return At;
 }
+
+// Kept for backwards-compatibility (no longer used directly).
+function matrixTranspose(A) { return matrixCTranspose(A); }
 
 function choleskyDecomposition(A) {
   var n = A.length;
   var L = [];
   for (var i = 0; i < n; i++) {
     L[i] = [];
-    for (var j = 0; j < n; j++) L[i][j] = 0;
+    for (var j = 0; j < n; j++) L[i][j] = Complex.zero();
   }
   for (var i = 0; i < n; i++) {
     for (var j = 0; j <= i; j++) {
-      var sum = 0;
-      for (var k = 0; k < j; k++) {
-        sum += L[i][k] * L[j][k];
-      }
+      // Off-diagonal: sum_{k<j} L[i][k] * conj(L[j][k])
+      // Diagonal:    sum_{k<j} |L[j][k]|^2  (real)
       if (i === j) {
-        var diag = A[j][j] - sum;
-        if (diag <= 1e-14) {
-          throw new Error("Matrix is not positive definite.");
+        var sumDiag = 0;
+        for (var k = 0; k < j; k++) sumDiag += L[j][k].abs2();
+        var diag = A[j][j].re - sumDiag;
+        // For Hermitian A the diagonal is real; warn (loosely) if not.
+        if (Math.abs(A[j][j].im) > 1e-10) {
+          throw new Error('Diagonal entry a_{' + (j+1) + (j+1) + '} is not real; matrix is not Hermitian.');
         }
-        L[j][j] = Math.sqrt(diag);
+        if (diag <= 1e-14) {
+          throw new Error('Matrix is not positive definite.');
+        }
+        L[j][j] = new Complex(Math.sqrt(diag), 0);
       } else {
-        L[i][j] = (A[i][j] - sum) / L[j][j];
+        var sumOff = Complex.zero();
+        for (var k2 = 0; k2 < j; k2++) sumOff = sumOff.add(L[i][k2].mul(L[j][k2].conj()));
+        L[i][j] = A[i][j].sub(sumOff).div(L[j][j]);
       }
-      if (Math.abs(L[i][j]) < 1e-14) L[i][j] = 0;
+      if (L[i][j].isZero(1e-14)) L[i][j] = Complex.zero();
     }
   }
   return L;
@@ -849,7 +856,7 @@ function isRepeatingOrShortDecimal(val) {
   return false;
 }
 
-function formatForLatex(val) {
+function formatRealForLatex(val) {
   if (Math.abs(val) < 1e-7) return "0";
   if (currentOutputForm === 'surd') {
     let surd = toSurd(val);
@@ -859,6 +866,22 @@ function formatForLatex(val) {
   }
   if (Math.abs(val - Math.round(val)) < 1e-10) return Math.round(val).toString();
   return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatForLatex(val) {
+  if (typeof val === 'number') return formatRealForLatex(val);
+  if (val instanceof Complex) {
+    if (val.isReal(1e-10)) return formatRealForLatex(val.re);
+    // Render real and imaginary parts independently using the surd pipeline.
+    var rePart = Math.abs(val.re) < 1e-10 ? null : formatRealForLatex(val.re);
+    var imAbs = Math.abs(val.im);
+    var imRaw = formatRealForLatex(imAbs);
+    var imStr = (imRaw === '1') ? 'i' : (imRaw + ' i');
+    if (rePart === null) return (val.im < 0 ? '-' : '') + imStr;
+    var sign = val.im < 0 ? '-' : '+';
+    return rePart + ' ' + sign + ' ' + imStr;
+  }
+  return String(val);
 }
 
 function matrixToLatex(M) {
@@ -882,25 +905,28 @@ function renderResults(A, L) {
   var resultDiv = document.getElementById('result');
   resultDiv.innerHTML = '';
 
+  var isComplex = matrixIsComplex(A);
+  var transposeLabel = isComplex ? 'L^H' : 'L^T';
+
   var A_latex = matrixToLatex(A);
   var L_latex = matrixToLatex(L);
-  var Lt_latex = matrixToLatex(matrixTranspose(L));
+  var Lt_latex = matrixToLatex(matrixCTranspose(L));
 
   // Summary block
   var summary = document.createElement('div');
   summary.className = 'step-block';
   summary.innerHTML =
     '<p class="step-title" style="text-align:center;">Cholesky Factorization</p>' +
-    '<div style="text-align:center;">\\[ A = LL^T \\]</div>';
+    '<div style="text-align:center;">\\[ A = L' + transposeLabel + ' \\]</div>';
   resultDiv.appendChild(summary);
 
-  // A, L, L^T display
+  // A, L, L^T (or L^H) display
   var matrices = document.createElement('div');
   matrices.className = 'step-block';
   matrices.innerHTML =
     '<div style="text-align:center;">\\[ A = ' + A_latex + ' \\]</div>' +
     '<div style="text-align:center;">\\[ L = ' + L_latex + ' \\]</div>' +
-    '<div style="text-align:center;">\\[ L^T = ' + Lt_latex + ' \\]</div>';
+    '<div style="text-align:center;">\\[ ' + transposeLabel + ' = ' + Lt_latex + ' \\]</div>';
   resultDiv.appendChild(matrices);
 
   // Step-by-step computation
@@ -909,23 +935,25 @@ function renderResults(A, L) {
   stepsDiv.className = 'step-block';
   var stepsHTML = '<p class="step-title">Step-by-Step Computation:</p>';
 
-  var stepCount = 0;
   for (var j = 0; j < n; j++) {
     for (var i = j; i < n; i++) {
-      stepCount++;
       if (i === j) {
-        // Diagonal entry
+        // Diagonal: l_jj = sqrt(a_jj - sum_{k<j} |l_jk|^2)
         var sumParts = [];
         for (var k = 0; k < j; k++) {
-          sumParts.push('\\ell_{' + (j+1) + (k+1) + '}^2');
+          sumParts.push(isComplex
+            ? '|\\ell_{' + (j+1) + (k+1) + '}|^2'
+            : '\\ell_{' + (j+1) + (k+1) + '}^2');
         }
         var sumStr = sumParts.length > 0 ? ' - (' + sumParts.join(' + ') + ')' : '';
         stepsHTML += '<div style="text-align:center;">\\[ \\ell_{' + (j+1) + (j+1) + '} = \\sqrt{a_{' + (j+1) + (j+1) + '}' + sumStr + '} = ' + formatForLatex(L[j][j]) + ' \\]</div>';
       } else {
-        // Off-diagonal entry
+        // Off-diagonal: l_ij = (a_ij - sum_{k<j} l_ik * conj(l_jk)) / l_jj
         var sumParts2 = [];
         for (var k2 = 0; k2 < j; k2++) {
-          sumParts2.push('\\ell_{' + (i+1) + (k2+1) + '} \\ell_{' + (j+1) + (k2+1) + '}');
+          sumParts2.push(isComplex
+            ? '\\ell_{' + (i+1) + (k2+1) + '}\\,\\overline{\\ell_{' + (j+1) + (k2+1) + '}}'
+            : '\\ell_{' + (i+1) + (k2+1) + '} \\ell_{' + (j+1) + (k2+1) + '}');
         }
         var sumStr2 = sumParts2.length > 0 ? ' - (' + sumParts2.join(' + ') + ')' : '';
         stepsHTML += '<div style="text-align:center;">\\[ \\ell_{' + (i+1) + (j+1) + '} = \\dfrac{a_{' + (i+1) + (j+1) + '}' + sumStr2 + '}{\\ell_{' + (j+1) + (j+1) + '}} = ' + formatForLatex(L[i][j]) + ' \\]</div>';
@@ -953,9 +981,13 @@ document.getElementById('calcBtn').addEventListener('click', function() {
   var resultDiv = document.getElementById('result');
   currentOutputForm = document.querySelector('input[name="outputForm"]:checked').value;
   try {
-    if (!isSymmetric(A)) {
-      resultDiv.innerHTML = '<div style="text-align:center;font-weight:700;color:#b91c1c;">Error: Matrix must be symmetric.</div>';
-      announce('Error: The matrix is not symmetric. A must equal its transpose.');
+    var isComplex = matrixIsComplex(A);
+    if (!isHermitian(A)) {
+      var msg = isComplex
+        ? 'Error: Matrix must be Hermitian (A = A^H, i.e. a_{ij} = \\(\\overline{a_{ji}}\\) and the diagonal is real).'
+        : 'Error: Matrix must be symmetric.';
+      resultDiv.innerHTML = '<div style="text-align:center;font-weight:700;color:#b91c1c;">' + msg + '</div>';
+      announce(isComplex ? 'Error: matrix is not Hermitian.' : 'Error: matrix is not symmetric.');
       return;
     }
     if (!isPositiveDefinite(A)) {

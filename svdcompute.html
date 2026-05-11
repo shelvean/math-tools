@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Singular value decomposition (SVD) calculator. Compute A = U Sigma V^T for an m by n matrix step by step with singular values and U, V.">
+  <meta name="description" content="Singular value decomposition (SVD) calculator. Compute A = U Σ V^T (real) or A = U Σ V^H (complex) for an m by n matrix with singular values and U, V.">
   <meta name="keywords" content="singular value decomposition, SVD, matrix decomposition, linear algebra, matrix calculator, numerical analysis, UΣV^T, full SVD, economy SVD">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
@@ -29,6 +29,7 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <script src="complex-arith.js"></script>
   <style>
     :root {
       --bg-page: #f3f4f6;
@@ -291,8 +292,8 @@
     <h1>Singular Value Decomposition (SVD)</h1>
     <p class="subtitle">
       Compute the <strong>Singular Value Decomposition</strong><a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
-      of a matrix \(A = U\Sigma V^T\).<br>
-      <small>Matrix entries can be real numbers or fractions.</small>
+      of a real matrix \(A = U\Sigma V^T\) or complex matrix \(A = U\Sigma V^H\).<br>
+      <small>Matrix entries can be real numbers, fractions, or complex literals such as <span style="font-family:monospace">2+3i</span>; for complex inputs, \(U\) and \(V\) are unitary.</small>
     </p>
 
     <!-- About panel -->
@@ -316,7 +317,7 @@
           <li>The rank of \(A\) equals the number of non-zero singular values</li>
           <li>SVD works for any matrix (square or rectangular)</li>
         </ul>
-        <p><strong>This calculator</strong> uses Jacobi eigendecomposition<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> of \(A^TA\) to compute the SVD, with Gram-Schmidt orthogonalization to complete the \(U\) matrix columns, and follows the MATLAB sign convention.</p>
+        <p><strong>This calculator</strong> uses Jacobi eigendecomposition<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> of \(A^TA\) (or the Hermitian \(A^H A\) for complex inputs) to compute the SVD, with Gram-Schmidt orthogonalization to complete the \(U\) matrix columns, and follows the MATLAB sign convention. The Hermitian Jacobi rotation uses a complex unit \(\mathrm{e}^{i\arg(B_{pq})}\) factor so \(B_{pq}\) is rotated to a real value before the Givens rotation zeros it out.</p>
       </div>
     </div>
 
@@ -551,7 +552,8 @@ function generateMatrix() {
       var td = document.createElement('td');
       td.setAttribute('role', 'gridcell');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any';
+      inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+      inp.inputMode = 'text';
       inp.className = 'matrix-cell';
       inp.id = 'A_' + i + '_' + j;
       inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
@@ -590,29 +592,12 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT
+//  PARSE / FORMAT  (real or complex)
 // ============================================================
-function parseFraction(str) {
-  str = str.trim();
-  if (str === '') return 0;
-  if (str.includes('/')) {
-    var parts = str.split('/');
-    if (parts.length === 2) {
-      var numerator = parseFloat(parts[0]);
-      var denominator = parseFloat(parts[1]);
-      if (!isNaN(numerator) && !isNaN(denominator) && denominator !== 0) {
-        return numerator / denominator;
-      }
-    }
-  }
-  var num = parseFloat(str);
-  if (isNaN(num)) {
-    announce('Invalid entry. Please enter valid numbers or fractions.');
-    return null;
-  }
-  return num;
-}
-
+// readMatrix returns an object { matrix, isComplex }.
+// For all-real input the entries are plain Numbers (so the existing real
+// SVD path is used unchanged). For any complex input every entry is a
+// Complex object and the parallel computeSVDComplex path is used.
 function readMatrix() {
   var m = parseInt(document.getElementById('m').value, 10);
   var n = parseInt(document.getElementById('n').value, 10);
@@ -629,17 +614,34 @@ function readMatrix() {
     }
   }
 
-  var A = [];
+  // First pass: parse every cell as Complex.
+  var raw = [];
   for (var i = 0; i < m; i++) {
     var row = [];
     for (var j = 0; j < n; j++) {
-      var num = parseFraction(elements[i][j].value);
-      if (num === null) return null;
-      row.push(num);
+      var v = elements[i][j].value.trim();
+      var z;
+      try { z = v === '' ? Complex.zero() : Complex.parse(v); }
+      catch (e) {
+        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Try a real or complex value such as 2+3i.');
+        return null;
+      }
+      row.push(z);
     }
-    A.push(row);
+    raw.push(row);
   }
-  return A;
+
+  var isComplex = false;
+  for (var i2 = 0; i2 < m; i2++) for (var j2 = 0; j2 < n; j2++) {
+    if (Math.abs(raw[i2][j2].im) > 1e-12) { isComplex = true; break; }
+  }
+
+  if (!isComplex) {
+    // Convert to plain numbers for the legacy real path.
+    return { matrix: raw.map(function(r){ return r.map(function(z){ return z.re; }); }),
+             isComplex: false };
+  }
+  return { matrix: raw, isComplex: true };
 }
 
 // ============================================================
@@ -770,7 +772,7 @@ function isRepeatingOrShortDecimal(val) {
   return false;
 }
 
-function formatForLatex(val) {
+function formatRealForLatex(val) {
   if (Math.abs(val) < 1e-7) return "0";
   if (currentDisplayMode === 'surd') {
     let surd = toSurd(val);
@@ -780,6 +782,21 @@ function formatForLatex(val) {
   }
   if (Math.abs(val - Math.round(val)) < 1e-10) return Math.round(val).toString();
   return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatForLatex(val) {
+  if (typeof val === 'number') return formatRealForLatex(val);
+  if (val instanceof Complex) {
+    if (val.isReal(1e-10)) return formatRealForLatex(val.re);
+    var rePart = Math.abs(val.re) < 1e-10 ? null : formatRealForLatex(val.re);
+    var imAbs = Math.abs(val.im);
+    var imRaw = formatRealForLatex(imAbs);
+    var imStr = (imRaw === '1') ? 'i' : (imRaw + ' i');
+    if (rePart === null) return (val.im < 0 ? '-' : '') + imStr;
+    var sign = val.im < 0 ? '-' : '+';
+    return rePart + ' ' + sign + ' ' + imStr;
+  }
+  return String(val);
 }
 
 function matrixToLatex(M) {
@@ -949,6 +966,246 @@ function computeLCM(numbers) {
 }
 
 // ============================================================
+//  COMPLEX HELPERS  (for the parallel complex SVD path)
+// ============================================================
+function cIdentity(n) {
+  var I = [];
+  for (var i = 0; i < n; i++) {
+    I[i] = [];
+    for (var j = 0; j < n; j++) I[i][j] = (i === j) ? Complex.one() : Complex.zero();
+  }
+  return I;
+}
+function cZeros(rows, cols) {
+  var Z = [];
+  for (var i = 0; i < rows; i++) {
+    Z[i] = [];
+    for (var j = 0; j < cols; j++) Z[i][j] = Complex.zero();
+  }
+  return Z;
+}
+function cConjTranspose(M) {
+  var m = M.length, n = M[0].length;
+  var T = [];
+  for (var i = 0; i < n; i++) {
+    T[i] = [];
+    for (var j = 0; j < m; j++) T[i][j] = M[j][i].conj();
+  }
+  return T;
+}
+// B = A^H A (Hermitian, n×n)
+function cAhA(A) {
+  var m = A.length, n = A[0].length;
+  var B = cZeros(n, n);
+  for (var i = 0; i < n; i++) {
+    for (var j = i; j < n; j++) {
+      var s = Complex.zero();
+      for (var k = 0; k < m; k++) s = s.add(A[k][i].conj().mul(A[k][j]));
+      B[i][j] = s;
+      B[j][i] = s.conj();
+    }
+  }
+  return B;
+}
+function cMatVec(A, v) {
+  var m = A.length, n = A[0].length;
+  var out = [];
+  for (var i = 0; i < m; i++) {
+    var s = Complex.zero();
+    for (var j = 0; j < n; j++) s = s.add(A[i][j].mul(v[j]));
+    out.push(s);
+  }
+  return out;
+}
+function cVecScale(v, s) { return v.map(function(z){ return z.mul(s); }); }
+function cVecAdd(a, b) { return a.map(function(z, i){ return z.add(b[i]); }); }
+function cInner(a, b) { // <a, b> = sum conj(a_i) * b_i
+  var s = Complex.zero();
+  for (var i = 0; i < a.length; i++) s = s.add(a[i].conj().mul(b[i]));
+  return s;
+}
+function cVecNorm(v) {
+  var s = 0;
+  for (var i = 0; i < v.length; i++) s += v[i].abs2();
+  return Math.sqrt(s);
+}
+function cIsZeroMatrix(A) {
+  for (var i = 0; i < A.length; i++)
+    for (var j = 0; j < A[i].length; j++)
+      if (!A[i][j].isZero(1e-10)) return false;
+  return true;
+}
+
+// Hermitian Jacobi diagonalization: B = V D V^H with D real-diagonal,
+// V unitary. The classical Jacobi sweep picks the off-diagonal entry of
+// largest modulus and applies a unitary similarity that zeroes it out.
+function cJacobiHermitian(B, maxIter, tol) {
+  maxIter = maxIter || 200;
+  tol = tol || 1e-10;
+  var n = B.length;
+  var V = cIdentity(n);
+  // Work on a deep copy.
+  var M = B.map(function(row){ return row.map(function(z){ return z.clone(); }); });
+  for (var iter = 0; iter < maxIter; iter++) {
+    var maxVal = 0, p = 0, q = 1;
+    for (var i = 0; i < n; i++) {
+      for (var j = i + 1; j < n; j++) {
+        var a = M[i][j].abs();
+        if (a > maxVal) { maxVal = a; p = i; q = j; }
+      }
+    }
+    if (maxVal < tol) break;
+    // Phase factor e^{i arg(M[p][q])}; we'll absorb this into the
+    // 2x2 unitary so the rotation reduces to a real Givens rotation.
+    var Mpq = M[p][q];
+    var phaseR = Mpq.re / maxVal;
+    var phaseI = Mpq.im / maxVal;
+    // Diagonal entries of a Hermitian matrix are real.
+    var Bpp = M[p][p].re;
+    var Bqq = M[q][q].re;
+    // tan(2θ) = 2|M_pq| / (B_qq - B_pp)
+    var theta = 0.5 * Math.atan2(2 * maxVal, Bqq - Bpp);
+    var c = Math.cos(theta);
+    var s = Math.sin(theta);
+    // Unitary 2x2: u_pp = c, u_pq = -s*conj(phase); u_qp = s*phase, u_qq = c.
+    // (chosen so the (p,q) entry becomes 0 and diagonal stays real)
+    // For brevity, define complex s_phase = s * (phaseR + i*phaseI).
+    var spR = s * phaseR, spI = s * phaseI;
+    // Update M: for each column k != p, q, mix row/col p and q.
+    for (var k = 0; k < n; k++) {
+      if (k === p || k === q) continue;
+      var Mkp = M[k][p], Mkq = M[k][q];
+      // new M[k][p] = c * Mkp + (s*phase)* Mkq      (note: column-p update)
+      var newKpRe = c * Mkp.re + spR * Mkq.re - spI * Mkq.im;
+      var newKpIm = c * Mkp.im + spR * Mkq.im + spI * Mkq.re;
+      // new M[k][q] = -s*conj(phase) * Mkp + c * Mkq
+      var newKqRe = -spR * Mkp.re - spI * Mkp.im + c * Mkq.re;
+      var newKqIm = -spR * Mkp.im + spI * Mkp.re + c * Mkq.im;
+      M[k][p] = new Complex(newKpRe, newKpIm);
+      M[k][q] = new Complex(newKqRe, newKqIm);
+      M[p][k] = M[k][p].conj();
+      M[q][k] = M[k][q].conj();
+    }
+    // Update the 2x2 block (use closed form; result is real-diagonal)
+    var newPp = c * c * Bpp + s * s * Bqq - 2 * s * c * maxVal;
+    var newQq = s * s * Bpp + c * c * Bqq + 2 * s * c * maxVal;
+    M[p][p] = new Complex(newPp, 0);
+    M[q][q] = new Complex(newQq, 0);
+    M[p][q] = Complex.zero();
+    M[q][p] = Complex.zero();
+    // Update V: same right-multiplication by the 2x2 unitary on columns p,q.
+    for (var ii = 0; ii < n; ii++) {
+      var Vip = V[ii][p], Viq = V[ii][q];
+      var newVipRe = c * Vip.re + spR * Viq.re - spI * Viq.im;
+      var newVipIm = c * Vip.im + spR * Viq.im + spI * Viq.re;
+      var newViqRe = -spR * Vip.re - spI * Vip.im + c * Viq.re;
+      var newViqIm = -spR * Vip.im + spI * Vip.re + c * Viq.im;
+      V[ii][p] = new Complex(newVipRe, newVipIm);
+      V[ii][q] = new Complex(newViqRe, newViqIm);
+    }
+  }
+  var eig = [];
+  for (var k2 = 0; k2 < n; k2++) eig.push(M[k2][k2].re);
+  // Sort descending
+  var idx = eig.map(function(_, i){ return i; }).sort(function(a, b){ return eig[b] - eig[a]; });
+  var sortedEig = idx.map(function(i){ return eig[i]; });
+  var sortedV = [];
+  for (var ii2 = 0; ii2 < n; ii2++) {
+    sortedV[ii2] = [];
+    for (var jj = 0; jj < n; jj++) sortedV[ii2][jj] = V[ii2][idx[jj]];
+  }
+  return { eigenvalues: sortedEig, eigenvectors: sortedV };
+}
+
+// Classical Gram-Schmidt for complex column vectors; appends standard
+// basis vectors as needed to reach `outCount` orthonormal columns.
+function cGramSchmidtColumns(vecs, outCount) {
+  var m = vecs[0] ? vecs[0].length : outCount;
+  var Q = [];
+  for (var v of vecs) {
+    var u = v.map(function(z){ return z.clone(); });
+    for (var q of Q) {
+      var proj = cInner(q, u); // <q, u>
+      u = cVecAdd(u, cVecScale(q, proj.neg()));
+    }
+    var nu = cVecNorm(u);
+    if (nu > 1e-7) Q.push(cVecScale(u, new Complex(1 / nu, 0)));
+  }
+  for (var i = 0; Q.length < outCount && i < m; i++) {
+    var e = [];
+    for (var j = 0; j < m; j++) e.push(j === i ? Complex.one() : Complex.zero());
+    for (var q2 of Q) {
+      var proj2 = cInner(q2, e);
+      e = cVecAdd(e, cVecScale(q2, proj2.neg()));
+    }
+    var ne = cVecNorm(e);
+    if (ne > 1e-7) Q.push(cVecScale(e, new Complex(1 / ne, 0)));
+  }
+  return Q;
+}
+
+function computeSVDComplex(A) {
+  var m = A.length, n = A[0].length;
+  if (cIsZeroMatrix(A)) {
+    return {
+      U: cIdentity(m),
+      Sigma: cZeros(m, n),
+      Vt: cIdentity(n),
+      singularValues: new Array(Math.min(m, n)).fill(0)
+    };
+  }
+  var AhA = cAhA(A);
+  var herm = cJacobiHermitian(AhA);
+  var lambda = herm.eigenvalues;
+  var V = herm.eigenvectors; // n x n unitary, columns are right singular vectors
+  var sortedSV = lambda.map(function(x){ return Math.sqrt(Math.max(x, 0)); });
+  var k = Math.min(m, n);
+  var Ucols = [];
+  for (var i = 0; i < k; i++) {
+    if (sortedSV[i] > 1e-7) {
+      var v = V.map(function(r){ return r[i]; });
+      var Av = cMatVec(A, v);
+      var u = cVecScale(Av, new Complex(1 / sortedSV[i], 0));
+      var nu = cVecNorm(u);
+      if (nu > 1e-7) {
+        u = cVecScale(u, new Complex(1 / nu, 0));
+        Ucols.push(u);
+      }
+    }
+  }
+  Ucols = cGramSchmidtColumns(Ucols, m);
+  var U = cZeros(m, m);
+  for (var j = 0; j < m; j++)
+    for (var ii = 0; ii < m; ii++)
+      U[ii][j] = Ucols[j][ii];
+  var Sigma = cZeros(m, n);
+  for (var i2 = 0; i2 < k; i2++) Sigma[i2][i2] = new Complex(sortedSV[i2], 0);
+  var Vt = cConjTranspose(V);
+  // Phase-fix: rotate each column of U by e^{-i arg(largest entry)} so
+  // the largest-magnitude entry of each column becomes a real positive
+  // number; mirror the conjugate phase on the corresponding row of Vt
+  // so that A = U Σ V^H is preserved.
+  for (var j2 = 0; j2 < Math.min(U[0].length, k); j2++) {
+    var bestI = 0, bestAbs = 0;
+    for (var i3 = 0; i3 < U.length; i3++) {
+      var a = U[i3][j2].abs();
+      if (a > bestAbs) { bestAbs = a; bestI = i3; }
+    }
+    if (bestAbs < 1e-12) continue;
+    var z = U[bestI][j2];
+    var phaseR2 = z.re / bestAbs;
+    var phaseI2 = z.im / bestAbs;
+    // Multiply column j2 of U by conj(phase) so the chosen entry becomes real positive.
+    var conjPhase = new Complex(phaseR2, -phaseI2);
+    for (var i4 = 0; i4 < U.length; i4++) U[i4][j2] = U[i4][j2].mul(conjPhase);
+    // Multiply row j2 of Vt by phase so A = U Σ V^H is unchanged.
+    var phaseC = new Complex(phaseR2, phaseI2);
+    for (var k3 = 0; k3 < Vt[j2].length; k3++) Vt[j2][k3] = Vt[j2][k3].mul(phaseC);
+  }
+  return { U: U, Sigma: Sigma, Vt: Vt, singularValues: sortedSV };
+}
+
+// ============================================================
 //  COMPUTE SVD
 // ============================================================
 function computeSVD(A) {
@@ -1011,14 +1268,14 @@ function computeSVD(A) {
 // ============================================================
 //  RENDER RESULT
 // ============================================================
-function renderResult(A, U_disp, S_disp, Vt_disp, singularValues, svdType) {
+function renderResult(A, U_disp, S_disp, Vt_disp, singularValues, svdType, isComplex) {
   var resultDiv = document.getElementById('result');
   resultDiv.innerHTML = '';
 
   var A_label = "\\mathbf{A}";
   var U_label = "\\mathbf{U}";
   var S_label = "\\boldsymbol{\\Sigma}";
-  var Vt_label = "\\mathbf{V}^T";
+  var Vt_label = isComplex ? "\\mathbf{V}^H" : "\\mathbf{V}^T";
 
   // Summary block
   var summary = document.createElement('div');
@@ -1082,25 +1339,32 @@ document.getElementById('genBtn').addEventListener('click', generateMatrix);
 document.getElementById('exampleBtn').addEventListener('click', loadExample);
 document.getElementById('calcBtn').addEventListener('click', function() {
   try {
-    var A = readMatrix();
-    if (!A) return;
-    var result = computeSVD(A);
+    var read = readMatrix();
+    if (!read) return;
+    var A = read.matrix;
+    var result = read.isComplex ? computeSVDComplex(A) : computeSVD(A);
     var svdType = document.querySelector('input[name="svdType"]:checked').value;
     var U_disp, S_disp, Vt_disp, th = 1e-7;
+    var zeroEntry = read.isComplex ? Complex.zero() : 0;
     if (svdType === 'economy') {
       var keep = [];
       for (var i = 0; i < result.singularValues.length; i++)
         if (result.singularValues[i] > th)
           keep.push(i);
       U_disp = result.U.map(function(r) { return keep.map(function(i) { return r[i]; }); });
-      S_disp = keep.map(function(i) { return keep.map(function(j) { return (i === j ? result.singularValues[i] : 0); }); });
+      S_disp = keep.map(function(i) {
+        return keep.map(function(j) {
+          if (i !== j) return zeroEntry;
+          return read.isComplex ? new Complex(result.singularValues[i], 0) : result.singularValues[i];
+        });
+      });
       Vt_disp = keep.map(function(i) { return result.Vt[i]; });
     } else {
       U_disp = result.U;
       S_disp = result.Sigma;
       Vt_disp = result.Vt;
     }
-    renderResult(A, U_disp, S_disp, Vt_disp, result.singularValues, svdType);
+    renderResult(A, U_disp, S_disp, Vt_disp, result.singularValues, svdType, read.isComplex);
   } catch (e) {
     console.error(e);
     announce('An error occurred during SVD computation: ' + e.message);

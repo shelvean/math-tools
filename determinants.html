@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Matrix determinant calculator with steps. Compute the determinant of a 2x2, 3x3, or n by n matrix using cofactor expansion.">
-  <meta name="keywords" content="trace, determinant, matrix calculator, linear algebra, numerical analysis">
+  <meta name="description" content="Matrix determinant calculator with steps. Compute the determinant and trace of a real or complex 2x2, 3x3, or n by n matrix using elementary row operations.">
+  <meta name="keywords" content="trace, determinant, matrix calculator, linear algebra, complex matrix, numerical analysis">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>
@@ -29,6 +29,7 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <script src="complex-arith.js"></script>
   <style>
     :root {
       --bg-page: #f3f4f6;
@@ -293,7 +294,7 @@
       Compute the <strong>determinant</strong><a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
       and <strong>trace</strong><a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>
       of a square matrix.<br>
-      <small>Two fundamental scalar quantities that characterize square matrices.</small>
+      <small>Two fundamental scalar quantities that characterize square matrices. Entries can be real or complex, e.g. <span style="font-family:monospace">3+2i</span>, <span style="font-family:monospace">-1/2-i</span>, <span style="font-family:monospace">0.2i</span>.</small>
     </p>
 
     <!-- About panel -->
@@ -316,7 +317,7 @@
           <li>Sum of diagonal entries: \(\operatorname{tr}(A) = a_{11} + a_{22} + \cdots + a_{nn}\)</li>
           <li>For eigenvalues \(\lambda_1, \ldots, \lambda_n\): \(\operatorname{tr}(A) = \lambda_1 + \cdots + \lambda_n\)</li>
         </ul>
-        <p><strong>This calculator</strong> uses elementary row operations<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> to reduce \(A\) to an upper-triangular matrix \(U\), then computes \(\det(A)\) as the product of the diagonal entries of \(U\) times the product of the elementary matrix determinants.</p>
+        <p><strong>This calculator</strong> uses elementary row operations<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> to reduce \(A\) to an upper-triangular matrix \(U\), then computes \(\det(A)\) as the product of the diagonal entries of \(U\) times the product of the elementary matrix determinants. Entries may be real or complex; complex literals such as <code>2+3i</code>, <code>-1/2-i</code>, or <code>0.2i</code> are accepted in any cell.</p>
       </div>
     </div>
 
@@ -480,10 +481,11 @@ function generateMatrix() {
       var td = document.createElement('td');
       td.setAttribute('role', 'gridcell');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any';
+      inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+      inp.inputMode = 'text';
       inp.className = 'matrix-cell';
       inp.id = 'A_' + i + '_' + j;
-      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1) + ' (real or complex value)');
       td.appendChild(inp);
       tr.appendChild(td);
     }
@@ -517,21 +519,8 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT
+//  PARSE / FORMAT  (real or complex)
 // ============================================================
-function parseFraction(str) {
-  str = str.trim();
-  if (str.includes('/')) {
-    var parts = str.split('/');
-    if (parts.length === 2) {
-      var num = parseFloat(parts[0]);
-      var den = parseFloat(parts[1]);
-      if (!isNaN(num) && !isNaN(den) && den !== 0) return num / den;
-    }
-  }
-  return parseFloat(str);
-}
-
 function readMatrix() {
   var n = parseInt(document.getElementById('n').value, 10);
   var A = [];
@@ -540,61 +529,42 @@ function readMatrix() {
     for (var j = 0; j < n; j++) {
       var cell = document.getElementById('A_' + i + '_' + j);
       var value = cell.value.trim();
-      var num;
-      if (value === '') {
-        num = 0;
-      } else {
-        num = parseFraction(value);
-        if (isNaN(num)) {
-          announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '.');
-          return null;
-        }
+      var z;
+      try { z = value === '' ? Complex.zero() : Complex.parse(value); }
+      catch (e) {
+        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '.');
+        return null;
       }
-      row.push(num);
+      row.push(z);
     }
     A.push(row);
   }
   return A;
 }
 
-function toFraction(x, tolerance, maxIterations) {
-  tolerance = tolerance || 1e-6;
-  maxIterations = maxIterations || 20;
-  if (x === 0) return '0';
-  var sign = x < 0 ? '-' : '';
-  x = Math.abs(x);
-  var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
-  for (var i = 0; i < maxIterations; i++) {
-    var a = Math.floor(b);
-    var h = a * h1 + h2;
-    var k = a * k1 + k2;
-    if (Math.abs(x - h / k) < tolerance) return sign + h + '/' + k;
-    h2 = h1; h1 = h;
-    k2 = k1; k1 = k;
-    b = 1 / (b - a);
-  }
-  return sign + h1 + '/' + k1;
-}
-
-function formatNumber(num) {
-  var epsilon = 1e-10;
-  if (Math.abs(num - Math.round(num)) < epsilon) return Math.round(num).toString();
-  if (currentDisplayMode === 'fraction') return toFraction(num);
-  return parseFloat(num.toFixed(3)).toString();
+function formatNumber(z) {
+  if (typeof z === 'number') z = new Complex(z, 0);
+  return z.toLaTeX(3, currentDisplayMode === 'fraction' ? 'fraction' : 'decimal');
 }
 
 function formatForLatex(val) { return formatNumber(val); }
 
 // ============================================================
-//  MATRIX OPERATIONS
+//  MATRIX OPERATIONS  (complex-valued)
 // ============================================================
-function cloneMatrix(matrix) { return matrix.map(function(row) { return row.slice(); }); }
+var ONE  = function() { return Complex.one(); };
+var ZERO = function() { return Complex.zero(); };
+var NEG_ONE = function() { return new Complex(-1, 0); };
+
+function cloneMatrix(matrix) {
+  return matrix.map(function(row){ return row.map(function(z){ return z.clone(); }); });
+}
 
 function identityMatrix(n) {
   var I = [];
   for (var i = 0; i < n; i++) {
     I[i] = [];
-    for (var j = 0; j < n; j++) I[i][j] = (i === j) ? 1 : 0;
+    for (var j = 0; j < n; j++) I[i][j] = (i === j) ? ONE() : ZERO();
   }
   return I;
 }
@@ -602,23 +572,24 @@ function identityMatrix(n) {
 function elementarySwap(n, row1, row2) {
   var E = identityMatrix(n);
   var temp = E[row1]; E[row1] = E[row2]; E[row2] = temp;
-  return { matrix: E, det: -1, operation: '\\text{swap } R_{' + (row1+1) + '} \\leftrightarrow R_{' + (row2+1) + '}' };
+  return { matrix: E, det: NEG_ONE(),
+           operation: '\\text{swap } R_{' + (row1+1) + '} \\leftrightarrow R_{' + (row2+1) + '}' };
 }
 
 function elementaryAdd(n, target, source, scalar) {
+  // E performs R_target -> R_target + scalar * R_source
   var E = identityMatrix(n);
-  E[target][source] = scalar;
-  var absScalar = Math.abs(scalar);
-  var factorLatex = absScalar === 1 ? '' : formatForLatex(absScalar);
+  E[target][source] = scalar.clone();
   var opString;
-  if (scalar < 0) {
-    opString = 'R_{' + (target+1) + '} - ' + factorLatex + 'R_{' + (source+1) + '} \\to R_{' + (target+1) + '}';
-  } else if (scalar > 0) {
-    opString = 'R_{' + (target+1) + '} + ' + factorLatex + 'R_{' + (source+1) + '} \\to R_{' + (target+1) + '}';
-  } else {
+  if (scalar.isZero()) {
     opString = 'R_{' + (target+1) + '} \\to R_{' + (target+1) + '}';
+  } else {
+    var sStr = formatForLatex(scalar);
+    // wrap in parens if it's complex with both parts or a fraction
+    if (/[+\-]/.test(sStr.slice(1)) || /\//.test(sStr)) sStr = '(' + sStr + ')';
+    opString = 'R_{' + (target+1) + '} + ' + sStr + 'R_{' + (source+1) + '} \\to R_{' + (target+1) + '}';
   }
-  return { matrix: E, det: 1, operation: opString };
+  return { matrix: E, det: ONE(), operation: opString };
 }
 
 function matrixMultiply(A, B) {
@@ -627,8 +598,8 @@ function matrixMultiply(A, B) {
   for (var i = 0; i < m; i++) {
     C[i] = [];
     for (var j = 0; j < n; j++) {
-      var sum = 0;
-      for (var k = 0; k < p; k++) sum += A[i][k] * B[k][j];
+      var sum = ZERO();
+      for (var k = 0; k < p; k++) sum = sum.add(A[i][k].mul(B[k][j]));
       C[i][j] = sum;
     }
   }
@@ -636,8 +607,8 @@ function matrixMultiply(A, B) {
 }
 
 function computeTrace(A) {
-  var trace = 0;
-  for (var i = 0; i < A.length; i++) trace += A[i][i];
+  var trace = ZERO();
+  for (var i = 0; i < A.length; i++) trace = trace.add(A[i][i]);
   return trace;
 }
 
@@ -645,37 +616,42 @@ function computeDeterminantWithSteps(A) {
   var n = A.length;
   var U = cloneMatrix(A);
   var steps = [];
-  var detProduct = 1;
+  var detProduct = ONE();
   steps.push({ matrix: cloneMatrix(U) });
   for (var k = 0; k < n; k++) {
-    if (Math.abs(U[k][k]) < 1e-10) {
+    if (U[k][k].isZero()) {
       var foundNonZero = false;
       for (var i = k + 1; i < n; i++) {
-        if (Math.abs(U[i][k]) > 1e-10) {
+        if (!U[i][k].isZero()) {
           var temp = U[k]; U[k] = U[i]; U[i] = temp;
           var E = elementarySwap(n, k, i);
           steps.push({ E: E.matrix, matrix: cloneMatrix(U), detE: E.det, operation: E.operation });
-          detProduct *= E.det;
+          detProduct = detProduct.mul(E.det);
           foundNonZero = true;
           break;
         }
       }
-      if (!foundNonZero) return { det: 0, steps: steps };
+      if (!foundNonZero) return { det: ZERO(), steps: steps };
     }
     for (var j = k + 1; j < n; j++) {
-      var factor = U[j][k] / U[k][k];
-      if (Math.abs(factor) > 1e-10) {
-        var E2 = elementaryAdd(n, j, k, -factor);
-        for (var m = k; m < n; m++) U[j][m] -= factor * U[k][m];
-        for (var m2 = 0; m2 < n; m2++) { if (Math.abs(U[j][m2]) < 1e-10) U[j][m2] = 0; }
-        steps.push({ E: E2.matrix, matrix: cloneMatrix(U), detE: E2.det, operation: E2.operation });
-        detProduct *= E2.det;
+      if (U[j][k].isZero()) continue;
+      var factor = U[j][k].div(U[k][k]);     // multiplier to eliminate
+      if (factor.isZero()) continue;
+      var negFactor = factor.neg();
+      var E2 = elementaryAdd(n, j, k, negFactor);
+      for (var m = k; m < n; m++) {
+        U[j][m] = U[j][m].sub(factor.mul(U[k][m]));
       }
+      for (var m2 = 0; m2 < n; m2++) {
+        if (U[j][m2].isZero(1e-12)) U[j][m2] = ZERO();
+      }
+      steps.push({ E: E2.matrix, matrix: cloneMatrix(U), detE: E2.det, operation: E2.operation });
+      detProduct = detProduct.mul(E2.det);
     }
   }
-  var detU = 1;
-  for (var i2 = 0; i2 < n; i2++) detU *= U[i2][i2];
-  return { det: detProduct * detU, steps: steps };
+  var detU = ONE();
+  for (var i2 = 0; i2 < n; i2++) detU = detU.mul(U[i2][i2]);
+  return { det: detProduct.mul(detU), steps: steps };
 }
 
 function matrixToLatex(M, styleDiagonal) {
@@ -706,12 +682,17 @@ function renderSteps(A, trace, det, steps) {
   var det_frac = formatForLatex(det);
   var A_latex = matrixToLatex(A, true);
 
-  // Trace sum string
+  // Trace sum string (a_11 + a_22 + ...). For complex entries we wrap each
+  // term in parentheses when it has both a real and imaginary part.
+  function termWrap(z) {
+    var s = formatForLatex(z);
+    if (/^-/.test(s) || /[+\-]/.test(s.slice(1))) return '(' + s + ')';
+    return s;
+  }
   var traceProductLatex = '';
   for (var i = 0; i < n; i++) {
-    var fv = formatForLatex(A[i][i]);
-    if (i === 0) { traceProductLatex += fv; }
-    else { traceProductLatex += (A[i][i] < 0 ? ' - ' + formatForLatex(-A[i][i]) : ' + ' + fv); }
+    var fv = termWrap(A[i][i]);
+    traceProductLatex += (i === 0 ? '' : ' + ') + fv;
   }
 
   // Summary block
@@ -764,12 +745,12 @@ function renderSteps(A, trace, det, steps) {
   var k = elementaryMatrices.length;
   var M = k > 0 ? elementaryMatrices.reduceRight(function(acc, curr) { return matrixMultiply(acc, curr); }, identityMatrix(n)) : identityMatrix(n);
 
-  var detU = 1;
+  var detU = ONE();
   var detUList = [];
   for (var i3 = 0; i3 < n; i3++) {
     var diagEntry = steps[steps.length - 1].matrix[i3][i3];
-    detU *= diagEntry;
-    detUList.push(formatForLatex(diagEntry));
+    detU = detU.mul(diagEntry);
+    detUList.push(termWrap(diagEntry));
   }
   var detUProduct = detUList.join(' \\cdot ');
   var detUResult = formatForLatex(detU);
@@ -803,8 +784,8 @@ function renderSteps(A, trace, det, steps) {
   var prodLatex = '\\det(A) = ';
   for (var i5 = k; i5 >= 1; i5--) prodLatex += '\\det(E_{' + i5 + '}) ';
   prodLatex += '\\det(U) = ';
-  var detEProduct = steps.slice(1).reduce(function(acc, s) { return acc * s.detE; }, 1);
-  prodLatex += formatForLatex(detEProduct) + ' \\cdot ' + detUList.join(' \\cdot ') + ' = ' + formatForLatex(detEProduct * detU);
+  var detEProduct = steps.slice(1).reduce(function(acc, s){ return acc.mul(s.detE); }, ONE());
+  prodLatex += formatForLatex(detEProduct) + ' \\cdot ' + detUList.join(' \\cdot ') + ' = ' + formatForLatex(detEProduct.mul(detU));
   detDiv.innerHTML =
     '<p class="step-title">Determinant Calculation:</p>' +
     '<div style="text-align:center;">\\[' + prodLatex + '\\]</div>';

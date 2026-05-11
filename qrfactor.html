@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="theme-color" content="#1d4ed8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="QR factorization calculator. Decompose a matrix as A = QR using Gram-Schmidt step by step, with full and reduced QR forms.">
+  <meta name="description" content="QR factorization calculator for real or complex matrices. Decompose A = QR using Householder reflections, with full and economy QR forms.">
   <meta name="keywords" content="QR factorization, QR decomposition, matrix decomposition, linear algebra, matrix calculator, numerical analysis, full QR, economy QR">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
@@ -29,6 +29,7 @@
     };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <script src="complex-arith.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjs@14.6.0/lib/browser/math.js"></script>
   <style>
     :root {
@@ -292,8 +293,8 @@
     <h1>QR Factorization</h1>
     <p class="subtitle">
       Compute the <strong>QR Factorization</strong><a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>
-      of a matrix \(A\) using Householder reflections<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>.<br>
-      <small>Useful for solving least squares problems and computing eigenvalues.</small>
+      of a real or complex matrix \(A\) using Householder reflections<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>.<br>
+      <small>Useful for solving least squares problems and computing eigenvalues. Cells accept entries such as <span style="font-family:monospace">2+3i</span> or <span style="font-family:monospace">-1/2-i</span>; for complex inputs, \(Q\) is unitary and \(R\) is upper triangular over \(\mathbb{C}\).</small>
     </p>
 
     <!-- About panel -->
@@ -309,7 +310,7 @@
         <ul>
           <li>\(Q\) is an \(m \times m\) orthogonal matrix (or \(m \times n\) for economy QR)</li>
           <li>\(R\) is an \(m \times n\) upper triangular matrix (or \(n \times n\) for economy QR)</li>
-          <li>\(Q^TQ = I\) (columns of \(Q\) are orthonormal)</li>
+          <li>\(Q^TQ = I\) for real \(A\); \(Q^HQ = I\) for complex \(A\) (\(Q\) is unitary)</li>
         </ul>
         <p><strong>Applications:</strong></p>
         <ul>
@@ -317,7 +318,7 @@
           <li>Computing eigenvalues (QR algorithm)<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a></li>
           <li>Orthonormalizing a set of vectors</li>
         </ul>
-        <p><strong>This calculator</strong> uses Householder reflections to compute the factorization, with options for full or economy QR and decimal or surd output formats.</p>
+        <p><strong>This calculator</strong> uses Householder reflections to compute the factorization, with options for full or economy QR and decimal or surd output formats. The Householder vector uses \(v_1 \mathrel{+}= \mathrm{e}^{i\arg(x_1)}\,\|x\|\) and the reflection \(I - 2vv^H/(v^Hv)\) so the same routine works for both real and complex inputs.</p>
       </div>
     </div>
 
@@ -494,10 +495,11 @@ function generateMatrix() {
       var td = document.createElement('td');
       td.setAttribute('role', 'gridcell');
       var inp = document.createElement('input');
-      inp.type = 'number'; inp.step = 'any';
+      inp.type = 'text'; inp.autocomplete = 'off'; inp.spellcheck = false;
+      inp.inputMode = 'text';
       inp.className = 'matrix-cell';
       inp.id = 'A_' + i + '_' + j;
-      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1) + ' (real or complex value)');
       td.appendChild(inp);
       tr.appendChild(td);
     }
@@ -532,24 +534,8 @@ function clearAll() {
 }
 
 // ============================================================
-//  PARSE / FORMAT
+//  PARSE / FORMAT  (real or complex)
 // ============================================================
-function parseFraction(str) {
-  str = str.trim();
-  if (str === '') return 0;
-  try {
-    var evaluated = math.evaluate(str);
-    if (typeof evaluated === 'number') {
-      return evaluated;
-    } else {
-      return 0;
-    }
-  } catch (e) {
-    announce('Invalid entry. Please enter valid numbers, fractions, or mathematical expressions.');
-    return null;
-  }
-}
-
 function readMatrix() {
   var m = parseInt(document.getElementById('m').value, 10);
   var n = parseInt(document.getElementById('n').value, 10);
@@ -559,11 +545,13 @@ function readMatrix() {
     for (var j = 0; j < n; j++) {
       var cell = document.getElementById('A_' + i + '_' + j);
       var value = cell.value.trim();
-      var num = parseFraction(value);
-      if (num === null) {
+      var z;
+      try { z = value === '' ? Complex.zero() : Complex.parse(value); }
+      catch (e) {
+        announce('Invalid entry at row ' + (i+1) + ', column ' + (j+1) + '. Try a real or complex value such as 2+3i.');
         return null;
       }
-      row.push(num);
+      row.push(z);
     }
     A.push(row);
   }
@@ -571,31 +559,27 @@ function readMatrix() {
 }
 
 // ============================================================
-//  VECTOR / MATRIX HELPERS
+//  VECTOR / MATRIX HELPERS  (operate on Complex entries)
 // ============================================================
-function dot(a, b) {
-  var s = 0;
-  for (var i = 0; i < a.length; i++) s += a[i] * b[i];
+// Hermitian inner product <a, b> = sum_i conj(a_i) * b_i
+function innerProd(a, b) {
+  var s = Complex.zero();
+  for (var i = 0; i < a.length; i++) s = s.add(a[i].conj().mul(b[i]));
   return s;
 }
 
-function norm2(a) {
-  return Math.sqrt(dot(a, a));
-}
-
-function scalarMult(v, s) {
-  return v.map(function(e) { return e * s; });
-}
-
-function addVecs(a, b) {
-  return a.map(function(e, i) { return e + b[i]; });
+function norm2Vec(a) {
+  // ||a|| = sqrt(<a, a>); inner product is real and non-negative
+  var s = 0;
+  for (var i = 0; i < a.length; i++) s += a[i].abs2();
+  return Math.sqrt(s);
 }
 
 function isZeroMatrix(A) {
   var m = A.length, n = A[0].length;
   for (var i = 0; i < m; i++)
     for (var j = 0; j < n; j++)
-      if (Math.abs(A[i][j]) > 1e-7) return false;
+      if (!A[i][j].isZero(1e-12)) return false;
   return true;
 }
 
@@ -603,9 +587,26 @@ function identityMatrix(size) {
   var I = [];
   for (var i = 0; i < size; i++) {
     I[i] = [];
-    for (var j = 0; j < size; j++) I[i][j] = (i === j) ? 1 : 0;
+    for (var j = 0; j < size; j++) I[i][j] = (i === j) ? Complex.one() : Complex.zero();
   }
   return I;
+}
+
+function zerosMat(rows, cols) {
+  var Z = [];
+  for (var i = 0; i < rows; i++) {
+    Z[i] = [];
+    for (var j = 0; j < cols; j++) Z[i][j] = Complex.zero();
+  }
+  return Z;
+}
+
+// Detect whether the matrix has a non-trivial imaginary part anywhere.
+function isComplexMatrix(M) {
+  for (var i = 0; i < M.length; i++)
+    for (var j = 0; j < M[i].length; j++)
+      if (Math.abs(M[i][j].im) > 1e-10) return true;
+  return false;
 }
 
 // ============================================================
@@ -793,7 +794,8 @@ function isRepeatingOrShortDecimal(val) {
   return false;
 }
 
-function formatForLatex(val) {
+// Format a real value with surd / fraction / decimal handling.
+function formatRealForLatex(val) {
   if (Math.abs(val) < 1e-7) return "0";
   if (currentDisplayMode === 'surd') {
     let surd = toSurd(val);
@@ -803,6 +805,27 @@ function formatForLatex(val) {
   }
   if (Math.abs(val - Math.round(val)) < 1e-10) return Math.round(val).toString();
   return val.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+// Format a Complex (or number) for LaTeX. For non-real values the surd
+// formatter doesn't apply, so we fall back to Complex.toLaTeX in decimal mode.
+function formatForLatex(val) {
+  if (typeof val === 'number') return formatRealForLatex(val);
+  if (val && val instanceof Complex) {
+    if (val.isReal(1e-10)) return formatRealForLatex(val.re);
+    // Complex value: render real and imaginary parts using the same surd
+    // pipeline so e.g. (1/sqrt(2)) + (1/sqrt(2))i comes out cleanly.
+    var rePart = Math.abs(val.re) < 1e-10 ? null : formatRealForLatex(val.re);
+    var imAbs = Math.abs(val.im);
+    var imRaw = formatRealForLatex(imAbs);
+    var imStr;
+    if (imRaw === '1') imStr = 'i';
+    else imStr = imRaw + ' i';
+    var sign = val.im < 0 ? '-' : '+';
+    if (rePart === null) return (val.im < 0 ? '-' : '') + imStr;
+    return rePart + ' ' + sign + ' ' + imStr;
+  }
+  return String(val);
 }
 
 function matrixToLatex(M) {
@@ -820,59 +843,102 @@ function matrixToLatex(M) {
 }
 
 // ============================================================
-//  HOUSEHOLDER QR FACTORIZATION
+//  HOUSEHOLDER QR FACTORIZATION  (real or complex)
 // ============================================================
+//   For each column k:
+//     x = R[k:m, k]
+//     alpha = -e^{i arg(x_0)} ||x||      (so that |alpha| = ||x||)
+//     v = x - alpha * e_1
+//     beta = 2 / (v^H v)
+//     R := (I - beta v v^H) R
+//     Q := Q (I - beta v v^H)
+//   Finally we rotate each column of Q by the diagonal phases of R so that
+//   R has non-negative real diagonal entries (the conventional choice; for
+//   real inputs this reduces to flipping signs).
 function computeQR(A) {
   var m = A.length;
   var n = A[0].length;
   if (isZeroMatrix(A)) {
     var Q0 = identityMatrix(m);
-    var R0 = [];
-    for (var ii = 0; ii < m; ii++) {
-      R0[ii] = [];
-      for (var jj = 0; jj < n; jj++) R0[ii][jj] = 0;
-    }
-    return { fullQ: Q0, fullR: R0, thinQ: Q0.map(function(row) { return []; }), thinR: [], rank: 0 };
+    var R0 = zerosMat(m, n);
+    return { fullQ: Q0, fullR: R0,
+             thinQ: Q0.map(function(){ return []; }), thinR: [], rank: 0 };
   }
-  var R = A.map(function(row) { return row.slice(); });
+  var R = A.map(function(row){ return row.map(function(z){ return z.clone(); }); });
   var Q = identityMatrix(m);
+  var TWO = new Complex(2, 0);
+
   for (var k = 0; k < Math.min(m, n); k++) {
+    // Extract the sub-column x = R[k:, k]
     var x = [];
-    for (var i = k; i < m; i++) x.push(R[i][k]);
-    var normx = norm2(x);
+    for (var i = k; i < m; i++) x.push(R[i][k].clone());
+    var normx = norm2Vec(x);
     if (normx < 1e-14) continue;
-    var v = x.slice();
-    v[0] += (x[0] >= 0 ? 1 : -1) * normx;
-    var vnorm = norm2(v);
-    if (vnorm < 1e-14) continue;
-    for (var i2 = 0; i2 < v.length; i2++) v[i2] /= vnorm;
+
+    // alpha = -e^{i arg(x_0)} * ||x||  (gives |alpha| = ||x||).
+    // For x_0 = 0 we choose alpha = -||x|| (standard convention).
+    var alpha;
+    var x0abs = x[0].abs();
+    if (x0abs < 1e-14) {
+      alpha = new Complex(-normx, 0);
+    } else {
+      var phase = new Complex(x[0].re / x0abs, x[0].im / x0abs); // e^{i arg(x0)}
+      alpha = phase.mul(new Complex(-normx, 0));
+    }
+
+    // v = x - alpha * e_1   (i.e. v[0] = x[0] - alpha)
+    var v = x.map(function(z){ return z.clone(); });
+    v[0] = v[0].sub(alpha);
+
+    // beta = 2 / (v^H v)  -- v^H v is real and non-negative
+    var vHv = 0;
+    for (var iv = 0; iv < v.length; iv++) vHv += v[iv].abs2();
+    if (vHv < 1e-28) continue;
+    var beta = new Complex(2 / vHv, 0);
+
+    // R := (I - beta v v^H) R   (apply on the left)
     for (var j = k; j < n; j++) {
-      var dotprod = 0;
-      for (var i3 = 0; i3 < v.length; i3++) dotprod += v[i3] * R[k + i3][j];
+      // s = v^H * R[k:, j]
+      var s = Complex.zero();
+      for (var i3 = 0; i3 < v.length; i3++) s = s.add(v[i3].conj().mul(R[k + i3][j]));
+      var bs = beta.mul(s);
       for (var i4 = 0; i4 < v.length; i4++) {
-        R[k + i4][j] -= 2 * v[i4] * dotprod;
-        if (Math.abs(R[k + i4][j]) < 1e-14) R[k + i4][j] = 0;
+        R[k + i4][j] = R[k + i4][j].sub(v[i4].mul(bs));
+        if (R[k + i4][j].isZero(1e-12)) R[k + i4][j] = Complex.zero();
       }
     }
+
+    // Q := Q (I - beta v v^H)   (apply on the right)
     for (var i5 = 0; i5 < m; i5++) {
-      var dotprod2 = 0;
-      for (var j2 = 0; j2 < v.length; j2++) dotprod2 += Q[i5][k + j2] * v[j2];
+      // s = sum_j Q[i5, k+j] * v[j]
+      var s2 = Complex.zero();
+      for (var j2 = 0; j2 < v.length; j2++) s2 = s2.add(Q[i5][k + j2].mul(v[j2]));
+      var bs2 = beta.mul(s2);
       for (var j3 = 0; j3 < v.length; j3++) {
-        Q[i5][k + j3] -= 2 * v[j3] * dotprod2;
-        if (Math.abs(Q[i5][k + j3]) < 1e-14) Q[i5][k + j3] = 0;
+        Q[i5][k + j3] = Q[i5][k + j3].sub(bs2.mul(v[j3].conj()));
+        if (Q[i5][k + j3].isZero(1e-12)) Q[i5][k + j3] = Complex.zero();
       }
     }
   }
+
+  // Phase-fix the diagonal of R so that R[i][i] is non-negative real.
   for (var i6 = 0; i6 < Math.min(m, n); i6++) {
-    if (R[i6][i6] < 0) {
-      for (var j4 = 0; j4 < n; j4++) R[i6][j4] = -R[i6][j4];
-      for (var j5 = 0; j5 < m; j5++) Q[j5][i6] = -Q[j5][i6];
-    }
+    var d = R[i6][i6];
+    var dabs = d.abs();
+    if (dabs < 1e-14) continue;
+    var phase2 = new Complex(d.re / dabs, d.im / dabs);
+    var phaseInv = phase2.conj(); // unit modulus, so inverse = conjugate
+    // Multiply row i6 of R by phaseInv, multiply column i6 of Q by phase2
+    for (var j4 = 0; j4 < n; j4++) R[i6][j4] = R[i6][j4].mul(phaseInv);
+    for (var j5 = 0; j5 < m; j5++) Q[j5][i6] = Q[j5][i6].mul(phase2);
+    // Snap the (now-real) diagonal entry's imaginary residue to 0.
+    if (Math.abs(R[i6][i6].im) < 1e-12) R[i6][i6] = new Complex(R[i6][i6].re, 0);
   }
+
   var rank = 0;
-  for (var i7 = 0; i7 < Math.min(m, n); i7++) if (Math.abs(R[i7][i7]) > 1e-14) rank++;
-  var thinQ = Q.map(function(row) { return row.slice(0, rank); });
-  var thinR = R.slice(0, rank).map(function(row) { return row.slice(); });
+  for (var i7 = 0; i7 < Math.min(m, n); i7++) if (R[i7][i7].abs() > 1e-14) rank++;
+  var thinQ = Q.map(function(row){ return row.slice(0, rank); });
+  var thinR = R.slice(0, rank).map(function(row){ return row.slice(); });
   return { fullQ: Q, fullR: R, thinQ: thinQ, thinR: thinR, rank: rank };
 }
 
