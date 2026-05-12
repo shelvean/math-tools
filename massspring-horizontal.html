@@ -707,6 +707,27 @@ function resizeGraphCanvases() {
   if (graphBgCanvas) { graphBgCanvas.width = 0; graphBgCanvas = null; }
 }
 
+/* Resize the simulation canvas buffer to match its displayed CSS size
+   times devicePixelRatio so the springs, masses, and labels render at
+   native screen resolution instead of being stretched from 800×250.
+   A scaling transform is applied so all existing drawing code keeps
+   working in the original logical 800×250 coordinate space. */
+function resizeSimulationCanvas() {
+  var dprL = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  var W = Math.max(1, Math.round(rect.width * dprL));
+  var H = Math.max(1, Math.round(rect.height * dprL));
+  if (canvas.width !== W || canvas.height !== H) {
+    canvas.width = W; canvas.height = H;
+  }
+  ctx.setTransform(W / CANVAS_W, 0, 0, H / CANVAS_H, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  if (ctx.imageSmoothingQuality !== undefined) ctx.imageSmoothingQuality = 'high';
+  needsRedrawSimBg = true;
+  if (simBgCanvas) { simBgCanvas.width = 0; simBgCanvas = null; }
+}
+
 /* ── Input wiring ── */
 function linkSlider(sliderId, inputId, callback) {
   const slider = document.getElementById(sliderId);
@@ -965,10 +986,14 @@ function updatePhysics() {
 function createSimBackground() {
   if (!simBgCanvas) {
     simBgCanvas = document.createElement('canvas');
-    simBgCanvas.width  = CANVAS_W;
-    simBgCanvas.height = CANVAS_H;
   }
+  /* Match the (possibly hi-DPI) foreground buffer so the cached
+     background renders at the same crisp resolution. */
+  simBgCanvas.width  = canvas.width  || CANVAS_W;
+  simBgCanvas.height = canvas.height || CANVAS_H;
   const bg = simBgCanvas.getContext('2d');
+  bg.setTransform(simBgCanvas.width / CANVAS_W, 0, 0,
+                  simBgCanvas.height / CANVAS_H, 0, 0);
   const grad = bg.createLinearGradient(0, 0, CANVAS_W, 0);
   grad.addColorStop(0, '#E3F2FD');
   grad.addColorStop(1, '#BBDEFB');
@@ -1087,7 +1112,9 @@ function drawMass(centerX, centerY, index) {
 /* ── Drawing: full simulation frame ── */
 function drawSimulation() {
   if (needsRedrawSimBg || !simBgCanvas) createSimBackground();
-  ctx.drawImage(simBgCanvas, 0, 0);
+  /* Explicit destination size — the foreground ctx is scaled into the
+     logical 800×250 frame, so we draw the bg at logical 800×250 too. */
+  ctx.drawImage(simBgCanvas, 0, 0, CANVAS_W, CANVAS_H);
   const massCenters = [];
   for (let i = 0; i < numMasses; i++) massCenters.push(getMassCenterX(i));
   drawHorizontalSpring(wallLeftX, massCenters[0] - BALL_RADIUS, CENTER_Y);
@@ -1457,21 +1484,27 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('pauseButton').addEventListener('click', togglePause);
   document.getElementById('exampleSelect').addEventListener('change', loadExample);
 
-  // Re-render graphs at native resolution on window resize so the curves
-  // stay crisp even if the column width changes.
+  // Re-render simulation and graphs at native resolution on window resize
+  // so springs, masses, labels, and curves stay crisp regardless of column
+  // width or zoom level.
   var resizeT = null;
   window.addEventListener('resize', function() {
     if (resizeT) clearTimeout(resizeT);
-    resizeT = setTimeout(function() { resizeGraphCanvases(); drawAllGraphs(); }, 80);
+    resizeT = setTimeout(function() {
+      resizeSimulationCanvas();
+      resizeGraphCanvases();
+      drawSimulation();
+      drawAllGraphs();
+    }, 80);
   });
 
   // Wait for MathJax then start
   function init() {
     if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
       MathJax.typesetPromise().then(function() {
-        computeLayout(); resizeGraphCanvases(); resetSimulation(); animate();
+        computeLayout(); resizeSimulationCanvas(); resizeGraphCanvases(); resetSimulation(); animate();
       }).catch(function() {
-        computeLayout(); resizeGraphCanvases(); resetSimulation(); animate();
+        computeLayout(); resizeSimulationCanvas(); resizeGraphCanvases(); resetSimulation(); animate();
       });
     } else {
       setTimeout(init, 100);
