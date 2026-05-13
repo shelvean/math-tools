@@ -418,6 +418,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       </select>
     </div>
     <div class="cfield cfield-sm"><label for="trajHeadSize">Head size</label><input type="number" id="trajHeadSize" value="5.5" min="1" max="20" step="0.5"></div>
+    <div class="cfield cfield-sm"><label for="trajHeadCount">Arrows/traj</label><input type="number" id="trajHeadCount" value="8" min="0" max="40" step="1"></div>
     <div class="cfield cfield-sm"><label for="meshSize">Step size</label>
       <select id="meshSize">
         <option value="coarse">Coarse</option>
@@ -1426,39 +1427,36 @@ function drawTraj(pts,xMin,xMax,yMin,yMax){
   cpts.forEach(function(p,i){i===0?trajCtx.moveTo(p.cx,p.cy):trajCtx.lineTo(p.cx,p.cy);});
   trajCtx.stroke();
 
-  /* Directional arrowheads along the trajectory */
-  /* Compute total arc length to set sensible spacing */
-  var totalLen=0;
-  for(var i=1;i<cpts.length;i++){var dx=cpts[i].cx-cpts[i-1].cx,dy=cpts[i].cy-cpts[i-1].cy;totalLen+=Math.sqrt(dx*dx+dy*dy);}
-  var maxArrows=8;/* never more than this many arrows per trajectory */
-  var arrowSpacing=Math.max(100,totalLen/(maxArrows+1));/* adaptive spacing */
+  /* Directional arrowheads, uniformly placed by arc length */
   var headSzIn=parseFloat(document.getElementById('trajHeadSize').value);
   var arrowSize=isFinite(headSzIn)&&headSzIn>0?headSzIn:5.5;
-  trajCtx.fillStyle=color;
-  trajCtx.globalAlpha=0.92;
-  var accum=arrowSpacing*0.45;/* start first arrow slightly in */
-  var placed=[];/* track placed positions to avoid crowding */
-  var minSep=60;/* minimum pixel distance between any two arrows */
-  for(var i=1;i<cpts.length;i++){
-    var dx=cpts[i].cx-cpts[i-1].cx,dy=cpts[i].cy-cpts[i-1].cy;
-    var seg=Math.sqrt(dx*dx+dy*dy);
-    if(seg<0.5)continue;
-    accum+=seg;
-    if(accum>=arrowSpacing){
-      var ax=cpts[i].cx,ay=cpts[i].cy;
-      /* Check minimum separation from all previously placed arrows */
-      var tooClose=false;
-      for(var k=0;k<placed.length;k++){var ddx=ax-placed[k].x,ddy=ay-placed[k].y;if(ddx*ddx+ddy*ddy<minSep*minSep){tooClose=true;break;}}
-      if(tooClose)continue;
-      accum=0;
-      placed.push({x:ax,y:ay});
-      var ang=Math.atan2(dy,dx);
-      trajCtx.beginPath();
-      trajCtx.moveTo(ax+arrowSize*Math.cos(ang),ay+arrowSize*Math.sin(ang));
-      trajCtx.lineTo(ax-arrowSize*Math.cos(ang-Math.PI/3.2),ay-arrowSize*Math.sin(ang-Math.PI/3.2));
-      trajCtx.lineTo(ax-arrowSize*Math.cos(ang+Math.PI/3.2),ay-arrowSize*Math.sin(ang+Math.PI/3.2));
-      trajCtx.closePath();
-      trajCtx.fill();
+  var headCntIn=parseInt(document.getElementById('trajHeadCount').value,10);
+  var arrowCount=isFinite(headCntIn)&&headCntIn>=0?headCntIn:8;
+  if(arrowCount>0){
+    var cum=new Array(cpts.length);cum[0]=0;
+    for(var i=1;i<cpts.length;i++){var dx=cpts[i].cx-cpts[i-1].cx,dy=cpts[i].cy-cpts[i-1].cy;cum[i]=cum[i-1]+Math.sqrt(dx*dx+dy*dy);}
+    var totalLen=cum[cpts.length-1];
+    if(totalLen>2*arrowSize){
+      trajCtx.fillStyle=color;
+      trajCtx.globalAlpha=0.92;
+      var j=1;
+      for(var k=1;k<=arrowCount;k++){
+        var s=totalLen*k/(arrowCount+1);
+        while(j<cum.length-1&&cum[j]<s)j++;
+        var segLen=cum[j]-cum[j-1];
+        if(segLen<=1e-9)continue;
+        var t=(s-cum[j-1])/segLen;
+        var ax=cpts[j-1].cx+t*(cpts[j].cx-cpts[j-1].cx);
+        var ay=cpts[j-1].cy+t*(cpts[j].cy-cpts[j-1].cy);
+        var dx=cpts[j].cx-cpts[j-1].cx,dy=cpts[j].cy-cpts[j-1].cy;
+        var ang=Math.atan2(dy,dx);
+        trajCtx.beginPath();
+        trajCtx.moveTo(ax+arrowSize*Math.cos(ang),ay+arrowSize*Math.sin(ang));
+        trajCtx.lineTo(ax-arrowSize*Math.cos(ang-Math.PI/3.2),ay-arrowSize*Math.sin(ang-Math.PI/3.2));
+        trajCtx.lineTo(ax-arrowSize*Math.cos(ang+Math.PI/3.2),ay-arrowSize*Math.sin(ang+Math.PI/3.2));
+        trajCtx.closePath();
+        trajCtx.fill();
+      }
     }
   }
 
@@ -1635,12 +1633,14 @@ document.addEventListener('DOMContentLoaded',function(){
   /* Throttled redraw for visual settings */
   var tDraw=throttle(function(){drawPhasePlane(false);},100);
   ['arrowCount','arrowLength','arrowOpacity'].forEach(function(id){document.getElementById(id).addEventListener('input',tDraw);});
-  document.getElementById('trajHeadSize').addEventListener('input',throttle(function(){
+  var redrawTraj=throttle(function(){
     var xMin=+document.getElementById('xMin').value,xMax=+document.getElementById('xMax').value;
     var yMin=+document.getElementById('yMin').value,yMax=+document.getElementById('yMax').value;
     trajCtx.clearRect(0,0,trajCanvas.width,trajCanvas.height);
     trajectories.forEach(function(traj){drawTraj(traj,xMin,xMax,yMin,yMax);});
-  },80));
+  },80);
+  document.getElementById('trajHeadSize').addEventListener('input',redrawTraj);
+  document.getElementById('trajHeadCount').addEventListener('input',redrawTraj);
   document.getElementById('fieldColor').addEventListener('change',function(){drawPhasePlane(false);});
   ['showGrid','variableArrows','showField','trajColor'].forEach(function(id){document.getElementById(id).addEventListener('change',tDraw);});
 
