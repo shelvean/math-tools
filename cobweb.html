@@ -562,8 +562,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <div class="cbar-scalar cfield">
       <label for="x0Num">Initial \(x_0\)</label>
       <!-- x0 input: --ora (#92400e) on white = 7.41:1 ✓ AAA; aria-label overrides visual label for AT -->
-      <input type="number" id="x0Num" step="0.01" value="0"
-             aria-label="Initial condition x0"
+      <input type="text" inputmode="decimal" id="x0Num" value="0"
+             aria-label="Initial condition x0 (accepts expressions like pi/2)"
+             title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)/3"
              style="color:var(--ora);">
     </div>
 
@@ -585,17 +586,19 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     </div>
     <div class="cfield cf-narrow">
       <label for="customDomMin">Domain min</label>
-      <input type="number" id="customDomMin" value="-2" step="0.5"
+      <input type="text" inputmode="decimal" id="customDomMin" value="-2"
              style="min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;
                     border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;"
-             aria-label="Domain minimum">
+             aria-label="Domain minimum (accepts expressions like -pi)"
+             title="Accepts numbers or expressions, e.g. -pi, -sqrt(2)">
     </div>
     <div class="cfield cf-narrow">
       <label for="customDomMax">Domain max</label>
-      <input type="number" id="customDomMax" value="2" step="0.5"
+      <input type="text" inputmode="decimal" id="customDomMax" value="2"
              style="min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;
                     border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;"
-             aria-label="Domain maximum">
+             aria-label="Domain maximum (accepts expressions like pi)"
+             title="Accepts numbers or expressions, e.g. pi, sqrt(2)">
     </div>
     <div class="cfield cf-action">
       <button type="button" id="btnCustomFn"
@@ -1709,16 +1712,19 @@ function buildParams(id){
           ' aria-label="'+pd.aria+' slider"'+
           ' aria-valuetext="'+val+'"'+
           ' aria-describedby="pN_'+pd.id+'">'+
-        '<input type="number" id="pN_'+pd.id+'"'+
-          ' min="'+pd.min+'" max="'+pd.max+'" step="'+pd.step+'" value="'+val+'"'+
-          ' aria-label="'+pd.aria+'" style="color:var(--blue)">'+
+        '<input type="text" inputmode="decimal" id="pN_'+pd.id+'"'+
+          ' value="'+val+'"'+
+          ' aria-label="'+pd.aria+' (accepts expressions like pi/2)"'+
+          ' title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)"'+
+          ' style="color:var(--blue)">'+
       '</div>';
     slot.appendChild(div);
     lblNodes.push(div.querySelector('label'));
     var rng=div.querySelector('input[type=range]');
     var num=div.querySelector('input[type=number]');
     function sync(v){
-      v=parseFloat(v)||pd.val;
+      var p=parseMathInput(v);
+      v=isFinite(p)?p:pd.val;
       v=clamp(v,pd.min,pd.max);
       rng.value=v; rng.setAttribute('aria-valuetext',v.toFixed(pd.step<0.1?2:1));
       num.value=v;
@@ -1737,7 +1743,7 @@ function buildParams(id){
 
 /* ── x0 input ── */
 document.getElementById('x0Num').addEventListener('change',function(){
-  var v=parseFloat(this.value);
+  var v=parseMathInput(this.value);
   var ex=getEx();
   if(!isFinite(v))return;
   v=clamp(v,ex.domain[0],ex.domain[1]);
@@ -1904,6 +1910,19 @@ function preprocess(expr) {
     .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
 }
 
+/* Parse a scalar input that may be a number ("0.5") or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s) {
+  if (s == null) return NaN;
+  s = String(s).trim();
+  if (s === '') return NaN;
+  try {
+    var v = (new Function('return (' + preprocess(s) + ');'))();
+    return (typeof v === 'number' && isFinite(v)) ? v : NaN;
+  } catch (e) {
+    return NaN;
+  }
+}
+
 /* Convert a raw expression string to display LaTeX */
 function toLatex(expr) {
   var s = expr.trim();
@@ -1968,8 +1987,8 @@ function applyCustomFn() {
   errEl.textContent = '';
   if(!exprRaw){ errEl.textContent = 'Please enter a function expression.'; return; }
 
-  var dMin = parseFloat(document.getElementById('customDomMin').value);
-  var dMax = parseFloat(document.getElementById('customDomMax').value);
+  var dMin = parseMathInput(document.getElementById('customDomMin').value);
+  var dMax = parseMathInput(document.getElementById('customDomMax').value);
   if(!isFinite(dMin)||!isFinite(dMax)||dMin>=dMax){
     errEl.textContent = 'Domain min must be less than domain max.'; return;
   }

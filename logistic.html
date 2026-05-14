@@ -580,8 +580,10 @@ if(document.referrer.includes('dynamical.html')){
     </div>
     <div class="cbar-scalar cfield">
       <label for="x0Num">Initial \(x_0\)</label>
-      <input type="number" id="x0Num" step="0.01" value="0.2"
-             aria-label="Initial condition x0" style="color:var(--ora);">
+      <input type="text" inputmode="decimal" id="x0Num" value="0.2"
+             aria-label="Initial condition x0 (accepts expressions like pi/2)"
+             title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)/3"
+             style="color:var(--ora);">
     </div>
     <div class="cbar-scalar cfield">
       <label for="nIterNum">Iterations \(N\)</label>
@@ -745,6 +747,22 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function fmt(v,d){if(!isFinite(v))return '—';d=d==null?4:d;return v.toFixed(d);}
 function fmtSci(v){if(!isFinite(v))return '—';if(Math.abs(v)<0.001&&v!==0)return v.toExponential(2);return v.toFixed(4);}
 function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* Parse a scalar input that may be a number ("0.5") or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s){
+  if(s==null) return NaN;
+  s=String(s).trim();
+  if(s==='') return NaN;
+  var p=s
+    .replace(/\^/g,'**')
+    .replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+  try{
+    var v=(new Function('return ('+p+');'))();
+    return (typeof v==='number'&&isFinite(v))?v:NaN;
+  }catch(e){return NaN;}
+}
 
 /* =====================================================
    Map definitions
@@ -1424,12 +1442,14 @@ function buildParamControl(mapId){
     '<div class="slider-combo">'+
       '<input type="range" id="paramRange" min="'+pd.min+'" max="'+pd.max+'" step="'+pd.step+'" value="'+ST.param+'"'+
         ' aria-label="'+pd.aria+'" aria-valuetext="'+ST.param.toFixed(3)+'">'+
-      '<input type="number" id="paramNum" min="'+pd.min+'" max="'+pd.max+'" step="'+pd.step+'" value="'+ST.param+'"'+
-        ' aria-label="'+pd.aria+'" style="color:var(--blue)">'+
+      '<input type="text" inputmode="decimal" id="paramNum" value="'+ST.param+'"'+
+        ' aria-label="'+pd.aria+' (accepts expressions like pi/2)"'+
+        ' title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)"'+
+        ' style="color:var(--blue)">'+
     '</div>';
   mj([wrap.querySelector('label')]);
   function sync(v){
-    v=parseFloat(v);if(!isFinite(v))return;
+    v=parseMathInput(v);if(!isFinite(v))return;
     v=clamp(v,pd.min,pd.max);
     document.getElementById('paramRange').value=v;
     document.getElementById('paramRange').setAttribute('aria-valuetext',v.toFixed(3));
@@ -1488,7 +1508,7 @@ function buildPresets(mapId){
    x0 and N inputs
 ===================================================== */
 document.getElementById('x0Num').addEventListener('change',function(){
-  var v=parseFloat(this.value);if(!isFinite(v))return;
+  var v=parseMathInput(this.value);if(!isFinite(v))return;
   /* clamp to the current map's domain so the Quadratic tab (domain [-1.1, 1.1]) accepts negative x₀ */
   var d=MAPS[ST.mapId].domain;
   v=clamp(v,d[0],d[1]);this.value=v;ST.x0=v;

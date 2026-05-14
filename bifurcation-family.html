@@ -348,8 +348,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <label for="rSlider">Parameter \(r\)</label>
     <input type="range" id="rSlider" min="-2" max="2" step="0.005" value="-1"
            aria-label="r value" aria-valuetext="-1">
-    <input type="number" id="rNum" class="r-num" min="-2" max="2" step="0.01" value="-1"
-           aria-label="r numeric value">
+    <input type="text" inputmode="decimal" id="rNum" class="r-num" value="-1"
+           aria-label="r numeric value (accepts expressions like pi/2)"
+           title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
   </div>
 
   <!-- Animation bar -->
@@ -510,6 +511,22 @@ function say(m){var e=document.getElementById('live');e.textContent='';setTimeou
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 function isHC(){return document.documentElement.classList.contains('hc');}
 function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* Parse a scalar input that may be a number ("0.5") or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s){
+  if(s==null) return NaN;
+  s=String(s).trim();
+  if(s==='') return NaN;
+  var p=s
+    .replace(/\^/g,'**')
+    .replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+  try{
+    var v=(new Function('return ('+p+');'))();
+    return (typeof v==='number'&&isFinite(v))?v:NaN;
+  }catch(e){return NaN;}
+}
 
 /* ═════════════════════════════════════════════════════════════════
    Preset definitions
@@ -1220,10 +1237,10 @@ document.addEventListener('DOMContentLoaded', function(){
     if(ST.animating) stopAnim();
     setR(parseFloat(this.value));
   });
-  num.addEventListener('input', function(){
+  num.addEventListener('change', function(){
     if(ST.animating) stopAnim();
-    var v = parseFloat(this.value);
-    if(isFinite(v)) setR(v);
+    var v = parseMathInput(this.value);
+    if(isFinite(v)){ setR(v); }
   });
 
   /* Animation controls */
