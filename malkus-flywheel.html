@@ -393,8 +393,8 @@ if(document.referrer.includes('projects.html')){
     <button type="button" id="btnReset" class="abtn abtn-reset" aria-label="Reset simulation state">
       <span aria-hidden="true">&#8635;</span> Reset
     </button>
-    <button type="button" id="btnDownload" class="abtn abtn-go" aria-label="Download the waterwheel image as PNG">
-      <span aria-hidden="true">&#x2B07;</span> Download PNG
+    <button type="button" id="btnDownload" class="abtn abtn-go" aria-label="Download the waterwheel, omega(t), and 3D phase-space plots as PNGs">
+      <span aria-hidden="true">&#x2B07;</span> Download PNGs
     </button>
     <fieldset class="speed-row" style="border:none;padding:0;margin:0;">
       <legend class="sr-only">Simulation speed</legend>
@@ -1380,41 +1380,102 @@ document.addEventListener('DOMContentLoaded', function() {
     say('Simulation reset');
   });
 
-  /* Download waterwheel as PNG (rasterizes the live SVG at 2x for crisp output) */
+  /* Trigger a browser download for a Blob. */
+  function triggerDownload(blob, filename){
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  /* Rasterise the waterwheel SVG to a PNG Blob. CSS variables are inlined
+     into a <style> block so var(--water) etc. resolve when the SVG is
+     parsed standalone inside an <img>. */
+  function exportWheelPng(){
+    return new Promise(function(resolve, reject){
+      var svg = document.getElementById('wheelSvg');
+      if (!svg) { reject(new Error('no wheel svg')); return; }
+      var SCALE = 2;
+      var W = 500 * SCALE, H = 500 * SCALE;
+      var clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', SVG_NS);
+      clone.setAttribute('width', W);
+      clone.setAttribute('height', H);
+      /* Inline the CSS custom properties the SVG depends on. Without these,
+         var(--water) and friends are unresolved when the SVG is loaded as a
+         standalone document via the data URL. */
+      var rootStyles = getComputedStyle(document.documentElement);
+      var vars = ['--wheel-rim','--wheel-spoke','--wheel-hub','--bucket-frame',
+                  '--bucket-empty','--water','--water-edge','--stream','--ground'];
+      var decls = vars.map(function(v){
+        return v + ':' + rootStyles.getPropertyValue(v).trim() + ';';
+      }).join('');
+      var styleEl = document.createElementNS(SVG_NS, 'style');
+      styleEl.textContent = 'svg{' + decls + '}';
+      clone.insertBefore(styleEl, clone.firstChild);
+      /* Solid white background so the PNG isn't transparent. */
+      var bg = document.createElementNS(SVG_NS, 'rect');
+      bg.setAttribute('width', '100%');
+      bg.setAttribute('height', '100%');
+      bg.setAttribute('fill', '#ffffff');
+      clone.insertBefore(bg, clone.firstChild);
+      var src = new XMLSerializer().serializeToString(clone);
+      var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+      var img = new Image();
+      img.onload = function(){
+        var canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        canvas.getContext('2d').drawImage(img, 0, 0, W, H);
+        canvas.toBlob(function(blob){
+          if (blob) resolve(blob); else reject(new Error('toBlob failed'));
+        }, 'image/png');
+      };
+      img.onerror = function(){ reject(new Error('svg load failed')); };
+      img.src = url;
+    });
+  }
+
+  /* Export a Plotly graph div to a PNG Blob at 2x its rendered size. */
+  function exportPlotlyPng(id){
+    var el = document.getElementById(id);
+    if (!el || !window.Plotly || !el.data) {
+      return Promise.reject(new Error('plot ' + id + ' not ready'));
+    }
+    var rect = el.getBoundingClientRect();
+    var w = Math.max(Math.round(rect.width)  || 0, 700);
+    var h = Math.max(Math.round(rect.height) || 0, 300);
+    return Plotly.toImage(el, {format:'png', width:w, height:h, scale:2})
+      .then(function(dataUrl){ return fetch(dataUrl); })
+      .then(function(r){ return r.blob(); });
+  }
+
+  /* Download all three panels: waterwheel + omega(t) + 3D phase space. */
   document.getElementById('btnDownload').addEventListener('click', function(){
-    var svg = document.getElementById('wheelSvg');
-    if (!svg) return;
-    var SCALE = 2;
-    var W = 500 * SCALE, H = 500 * SCALE;
-    var clone = svg.cloneNode(true);
-    clone.setAttribute('xmlns', SVG_NS);
-    clone.setAttribute('width', W);
-    clone.setAttribute('height', H);
-    /* Bake background color so the PNG isn't transparent */
-    var bg = document.createElementNS(SVG_NS, 'rect');
-    bg.setAttribute('width', '100%');
-    bg.setAttribute('height', '100%');
-    bg.setAttribute('fill', getComputedStyle(svg).backgroundColor || '#ffffff');
-    clone.insertBefore(bg, clone.firstChild);
-    var src = new XMLSerializer().serializeToString(clone);
-    var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
-    var img = new Image();
-    img.onload = function(){
-      var canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = H;
-      canvas.getContext('2d').drawImage(img, 0, 0, W, H);
-      canvas.toBlob(function(blob){
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'malkus-waterwheel-t' + (ST && ST.t ? ST.t.toFixed(2) : '0') + '.png';
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 0);
-      }, 'image/png');
-    };
-    img.onerror = function(){ say('Image download failed'); };
-    img.src = url;
-    say('Downloading waterwheel image');
+    var tStr = (ST && typeof ST.t === 'number') ? ST.t.toFixed(2) : '0';
+    say('Downloading PNGs');
+
+    var jobs = [
+      { run: exportWheelPng,                    name: 'malkus-waterwheel-t' + tStr + '.png' },
+      { run: function(){ return exportPlotlyPng('plotOmega'); }, name: 'malkus-omega-t'      + tStr + '.png' },
+    ];
+    if (ST.showPhase) {
+      jobs.push({ run: function(){ return exportPlotlyPng('plotPhase'); }, name: 'malkus-phase-t' + tStr + '.png' });
+    }
+
+    /* Sequential downloads with a small gap — some browsers throttle
+       multiple programmatic downloads fired in the same tick. */
+    var i = 0;
+    function next(){
+      if (i >= jobs.length) { say('Downloads complete'); return; }
+      var job = jobs[i++];
+      job.run()
+        .then(function(blob){ triggerDownload(blob, job.name); })
+        .catch(function(err){ say(job.name + ' failed'); })
+        .then(function(){ setTimeout(next, 250); });
+    }
+    next();
   });
 
   /* Speed */
