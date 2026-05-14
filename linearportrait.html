@@ -313,10 +313,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <div class="matrix-wrap" role="group" aria-label="2 by 2 matrix entries">
         <span class="mat-bracket" aria-hidden="true">[</span>
         <div class="mat-grid">
-          <input type="number" step="any" id="a" value="-1" aria-label="a: row 1, col 1">
-          <input type="number" step="any" id="b" value="2"  aria-label="b: row 1, col 2">
-          <input type="number" step="any" id="c" value="-2" aria-label="c: row 2, col 1">
-          <input type="number" step="any" id="d" value="-1" aria-label="d: row 2, col 2">
+          <input type="text" inputmode="decimal" id="a" value="-1" aria-label="a: row 1, col 1 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="b" value="2"  aria-label="b: row 1, col 2 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="c" value="-2" aria-label="c: row 2, col 1 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="d" value="-1" aria-label="d: row 2, col 2 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
         </div>
         <span class="mat-bracket" aria-hidden="true">]</span>
       </div>
@@ -487,6 +487,22 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 <script>
 /* ── Utilities ── */
 function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+
+/* Parse a scalar input that may be a number ("0.5") or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s){
+  if(s==null) return NaN;
+  s=String(s).trim();
+  if(s==='') return NaN;
+  var p=s
+    .replace(/\^/g,'**')
+    .replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+  try{
+    var v=(new Function('return ('+p+');'))();
+    return (typeof v==='number'&&isFinite(v))?v:NaN;
+  }catch(e){return NaN;}
+}
 function debounce(fn,d){var t;return function(){clearTimeout(t);t=setTimeout(function(){fn();},d);};}
 function throttle(fn,lim){var ok=true;return function(){if(!ok)return;fn();ok=false;setTimeout(function(){ok=true;},lim);};}
 function isHC(){return document.documentElement.classList.contains('hc');}
@@ -513,7 +529,7 @@ function inCanvas(cx,cy){return cx>=PAD&&cx<=CW-PAD&&cy>=PAD&&cy<=CH-PAD;}
 
 /* ── Matrix read ── */
 function getM(){
-  function rv(id){var el=document.getElementById(id);var c=el.getAttribute('data-computed');return c!==null?parseFloat(c):(parseFloat(el.value)||0);}
+  function rv(id){var el=document.getElementById(id);var c=el.getAttribute('data-computed');if(c!==null){var pc=parseFloat(c);return isFinite(pc)?pc:0;}var v=parseMathInput(el.value);return isFinite(v)?v:0;}
   return{a:rv('a'),b:rv('b'),c:rv('c'),d:rv('d')};
 }
 function setComputed(a,b,c,d){

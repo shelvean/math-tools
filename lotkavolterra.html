@@ -377,12 +377,24 @@ var PARAMS=[
 
 /* ── Utilities (Lorenz-style) ── */
 function fmtSig(n){if(!Number.isFinite(n))return String(n);var s=n.toFixed(10);s=s.replace(/\.?0+$/,'');return s||'0';}
-function parseInp(s){
-  if(!s||typeof s!=='string')return NaN;
-  s=s.trim();
-  if(s.indexOf('/')>-1){var p=s.split('/');var nm=parseFloat(p[0]),dn=parseFloat(p[1]);if(!isNaN(nm)&&!isNaN(dn)&&dn!==0)return nm/dn;}
-  return parseFloat(s);
+
+/* Parse a scalar input that may be a number ("0.5"), a fraction ("3/4"),
+   or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s){
+  if(s==null) return NaN;
+  s=String(s).trim();
+  if(s==='') return NaN;
+  var p=s
+    .replace(/\^/g,'**')
+    .replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+  try{
+    var v=(new Function('return ('+p+');'))();
+    return (typeof v==='number'&&isFinite(v))?v:NaN;
+  }catch(e){return NaN;}
 }
+function parseInp(s){return parseMathInput(s);}
 
 /* ── Build parameter sliders (Lorenz pattern) ── */
 function buildSliders(){
@@ -394,9 +406,11 @@ function buildSliders(){
     var row=document.createElement('div');row.className='sl-row';
     var lbl=document.createElement('label');lbl.className='sl-label';
     lbl.setAttribute('for',p.id+'Val');lbl.innerHTML=p.label;
-    var inp=document.createElement('input');inp.type='number';inp.step='any';
+    var inp=document.createElement('input');inp.type='text';inp.setAttribute('inputmode','decimal');
     inp.id=p.id+'Val';inp.className='sl-val';
-    inp.value=fmtSig(p.value);inp.setAttribute('aria-label',p.label+' value');
+    inp.value=fmtSig(p.value);
+    inp.setAttribute('aria-label',p.label+' value (accepts expressions like pi/2)');
+    inp.setAttribute('title','Accepts numbers or expressions, e.g. pi/2, sqrt(2)');
     row.appendChild(lbl);row.appendChild(inp);
     // Range slider below
     var rng=document.createElement('input');rng.type='range';
@@ -433,7 +447,7 @@ function readParams(){
   var v={};
   PARAMS.forEach(function(p){
     var raw=document.getElementById(p.id+'Val');
-    v[p.id]=raw?parseFloat(raw.value)||p.value:p.value;
+    if(raw){var pv=parseMathInput(raw.value);v[p.id]=isFinite(pv)?pv:p.value;}else{v[p.id]=p.value;}
   });
   return v;
 }

@@ -478,23 +478,23 @@ if(document.referrer.includes('dynamical.html')){
 
     <div class="cbar-range cfield">
       <label for="pMinNum">Param min (x-axis)</label>
-      <input type="number" id="pMinNum" step="0.1" value="2.5" aria-label="Parameter minimum, horizontal axis lower bound">
+      <input type="text" inputmode="decimal" id="pMinNum" value="2.5" aria-label="Parameter minimum, horizontal axis lower bound (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
     </div>
     <div class="cbar-range cfield">
       <label for="pMaxNum">Param max (x-axis)</label>
-      <input type="number" id="pMaxNum" step="0.1" value="4" aria-label="Parameter maximum, horizontal axis upper bound">
+      <input type="text" inputmode="decimal" id="pMaxNum" value="4" aria-label="Parameter maximum, horizontal axis upper bound (accepts expressions like pi)" title="Accepts numbers or expressions, e.g. pi, sqrt(2)">
     </div>
     <div class="cbar-range cfield">
       <label for="xMinNum">State min (y-axis)</label>
-      <input type="number" id="xMinNum" step="0.05" value="0" aria-label="State minimum, vertical axis lower bound">
+      <input type="text" inputmode="decimal" id="xMinNum" value="0" aria-label="State minimum, vertical axis lower bound (accepts expressions like -pi)" title="Accepts numbers or expressions, e.g. -pi, -sqrt(2)">
     </div>
     <div class="cbar-range cfield">
       <label for="xMaxNum">State max (y-axis)</label>
-      <input type="number" id="xMaxNum" step="0.05" value="1" aria-label="State maximum, vertical axis upper bound">
+      <input type="text" inputmode="decimal" id="xMaxNum" value="1" aria-label="State maximum, vertical axis upper bound (accepts expressions like pi)" title="Accepts numbers or expressions, e.g. pi, sqrt(2)">
     </div>
     <div class="cbar-range cfield">
       <label for="x0Num">Initial \(x_0\)</label>
-      <input type="number" id="x0Num" step="0.05" value="0.5" aria-label="Initial value x0">
+      <input type="text" inputmode="decimal" id="x0Num" value="0.5" aria-label="Initial value x0 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
     </div>
     <div class="cbar-scalar cfield">
       <label for="qualSel">Quality</label>
@@ -519,11 +519,11 @@ if(document.referrer.includes('dynamical.html')){
     </div>
     <div class="cfield" style="flex:0 1 100px;">
       <label for="customX0">Domain min</label>
-      <input type="number" id="customXMin" value="0" step="0.5" style="width:100%;min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;" aria-label="x domain minimum">
+      <input type="text" inputmode="decimal" id="customXMin" value="0" style="width:100%;min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;" aria-label="x domain minimum (accepts expressions like -pi)" title="Accepts numbers or expressions, e.g. -pi">
     </div>
     <div class="cfield" style="flex:0 1 100px;">
       <label for="customXMax">Domain max</label>
-      <input type="number" id="customXMax" value="1" step="0.5" style="width:100%;min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;" aria-label="x domain maximum">
+      <input type="text" inputmode="decimal" id="customXMax" value="1" style="width:100%;min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;" aria-label="x domain maximum (accepts expressions like pi)" title="Accepts numbers or expressions, e.g. pi">
     </div>
     <button type="button" id="customPlotBtn" aria-label="Plot custom map bifurcation diagram">Plot</button>
     <div id="customFnError" role="status" aria-live="polite"></div>
@@ -737,6 +737,17 @@ function preprocess(expr){
     .replace(/\b(sin|cos|tan|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
     .replace(/\bpi\b/gi,'Math.PI')
     .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+}
+
+/* Parse a scalar input that may be a number ("0.5") or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s){
+  if(s==null) return NaN;
+  s=String(s).trim();
+  if(s==='') return NaN;
+  try{
+    var v=(new Function('return ('+preprocess(s)+');'))();
+    return (typeof v==='number'&&isFinite(v))?v:NaN;
+  }catch(e){return NaN;}
 }
 
 /* =====================================================
@@ -2387,14 +2398,14 @@ function applyCustomMap(){
   errEl.textContent='';
   if(!exprRaw){errEl.textContent='Please enter a function expression.';return;}
 
-  var xMin=parseFloat(document.getElementById('customXMin').value)||0;
-  var xMax=parseFloat(document.getElementById('customXMax').value)||1;
+  var xMin=parseMathInput(document.getElementById('customXMin').value); if(!isFinite(xMin)) xMin=0;
+  var xMax=parseMathInput(document.getElementById('customXMax').value); if(!isFinite(xMax)) xMax=1;
   if(xMin>=xMax){errEl.textContent='x domain min must be less than max.';return;}
 
   var fRaw;
   try{
     fRaw=new Function('x','r','return '+preprocess2(exprRaw)+';');
-    var tv=fRaw(0.5, parseFloat(document.getElementById('pMinNum').value)||2.5);
+    var tv=fRaw(0.5, (function(){var p=parseMathInput(document.getElementById('pMinNum').value); return isFinite(p)?p:2.5;})());
     if(typeof tv!=='number')throw new Error('Did not return a number.');
   }catch(e){errEl.textContent='Error: '+e.message;return;}
 
@@ -2414,13 +2425,13 @@ function applyCustomMap(){
     customSrc: preprocess2(exprRaw),
     x0:clamp((xMin+xMax)/2,xMin,xMax),
     xMin:xMin, xMax:xMax,
-    pMin:parseFloat(document.getElementById('pMinNum').value)||0,
-    pMax:parseFloat(document.getElementById('pMaxNum').value)||4,
-    pMinFull:parseFloat(document.getElementById('pMinNum').value)||0,
-    pMaxFull:parseFloat(document.getElementById('pMaxNum').value)||4,
+    pMin:(function(){var p=parseMathInput(document.getElementById('pMinNum').value); return isFinite(p)?p:0;})(),
+    pMax:(function(){var p=parseMathInput(document.getElementById('pMaxNum').value); return isFinite(p)?p:4;})(),
+    pMinFull:(function(){var p=parseMathInput(document.getElementById('pMinNum').value); return isFinite(p)?p:0;})(),
+    pMaxFull:(function(){var p=parseMathInput(document.getElementById('pMaxNum').value); return isFinite(p)?p:4;})(),
     pLabel:'r',
-    viewPMin:parseFloat(document.getElementById('pMinNum').value)||0,
-    viewPMax:parseFloat(document.getElementById('pMaxNum').value)||4,
+    viewPMin:(function(){var p=parseMathInput(document.getElementById('pMinNum').value); return isFinite(p)?p:0;})(),
+    viewPMax:(function(){var p=parseMathInput(document.getElementById('pMaxNum').value); return isFinite(p)?p:4;})(),
     feigenbaum:false, bifPts:[],
     desc:'Custom map \\(f_r(x)='+exprRaw+'\\). Fixed points and Lyapunov exponent computed numerically.'
   };
@@ -2556,8 +2567,8 @@ function switchMap(id){
   if(!MAPS[id])return;
   ST.mapId=id;
   var ex=MAPS[id];
-  ST.pMin=parseFloat(document.getElementById('pMinNum').value)||ex.pMin;
-  ST.pMax=parseFloat(document.getElementById('pMaxNum').value)||ex.pMax;
+  var _pMin=parseMathInput(document.getElementById('pMinNum').value); ST.pMin=isFinite(_pMin)?_pMin:ex.pMin;
+  var _pMax=parseMathInput(document.getElementById('pMaxNum').value); ST.pMax=isFinite(_pMax)?_pMax:ex.pMax;
   ST.x0=ex.x0||0.5;
   document.getElementById('pMinNum').value=ex.pMin;
   document.getElementById('pMaxNum').value=ex.pMax;
@@ -2581,33 +2592,38 @@ function switchMap(id){
    Controls wiring
 ===================================================== */
 document.getElementById('pMinNum').addEventListener('change',function(){
-  ST.pMin=parseFloat(this.value)||0;
+  var p=parseMathInput(this.value); ST.pMin=isFinite(p)?p:0;
+  this.value=(+ST.pMin.toFixed(10))+'';
   VBIF.pMin=ST.pMin;VLYA.pMin=ST.pMin;
   VBIF.dflt.pMin=ST.pMin;VLYA.dflt.pMin=ST.pMin;
   renderAll();
 });
 document.getElementById('pMaxNum').addEventListener('change',function(){
-  ST.pMax=parseFloat(this.value)||4;
+  var p=parseMathInput(this.value); ST.pMax=isFinite(p)?p:4;
+  this.value=(+ST.pMax.toFixed(10))+'';
   VBIF.pMax=ST.pMax;VLYA.pMax=ST.pMax;
   VBIF.dflt.pMax=ST.pMax;VLYA.dflt.pMax=ST.pMax;
   renderAll();
 });
 document.getElementById('xMinNum').addEventListener('change',function(){
-  var v=parseFloat(this.value);
+  var v=parseMathInput(this.value);
   if(!isFinite(v)||v>=VBIF.xMax){this.value=(+VBIF.xMin.toFixed(10))+'';return;}
+  this.value=(+v.toFixed(10))+'';
   VBIF.xMin=v;
   VBIF.dflt.xMin=v;
   renderAll();
 });
 document.getElementById('xMaxNum').addEventListener('change',function(){
-  var v=parseFloat(this.value);
+  var v=parseMathInput(this.value);
   if(!isFinite(v)||v<=VBIF.xMin){this.value=(+VBIF.xMax.toFixed(10))+'';return;}
+  this.value=(+v.toFixed(10))+'';
   VBIF.xMax=v;
   VBIF.dflt.xMax=v;
   renderAll();
 });
 document.getElementById('x0Num').addEventListener('change',function(){
-  ST.x0=parseFloat(this.value);
+  var v=parseMathInput(this.value);
+  if(isFinite(v)){ ST.x0=v; this.value=(+v.toFixed(10))+''; }
 });
 document.getElementById('annotChk').addEventListener('change',function(){
   ST.showAnnot=this.checked;
@@ -2632,9 +2648,9 @@ document.getElementById('paletteSel').addEventListener('change',function(){
 });
 
 document.getElementById('btnCompute').addEventListener('click',function(){
-  ST.pMin=parseFloat(document.getElementById('pMinNum').value)||ST.pMin;
-  ST.pMax=parseFloat(document.getElementById('pMaxNum').value)||ST.pMax;
-  ST.x0  =parseFloat(document.getElementById('x0Num').value)||ST.x0;
+  var _p1=parseMathInput(document.getElementById('pMinNum').value); ST.pMin=isFinite(_p1)?_p1:ST.pMin;
+  var _p2=parseMathInput(document.getElementById('pMaxNum').value); ST.pMax=isFinite(_p2)?_p2:ST.pMax;
+  var _x0=parseMathInput(document.getElementById('x0Num').value);   ST.x0  =isFinite(_x0)?_x0:ST.x0;
   runCompute(null);
 });
 document.getElementById('btnZoomBif').addEventListener('click',function(){
