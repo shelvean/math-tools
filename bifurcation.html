@@ -450,6 +450,7 @@ if(document.referrer.includes('dynamical.html')){
         <li><strong>Double-click</strong> to reset the view.</li>
         <li><strong>Compute</strong> runs the full calculation and displays the diagram at once.</li>
         <li>Toggle <strong>Feigenbaum lines</strong> to show/hide the annotated bifurcation points. Use <strong>High</strong> or <strong>Ultra</strong> quality for deep zooms.</li>
+        <li>Tick <strong>Deep zoom</strong> to arm arbitrary-precision arithmetic (decimal.js, 30–200 digits, scaled to the window) when the parameter range drops below \(10^{-9}\). Supported on logistic, quadratic, tent, and Hénon. Compute is sharded across up to six Web Workers so the precision overhead is parallelized rather than serialized — sub-attometer zooms remain interactive.</li>
         <li>Use the <strong>Palette</strong> picker (below the diagram, next to the Stable–Chaotic legend) to switch between the classic spectrum, ten monochrome themes, and eight multi-colour themes — the diagram recolours instantly without recomputing.</li>
       </ul>
     </div>
@@ -550,7 +551,7 @@ if(document.referrer.includes('dynamical.html')){
       <input type="checkbox" id="autoRefineChk" checked style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue);">
       <label class="speed-lbl" for="autoRefineChk" style="cursor:pointer;">Auto-refine</label>
     </div>
-    <div class="speed-wrap" style="margin-left:.25rem;" title="Use decimal.js for parameter windows below ~1e-12. Supported on polynomial maps only (logistic / quadratic).">
+    <div class="speed-wrap" style="margin-left:.25rem;" title="Arms decimal.js arbitrary-precision arithmetic when the parameter window drops below ~1e-9. Supported on logistic, quadratic, tent, and Hénon. Multi-worker parallelization absorbs the cost.">
       <input type="checkbox" id="deepZoomChk" style="width:18px;height:18px;cursor:pointer;accent-color:var(--vio);">
       <label class="speed-lbl" for="deepZoomChk" style="cursor:pointer;">Deep zoom</label>
     </div>
@@ -1222,7 +1223,7 @@ var WORKER_SRC = [
 '  try{ importScripts(url); DECIMAL_READY=(typeof Decimal!=="undefined"); DECIMAL_URL=url; return DECIMAL_READY; }',
 '  catch(e){ return false; }',
 '}',
-'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute"){ if(m.mapId==="henon") runComputeHenon(m); else if(m.useDecimal) runComputeDecimal(m); else runCompute(m); } };',
+'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute"){ if(m.mapId==="henon"){ if(m.useDecimal) runComputeHenonDecimal(m); else runComputeHenon(m); } else if(m.useDecimal) runComputeDecimal(m); else runCompute(m); } };',
 'function runCompute(m){',
 '  var mapDef=MAPS[m.mapId]; var f,df;',
 '  if(mapDef){ f=mapDef.f; df=mapDef.df; }',
@@ -1232,68 +1233,87 @@ var WORKER_SRC = [
 '      df=function(x,r){ var h=1e-5; try{ var fp=raw(x+h,r),fm=raw(x-h,r); return isFinite(fp)&&isFinite(fm)?(fp-fm)/(2*h):NaN; }catch(e){return NaN;} };',
 '    }catch(e){ self.postMessage({cmd:"error",msg:e.message,token:m.token}); return; }',
 '  } else { self.postMessage({cmd:"error",msg:"Unknown map: "+m.mapId,token:m.token}); return; }',
-'  var N=m.N_cols, Nt=m.N_trans, Np=m.N_plot;',
+/* Sharded column range. cs..ce is this shard's slice of the
+   global 0..Ntot column grid. The parameter at column i is
+   pMin + (i+0.5)/Ntot*pRange — same formula regardless of
+   shard, so shards stitch seamlessly. Each shard starts with
+   x0 (no warm-start across shards) and relies on Nt iterations
+   to land on the attractor. */
+'  var Ntot=m.N_cols_total||m.N_cols, cs=m.colStart||0, ce=m.colEnd||Ntot;',
+'  var n=ce-cs, Nt=m.N_trans, Np=m.N_plot;',
 '  var pMin=m.pMin, pRange=m.pMax-m.pMin, x0F=m.x0;',
 '  var storeLen=Math.min(Np, m.maxStore);',
-'  var pArr=new Float32Array(N), xArrsFlat=new Float32Array(N*storeLen), xCounts=new Int32Array(N), lyaArr=new Float32Array(N);',
+'  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen), xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
 '  var prevX=null;',
-'  var progEvery=Math.max(32, Math.floor(N/20));',
-'  for(var i=0;i<N;i++){',
-'    var p=pMin+(i+0.5)/N*pRange; pArr[i]=p;',
+'  var progEvery=Math.max(32, Math.floor(n/20));',
+'  for(var k=0;k<n;k++){',
+'    var i=cs+k;',
+'    var p=pMin+(i+0.5)/Ntot*pRange; pArr[k]=p;',
 /* 0 is a fixed point for logistic, tent, sine — once the warm-start lands there,
    every subsequent column stays pinned at 0. Fall back to x0 in that case. */
 '    var x=(prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100)?prevX:x0F;',
-'    for(var t=0;t<Nt;t++){ try{x=f(x,p);}catch(e){x=x0F;break;} if(!isFinite(x)){x=x0F;break;} }',
+/* Extra transient at shard boundaries: the first column of a non-zero
+   shard starts cold (no warm-start across shards), so give it 2x Nt
+   to reliably land on the attractor and avoid Lyapunov drift visible
+   as a faint vertical seam in the rendered diagram. */
+'    var NtThis=(k===0 && cs>0)?Nt*2:Nt;',
+'    for(var t=0;t<NtThis;t++){ try{x=f(x,p);}catch(e){x=x0F;break;} if(!isFinite(x)){x=x0F;break;} }',
 '    var cnt=0,lyaSum=0,lyaCnt=0;',
 '    for(var t=0;t<Np;t++){',
 '      if(isFinite(x)){',
-'        if(cnt<storeLen){ xArrsFlat[i*storeLen+cnt]=x; cnt++; }',
+'        if(cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
 '        try{ var d=Math.abs(df(x,p)); if(d>1e-15 && isFinite(d)){ lyaSum+=Math.log(d); lyaCnt++; } }catch(e){}',
 '      }',
 '      try{ x=f(x,p); }catch(e){ break; }',
 '      if(!isFinite(x)) break;',
 '    }',
-'    xCounts[i]=cnt;',
-'    lyaArr[i]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    xCounts[k]=cnt;',
+'    lyaArr[k]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
 '    prevX=x;',
-'    if(i>0 && (i%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:N,token:m.token});',
+'    if(k>0 && (k%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:Ntot,token:m.token});',
 '  }',
-'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
 '}',
 'function runComputeDecimal(m){',
 '  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js from CDN.",token:m.token}); return; }',
 '  Decimal.set({precision: m.useDecimal.digits||40});',
 '  var mapId=m.mapId; var f, df;',
+'  var DEC0=new Decimal(0), DEC1=new Decimal(1), DEChalf=new Decimal("0.5");',
 '  if(mapId==="logistic" || mapId==="logistic_full"){',
-'    f = function(x,r){ return r.times(x).times(new Decimal(1).minus(x)); };',
-'    df= function(x,r){ return r.times(new Decimal(1).minus(x.times(2))); };',
+'    f = function(x,r){ return r.times(x).times(DEC1.minus(x)); };',
+'    df= function(x,r){ return r.times(DEC1.minus(x.times(2))); };',
 '  } else if(mapId==="quadratic"){',
-'    f = function(x,r){ return new Decimal(1).minus(r.times(x).times(x)); };',
+'    f = function(x,r){ return DEC1.minus(r.times(x).times(x)); };',
 '    df= function(x,r){ return r.times(x).times(-2); };',
+'  } else if(mapId==="tent"){',
+'    f = function(x,r){ return x.lte(DEChalf) ? r.times(x) : r.times(DEC1.minus(x)); };',
+'    df= function(x,r){ return x.lte(DEChalf) ? r : r.neg(); };',
 '  } else {',
-'    self.postMessage({cmd:"error",msg:"Deep zoom supports only logistic and quadratic maps.",token:m.token}); return;',
+'    self.postMessage({cmd:"error",msg:"Deep zoom supports logistic, quadratic, tent, and Henon maps.",token:m.token}); return;',
 '  }',
-'  var N=m.N_cols, Nt=m.N_trans, Np=m.N_plot;',
+'  var Ntot=m.N_cols_total||m.N_cols, cs=m.colStart||0, ce=m.colEnd||Ntot;',
+'  var n=ce-cs, Nt=m.N_trans, Np=m.N_plot;',
 '  var pMinD=new Decimal(m.pMinStr || m.pMin);',
 '  var pMaxD=new Decimal(m.pMaxStr || m.pMax);',
 '  var pRangeD=pMaxD.minus(pMinD);',
 '  var x0D=new Decimal(m.x0);',
 '  var storeLen=Math.min(Np, m.maxStore);',
-'  var pArr=new Float32Array(N), xArrsFlat=new Float32Array(N*storeLen), xCounts=new Int32Array(N), lyaArr=new Float32Array(N);',
+'  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen), xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
 '  var prevX=null;',
-'  var progEvery=Math.max(16, Math.floor(N/12));',
-'  var half=new Decimal("0.5");',
-'  var ND=new Decimal(N);',
-'  for(var i=0;i<N;i++){',
-'    var fracD=(new Decimal(i)).plus(half).div(ND);',
+'  var progEvery=Math.max(16, Math.floor(n/12));',
+'  var ND=new Decimal(Ntot);',
+'  for(var k=0;k<n;k++){',
+'    var i=cs+k;',
+'    var fracD=(new Decimal(i)).plus(DEChalf).div(ND);',
 '    var pD=pMinD.plus(fracD.times(pRangeD));',
-'    pArr[i]=Number(pD.toString());',
+'    pArr[k]=Number(pD.toString());',
 '    var x=(prevX!==null && prevX.isFinite() && prevX.abs().gt("1e-100"))?prevX:x0D;',
-'    for(var t=0;t<Nt;t++){ try{ x=f(x,pD); }catch(e){ x=x0D; break; } if(!x.isFinite()){ x=x0D; break; } }',
+'    var NtThis=(k===0 && cs>0)?Nt*2:Nt;',
+'    for(var t=0;t<NtThis;t++){ try{ x=f(x,pD); }catch(e){ x=x0D; break; } if(!x.isFinite()){ x=x0D; break; } }',
 '    var cnt=0,lyaSum=0,lyaCnt=0;',
 '    for(var t=0;t<Np;t++){',
 '      if(x.isFinite()){',
-'        if(cnt<storeLen){ xArrsFlat[i*storeLen+cnt]=Number(x.toString()); cnt++; }',
+'        if(cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=Number(x.toString()); cnt++; }',
 '        try{',
 '          var d=df(x,pD).abs();',
 '          if(d.isFinite() && d.gt("1e-15")){ lyaSum+=Math.log(Number(d.toString())); lyaCnt++; }',
@@ -1302,12 +1322,12 @@ var WORKER_SRC = [
 '      try{ x=f(x,pD); }catch(e){ break; }',
 '      if(!x.isFinite()) break;',
 '    }',
-'    xCounts[i]=cnt;',
-'    lyaArr[i]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    xCounts[k]=cnt;',
+'    lyaArr[k]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
 '    prevX=x;',
-'    if(i>0 && (i%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:N,token:m.token,decimal:true});',
+'    if(k>0 && (k%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:Ntot,token:m.token,decimal:true});',
 '  }',
-'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,decimal:true},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,decimal:true,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
 '}',
 /* Hénon map: 2D discrete dissipative map. For each value of a, iterate
    (x,y) -> (1 - a*x^2 + y, b*x) with b = 0.3 fixed, project onto x for
@@ -1315,21 +1335,24 @@ var WORKER_SRC = [
    by iterating a tangent vector under the Jacobian and renormalizing
    periodically (Benettin's method). */
 'function runComputeHenon(m){',
-'  var N=m.N_cols, Nt=m.N_trans, Np=m.N_plot;',
+'  var Ntot=m.N_cols_total||m.N_cols, cs=m.colStart||0, ce=m.colEnd||Ntot;',
+'  var n=ce-cs, Nt=m.N_trans, Np=m.N_plot;',
 '  var pMin=m.pMin, pRange=m.pMax-m.pMin;',
 '  var bH=0.3;',
 '  var storeLen=Math.min(Np, m.maxStore);',
-'  var pArr=new Float32Array(N), xArrsFlat=new Float32Array(N*storeLen);',
-'  var xCounts=new Int32Array(N), lyaArr=new Float32Array(N);',
-'  var progEvery=Math.max(8, Math.floor(N/20));',
+'  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen);',
+'  var xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
+'  var progEvery=Math.max(8, Math.floor(n/20));',
 '  var renormSteps=20;',
 '  var warm=null;',
-'  for(var i=0;i<N;i++){',
-'    var a=pMin+(i+0.5)/N*pRange; pArr[i]=a;',
+'  for(var k=0;k<n;k++){',
+'    var i=cs+k;',
+'    var a=pMin+(i+0.5)/Ntot*pRange; pArr[k]=a;',
 '    var x, y;',
 '    if(warm && isFinite(warm.x) && isFinite(warm.y)){ x=warm.x; y=warm.y; }',
 '    else { x=m.x0||0.1; y=m.y0||0.1; }',
-'    for(var t=0;t<Nt;t++){',
+'    var NtThis=(k===0 && cs>0)?Nt*2:Nt;',
+'    for(var t=0;t<NtThis;t++){',
 '      var xn=1-a*x*x+y; var yn=bH*x;',
 '      x=xn; y=yn;',
 '      if(!isFinite(x)||!isFinite(y)){ x=m.x0||0.1; y=m.y0||0.1; break; }',
@@ -1338,7 +1361,7 @@ var WORKER_SRC = [
 '    var lyaSum=0, lyaCnt=0, renormCnt=0;',
 '    var cnt=0;',
 '    for(var t=0;t<Np;t++){',
-'      if(isFinite(x) && cnt<storeLen){ xArrsFlat[i*storeLen+cnt]=x; cnt++; }',
+'      if(isFinite(x) && cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
 '      var un=-2*a*x*u+v; var vn=bH*u;',
 '      u=un; v=vn;',
 '      var xn=1-a*x*x+y; var yn=bH*x;',
@@ -1358,16 +1381,98 @@ var WORKER_SRC = [
 '      var nrm=Math.sqrt(u*u+v*v);',
 '      if(isFinite(nrm) && nrm>1e-300){ lyaSum+=Math.log(nrm); lyaCnt+=renormCnt; }',
 '    }',
-'    xCounts[i]=cnt;',
-'    lyaArr[i]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    xCounts[k]=cnt;',
+'    lyaArr[k]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
 '    warm={x:x, y:y};',
-'    if(i>0 && (i%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:N,token:m.token});',
+'    if(k>0 && (k%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:Ntot,token:m.token});',
 '  }',
-'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'}',
+/* Hénon, deep-zoom variant: the state (x,y) is carried in Decimal so
+   neighbouring parameter columns separated by < 1e-12 don't alias.
+   The Lyapunov tangent vector stays in float64 — renormalization
+   every 20 steps keeps it numerically harmless, and Math.log on a
+   Decimal-rounded magnitude is plenty for colouring. Per-iteration
+   cost is ~200x float64 (2 Decimal mults + 1 sub + 1 add for x_n,
+   1 Decimal mult for y_n); the multi-worker pool absorbs the bulk
+   of that. */
+'function runComputeHenonDecimal(m){',
+'  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js from CDN.",token:m.token}); return; }',
+'  Decimal.set({precision: m.useDecimal.digits||40});',
+'  var Ntot=m.N_cols_total||m.N_cols, cs=m.colStart||0, ce=m.colEnd||Ntot;',
+'  var n=ce-cs, Nt=m.N_trans, Np=m.N_plot;',
+'  var pMinD=new Decimal(m.pMinStr || m.pMin);',
+'  var pMaxD=new Decimal(m.pMaxStr || m.pMax);',
+'  var pRangeD=pMaxD.minus(pMinD);',
+'  var bD=new Decimal("0.3");',
+'  var DEC1=new Decimal(1), DEChalf=new Decimal("0.5");',
+'  var x0D=new Decimal(String(m.x0||0.1)), y0D=new Decimal(String(m.y0||0.1));',
+'  var storeLen=Math.min(Np, m.maxStore);',
+'  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen);',
+'  var xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
+'  var ND=new Decimal(Ntot);',
+'  var renormSteps=20;',
+'  var progEvery=Math.max(8, Math.floor(n/20));',
+'  var warm=null;',
+'  for(var k=0;k<n;k++){',
+'    var i=cs+k;',
+'    var fracD=(new Decimal(i)).plus(DEChalf).div(ND);',
+'    var aD=pMinD.plus(fracD.times(pRangeD));',
+'    pArr[k]=Number(aD.toString());',
+'    var x, y;',
+'    if(warm && warm.x.isFinite() && warm.y.isFinite()){ x=warm.x; y=warm.y; }',
+'    else { x=x0D; y=y0D; }',
+'    var NtThis=(k===0 && cs>0)?Nt*2:Nt;',
+'    for(var t=0;t<NtThis;t++){',
+'      try{',
+'        var xn=DEC1.minus(aD.times(x).times(x)).plus(y);',
+'        var yn=bD.times(x);',
+'        x=xn; y=yn;',
+'      }catch(e){ x=x0D; y=y0D; break; }',
+'      if(!x.isFinite()||!y.isFinite()){ x=x0D; y=y0D; break; }',
+'    }',
+'    var u=1, v=0;',  // float64 tangent
+'    var lyaSum=0, lyaCnt=0, renormCnt=0;',
+'    var cnt=0;',
+'    var aF=Number(aD.toString()), bF=0.3;',
+'    for(var t=0;t<Np;t++){',
+'      var xF=Number(x.toString());',
+'      if(x.isFinite() && cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=xF; cnt++; }',
+'      var un=-2*aF*xF*u+v; var vn=bF*u;',
+'      u=un; v=vn;',
+'      try{',
+'        var xn=DEC1.minus(aD.times(x).times(x)).plus(y);',
+'        var yn=bD.times(x);',
+'        x=xn; y=yn;',
+'      }catch(e){ break; }',
+'      if(!x.isFinite()||!y.isFinite()) break;',
+'      renormCnt++;',
+'      if(renormCnt===renormSteps){',
+'        renormCnt=0;',
+'        var nrm=Math.sqrt(u*u+v*v);',
+'        if(isFinite(nrm) && nrm>1e-300){',
+'          lyaSum+=Math.log(nrm); lyaCnt+=renormSteps;',
+'          u/=nrm; v/=nrm;',
+'        }',
+'      }',
+'    }',
+'    if(renormCnt>0){',
+'      var nrm=Math.sqrt(u*u+v*v);',
+'      if(isFinite(nrm) && nrm>1e-300){ lyaSum+=Math.log(nrm); lyaCnt+=renormCnt; }',
+'    }',
+'    xCounts[k]=cnt;',
+'    lyaArr[k]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    warm={x:x, y:y};',
+'    if(k>0 && (k%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:Ntot,token:m.token,decimal:true});',
+'  }',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,decimal:true,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
 '}'
 ].join('\n');
 
-var workerURL = null, workerInst = null, workerToken = 0;
+var workerURL = null, workerPool = [], workerToken = 0;
+/* Pool size: capped at 6 to bound memory when decimal.js is loaded
+   per worker (~60KB each, plus working-set Decimals). */
+var WORKER_POOL_SIZE = Math.min(6, Math.max(2, (typeof navigator!=='undefined' && navigator.hardwareConcurrency) || 4));
 
 function makeWorker(){
   if(!workerURL){
@@ -1382,11 +1487,21 @@ function makeWorker(){
   } catch(e){ return null; }
 }
 
-function terminateWorker(){
-  if(workerInst){
-    try{ workerInst.terminate(); }catch(e){}
-    workerInst = null;
+function getWorkerPool(){
+  if(workerPool.length >= WORKER_POOL_SIZE) return workerPool;
+  while(workerPool.length < WORKER_POOL_SIZE){
+    var w = makeWorker();
+    if(!w) break;
+    workerPool.push(w);
   }
+  return workerPool.length > 0 ? workerPool : null;
+}
+
+function terminateWorker(){
+  for(var i=0;i<workerPool.length;i++){
+    try{ workerPool[i].terminate(); }catch(e){}
+  }
+  workerPool = [];
 }
 
 var PROGRESSIVE_LEVELS = [
@@ -1407,19 +1522,30 @@ function getMaxLevel(){
   else if(q==='normal') base = 3;
   else if(q==='high')   base = 4;
   else                  base = 5; /* ultra */
-  /* decimal.js is ~50x slower; cap levels to keep wall-time sane. */
-  if(isDeepZoomActive()) base = Math.min(base, 3);
+  /* decimal.js is ~50x slower per op (~200x for Hénon, which does
+     more Decimal mults per step), but the worker pool parallelizes
+     across columns — so the deep-zoom ceiling can sit higher than
+     the old single-worker cap of 3. */
+  if(isDeepZoomActive()){
+    var capDeep = (ST.mapId === 'henon') ? 3 : 4;
+    base = Math.min(base, capDeep);
+  }
   return base;
 }
 
 function isDeepZoomActive(){
   var chk = document.getElementById('deepZoomChk');
   if(!chk || !chk.checked) return false;
-  /* Only polynomial maps — decimal.js has no cheap sin/cos. */
-  if(['logistic','logistic_full','quadratic'].indexOf(ST.mapId) < 0) return false;
-  /* Only when the window is narrow enough for doubles to struggle. */
+  /* Maps supported by the Decimal worker path. Sine is excluded —
+     decimal.js has no cheap sin/cos, and a Taylor implementation
+     would dominate compute time. Tent is included even though its
+     periodic-to-chaotic transition is a single point: deep zoom
+     near μ=1 still benefits from precise parameter spacing. */
+  if(['logistic','logistic_full','quadratic','tent','henon'].indexOf(ST.mapId) < 0) return false;
+  /* Arm slightly earlier than the strict float64 cliff — the
+     iteration compounds roundoff long before 1e-15. */
   var pRange = ST.pMax - ST.pMin;
-  return pRange > 0 && pRange < 1e-10;
+  return pRange > 0 && pRange < 1e-9;
 }
 
 function updateDeepBadge(){
@@ -1435,7 +1561,10 @@ function updateDeepBadge(){
 
 function decimalPrecisionForRange(){
   var pRange = Math.max(1e-300, ST.pMax - ST.pMin);
-  return Math.max(30, Math.min(80, Math.ceil(-Math.log10(pRange)) + 20));
+  /* 20 guard digits beyond the parameter window magnitude. Ceiling
+     of 200 lets the user zoom to ~1e-180 before precision saturates;
+     decimal.js handles that fine, the pool absorbs the cost. */
+  return Math.max(30, Math.min(200, Math.ceil(-Math.log10(pRange)) + 20));
 }
 
 function applyZoomBoost(cfg){
@@ -1600,11 +1729,14 @@ function computeChunkSyncHenon(startCol, endCol){
 }
 
 /* Progressive chain state */
-var PROG = { level:0, maxLevel:0, active:false, idleId:null, onDone:null, busyToken:0 };
+var PROG = { level:0, maxLevel:0, active:false, idleId:null, onDone:null, busyToken:0,
+             shardsTotal:0, shardsDone:0 };
 
 function cancelProgressive(){
   PROG.active = false;
   PROG.busyToken = 0;
+  PROG.shardsTotal = 0;
+  PROG.shardsDone = 0;
   if(PROG.idleId!=null){
     if(window.cancelIdleCallback) cancelIdleCallback(PROG.idleId);
     PROG.idleId = null;
@@ -1650,10 +1782,10 @@ function runProgressiveLevel(){
   ST.N_trans = cfg.N_trans;
   ST.N_plot  = cfg.N_plot;
 
-  /* Ensure a worker is alive. If the environment won't spawn one we
-     fall back to synchronous compute on the main thread. */
-  if(!workerInst) workerInst = makeWorker();
-  if(workerInst){
+  /* Ensure the worker pool is alive. If the environment won't spawn
+     any workers we fall back to synchronous compute on the main thread. */
+  var pool = getWorkerPool();
+  if(pool && pool.length > 0){
     workerToken++;
     PROG.busyToken = workerToken;
     var customSrc = null;
@@ -1661,16 +1793,47 @@ function runProgressiveLevel(){
     var useDecimal = isDeepZoomActive()
       ? { digits: decimalPrecisionForRange(), url: DECIMAL_CDN }
       : null;
-    workerInst.postMessage({
+
+    /* Allocate the full target arrays once per level; shards drop their
+       slices in as they finish. */
+    allocBDATA(cfg.N_cols);
+
+    /* Cap shards at roughly 1 per 200 columns so we don't pay worker
+       overhead on the cheap early levels. */
+    var nShards = Math.min(pool.length, Math.max(1, Math.ceil(cfg.N_cols / 200)));
+    var shardSize = Math.ceil(cfg.N_cols / nShards);
+    PROG.shardsTotal = 0;
+    PROG.shardsDone = 0;
+
+    var msgBase = {
       cmd:'compute', token: workerToken,
       mapId: ST.mapId, customSrc: customSrc,
       pMin: ST.pMin, pMax: ST.pMax,
       pMinStr: String(ST.pMin), pMaxStr: String(ST.pMax),
       x0: ST.x0, y0: (MAPS[ST.mapId] && MAPS[ST.mapId].y0) || 0,
-      N_cols: cfg.N_cols, N_trans: cfg.N_trans, N_plot: cfg.N_plot,
+      N_cols_total: cfg.N_cols,
+      N_trans: cfg.N_trans, N_plot: cfg.N_plot,
       maxStore: MAX_ORBIT_STORE,
       useDecimal: useDecimal
-    });
+    };
+
+    for(var s=0; s<nShards; s++){
+      var colStart = s * shardSize;
+      var colEnd = Math.min(cfg.N_cols, colStart + shardSize);
+      if(colStart >= colEnd) continue;
+      var shardMsg = {};
+      for(var key in msgBase){ if(msgBase.hasOwnProperty(key)) shardMsg[key]=msgBase[key]; }
+      shardMsg.shardId = s;
+      shardMsg.colStart = colStart;
+      shardMsg.colEnd = colEnd;
+      PROG.shardsTotal++;
+      pool[s % pool.length].postMessage(shardMsg);
+    }
+
+    if(PROG.shardsTotal === 0){
+      /* Degenerate — nothing to compute at this level. */
+      advanceProgressive();
+    }
   } else {
     /* Fallback: sync compute */
     allocBDATA(cfg.N_cols);
@@ -1715,26 +1878,27 @@ function onWorkerMessage(e){
     return;
   }
   if(msg.cmd === 'done'){
-    var N = msg.pArr.length;
-    BDATA.N_cols = N;
-    BDATA.N_done = N;
-    BDATA.pArr = msg.pArr;
-    BDATA.xCounts = msg.xCounts;
-    BDATA.lyaArr = msg.lyaArr;
+    var cs = (typeof msg.colStart === 'number') ? msg.colStart : 0;
+    var ce = (typeof msg.colEnd   === 'number') ? msg.colEnd   : msg.pArr.length;
+    var n  = ce - cs;
     var storeLen = msg.storeLen;
-    BDATA.xArrs = new Array(N);
-    for(var i=0;i<N;i++){
-      /* Zero-copy view into the flat buffer. */
-      BDATA.xArrs[i] = msg.xArrsFlat.subarray(i*storeLen, (i+1)*storeLen);
+    for(var k=0;k<n;k++){
+      var gi = cs + k;
+      BDATA.pArr[gi]   = msg.pArr[k];
+      BDATA.xCounts[gi]= msg.xCounts[k];
+      BDATA.lyaArr[gi] = msg.lyaArr[k];
+      /* Zero-copy view into the shard's flat buffer. */
+      BDATA.xArrs[gi]  = msg.xArrsFlat.subarray(k*storeLen, (k+1)*storeLen);
+      var c = getColColor(msg.lyaArr[k]);
+      BDATA.colColors[gi*4]=c[0]; BDATA.colColors[gi*4+1]=c[1];
+      BDATA.colColors[gi*4+2]=c[2]; BDATA.colColors[gi*4+3]=c[3];
     }
-    BDATA.colColors = new Uint8Array(N*4);
-    for(var i=0;i<N;i++){
-      var c = getColColor(msg.lyaArr[i]);
-      BDATA.colColors[i*4]=c[0]; BDATA.colColors[i*4+1]=c[1];
-      BDATA.colColors[i*4+2]=c[2]; BDATA.colColors[i*4+3]=c[3];
+    PROG.shardsDone++;
+    if(PROG.shardsDone >= PROG.shardsTotal){
+      BDATA.N_done = BDATA.N_cols;
+      renderAll();
+      advanceProgressive();
     }
-    renderAll();
-    advanceProgressive();
   }
 }
 
@@ -2673,7 +2837,7 @@ document.getElementById('btnRefine').addEventListener('click',function(){
 document.getElementById('deepZoomChk').addEventListener('change',function(){
   updateDeepBadge();
   if(this.checked && !isDeepZoomActive()){
-    say('Deep zoom arms automatically when the parameter window is below 1e-10 on logistic or quadratic maps.');
+    say('Deep zoom arms automatically when the parameter window is below 1e-9 on logistic, quadratic, tent, or Hénon.');
   } else {
     runCompute(null);
     say(this.checked ? 'Deep zoom enabled — loading decimal.js.' : 'Deep zoom disabled.');
