@@ -2005,6 +2005,49 @@ function niceStep(range, targetN){
   return 10*e;
 }
 
+/* Decimal places needed so adjacent ticks render distinctly. e.g.
+   step=0.2 → 1 digit ("3.0", "3.2"); step=2e-13 → 13 digits. */
+function tickDigits(step){
+  if(!isFinite(step) || step<=0) return 3;
+  return Math.max(0, Math.ceil(-Math.log10(step)));
+}
+
+/* Format a tick value at the digit precision implied by `step`, then
+   drop trailing zeros — except when the value sits exactly on the
+   step grid (e.g. "3.0" stays "3.0" if step=0.1). */
+function fmtTick(v, step){
+  if(!isFinite(v)) return '';
+  var d = tickDigits(step);
+  return v.toFixed(d);
+}
+
+/* Decide whether x-axis tick labels would collide if drawn upright.
+   Slant when the widest label exceeds ~85% of the per-tick spacing. */
+function needsSlant(ctx, vals, step, pixelSpacing){
+  if(pixelSpacing > 0){
+    var maxW = 0;
+    for(var i=0;i<vals.length;i++){
+      var w = ctx.measureText(fmtTick(vals[i], step)).width;
+      if(w>maxW) maxW=w;
+    }
+    return maxW > pixelSpacing * 0.85;
+  }
+  return false;
+}
+
+/* Draw a tick label rotated -28° (reads bottom-left to top-right),
+   anchored so the rightmost-top of the rotated text sits at the
+   tick position. */
+function drawSlantedTick(ctx, text, cx, cy){
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-28 * Math.PI / 180);
+  ctx.textAlign='right';
+  ctx.textBaseline='middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
 /* ── Draw bifurcation diagram ── */
 function renderBif(){
   var ctx=bCtx;
@@ -2014,7 +2057,21 @@ function renderBif(){
   ctx.fillRect(0,0,bifCanvas.width,bifCanvas.height);
   ctx.restore();
 
-  var PAD=PADDING;
+  /* Adaptive padding: at deep zoom, tick labels can be 10+ chars
+     long and force slanting on the x-axis or a wider y-axis gutter. */
+  ctx.font='13px -apple-system,Arial,sans-serif';
+  var PAD={l:PADDING.l, r:PADDING.r, t:PADDING.t, b:PADDING.b};
+  var pStepPre=niceStep(VBIF.pMax-VBIF.pMin,7);
+  var xStepPre=niceStep(VBIF.xMax-VBIF.xMin,6);
+  var spacingX=(BW-PAD.l-PAD.r)/Math.max(1,(VBIF.pMax-VBIF.pMin)/pStepPre);
+  var sampleP=VBIF.pMin+pStepPre;
+  var sampleX=VBIF.xMin+xStepPre;
+  var widestPLabel=ctx.measureText(fmtTick(sampleP,pStepPre)).width;
+  var widestXLabel=ctx.measureText(fmtTick(sampleX,xStepPre)).width;
+  var slantX=widestPLabel>spacingX*0.85;
+  if(slantX) PAD.b=72;
+  if(widestXLabel>PAD.l-14) PAD.l=Math.ceil(widestXLabel)+18;
+
   var W=BW-PAD.l-PAD.r, H=BH-PAD.t-PAD.b;
   if(W<10||H<10){ctx.restore();return;}
 
@@ -2137,21 +2194,30 @@ function renderBif(){
   ctx.stroke();
   ctx.restore();
 
-  /* Tick labels — 13px */
+  /* Tick labels — 13px, full precision derived from step size. The
+     x-axis slants -28° when labels would otherwise overlap. */
   ctx.save();
   ctx.fillStyle='#1f2937';
   ctx.font='13px -apple-system,Arial,sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='top';
-  for(var pp=p0; pp<=VBIF.pMax+1e-9; pp+=pStep){
-    var cx=PAD.l+(pp-VBIF.pMin)/pRange*W;
-    if(cx<PAD.l-2||cx>PAD.l+W+2)continue;
-    ctx.fillText(+(pp.toFixed(3)), cx, PAD.t+H+6);
+  if(slantX){
+    for(var pp=p0; pp<=VBIF.pMax+1e-9; pp+=pStep){
+      var cx=PAD.l+(pp-VBIF.pMin)/pRange*W;
+      if(cx<PAD.l-2||cx>PAD.l+W+2)continue;
+      drawSlantedTick(ctx, fmtTick(pp, pStep), cx, PAD.t+H+8);
+    }
+  } else {
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for(var pp=p0; pp<=VBIF.pMax+1e-9; pp+=pStep){
+      var cx=PAD.l+(pp-VBIF.pMin)/pRange*W;
+      if(cx<PAD.l-2||cx>PAD.l+W+2)continue;
+      ctx.fillText(fmtTick(pp, pStep), cx, PAD.t+H+6);
+    }
   }
   ctx.textAlign='right'; ctx.textBaseline='middle';
   for(var xg=x0g; xg<=VBIF.xMax+1e-9; xg+=xStep){
     var cy=PAD.t+H-(xg-VBIF.xMin)/xRange*H;
     if(cy<PAD.t-2||cy>PAD.t+H+2)continue;
-    ctx.fillText(+(xg.toFixed(3)), PAD.l-7, cy);
+    ctx.fillText(fmtTick(xg, xStep), PAD.l-7, cy);
   }
 
   /* Axis labels — 13px bold */
@@ -2329,7 +2395,19 @@ function renderLya(){
   ctx.fillRect(0,0,lyaCanvas.width,lyaCanvas.height);
   ctx.restore();
 
-  var PAD=LPAD;
+  ctx.font='13px -apple-system,Arial,sans-serif';
+  var PAD={l:LPAD.l, r:LPAD.r, t:LPAD.t, b:LPAD.b};
+  var pStepPre=niceStep(VLYA.pMax-VLYA.pMin,7);
+  var lStepPre=niceStep(VLYA.lyaMax-VLYA.lyaMin,5);
+  var spacingX=(LW-PAD.l-PAD.r)/Math.max(1,(VLYA.pMax-VLYA.pMin)/pStepPre);
+  var sampleP=VLYA.pMin+pStepPre;
+  var sampleL=VLYA.lyaMin+lStepPre;
+  var widestPLabel=ctx.measureText(fmtTick(sampleP,pStepPre)).width;
+  var widestLLabel=ctx.measureText(fmtTick(sampleL,lStepPre)).width;
+  var slantX=widestPLabel>spacingX*0.85;
+  if(slantX) PAD.b=64;
+  if(widestLLabel>PAD.l-14) PAD.l=Math.ceil(widestLLabel)+18;
+
   var W=LW-PAD.l-PAD.r, H=LH-PAD.t-PAD.b;
   if(W<10||H<10)return;
 
@@ -2409,21 +2487,30 @@ function renderLya(){
   ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+H);ctx.stroke();
   ctx.restore();
 
-  /* Tick labels — 13px */
+  /* Tick labels — 13px, full precision from step. X-axis slants at
+     deep zoom to keep adjacent labels legible. */
   ctx.save();
   ctx.fillStyle='#1f2937';
   ctx.font='13px -apple-system,Arial,sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='top';
-  for(var pp=p0; pp<=VLYA.pMax+1e-9; pp+=pStep){
-    var cx=PAD.l+(pp-VLYA.pMin)/pRange*W;
-    if(cx<PAD.l-2||cx>PAD.l+W+2)continue;
-    ctx.fillText(+(pp.toFixed(3)), cx, PAD.t+H+5);
+  if(slantX){
+    for(var pp=p0; pp<=VLYA.pMax+1e-9; pp+=pStep){
+      var cx=PAD.l+(pp-VLYA.pMin)/pRange*W;
+      if(cx<PAD.l-2||cx>PAD.l+W+2)continue;
+      drawSlantedTick(ctx, fmtTick(pp, pStep), cx, PAD.t+H+7);
+    }
+  } else {
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    for(var pp=p0; pp<=VLYA.pMax+1e-9; pp+=pStep){
+      var cx=PAD.l+(pp-VLYA.pMin)/pRange*W;
+      if(cx<PAD.l-2||cx>PAD.l+W+2)continue;
+      ctx.fillText(fmtTick(pp, pStep), cx, PAD.t+H+5);
+    }
   }
   ctx.textAlign='right'; ctx.textBaseline='middle';
   for(var lv=l0; lv<=VLYA.lyaMax+1e-9; lv+=lStep){
     var cy=PAD.t+H-(lv-VLYA.lyaMin)/lRange*H;
     if(cy<PAD.t-2||cy>PAD.t+H+2)continue;
-    ctx.fillText(+(lv.toFixed(2)), PAD.l-6, cy);
+    ctx.fillText(fmtTick(lv, lStep), PAD.l-6, cy);
   }
   /* λ label */
   ctx.save();
