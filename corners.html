@@ -177,7 +177,19 @@
 
         .plot-area { grid-column: 1; grid-row: 1; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); position: relative; height: 440px; align-self: start; overflow: hidden; }
         #plot { width: 100%; height: 100%; }
-        #plot-inequalities-overlay { position: absolute; top: 40px; left: 70px; z-index: 10; background: rgba(255,255,255,0.85); padding: 6px 10px; border-radius: 6px; font-size: 15px; line-height: 1.6; pointer-events: none; }
+        #plot-inequalities-overlay {
+            position: absolute; top: 40px; left: 70px; z-index: 10;
+            background: rgba(255,255,255,0.9);
+            border: 1px solid rgba(0,0,0,0.12);
+            padding: 6px 10px; border-radius: 6px;
+            font-size: 15px; line-height: 1.6;
+            cursor: grab; user-select: none; -webkit-user-select: none;
+            touch-action: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            transition: box-shadow .12s;
+        }
+        #plot-inequalities-overlay:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.14); }
+        #plot-inequalities-overlay.dragging { cursor: grabbing; box-shadow: 0 4px 12px rgba(0,0,0,0.20); }
         #plot-inequalities-overlay:empty { display: none; }
         .p-value-display { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.95); padding: 12px 24px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 22px; font-weight: 700; color: var(--text); z-index: 10; display: none; border: 2px solid var(--sweep-color); white-space: nowrap; min-width: 380px; text-align: center; box-sizing: border-box; }
         .p-value-display.active { display: block; }
@@ -2018,6 +2030,65 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             new InequalityPlotter();
+
+            /* Make the inequality legend draggable within the plot area
+               (same pattern as integration.html's f(x) overlay). */
+            (function(){
+                const label = document.getElementById('plot-inequalities-overlay');
+                const wrap = document.querySelector('.plot-area');
+                if (!label || !wrap) return;
+                let dragging = false, gx = 0, gy = 0;
+
+                function clampToWrap(){
+                    const wr = wrap.getBoundingClientRect();
+                    const lw = label.offsetWidth, lh = label.offsetHeight;
+                    if (lw === 0 || lh === 0) return;
+                    const L = parseFloat(label.style.left);
+                    const T = parseFloat(label.style.top);
+                    if (isNaN(L) || isNaN(T)) return;
+                    label.style.left = Math.max(0, Math.min(wr.width - lw, L)) + 'px';
+                    label.style.top  = Math.max(0, Math.min(wr.height - lh, T)) + 'px';
+                }
+
+                label.addEventListener('pointerdown', function(e){
+                    if (e.button != null && e.button !== 0) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    label.setPointerCapture(e.pointerId);
+                    const lr = label.getBoundingClientRect();
+                    const wr = wrap.getBoundingClientRect();
+                    /* Pin to absolute pixel position before the first move so
+                       the label doesn't jump from the initial top/left anchor. */
+                    label.style.left = (lr.left - wr.left) + 'px';
+                    label.style.top  = (lr.top  - wr.top ) + 'px';
+                    label.style.right = 'auto';
+                    label.style.bottom = 'auto';
+                    gx = e.clientX - lr.left;
+                    gy = e.clientY - lr.top;
+                    label.classList.add('dragging');
+                    dragging = true;
+                });
+                label.addEventListener('pointermove', function(e){
+                    if (!dragging) return;
+                    const wr = wrap.getBoundingClientRect();
+                    const lw = label.offsetWidth, lh = label.offsetHeight;
+                    let L = e.clientX - wr.left - gx;
+                    let T = e.clientY - wr.top  - gy;
+                    L = Math.max(0, Math.min(wr.width  - lw, L));
+                    T = Math.max(0, Math.min(wr.height - lh, T));
+                    label.style.left = L + 'px';
+                    label.style.top  = T + 'px';
+                });
+                function endDrag(e){
+                    if (!dragging) return;
+                    dragging = false;
+                    try { label.releasePointerCapture(e.pointerId); } catch(_) {}
+                    label.classList.remove('dragging');
+                }
+                label.addEventListener('pointerup', endDrag);
+                label.addEventListener('pointercancel', endDrag);
+                window.addEventListener('resize', function(){ setTimeout(clampToWrap, 90); });
+            })();
         });
     </script>
 </body>
