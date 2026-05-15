@@ -356,6 +356,18 @@ if(document.referrer.includes('projects.html')){
         \[a_1(t)=\tfrac{2}{N}\sum_i m_i\cos\theta_i,\qquad b_1(t)=\tfrac{2}{N}\sum_i m_i\sin\theta_i.\]
       </div>
 
+      <h2>Sensitive Dependence on Initial Conditions</h2>
+      <p>Toggle <strong>Sensitivity (twin trajectory)</strong> in the controls to launch a second trajectory whose initial angular velocity differs from the first by \(\varepsilon\). The waterwheel animation is replaced by a log-scale plot of the separation</p>
+      <div class="defn-box">
+        \[\|\Delta(t)\| = \sqrt{(\omega_1-\omega_2)^2 + (b_{1,1}-b_{1,2})^2 + (a_{1,1}-a_{1,2})^2}.\]
+      </div>
+      <p>In the steady or periodic regime the two trajectories converge and the separation decays. In the <strong>chaotic regime</strong> they diverge exponentially,</p>
+      <div class="defn-box">
+        \[\|\Delta(t)\|\;\sim\;\varepsilon\,e^{\lambda_1 t},\]
+      </div>
+      <p>where \(\lambda_1>0\) is the <strong>maximal Lyapunov exponent</strong>. On the log plot this appears as a straight line whose slope is \(\lambda_1\); for Malkus / Lorenz with \(\sigma\!\approx\!10\), \(\rho\!\approx\!28\) the value is \(\lambda_1\approx 0.9\). After roughly \(1/\lambda_1\) time units the separation saturates at the diameter of the attractor &mdash; the two systems are then uncorrelated and prediction is lost. A dashed reference line \(\varepsilon e^{0.9 t}\) is overlaid for comparison.</p>
+      <p>The waterwheel is hidden in this mode because two near-identical wheels would not visibly differ until divergence has already occurred. Use very small \(\varepsilon\) (e.g. \(10^{-9}\)) to make the predictability horizon stretch farther into the simulation.</p>
+
       <h2>How to Use</h2>
       <ul>
         <li>Click a <strong>preset</strong> (Steady / Periodic / Chaos / Violent Chaos) to load parameters that demonstrate each regime. The wheel is reset and animation starts.</li>
@@ -414,6 +426,16 @@ if(document.referrer.includes('projects.html')){
       <input type="checkbox" id="showPhase" checked>
       <label for="showPhase">Show 3D phase space</label>
     </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="sensMode">
+      <label for="sensMode">Sensitivity (twin trajectory)</label>
+    </div>
+    <div class="toggle-row" id="epsRow" style="display:none;align-items:center;gap:.4rem;">
+      <label for="epsInput" style="font-weight:700;color:var(--txt2);font-size:.8125rem;">\(\varepsilon\):</label>
+      <input type="text" id="epsInput" value="1e-5"
+             style="width:80px;padding:.15rem .35rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);background:var(--card);text-align:center;"
+             aria-label="Initial perturbation epsilon for sensitivity twin trajectory">
+    </div>
   </div>
 
   <!-- Readout -->
@@ -447,25 +469,41 @@ if(document.referrer.includes('projects.html')){
   <!-- Main 2-col layout: wheel (left) + plots (right) -->
   <div class="main-layout">
 
-    <!-- Wheel -->
-    <div class="pwrap">
-      <div class="phdr">
-        <span class="pdot" style="background:var(--water);" aria-hidden="true"></span>
-        Waterwheel &mdash; live animation
+    <!-- Left column: wheel (default) or separation plot (sensitivity mode) -->
+    <div class="plot-stack">
+      <!-- Wheel -->
+      <div class="pwrap" id="wheelPanel">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--water);" aria-hidden="true"></span>
+          Waterwheel &mdash; live animation
+        </div>
+        <div class="wheel-wrap">
+          <svg id="wheelSvg" viewBox="0 0 500 500"
+               role="img" aria-label="Animated waterwheel. Rotating wheel with leaky buckets. Water falls from top into buckets near the top; buckets leak as they rotate; the wheel's angular velocity is driven by the imbalance of water around the rim."
+               aria-describedby="wheelDesc"></svg>
+          <p id="wheelDesc" class="sr-only" aria-live="polite">Live waterwheel simulation. Current angular velocity announced in the readout bar above.</p>
+        </div>
+        <div class="wheel-footer">
+          <span class="wheel-legend" aria-hidden="true">
+            <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--water);"></span>Water level</span>
+            <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--bucket-empty);"></span>Empty bucket</span>
+            <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--stream);"></span>Inflow stream</span>
+          </span>
+          <span id="wheelStatus" style="font-weight:600;">Paused</span>
+        </div>
       </div>
-      <div class="wheel-wrap">
-        <svg id="wheelSvg" viewBox="0 0 500 500"
-             role="img" aria-label="Animated waterwheel. Rotating wheel with leaky buckets. Water falls from top into buckets near the top; buckets leak as they rotate; the wheel's angular velocity is driven by the imbalance of water around the rim."
-             aria-describedby="wheelDesc"></svg>
-        <p id="wheelDesc" class="sr-only" aria-live="polite">Live waterwheel simulation. Current angular velocity announced in the readout bar above.</p>
-      </div>
-      <div class="wheel-footer">
-        <span class="wheel-legend" aria-hidden="true">
-          <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--water);"></span>Water level</span>
-          <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--bucket-empty);"></span>Empty bucket</span>
-          <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--stream);"></span>Inflow stream</span>
-        </span>
-        <span id="wheelStatus" style="font-weight:600;">Paused</span>
+
+      <!-- Separation plot (shown when sensitivity mode is active) -->
+      <div class="pwrap" id="sepPanel" hidden>
+        <div class="phdr">
+          <span class="pdot" style="background:var(--red);" aria-hidden="true"></span>
+          Trajectory separation &mdash; \(\|\Delta(t)\|\) (log scale)
+        </div>
+        <div id="plotSep" style="width:100%;height:400px;" role="img"
+             aria-label="Log-scale plot of the separation between two trajectories versus time. In the chaotic regime the curve is initially linear, indicating exponential growth at the maximal Lyapunov exponent; the curve then saturates at the diameter of the attractor."></div>
+        <div class="wheel-footer" style="justify-content:flex-start;gap:1rem;">
+          <span style="font-size:.8rem;">Slope of the early linear region \(\approx \lambda_1\) &mdash; the maximal Lyapunov exponent. Saturation marks the predictability horizon.</span>
+        </div>
       </div>
     </div>
 
@@ -543,7 +581,7 @@ var PARAMS=[
    State
 ===================================================== */
 var ST = {
-  /* physics state */
+  /* physics state — trajectory 1 */
   phi: 0,             // cumulative wheel angle
   omega: 0.5,         // angular velocity
   m: [],              // bucket masses m[i], length N
@@ -551,6 +589,10 @@ var ST = {
   t: 0,
   reversals: 0,
   lastOmegaSign: 1,
+  /* physics state — trajectory 2 (sensitivity-mode twin) */
+  phi2: 0,
+  omega2: 0.5,
+  m2: [],
   /* animation — must start false so the first startAnim() call does not early-return */
   running: false,
   simSpeed: 1,
@@ -562,11 +604,18 @@ var ST = {
   omegaHist: [],
   a1Hist: [],
   b1Hist: [],
+  omegaHist2: [],
+  a1Hist2: [],
+  b1Hist2: [],
+  sepHist: [],
   maxHist: 20000,     // room for a full endtime ≤ 200 at dt=0.01
   /* preset */
   currentPreset: 'chaos',
   /* display */
-  showPhase: true
+  showPhase: true,
+  /* sensitivity / twin trajectory */
+  sensitivityMode: false,
+  eps: 1e-5
 };
 
 /* Presets */
@@ -591,9 +640,11 @@ var PED_TEXT = {
 function initBuckets(N) {
   ST.baseAngle = [];
   ST.m = [];
+  ST.m2 = [];
   for (var i = 0; i < N; i++) {
     ST.baseAngle.push(2 * Math.PI * i / N);
     ST.m.push(0);
+    ST.m2.push(0);
   }
 }
 
@@ -604,11 +655,20 @@ function resetState(preset) {
   ST.t = 0;
   ST.reversals = 0;
   ST.lastOmegaSign = Math.sign(p.omega0) || 1;
-  initBuckets(p.N);
+  /* Twin trajectory: identical initial state plus an epsilon kick on omega.
+     The perturbation is applied even when sensitivity mode is currently off
+     so that toggling it on at t=0 (without a re-reset) is still meaningful. */
+  ST.phi2 = 0;
+  ST.omega2 = p.omega0 + ST.eps;
+  initBuckets(p.N); /* resets both ST.m and ST.m2 to zeros */
   ST.tHist.length = 0;
   ST.omegaHist.length = 0;
   ST.a1Hist.length = 0;
   ST.b1Hist.length = 0;
+  ST.omegaHist2.length = 0;
+  ST.a1Hist2.length = 0;
+  ST.b1Hist2.length = 0;
+  ST.sepHist.length = 0;
   /* Record the initial condition as a single history sample so the plots
      display the starting state on load without running the simulation. */
   var fc0 = fourierCoeffs();
@@ -616,10 +676,21 @@ function resetState(preset) {
   ST.omegaHist.push(ST.omega);
   ST.a1Hist.push(fc0.a1);
   ST.b1Hist.push(fc0.b1);
+  if (ST.sensitivityMode) {
+    var fc02 = fourierCoeffs2();
+    ST.omegaHist2.push(ST.omega2);
+    ST.a1Hist2.push(fc02.a1);
+    ST.b1Hist2.push(fc02.b1);
+    var dx = ST.omega - ST.omega2;
+    var dy = fc0.b1 - fc02.b1;
+    var dz = fc0.a1 - fc02.a1;
+    ST.sepHist.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+  }
   updateReadout();
   drawWheel();
   drawOmegaPlot();
   drawPhasePlot();
+  drawSeparationPlot();
 }
 
 /* =====================================================
@@ -635,13 +706,15 @@ function getParams(){
   };
 }
 
-/* Derivatives given state (phi, omega, m[]) and params */
-function deriv(phi, omega, m, params) {
+/* Derivatives given state (baseAngle, phi, omega, m[]) and params.
+   Pulled out of any single state object so we can advance two independent
+   trajectories sharing the same baseAngle and params (sensitivity mode). */
+function derivG(baseAngle, phi, omega, m, params) {
   var N = m.length;
   var dm = new Array(N);
   var torque = 0;
   for (var i = 0; i < N; i++) {
-    var theta = ST.baseAngle[i] + phi;
+    var theta = baseAngle[i] + phi;
     var cosT = Math.cos(theta);
     var sinT = Math.sin(theta);
     var inflow = cosT > 0 ? params.q1 * cosT : 0;
@@ -652,47 +725,62 @@ function deriv(phi, omega, m, params) {
   return { dPhi: omega, dOmega: dOmega, dm: dm };
 }
 
+/* Pure RK4 step: returns new (phi, omega, m[]) for the given input state.
+   Caller owns assignment back into ST or any other store. */
+function rk4Step(baseAngle, phi, omega, m, p, dt) {
+  var N = m.length;
+  var i;
+  /* k1 */
+  var k1 = derivG(baseAngle, phi, omega, m, p);
+  /* k2 */
+  var phiS = phi + 0.5*dt*k1.dPhi;
+  var omegaS = omega + 0.5*dt*k1.dOmega;
+  var mS = new Array(N);
+  for (i = 0; i < N; i++) mS[i] = m[i] + 0.5*dt*k1.dm[i];
+  var k2 = derivG(baseAngle, phiS, omegaS, mS, p);
+  /* k3 */
+  phiS = phi + 0.5*dt*k2.dPhi;
+  omegaS = omega + 0.5*dt*k2.dOmega;
+  for (i = 0; i < N; i++) mS[i] = m[i] + 0.5*dt*k2.dm[i];
+  var k3 = derivG(baseAngle, phiS, omegaS, mS, p);
+  /* k4 */
+  phiS = phi + dt*k3.dPhi;
+  omegaS = omega + dt*k3.dOmega;
+  for (i = 0; i < N; i++) mS[i] = m[i] + dt*k3.dm[i];
+  var k4 = derivG(baseAngle, phiS, omegaS, mS, p);
+
+  var newPhi = phi + dt * (k1.dPhi + 2*k2.dPhi + 2*k3.dPhi + k4.dPhi) / 6;
+  var newOmega = omega + dt * (k1.dOmega + 2*k2.dOmega + 2*k3.dOmega + k4.dOmega) / 6;
+  var newM = new Array(N);
+  for (i = 0; i < N; i++) {
+    newM[i] = m[i] + dt * (k1.dm[i] + 2*k2.dm[i] + 2*k3.dm[i] + k4.dm[i]) / 6;
+    if (newM[i] < 0) newM[i] = 0; /* enforce physical bound */
+  }
+  return { phi: newPhi, omega: newOmega, m: newM };
+}
+
 function stepRK4(dt) {
   var p = getParams();
-  var phi = ST.phi, omega = ST.omega, m = ST.m;
-  var N = m.length;
-
-  /* k1 */
-  var k1 = deriv(phi, omega, m, p);
-  /* k2 */
-  var phi2 = phi + 0.5*dt*k1.dPhi;
-  var omega2 = omega + 0.5*dt*k1.dOmega;
-  var m2 = new Array(N);
-  for (var i = 0; i < N; i++) m2[i] = m[i] + 0.5*dt*k1.dm[i];
-  var k2 = deriv(phi2, omega2, m2, p);
-  /* k3 */
-  var phi3 = phi + 0.5*dt*k2.dPhi;
-  var omega3 = omega + 0.5*dt*k2.dOmega;
-  var m3 = new Array(N);
-  for (var i = 0; i < N; i++) m3[i] = m[i] + 0.5*dt*k2.dm[i];
-  var k3 = deriv(phi3, omega3, m3, p);
-  /* k4 */
-  var phi4 = phi + dt*k3.dPhi;
-  var omega4 = omega + dt*k3.dOmega;
-  var m4 = new Array(N);
-  for (var i = 0; i < N; i++) m4[i] = m[i] + dt*k3.dm[i];
-  var k4 = deriv(phi4, omega4, m4, p);
-
-  /* Combine */
-  ST.phi   = phi + dt * (k1.dPhi + 2*k2.dPhi + 2*k3.dPhi + k4.dPhi) / 6;
-  ST.omega = omega + dt * (k1.dOmega + 2*k2.dOmega + 2*k3.dOmega + k4.dOmega) / 6;
-  for (var i = 0; i < N; i++) {
-    ST.m[i] = m[i] + dt * (k1.dm[i] + 2*k2.dm[i] + 2*k3.dm[i] + k4.dm[i]) / 6;
-    if (ST.m[i] < 0) ST.m[i] = 0; /* enforce physical bound */
-  }
+  var r1 = rk4Step(ST.baseAngle, ST.phi, ST.omega, ST.m, p, dt);
+  ST.phi = r1.phi;
+  ST.omega = r1.omega;
+  ST.m = r1.m;
   ST.t += dt;
 
-  /* reversal counting */
+  /* reversal counting (trajectory 1 only) */
   var s = Math.sign(ST.omega);
   if (s !== 0 && s !== ST.lastOmegaSign && ST.lastOmegaSign !== 0) {
     ST.reversals++;
   }
   if (s !== 0) ST.lastOmegaSign = s;
+
+  /* Advance twin trajectory in lockstep, sharing all params. */
+  if (ST.sensitivityMode) {
+    var r2 = rk4Step(ST.baseAngle, ST.phi2, ST.omega2, ST.m2, p, dt);
+    ST.phi2 = r2.phi;
+    ST.omega2 = r2.omega;
+    ST.m2 = r2.m;
+  }
 }
 
 /* =====================================================
@@ -705,6 +793,18 @@ function fourierCoeffs() {
     var theta = ST.baseAngle[i] + ST.phi;
     a1 += ST.m[i] * Math.cos(theta);
     b1 += ST.m[i] * Math.sin(theta);
+  }
+  return { a1: (2/N)*a1, b1: (2/N)*b1 };
+}
+
+/* Same as fourierCoeffs but for trajectory 2 (the perturbed twin). */
+function fourierCoeffs2() {
+  var N = ST.m2.length;
+  var a1 = 0, b1 = 0;
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i] + ST.phi2;
+    a1 += ST.m2[i] * Math.cos(theta);
+    b1 += ST.m2[i] * Math.sin(theta);
   }
   return { a1: (2/N)*a1, b1: (2/N)*b1 };
 }
@@ -845,6 +945,8 @@ function buildWheelSvg() {
 }
 
 function drawWheel() {
+  /* In sensitivity mode the wheel panel is hidden; skip the SVG churn. */
+  if (ST.sensitivityMode) return;
   var N = ST.m.length;
   if (!document.getElementById('rotGroup')) buildWheelSvg();
   var rot = document.getElementById('rotGroup');
@@ -1039,27 +1141,59 @@ function drawOmegaPlot() {
   var hc = isHC();
   var bg = hc ? '#fff' : '#fafafa';
   var grid = hc ? 'rgba(0,0,0,.2)' : '#e5e7eb';
-  Plotly.react('plotOmega',[{
-    x: ST.tHist, y: ST.omegaHist,
-    type:'scatter', mode:'lines',
-    line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
-    hovertemplate:'t=%{x:.2f}<br>ω=%{y:.3f}<extra></extra>',
-    name:'ω(t)'
-  }, {
-    /* current point marker */
-    x: ST.tHist.length ? [ST.tHist[ST.tHist.length-1]] : [],
-    y: ST.omegaHist.length ? [ST.omegaHist[ST.omegaHist.length-1]] : [],
-    type:'scatter', mode:'markers',
-    marker:{color:'#dc2626', size:8, line:{color:'#fff', width:1.5}},
-    hoverinfo:'skip', showlegend:false
-  }], {
+  var nH = ST.tHist.length;
+  var lastT = nH ? [ST.tHist[nH-1]] : [];
+  var traces;
+  if (ST.sensitivityMode) {
+    traces = [{
+      x: ST.tHist, y: ST.omegaHist,
+      type:'scatter', mode:'lines',
+      line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
+      name:'ω₁(t)',
+      hovertemplate:'t=%{x:.2f}<br>ω₁=%{y:.3f}<extra></extra>'
+    }, {
+      x: ST.tHist, y: ST.omegaHist2,
+      type:'scatter', mode:'lines',
+      line:{color:'#dc2626', width:1.6, shape:'spline', smoothing:1.0, dash:'dot'},
+      name:'ω₂(t)',
+      hovertemplate:'t=%{x:.2f}<br>ω₂=%{y:.3f}<extra></extra>'
+    }, {
+      x: lastT,
+      y: nH ? [ST.omegaHist[nH-1]] : [],
+      type:'scatter', mode:'markers',
+      marker:{color:'#1d4ed8', size:7, line:{color:'#fff', width:1.5}},
+      hoverinfo:'skip', showlegend:false
+    }, {
+      x: lastT,
+      y: nH ? [ST.omegaHist2[nH-1]] : [],
+      type:'scatter', mode:'markers',
+      marker:{color:'#dc2626', size:7, line:{color:'#fff', width:1.5}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  } else {
+    traces = [{
+      x: ST.tHist, y: ST.omegaHist,
+      type:'scatter', mode:'lines',
+      line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
+      hovertemplate:'t=%{x:.2f}<br>ω=%{y:.3f}<extra></extra>',
+      name:'ω(t)'
+    }, {
+      x: lastT,
+      y: nH ? [ST.omegaHist[nH-1]] : [],
+      type:'scatter', mode:'markers',
+      marker:{color:'#dc2626', size:8, line:{color:'#fff', width:1.5}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  }
+  Plotly.react('plotOmega', traces, {
     margin:{t:6,r:12,b:32,l:44},
     plot_bgcolor: bg,
     paper_bgcolor: 'rgba(0,0,0,0)',
     font:{family:'-apple-system,Arial,sans-serif', size:10, color: hc?'#000':'#374151'},
     xaxis:{title:{text:'t', font:{size:11}}, gridcolor:grid, zerolinecolor:grid},
     yaxis:{title:{text:'ω', font:{size:11}}, gridcolor:grid, zerolinecolor: hc?'#000':'#9ca3af', zerolinewidth:1.5},
-    showlegend:false
+    showlegend: ST.sensitivityMode,
+    legend: ST.sensitivityMode ? {x:.02, y:.98, bgcolor:'rgba(255,255,255,.85)', font:{size:10}} : undefined
   }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
 }
 
@@ -1068,41 +1202,76 @@ function drawPhasePlot() {
   var hc = isHC();
   var bg = hc ? '#fff' : '#fafafa';
   var n = ST.tHist.length;
+  var traces;
 
-  /* Catmull-Rom smoothing: 4× densification eliminates the
-     angular "coarseness" between consecutive RK4 samples. */
-  var sm = catmullRom3D(ST.omegaHist, ST.b1Hist, ST.a1Hist, ST.tHist, 4);
+  if (ST.sensitivityMode) {
+    /* Two solid-colour trajectories so divergence is visually obvious;
+       drop the time-coloured colorscale (would only confuse the comparison). */
+    var sm1 = catmullRom3D(ST.omegaHist,  ST.b1Hist,  ST.a1Hist,  ST.tHist, 4);
+    var sm2 = catmullRom3D(ST.omegaHist2, ST.b1Hist2, ST.a1Hist2, ST.tHist, 4);
+    traces = [{
+      x: sm1.x, y: sm1.y, z: sm1.z,
+      type:'scatter3d', mode:'lines',
+      line:{color:'#1d4ed8', width:2.2},
+      name:'Traj 1',
+      hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>'
+    }, {
+      x: sm2.x, y: sm2.y, z: sm2.z,
+      type:'scatter3d', mode:'lines',
+      line:{color:'#dc2626', width:2, dash:'dot'},
+      name:'Traj 2',
+      hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>'
+    }, {
+      x: n ? [ST.omegaHist[n-1]] : [],
+      y: n ? [ST.b1Hist[n-1]] : [],
+      z: n ? [ST.a1Hist[n-1]] : [],
+      type:'scatter3d', mode:'markers',
+      marker:{color:'#1d4ed8', size:5, line:{color:'#fff', width:1}},
+      hoverinfo:'skip', showlegend:false
+    }, {
+      x: n ? [ST.omegaHist2[n-1]] : [],
+      y: n ? [ST.b1Hist2[n-1]] : [],
+      z: n ? [ST.a1Hist2[n-1]] : [],
+      type:'scatter3d', mode:'markers',
+      marker:{color:'#dc2626', size:5, line:{color:'#fff', width:1}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  } else {
+    /* Catmull-Rom smoothing: 4× densification eliminates the
+       angular "coarseness" between consecutive RK4 samples. */
+    var sm = catmullRom3D(ST.omegaHist, ST.b1Hist, ST.a1Hist, ST.tHist, 4);
+    /* Colour by raw simulation time, clamped to [0, endTime]. t=0 → blue,
+       t=endTime → red. Using the absolute endTime (not a per-frame min/max)
+       means colour stays stable as the trajectory grows: a trajectory
+       point keeps the same colour for the whole run. */
+    var tEnd = ST.endTime || 1;
+    traces = [{
+      x: sm.x, y: sm.y, z: sm.z,
+      type:'scatter3d', mode:'lines',
+      line:{
+        color: sm.t,
+        colorscale: BLUE_RED_SCALE,
+        width: 2,
+        cauto: false,
+        cmin: 0,
+        cmax: tEnd,
+        showscale: true,
+        colorbar: makeMalkusColorbar(tEnd)
+      },
+      hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>',
+      name:'orbit'
+    }, {
+      /* current point */
+      x: n ? [ST.omegaHist[n-1]] : [],
+      y: n ? [ST.b1Hist[n-1]] : [],
+      z: n ? [ST.a1Hist[n-1]] : [],
+      type:'scatter3d', mode:'markers',
+      marker:{color:'#dc2626', size:4.5, line:{color:'#fff', width:1}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  }
 
-  /* Colour by raw simulation time, clamped to [0, endTime]. t=0 → blue,
-     t=endTime → red. Using the absolute endTime (not a per-frame min/max)
-     means colour stays stable as the trajectory grows: a trajectory
-     point keeps the same colour for the whole run. */
-  var tEnd = ST.endTime || 1;
-
-  Plotly.react('plotPhase',[{
-    x: sm.x, y: sm.y, z: sm.z,
-    type:'scatter3d', mode:'lines',
-    line:{
-      color: sm.t,
-      colorscale: BLUE_RED_SCALE,
-      width: 2,
-      cauto: false,
-      cmin: 0,
-      cmax: tEnd,
-      showscale: true,
-      colorbar: makeMalkusColorbar(tEnd)
-    },
-    hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>',
-    name:'orbit'
-  }, {
-    /* current point */
-    x: n ? [ST.omegaHist[n-1]] : [],
-    y: n ? [ST.b1Hist[n-1]] : [],
-    z: n ? [ST.a1Hist[n-1]] : [],
-    type:'scatter3d', mode:'markers',
-    marker:{color:'#dc2626', size:4.5, line:{color:'#fff', width:1}},
-    hoverinfo:'skip', showlegend:false
-  }], {
+  Plotly.react('plotPhase', traces, {
     scene:{
       xaxis:{title:'ω', gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
       yaxis:{title:'b₁', gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
@@ -1117,7 +1286,71 @@ function drawPhasePlot() {
     paper_bgcolor:bg,
     font:{color: hc?'#000':'#374151', size:10},
     hovermode:false,
+    showlegend: ST.sensitivityMode,
+    legend: ST.sensitivityMode ? {x:.02, y:.98, bgcolor:'rgba(255,255,255,.85)', font:{size:10}} : undefined,
     uirevision:'camera3d-v2'
+  }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
+}
+
+/* Log-scale separation plot, only meaningful when both trajectories are
+   integrated. The dashed reference line ε e^(λ t) with λ=0.9 (Lorenz value
+   for σ≈10, ρ≈28) lets the user see whether the early slope matches the
+   classical maximal Lyapunov exponent. */
+function drawSeparationPlot() {
+  if (!ST.sensitivityMode) return;
+  if (!document.getElementById('plotSep')) return;
+  var hc = isHC();
+  var bg = hc ? '#fff' : '#fafafa';
+  var grid = hc ? 'rgba(0,0,0,.2)' : '#e5e7eb';
+  var eps = ST.eps || 1e-5;
+  var lambda = 0.9;
+  var refX = [], refY = [];
+  /* Sample the reference line on a coarse grid so Plotly's log axis renders
+     it cleanly; clamp at a large ceiling so we don't blow up the y range. */
+  var tEnd = ST.endTime || 60;
+  var nRef = 80;
+  var capY = 1e6;
+  for (var i = 0; i <= nRef; i++) {
+    var tR = (i / nRef) * tEnd;
+    var yR = eps * Math.exp(lambda * tR);
+    if (yR > capY) yR = capY;
+    refX.push(tR);
+    refY.push(yR);
+  }
+  /* Keep only strictly positive separations for log axis. */
+  var sx = [], sy = [];
+  for (var j = 0; j < ST.tHist.length; j++) {
+    var v = ST.sepHist[j];
+    if (isFinite(v) && v > 0) { sx.push(ST.tHist[j]); sy.push(v); }
+  }
+  var nH = sx.length;
+  Plotly.react('plotSep', [{
+    x: sx, y: sy,
+    type:'scatter', mode:'lines',
+    line:{color:'#dc2626', width:2.2},
+    name:'‖Δ(t)‖',
+    hovertemplate:'t=%{x:.2f}<br>‖Δ‖=%{y:.3e}<extra></extra>'
+  }, {
+    x: refX, y: refY,
+    type:'scatter', mode:'lines',
+    line:{color:'#6b7280', width:1.4, dash:'dash'},
+    name:'ε e^(0.9 t)',
+    hovertemplate:'t=%{x:.2f}<br>ref=%{y:.3e}<extra></extra>'
+  }, {
+    x: nH ? [sx[nH-1]] : [],
+    y: nH ? [sy[nH-1]] : [],
+    type:'scatter', mode:'markers',
+    marker:{color:'#dc2626', size:7, line:{color:'#fff', width:1.5}},
+    hoverinfo:'skip', showlegend:false
+  }], {
+    margin:{t:6, r:12, b:34, l:62},
+    plot_bgcolor: bg,
+    paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'-apple-system,Arial,sans-serif', size:10, color: hc?'#000':'#374151'},
+    xaxis:{title:{text:'t', font:{size:11}}, gridcolor:grid, zerolinecolor:grid, range:[0, tEnd]},
+    yaxis:{type:'log', title:{text:'‖Δ(t)‖ (log)', font:{size:11}}, gridcolor:grid, zerolinecolor:grid, exponentformat:'power'},
+    showlegend:true,
+    legend:{x:.02, y:.98, bgcolor:'rgba(255,255,255,.85)', font:{size:10}}
   }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
 }
 
@@ -1182,6 +1415,16 @@ function animLoop() {
     ST.omegaHist.push(ST.omega);
     ST.a1Hist.push(fc.a1);
     ST.b1Hist.push(fc.b1);
+    if (ST.sensitivityMode) {
+      var fc2 = fourierCoeffs2();
+      ST.omegaHist2.push(ST.omega2);
+      ST.a1Hist2.push(fc2.a1);
+      ST.b1Hist2.push(fc2.b1);
+      var dx = ST.omega - ST.omega2;
+      var dy = fc.b1 - fc2.b1;
+      var dz = fc.a1 - fc2.a1;
+      ST.sepHist.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+    }
   }
   var excess = ST.tHist.length - ST.maxHist;
   if (excess > 0) {
@@ -1189,6 +1432,12 @@ function animLoop() {
     ST.omegaHist.splice(0, excess);
     ST.a1Hist.splice(0, excess);
     ST.b1Hist.splice(0, excess);
+    if (ST.sensitivityMode) {
+      ST.omegaHist2.splice(0, excess);
+      ST.a1Hist2.splice(0, excess);
+      ST.b1Hist2.splice(0, excess);
+      ST.sepHist.splice(0, excess);
+    }
   }
 
   drawWheel();
@@ -1198,6 +1447,7 @@ function animLoop() {
   if (animLoop.framesSincePlot >= 5) {
     drawOmegaPlot();
     if (ST.showPhase) drawPhasePlot();
+    if (ST.sensitivityMode) drawSeparationPlot();
     animLoop.framesSincePlot = 0;
   }
   if (animLoop.framesSinceReadout === undefined) animLoop.framesSinceReadout = 0;
@@ -1210,6 +1460,7 @@ function animLoop() {
     /* Flush a final redraw so the last state is on-screen then stop. */
     drawOmegaPlot();
     if (ST.showPhase) drawPhasePlot();
+    if (ST.sensitivityMode) drawSeparationPlot();
     updateReadout();
     stopAnim();
     say('End time reached');
@@ -1284,11 +1535,14 @@ function onParamChange(pid, rawVal) {
   syncParamInputs(pDef, v);
   pDef.value = v;
   if (pid === 'N') {
-    /* Rebuild buckets preserving mass roughly — simplest: reset buckets */
+    /* Rebuild buckets preserving mass roughly — simplest: reset buckets.
+       This zeroes both ST.m and ST.m2 via initBuckets. ST.omega and ST.omega2
+       are intentionally preserved so the wheel keeps spinning across an N change. */
     initBuckets(v);
     buildWheelSvg();
     /* Clear history since dimensionality of system changed */
     ST.tHist.length = 0; ST.omegaHist.length = 0; ST.a1Hist.length = 0; ST.b1Hist.length = 0;
+    ST.omegaHist2.length = 0; ST.a1Hist2.length = 0; ST.b1Hist2.length = 0; ST.sepHist.length = 0;
   }
   ST.currentPreset = matchingPreset() || 'custom';
   highlightPreset();
@@ -1512,6 +1766,47 @@ document.addEventListener('DOMContentLoaded', function() {
     if (this.checked) drawPhasePlot();
   });
 
+  /* Sensitivity mode toggle: swap the left-column panel between wheel and
+     separation plot, reset both trajectories with the current epsilon kick,
+     and (if paused) immediately start animating so the user sees the demo. */
+  function setSensitivityMode(on) {
+    ST.sensitivityMode = !!on;
+    var wp = document.getElementById('wheelPanel');
+    var sp = document.getElementById('sepPanel');
+    var er = document.getElementById('epsRow');
+    if (wp) wp.hidden = !!on;
+    if (sp) sp.hidden = !on;
+    if (er) er.style.display = on ? 'inline-flex' : 'none';
+    var pr = ST.currentPreset && PRESETS[ST.currentPreset]
+      ? PRESETS[ST.currentPreset]
+      : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+    resetState(pr);
+    if (on && !ST.running) startAnim();
+    say(on ? 'Sensitivity mode on — twin trajectory launched' : 'Sensitivity mode off');
+  }
+  document.getElementById('sensMode').addEventListener('change', function(){
+    setSensitivityMode(this.checked);
+  });
+  (function(){
+    var epsInp = document.getElementById('epsInput');
+    if (!epsInp) return;
+    var applyEps = function(){
+      var v = parseFloat(epsInp.value);
+      if (!isFinite(v) || v <= 0) v = 1e-5;
+      ST.eps = v;
+      if (ST.sensitivityMode) {
+        var pr = ST.currentPreset && PRESETS[ST.currentPreset]
+          ? PRESETS[ST.currentPreset]
+          : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+        resetState(pr);
+        if (!ST.running) startAnim();
+      }
+      say('epsilon = ' + v);
+    };
+    epsInp.addEventListener('change', applyEps);
+    epsInp.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); applyEps(); } });
+  })();
+
   /* Info panel */
   document.getElementById('infoBtn').addEventListener('click', function(){
     var exp = this.getAttribute('aria-expanded') === 'true';
@@ -1524,7 +1819,9 @@ document.addEventListener('DOMContentLoaded', function() {
   /* High contrast */
   document.getElementById('ctog').addEventListener('click', function(){
     document.documentElement.classList.toggle('hc');
-    drawWheel(); drawOmegaPlot(); if (ST.showPhase) drawPhasePlot();
+    drawWheel(); drawOmegaPlot();
+    if (ST.showPhase) drawPhasePlot();
+    if (ST.sensitivityMode) drawSeparationPlot();
     say('High contrast ' + (isHC() ? 'on' : 'off'));
   });
 
@@ -1546,6 +1843,7 @@ document.addEventListener('DOMContentLoaded', function() {
     _rt = setTimeout(function(){
       drawOmegaPlot();
       if (ST.showPhase) drawPhasePlot();
+      if (ST.sensitivityMode) drawSeparationPlot();
     }, 120);
   });
 });
