@@ -1251,6 +1251,11 @@
                 }
             }
 
+            getShadingBounds() {
+                const EXTENT = 1e6;
+                return { xMin: -EXTENT, xMax: EXTENT, yMin: -EXTENT, yMax: EXTENT };
+            }
+
             extendLineToEdges(ineq, bounds) {
                 const extension = 0.5 * (bounds.xMax - bounds.xMin);
                 const x1 = bounds.xMin - extension;
@@ -1276,6 +1281,7 @@
 
                 const data = [];
                 const isReverse = this.getShadingMode() === 'reverse';
+                const shadingBounds = this.getShadingBounds();
 
                 inequalities.forEach((ineq, i) => {
                     const isStrict = ineq.relation === '<' || ineq.relation === '>';
@@ -1283,9 +1289,9 @@
                     const rgb = this.hexToRgb(ineq.color);
                     const shadeColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
 
-                    // Line trace (over-extended)
+                    // Line trace (extended across the entire visible plane)
                     if (Math.abs(ineq.b) > 0.001) {
-                        const extended = this.extendLineToEdges(ineq, bounds);
+                        const extended = this.extendLineToEdges(ineq, shadingBounds);
                         if (extended) {
                             data.push({
                                 x: extended.x,
@@ -1300,7 +1306,7 @@
                         const xVal = ineq.c / ineq.a;
                         data.push({
                             x: [xVal, xVal],
-                            y: [bounds.yMin - 10, bounds.yMax + 10],
+                            y: [shadingBounds.yMin, shadingBounds.yMax],
                             mode: 'lines',
                             line: { color: ineq.color, width: 3, dash: dash },
                             showlegend: false,
@@ -1308,21 +1314,21 @@
                         });
                     }
 
-                    // Shading polygons
+                    // Shading polygons (cover the whole visible plane at any zoom)
                     let x = [], y = [];
                     let shadeAbove = (ineq.relation === '≥' || ineq.relation === '>') && ineq.b > 0 ||
                                     (ineq.relation === '≤' || ineq.relation === '<') && ineq.b < 0;
                     if (isReverse) shadeAbove = !shadeAbove;
 
                     if (Math.abs(ineq.b) > 0.001) {
-                        const yLeft = (ineq.c - ineq.a * bounds.xMin) / ineq.b;
-                        const yRight = (ineq.c - ineq.a * bounds.xMax) / ineq.b;
+                        const yLeft = (ineq.c - ineq.a * shadingBounds.xMin) / ineq.b;
+                        const yRight = (ineq.c - ineq.a * shadingBounds.xMax) / ineq.b;
                         if (shadeAbove) {
-                            x = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin];
-                            y = [yLeft, yRight, bounds.yMax, bounds.yMax];
+                            x = [shadingBounds.xMin, shadingBounds.xMax, shadingBounds.xMax, shadingBounds.xMin];
+                            y = [yLeft, yRight, shadingBounds.yMax, shadingBounds.yMax];
                         } else {
-                            x = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin];
-                            y = [yLeft, yRight, bounds.yMin, bounds.yMin];
+                            x = [shadingBounds.xMin, shadingBounds.xMax, shadingBounds.xMax, shadingBounds.xMin];
+                            y = [yLeft, yRight, shadingBounds.yMin, shadingBounds.yMin];
                         }
                     } else if (Math.abs(ineq.a) > 0.001) {
                         const xVal = ineq.c / ineq.a;
@@ -1330,11 +1336,11 @@
                                         (ineq.relation === '≤' || ineq.relation === '<') && ineq.a < 0;
                         if (isReverse) shadeRight = !shadeRight;
                         if (shadeRight) {
-                            x = [xVal, bounds.xMax, bounds.xMax, xVal];
-                            y = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax];
+                            x = [xVal, shadingBounds.xMax, shadingBounds.xMax, xVal];
+                            y = [shadingBounds.yMin, shadingBounds.yMin, shadingBounds.yMax, shadingBounds.yMax];
                         } else {
-                            x = [bounds.xMin, xVal, xVal, bounds.xMin];
-                            y = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax];
+                            x = [shadingBounds.xMin, xVal, xVal, shadingBounds.xMin];
+                            y = [shadingBounds.yMin, shadingBounds.yMin, shadingBounds.yMax, shadingBounds.yMax];
                         }
                     } else {
                         return;
@@ -1788,6 +1794,7 @@
             updatePlotWithSweepLine(pValue, objective, bounds, inequalities, cornerPoints, optimalIndices, atOptimal) {
                 const data = [];
                 const isReverse = this.getShadingMode() === 'reverse';
+                const shadingBounds = this.getShadingBounds();
 
                 // Draw all inequality lines and shading
                 inequalities.forEach((ineq, i) => {
@@ -1796,9 +1803,9 @@
                     const rgb = this.hexToRgb(ineq.color);
                     const shadeColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.15)`;
 
-                    // Line trace
+                    // Line trace (extended across the entire visible plane)
                     if (Math.abs(ineq.b) > 0.001) {
-                        const extended = this.extendLineToEdges(ineq, bounds);
+                        const extended = this.extendLineToEdges(ineq, shadingBounds);
                         if (extended) {
                             data.push({
                                 x: extended.x,
@@ -1813,7 +1820,7 @@
                         const xVal = ineq.c / ineq.a;
                         data.push({
                             x: [xVal, xVal],
-                            y: [bounds.yMin - 10, bounds.yMax + 10],
+                            y: [shadingBounds.yMin, shadingBounds.yMax],
                             mode: 'lines',
                             line: { color: ineq.color, width: 3, dash: dash },
                             showlegend: false,
@@ -1821,21 +1828,21 @@
                         });
                     }
 
-                    // Shading
+                    // Shading (cover the whole visible plane at any zoom)
                     let x = [], y = [];
                     let shadeAbove = (ineq.relation === '≥' || ineq.relation === '>') && ineq.b > 0 ||
                                     (ineq.relation === '≤' || ineq.relation === '<') && ineq.b < 0;
                     if (isReverse) shadeAbove = !shadeAbove;
 
                     if (Math.abs(ineq.b) > 0.001) {
-                        const yLeft = (ineq.c - ineq.a * bounds.xMin) / ineq.b;
-                        const yRight = (ineq.c - ineq.a * bounds.xMax) / ineq.b;
+                        const yLeft = (ineq.c - ineq.a * shadingBounds.xMin) / ineq.b;
+                        const yRight = (ineq.c - ineq.a * shadingBounds.xMax) / ineq.b;
                         if (shadeAbove) {
-                            x = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin];
-                            y = [yLeft, yRight, bounds.yMax, bounds.yMax];
+                            x = [shadingBounds.xMin, shadingBounds.xMax, shadingBounds.xMax, shadingBounds.xMin];
+                            y = [yLeft, yRight, shadingBounds.yMax, shadingBounds.yMax];
                         } else {
-                            x = [bounds.xMin, bounds.xMax, bounds.xMax, bounds.xMin];
-                            y = [yLeft, yRight, bounds.yMin, bounds.yMin];
+                            x = [shadingBounds.xMin, shadingBounds.xMax, shadingBounds.xMax, shadingBounds.xMin];
+                            y = [yLeft, yRight, shadingBounds.yMin, shadingBounds.yMin];
                         }
                     } else if (Math.abs(ineq.a) > 0.001) {
                         const xVal = ineq.c / ineq.a;
@@ -1843,11 +1850,11 @@
                                         (ineq.relation === '≤' || ineq.relation === '<') && ineq.a < 0;
                         if (isReverse) shadeRight = !shadeRight;
                         if (shadeRight) {
-                            x = [xVal, bounds.xMax, bounds.xMax, xVal];
-                            y = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax];
+                            x = [xVal, shadingBounds.xMax, shadingBounds.xMax, xVal];
+                            y = [shadingBounds.yMin, shadingBounds.yMin, shadingBounds.yMax, shadingBounds.yMax];
                         } else {
-                            x = [bounds.xMin, xVal, xVal, bounds.xMin];
-                            y = [bounds.yMin, bounds.yMin, bounds.yMax, bounds.yMax];
+                            x = [shadingBounds.xMin, xVal, xVal, shadingBounds.xMin];
+                            y = [shadingBounds.yMin, shadingBounds.yMin, shadingBounds.yMax, shadingBounds.yMax];
                         }
                     } else {
                         return;
