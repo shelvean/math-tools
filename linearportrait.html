@@ -118,6 +118,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .class-badge .ct{font-size:.9375rem;font-weight:800;}
 .class-badge .cs{font-size:.8125rem;font-weight:600;opacity:.9;}
 .class-badge .cd{font-size:.75rem;font-weight:500;opacity:.8;margin-top:.1rem;}
+.solver-active{display:block;margin-top:.2rem;font-size:.7rem;color:var(--muted);font-weight:600;}
+.solver-active #solverActiveName{color:var(--txt);}
 
 /* ── Equation display ── */
 .eq-display{text-align:center;padding:.5rem .75rem;background:var(--info);
@@ -286,7 +288,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <div class="ccell" style="background:rgba(75,85,99,.07);border-left:3px solid #4b5563"><strong>Star Node:</strong> \(A=\lambda I\). Repeated eigenvalue, every direction is an eigenvector; straight-line orbits everywhere.</div>
       </div>
       <h2>Numerical Method</h2>
-      <p>Trajectories are computed by integrating \(\dot{\mathbf{x}}=A\mathbf{x}\) both forward and backward in time using a 4th-order <strong>Runge&ndash;Kutta (RK4)</strong> method with adaptive step size. Centers are handled by a refined fixed-step integrator to produce accurate closed orbits.</p>
+      <p>Trajectories are integrated forward and backward from the click point with a choice of one-step methods:</p>
+      <ul>
+        <li><strong>RK4</strong> — classical explicit Runge–Kutta, 4th order. Good general default for non-stiff systems.</li>
+        <li><strong>Tsit5</strong> — Tsitouras 5(4) explicit Runge–Kutta, 6 stages, 5th-order accuracy. Smoother curves than RK4 at the same step size; same stability footprint (no benefit on stiff problems).</li>
+        <li><strong>SDIRK2</strong> — singly-diagonally-implicit Runge–Kutta, 2 stages, 2nd order with \(\gamma = 1-\tfrac{1}{\sqrt{2}}\). The method is L-stable, so it remains accurate on stiff linear systems where explicit methods would either blow up or require a tiny step.</li>
+      </ul>
+      <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
       <h2>How to Use</h2>
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
@@ -329,6 +337,21 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         role="status" aria-live="polite" aria-label="Classification pending">
         <span class="ct">—</span><span class="cs"></span><span class="cd"></span>
       </div>
+    </div>
+
+    <!-- Solver selector -->
+    <div class="cfield cfield-med">
+      <label for="solverSel">Solver</label>
+      <select id="solverSel" aria-describedby="solverActiveDesc">
+        <option value="auto" selected>Auto (stiffness aware)</option>
+        <option value="rk4">RK4 (explicit, 4th order)</option>
+        <option value="tsit5">Tsit5 (explicit, 5th order)</option>
+        <option value="sdirk2">SDIRK2 (implicit, L-stable)</option>
+      </select>
+      <span id="solverActive" class="solver-active" aria-live="polite">
+        Active: <span id="solverActiveName">RK4</span>
+      </span>
+      <span id="solverActiveDesc" class="sr-only">Auto picks SDIRK2 for obviously stiff systems; RK4 otherwise.</span>
     </div>
 
     <!-- Arrows per axis -->
@@ -607,6 +630,104 @@ function rk4(x,y,a,b,c,d,h){
   return{x:x+h/6*(k1x+2*k2x+2*k3x+k4x),y:y+h/6*(k1y+2*k2y+2*k3y+k4y)};
 }
 
+/* ── Tsit5 ── Tsitouras 5(4) explicit Runge–Kutta.
+   Six stages here (b7 = 0, FSAL stage skipped since we are fixed-step). */
+var TSIT_A21=0.161;
+var TSIT_A31=-0.008480655492356989,TSIT_A32=0.335480655492357;
+var TSIT_A41=2.8971530571054935, TSIT_A42=-6.359448489975075, TSIT_A43=4.3622954328695815;
+var TSIT_A51=5.325864828439257,  TSIT_A52=-11.748883564062828,TSIT_A53=7.4955393428898365,TSIT_A54=-0.09249506636175525;
+var TSIT_A61=5.86145544294642,   TSIT_A62=-12.92096931784711, TSIT_A63=8.159367898576159, TSIT_A64=-0.071584973281401,TSIT_A65=-0.028269050394068383;
+var TSIT_B1=0.09646076681806523, TSIT_B2=0.01, TSIT_B3=0.4798896504144996, TSIT_B4=1.379008574103742, TSIT_B5=-3.290069515436081, TSIT_B6=2.324710524099774;
+function tsit5(x,y,a,b,c,d,h){
+  var k1x=a*x+b*y,                 k1y=c*x+d*y;
+  var x2=x+h*TSIT_A21*k1x,         y2=y+h*TSIT_A21*k1y;
+  var k2x=a*x2+b*y2,               k2y=c*x2+d*y2;
+  var x3=x+h*(TSIT_A31*k1x+TSIT_A32*k2x), y3=y+h*(TSIT_A31*k1y+TSIT_A32*k2y);
+  var k3x=a*x3+b*y3,               k3y=c*x3+d*y3;
+  var x4=x+h*(TSIT_A41*k1x+TSIT_A42*k2x+TSIT_A43*k3x), y4=y+h*(TSIT_A41*k1y+TSIT_A42*k2y+TSIT_A43*k3y);
+  var k4x=a*x4+b*y4,               k4y=c*x4+d*y4;
+  var x5=x+h*(TSIT_A51*k1x+TSIT_A52*k2x+TSIT_A53*k3x+TSIT_A54*k4x), y5=y+h*(TSIT_A51*k1y+TSIT_A52*k2y+TSIT_A53*k3y+TSIT_A54*k4y);
+  var k5x=a*x5+b*y5,               k5y=c*x5+d*y5;
+  var x6=x+h*(TSIT_A61*k1x+TSIT_A62*k2x+TSIT_A63*k3x+TSIT_A64*k4x+TSIT_A65*k5x),
+      y6=y+h*(TSIT_A61*k1y+TSIT_A62*k2y+TSIT_A63*k3y+TSIT_A64*k4y+TSIT_A65*k5y);
+  var k6x=a*x6+b*y6,               k6y=c*x6+d*y6;
+  return{
+    x: x + h*(TSIT_B1*k1x + TSIT_B2*k2x + TSIT_B3*k3x + TSIT_B4*k4x + TSIT_B5*k5x + TSIT_B6*k6x),
+    y: y + h*(TSIT_B1*k1y + TSIT_B2*k2y + TSIT_B3*k3y + TSIT_B4*k4y + TSIT_B5*k5y + TSIT_B6*k6y)
+  };
+}
+
+/* ── SDIRK2 ── 2-stage singly-diagonally-implicit RK with γ = 1 − 1/√2,
+   L-stable and 2nd order. For the linear system x' = A x the implicit
+   solve (I − γh A) v = r is a 2×2 inverse, computed analytically. */
+var SDIRK_GAMMA = 1 - 1/Math.SQRT2;
+function sdirk2(x,y,a,b,c,d,h){
+  var g = SDIRK_GAMMA * h;
+  var m11 = 1 - g*a, m12 = -g*b;
+  var m21 =   -g*c, m22 = 1 - g*d;
+  var det = m11*m22 - m12*m21;
+  if (Math.abs(det) < 1e-14) return rk4(x,y,a,b,c,d,h); /* fall back if singular */
+  /* Stage 1: solve (I − γh A) k1 = A x_n */
+  var r1x = a*x + b*y, r1y = c*x + d*y;
+  var k1x = ( m22*r1x - m12*r1y) / det;
+  var k1y = (-m21*r1x + m11*r1y) / det;
+  /* Stage 2: solve (I − γh A) k2 = A (x_n + (1−γ) h k1) */
+  var omg = 1 - SDIRK_GAMMA;
+  var xs = x + omg*h*k1x, ys = y + omg*h*k1y;
+  var r2x = a*xs + b*ys, r2y = c*xs + d*ys;
+  var k2x = ( m22*r2x - m12*r2y) / det;
+  var k2y = (-m21*r2x + m11*r2y) / det;
+  return {
+    x: x + h*(omg*k1x + SDIRK_GAMMA*k2x),
+    y: y + h*(omg*k1y + SDIRK_GAMMA*k2y)
+  };
+}
+
+/* ── Stiffness detector ──
+   A 2×2 linear system is "obviously stiff" when the eigenvalues are real,
+   the same sign, and their magnitudes are widely separated. Complex
+   eigenvalues (spirals, centers) are not classically stiff. */
+function isStiff(a,b,c,d){
+  var tr = a+d, det = a*d - b*c, disc = tr*tr - 4*det;
+  if (disc <= 1e-12) return false;             /* complex or near-repeated */
+  var sq = Math.sqrt(disc);
+  var l1 = (tr + sq)/2, l2 = (tr - sq)/2;
+  if (l1*l2 <= 1e-10) return false;            /* opposite signs or zero (saddle / singular) */
+  var m1 = Math.abs(l1), m2 = Math.abs(l2);
+  var hi = Math.max(m1, m2), lo = Math.max(Math.min(m1, m2), 1e-12);
+  return hi / lo >= 50;
+}
+
+function solverLabel(key){
+  return {auto:'Auto', rk4:'RK4', tsit5:'Tsit5', sdirk2:'SDIRK2'}[key] || key;
+}
+
+function pickSolver(a,b,c,d){
+  var sel = document.getElementById('solverSel');
+  var v = sel ? sel.value : 'auto';
+  if (v === 'auto') return isStiff(a,b,c,d) ? 'sdirk2' : 'rk4';
+  return v;
+}
+
+function stepSolver(method,x,y,a,b,c,d,h){
+  if (method === 'tsit5')  return tsit5 (x,y,a,b,c,d,h);
+  if (method === 'sdirk2') return sdirk2(x,y,a,b,c,d,h);
+  return rk4(x,y,a,b,c,d,h);
+}
+
+/* Update the small "Active: X" line under the dropdown. Called whenever
+   the matrix or the dropdown changes. */
+function updateActiveSolver(){
+  var sel = document.getElementById('solverSel');
+  var nameEl = document.getElementById('solverActiveName');
+  if (!sel || !nameEl) return;
+  var M = getM();
+  var chosen = pickSolver(M.a, M.b, M.c, M.d);
+  var label = solverLabel(chosen);
+  if (sel.value === 'auto') label += ' (auto' + (isStiff(M.a,M.b,M.c,M.d) ? ', stiff' : '') + ')';
+  nameEl.textContent = label;
+}
+
 /* ── Trajectory computation ── */
 function computeCenterTraj(x0,y0,a,b,c,d){
   /* For centers, compute the period from eigenvalues and trace one full orbit */
@@ -630,13 +751,17 @@ async function computeTraj(x0,y0){
   var isCenter=(cl.type==='Center');
   var isSpiral=(cl.type.indexOf('Spiral')>=0);
   if(isCenter)return computeCenterTraj(x0,y0,a,b,c,d);
+  /* Resolve the integrator once per trajectory: Auto picks SDIRK2 for
+     obviously stiff systems (real, same-sign, wide-spread eigenvalues),
+     otherwise RK4. Explicit choice in the dropdown overrides. */
+  var method=pickSolver(a,b,c,d);
   var pts=[],MAX=1000,h,x,y,t;
   if(inBounds(x0,y0))pts.push({cx:s2cx(x0),cy:s2cy(y0),sx:x0,sy:y0,t:0});
   x=x0;y=y0;t=0;
   for(var i=0;i<MAX;i++){
     var dx=a*x+b*y,dy=c*x+d*y,spd=Math.sqrt(dx*dx+dy*dy);
     h=isSpiral?0.015:(spd>0.1?Math.min(0.3/spd,0.1):0.05);
-    var n=rk4(x,y,a,b,c,d,h);x=n.x;y=n.y;t+=h;
+    var n=stepSolver(method,x,y,a,b,c,d,h);x=n.x;y=n.y;t+=h;
     if(Math.abs(x)>100||Math.abs(y)>100)break;
     if(!inBounds(x,y))break;
     var cx2=s2cx(x),cy2=s2cy(y);
@@ -648,7 +773,7 @@ async function computeTraj(x0,y0){
   for(var i=0;i<MAX;i++){
     var dx=a*x+b*y,dy=c*x+d*y,spd=Math.sqrt(dx*dx+dy*dy);
     h=isSpiral?0.015:(spd>0.1?Math.min(0.3/spd,0.1):0.05);
-    var n=rk4(x,y,a,b,c,d,-h);x=n.x;y=n.y;t-=h;
+    var n=stepSolver(method,x,y,a,b,c,d,-h);x=n.x;y=n.y;t-=h;
     if(Math.abs(x)>100||Math.abs(y)>100)break;
     if(!inBounds(x,y))break;
     var cx2=s2cx(x),cy2=s2cy(y);
@@ -892,7 +1017,7 @@ function drawPortrait(){
     });
   }
 
-  updateBadge();updateEq();
+  updateBadge();updateEq();updateActiveSolver();
 }
 
 /* ── Bifurcation animation ── */
@@ -1040,10 +1165,22 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 
   /* Matrix debounced redraw */
-  var dDraw=debounce(function(){clearComputed();drawPortraitAndReset();},300);
+  var dDraw=debounce(function(){clearComputed();drawPortraitAndReset();updateActiveSolver();},300);
   ['a','b','c','d'].forEach(function(id){
     document.getElementById(id).addEventListener('input',function(){clearComputed();dDraw();});
   });
+
+  /* Solver change: re-integrate any new trajectories with the new method
+     and refresh the "Active" indicator. */
+  document.getElementById('solverSel').addEventListener('change',function(){
+    clearComputed();
+    drawPortraitAndReset();
+    updateActiveSolver();
+    say('Solver: '+document.getElementById('solverActiveName').textContent);
+  });
+
+  /* Initial Active indicator. */
+  updateActiveSolver();
 
   /* Settings throttled */
   var thDraw=throttle(drawPortrait,80);
