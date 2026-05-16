@@ -207,6 +207,20 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 #plotOmega{width:100%;height:240px;}
 #plotPhase{width:100%;height:320px;}
 
+/* External LaTeX legend for the separation plot. Kept outside Plotly so
+   MathJax typesets once and never fires on animation frames. */
+.sep-legend{display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;
+  padding:.55rem .9rem;background:var(--sect);border-top:1px solid var(--bdr2);
+  font-size:1rem;color:var(--txt);}
+.sep-leg-item{display:inline-flex;align-items:center;gap:.5rem;}
+.sep-leg-swatch{display:inline-block;width:32px;height:0;flex-shrink:0;
+  border-top-width:3px;}
+.sep-leg-solid{border-top:3px solid #dc2626;}
+.sep-leg-dashed{border-top:3px dashed #6b7280;}
+.hc .sep-leg-solid{border-top-color:#cc0000;}
+.hc .sep-leg-dashed{border-top-color:#000;}
+.sep-leg-math mjx-container{font-size:1em !important;vertical-align:middle;}
+
 /* Pedagogical info box below */
 .ped-box{margin-top:.5rem;padding:.65rem .85rem;background:rgba(15,118,110,.06);
   border:1px solid rgba(15,118,110,.25);border-left:4px solid var(--teal);
@@ -501,6 +515,16 @@ if(document.referrer.includes('projects.html')){
         </div>
         <div id="plotSep" style="width:100%;height:400px;" role="img"
              aria-label="Log-scale plot of the separation between two trajectories versus time. In the chaotic regime the curve is initially linear, indicating exponential growth at the maximal Lyapunov exponent; the curve then saturates at the diameter of the attractor."></div>
+        <div class="sep-legend" id="sepLegend" role="region" aria-label="Legend for trajectory separation plot">
+          <span class="sep-leg-item">
+            <span class="sep-leg-swatch sep-leg-solid" aria-hidden="true"></span>
+            <span class="sep-leg-math">\(\|\Delta(t)\|\)</span>
+          </span>
+          <span class="sep-leg-item">
+            <span class="sep-leg-swatch sep-leg-dashed" aria-hidden="true"></span>
+            <span class="sep-leg-math">\(\varepsilon\, e^{0.9\, t}\)</span>
+          </span>
+        </div>
         <div class="wheel-footer" style="justify-content:flex-start;gap:1rem;">
           <span style="font-size:.8rem;">Slope of the early linear region \(\approx \lambda_1\) &mdash; the maximal Lyapunov exponent. Saturation marks the predictability horizon.</span>
         </div>
@@ -1337,18 +1361,21 @@ function drawSeparationPlot() {
     if (isFinite(v) && v > 0) { sx.push(ST.tHist[j]); sy.push(v); }
   }
   var nH = sx.length;
+  /* Legend is rendered outside the plot as static MathJax-typeset HTML
+     (see #sepLegend); Plotly's own legend is disabled so trace name lookups
+     never trigger a typeset on animation frames. */
   Plotly.react('plotSep', [{
     x: sx, y: sy,
     type:'scatter', mode:'lines',
     line:{color:'#dc2626', width:2.2},
-    name:'‖Δ(t)‖',
-    hovertemplate:'t=%{x:.2f}<br>‖Δ‖=%{y:.3e}<extra></extra>'
+    hovertemplate:'t=%{x:.2f}<br>‖Δ‖=%{y:.3e}<extra></extra>',
+    showlegend:false
   }, {
     x: refX, y: refY,
     type:'scatter', mode:'lines',
     line:{color:'#6b7280', width:1.6, dash:'dash'},
-    name:'ε · e^(0.9 t)',
-    hovertemplate:'t=%{x:.2f}<br>ref=%{y:.3e}<extra></extra>'
+    hovertemplate:'t=%{x:.2f}<br>ref=%{y:.3e}<extra></extra>',
+    showlegend:false
   }, {
     x: nH ? [sx[nH-1]] : [],
     y: nH ? [sy[nH-1]] : [],
@@ -1364,8 +1391,7 @@ function drawSeparationPlot() {
            gridcolor:grid, zerolinecolor:grid, range:[0, tEnd]},
     yaxis:{type:'log', title:{text:'‖Δ(t)‖', font: axisTitleFont(hc)},
            tickfont: plotFont(hc, 12), gridcolor:grid, zerolinecolor:grid, exponentformat:'power'},
-    showlegend:true,
-    legend:{x:.02, y:.98, bgcolor:'rgba(255,255,255,.85)', font: plotFont(hc, 13)}
+    showlegend:false
   }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
 }
 
@@ -1792,6 +1818,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (wp) wp.hidden = !!on;
     if (sp) sp.hidden = !on;
     if (er) er.style.display = on ? 'inline-flex' : 'none';
+    /* The legend is static \(...\) markup — typeset once when first revealed
+       in case MathJax hadn't finished its initial sweep yet. */
+    if (on) {
+      var legendEl = document.getElementById('sepLegend');
+      if (legendEl) mj([legendEl]);
+    }
     var pr = ST.currentPreset && PRESETS[ST.currentPreset]
       ? PRESETS[ST.currentPreset]
       : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
