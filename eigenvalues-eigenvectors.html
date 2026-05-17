@@ -916,15 +916,18 @@ function decimalToSurdLatex(num, tol = 1e-6) {
     return sign + '\\dfrac{' + r1.p + '}{' + r1.q + '}';
   }
 
-  // 2. Pure surd  c·√r / d  (rationalized via val² = p/q)
+  // 2. Pure surd  c·√r / d  (rationalized via val² = p/q).  Tight tolerance
+  // (1e-9) is required because the wide maxDen lets the convergent search
+  // approximate irrationals like π² with seven-digit accuracy.
+  const surdTol = 1e-9;
   const sq = absV * absV;
   const r2 = ratApprox(sq, 100000);
-  if (r2.p > 0 && r2.q > 0 && Math.abs(sq - r2.p / r2.q) < tol) {
+  if (r2.p > 0 && r2.q > 0 && Math.abs(sq - r2.p / r2.q) < surdTol) {
     const radicand = r2.p * r2.q;
     if (radicand >= 2 && radicand <= 100000) {
       const simp = simplifyRadicand(1, radicand);
       if (simp.radicand >= 2 &&
-          Math.abs(simp.coeff * Math.sqrt(simp.radicand) / r2.q - absV) < tol) {
+          Math.abs(simp.coeff * Math.sqrt(simp.radicand) / r2.q - absV) < surdTol) {
         let coeff = simp.coeff;
         let denom = r2.q;
         const g = gcd(coeff, denom); coeff = coeff / g; denom = denom / g;
@@ -935,10 +938,12 @@ function decimalToSurdLatex(num, tol = 1e-6) {
     }
   }
 
-  // 3. Compound surd  (p ± c·√r) / q
-  for (let q = 1; q <= 12; q++) {
+  // 3. Compound surd  (p ± c·√r) / q.  Tighter tolerance (1e-9) because the
+  // larger (q, p) search space inflates the false-positive rate.
+  const compTol = 1e-9;
+  for (let q = 1; q <= 100; q++) {
     const scaled = absV * q;
-    const ctol = tol * Math.max(1, q);
+    const ctol = compTol * Math.max(1, q);
     for (let b = 2; b <= 60; b++) {
       const bs = Math.floor(Math.sqrt(b));
       if (bs * bs === b) continue;
@@ -946,13 +951,13 @@ function decimalToSurdLatex(num, tol = 1e-6) {
       for (let a = 1; a <= 15; a++) {
         const asqb = a * sqb;
         const pPlus = Math.round(scaled - asqb);
-        if (Math.abs(pPlus) >= 1 && Math.abs(pPlus) <= 50 &&
+        if (Math.abs(pPlus) >= 1 && Math.abs(pPlus) <= 100 &&
             Math.abs(scaled - pPlus - asqb) < ctol) {
           const simp = simplifyRadicand(a, b);
           return formatCompoundSurdLatex(isNeg, pPlus, simp.coeff, simp.radicand, q);
         }
         const pMinus = Math.round(scaled + asqb);
-        if (Math.abs(pMinus) >= 1 && Math.abs(pMinus) <= 50 &&
+        if (Math.abs(pMinus) >= 1 && Math.abs(pMinus) <= 100 &&
             Math.abs(scaled - pMinus + asqb) < ctol) {
           const simp = simplifyRadicand(a, b);
           return formatCompoundSurdLatex(isNeg, pMinus, -simp.coeff, simp.radicand, q);
