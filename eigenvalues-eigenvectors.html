@@ -852,6 +852,134 @@ function decimalToSurd(num, tolerance = 1e-6) {
   return null;
 }
 
+// ------------------------------------------------------------
+// Extended surd recognition: returns a LaTeX string for
+// integers, rationals p/q, pure surds c·√r / d, and compound
+// surds (p ± c·√r) / q.  Returns null if no clean form found.
+// ------------------------------------------------------------
+function ratApprox(x, maxDen) {
+  let h0 = 1, k0 = 0, h1 = Math.floor(x), k1 = 1;
+  let frac = x - h1;
+  for (let i = 0; i < 64 && Math.abs(frac) > 1e-15; i++) {
+    let inv = 1 / frac;
+    let a = Math.floor(inv);
+    let h2 = a * h1 + h0;
+    let k2 = a * k1 + k0;
+    if (k2 > maxDen) break;
+    h0 = h1; k0 = k1;
+    h1 = h2; k1 = k2;
+    frac = inv - a;
+  }
+  return { p: h1, q: k1 };
+}
+
+function simplifyRadicand(c, r) {
+  for (let p = 2; p * p <= r; p++) {
+    while (r % (p * p) === 0) { r = r / (p * p); c = c * p; }
+  }
+  return { coeff: c, radicand: r };
+}
+
+function formatCompoundSurdLatex(isNeg, intP, coeff, radicand, denom) {
+  let g = gcd(gcd(Math.abs(intP), Math.abs(coeff)), denom);
+  if (g > 1) { intP = intP / g; coeff = coeff / g; denom = denom / g; }
+  let dispInt = isNeg ? -intP : intP;
+  let dispC = isNeg ? -coeff : coeff;
+  let absC = Math.abs(dispC);
+  let sqrtPart = (absC === 1 ? '' : absC) + '\\sqrt{' + radicand + '}';
+  let numStr;
+  if (dispInt > 0 && dispC > 0) numStr = dispInt + ' + ' + sqrtPart;
+  else if (dispInt > 0 && dispC < 0) numStr = dispInt + ' - ' + sqrtPart;
+  else if (dispInt < 0 && dispC > 0) numStr = sqrtPart + ' - ' + Math.abs(dispInt);
+  else if (dispInt < 0 && dispC < 0) {
+    let inner = Math.abs(dispInt) + ' + ' + sqrtPart;
+    if (denom === 1) return '-\\left(' + inner + '\\right)';
+    return '-\\dfrac{' + inner + '}{' + denom + '}';
+  } else numStr = sqrtPart;
+  if (denom === 1) return numStr;
+  return '\\dfrac{' + numStr + '}{' + denom + '}';
+}
+
+function decimalToSurdLatex(num, tol = 1e-6) {
+  if (typeof num !== 'number' || !isFinite(num)) return null;
+  if (Math.abs(num) < 1e-10) return '0';
+  if (Math.abs(num - Math.round(num)) < tol) return Math.round(num).toString();
+
+  const isNeg = num < 0;
+  const sign = isNeg ? '-' : '';
+  const absV = Math.abs(num);
+
+  // 1. Pure rational p/q
+  const r1 = ratApprox(absV, 1000);
+  if (r1.q > 0 && r1.q <= 200 && Math.abs(absV - r1.p / r1.q) < 1e-10) {
+    if (r1.q === 1) return sign + r1.p;
+    return sign + '\\dfrac{' + r1.p + '}{' + r1.q + '}';
+  }
+
+  // 2. Pure surd  c·√r / d  (rationalized via val² = p/q)
+  const sq = absV * absV;
+  const r2 = ratApprox(sq, 1000);
+  if (r2.p > 0 && r2.q > 0 && Math.abs(sq - r2.p / r2.q) < tol) {
+    const radicand = r2.p * r2.q;
+    if (radicand >= 2 && radicand <= 10000) {
+      const simp = simplifyRadicand(1, radicand);
+      if (simp.radicand >= 2 &&
+          Math.abs(simp.coeff * Math.sqrt(simp.radicand) / r2.q - absV) < tol) {
+        let coeff = simp.coeff;
+        let denom = r2.q;
+        const g = gcd(coeff, denom); coeff = coeff / g; denom = denom / g;
+        const sqrtPart = (coeff === 1 ? '' : coeff) + '\\sqrt{' + simp.radicand + '}';
+        if (denom === 1) return sign + sqrtPart;
+        return sign + '\\dfrac{' + sqrtPart + '}{' + denom + '}';
+      }
+    }
+  }
+
+  // 3. Compound surd  (p ± c·√r) / q
+  for (let q = 1; q <= 12; q++) {
+    const scaled = absV * q;
+    const ctol = tol * Math.max(1, q);
+    for (let b = 2; b <= 60; b++) {
+      const bs = Math.floor(Math.sqrt(b));
+      if (bs * bs === b) continue;
+      const sqb = Math.sqrt(b);
+      for (let a = 1; a <= 15; a++) {
+        const asqb = a * sqb;
+        const pPlus = Math.round(scaled - asqb);
+        if (Math.abs(pPlus) >= 1 && Math.abs(pPlus) <= 50 &&
+            Math.abs(scaled - pPlus - asqb) < ctol) {
+          const simp = simplifyRadicand(a, b);
+          return formatCompoundSurdLatex(isNeg, pPlus, simp.coeff, simp.radicand, q);
+        }
+        const pMinus = Math.round(scaled + asqb);
+        if (Math.abs(pMinus) >= 1 && Math.abs(pMinus) <= 50 &&
+            Math.abs(scaled - pMinus + asqb) < ctol) {
+          const simp = simplifyRadicand(a, b);
+          return formatCompoundSurdLatex(isNeg, pMinus, -simp.coeff, simp.radicand, q);
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// True if s contains a top-level + or - operator (not nested
+// inside braces and not a leading sign). Used to decide whether
+// to wrap a compound surd in parentheses for complex assembly.
+function hasTopLevelOp(s) {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
+    else if (depth === 0 && i > 0 && (ch === '+' || ch === '-') && s[i - 1] === ' ') {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ============================================================
 //  FORMAT FOR LATEX
 // ============================================================
@@ -860,6 +988,8 @@ function formatForLatex(val, isEigenvalueOrVector = false) {
     if (Math.abs(val) < 1e-12) return "0";
     if (Math.abs(val - Math.round(val)) < 1e-12) return Math.round(val).toString();
     if (isEigenvalueOrVector) {
+      let surdLx = decimalToSurdLatex(val);
+      if (surdLx !== null) return surdLx;
       let surd = decimalToSurd(val);
       if (surd) {
         if (surd.radicand === null) {
@@ -884,6 +1014,23 @@ function formatForLatex(val, isEigenvalueOrVector = false) {
   } else if (val.re !== undefined && val.im !== undefined) {
     let re = Math.abs(val.re) < 1e-12 ? 0 : val.re;
     let im = Math.abs(val.im) < 1e-12 ? 0 : val.im;
+
+    if (isEigenvalueOrVector) {
+      const reLx = re === 0 ? "0" : decimalToSurdLatex(re);
+      const imLx = im === 0 ? "0" : decimalToSurdLatex(Math.abs(im));
+      if (reLx !== null && imLx !== null) {
+        if (reLx === "0" && imLx === "0") return "0";
+        if (imLx === "0") return reLx;
+        let imStr;
+        if (imLx === "1") imStr = "i";
+        else if (hasTopLevelOp(imLx)) imStr = `\\left(${imLx}\\right)i`;
+        else imStr = `${imLx}i`;
+        if (reLx === "0") return im < 0 ? `-${imStr}` : imStr;
+        const reStr = hasTopLevelOp(reLx) ? `\\left(${reLx}\\right)` : reLx;
+        return `${reStr} ${im < 0 ? '-' : '+'} ${imStr}`;
+      }
+    }
+
     let reFrac = floatToFraction(re);
     let imFrac = floatToFraction(Math.abs(im));
     let isReFraction = Math.abs(re - reFrac.numer / reFrac.denom) < 1e-6 && Math.abs(reFrac.numer) < 10 && reFrac.denom < 10;
