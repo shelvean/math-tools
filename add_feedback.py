@@ -267,7 +267,7 @@ FB_MODAL_TMPL = """<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true"
 
 INLINE_CTA = (
     f' {CTA_START}'
-    'Spotted a bug or have a suggestion? '
+    "We'd love to hear what you think. "
     '<button type="button" class="fb-link" data-fb-open>Leave feedback</button>.'
     f'{CTA_END}'
 )
