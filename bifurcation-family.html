@@ -142,6 +142,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .speed-lbl{font-size:.875rem;font-weight:600;color:var(--txt2);white-space:nowrap;}
 .speed-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
   font-size:.875rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+.check-wrap{display:flex;align-items:center;gap:.4rem;margin-left:.25rem;min-height:36px;}
+.check-wrap input[type=checkbox]{width:1.1rem;height:1.1rem;accent-color:var(--blue);cursor:pointer;}
+.check-wrap label{font-size:.875rem;font-weight:600;color:var(--txt2);cursor:pointer;white-space:nowrap;}
 
 /* Readout bar */
 .rbar{display:flex;align-items:stretch;margin-bottom:.875rem;
@@ -413,6 +416,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <input type="text" inputmode="decimal" id="rNum" class="r-num" value="-1"
            aria-label="r numeric value (accepts expressions like pi/2)"
            title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+    <div class="check-wrap">
+      <input type="checkbox" id="show-curve" checked>
+      <label for="show-curve">Show graph of \(f(x;r)\)</label>
+    </div>
   </div>
 
   <!-- Animation bar -->
@@ -873,6 +880,9 @@ function renderPhaseLine(){
   fAbs *= 1.15;
   var yMin = -fAbs, yMax = fAbs;
 
+  var showCurveEl = document.getElementById('show-curve');
+  var showCurve = showCurveEl ? showCurveEl.checked : true;
+
   var xScale = d3.scaleLinear().domain([xMin, xMax]).range([0, plotW]);
   var yScale = d3.scaleLinear().domain([yMin, yMax]).range([plotH, 0]);
 
@@ -887,16 +897,18 @@ function renderPhaseLine(){
   g.append('g').attr('transform','translate(0,'+plotH+')')
     .call(d3.axisBottom(xScale).ticks(8).tickSize(-plotH).tickFormat(''))
     .selectAll('.tick line').attr('stroke',gridColor);
-  g.append('g').call(d3.axisLeft(yScale).ticks(6).tickSize(-plotW).tickFormat(''))
-    .selectAll('.tick line').attr('stroke',gridColor);
+  if(showCurve){
+    g.append('g').call(d3.axisLeft(yScale).ticks(6).tickSize(-plotW).tickFormat(''))
+      .selectAll('.tick line').attr('stroke',gridColor);
+  }
 
   /* Axes */
-  var zeroY = yScale(0);
+  var zeroY = showCurve ? yScale(0) : Math.round(plotH/2);
   /* x-axis at y=0 (the phase line itself) */
   g.append('line').attr('x1',0).attr('x2',plotW).attr('y1',zeroY).attr('y2',zeroY)
     .attr('stroke',axisColor).attr('stroke-width',2);
   /* y-axis at x=0 if in range */
-  if(xMin<=0 && xMax>=0){
+  if(showCurve && xMin<=0 && xMax>=0){
     var x0 = xScale(0);
     g.append('line').attr('x1',x0).attr('x2',x0).attr('y1',0).attr('y2',plotH)
       .attr('stroke',axisColor).attr('stroke-width',1).attr('opacity',0.5);
@@ -910,25 +922,31 @@ function renderPhaseLine(){
       ax.selectAll('text').attr('fill',axisColor).attr('font-size',11);
       ax.selectAll('.tick line').attr('stroke',axisColor);
     });
-  g.append('g').call(d3.axisLeft(yScale).ticks(5))
-    .call(function(ax){
-      ax.select('.domain').attr('stroke',axisColor);
-      ax.selectAll('text').attr('fill',axisColor).attr('font-size',11);
-      ax.selectAll('.tick line').attr('stroke',axisColor);
-    });
+  if(showCurve){
+    g.append('g').call(d3.axisLeft(yScale).ticks(5))
+      .call(function(ax){
+        ax.select('.domain').attr('stroke',axisColor);
+        ax.selectAll('text').attr('fill',axisColor).attr('font-size',11);
+        ax.selectAll('.tick line').attr('stroke',axisColor);
+      });
+  }
 
   /* Axis labels */
   g.append('text').attr('x',plotW/2).attr('y',plotH+40).attr('text-anchor','middle')
     .attr('font-size',13).attr('font-weight','700').attr('fill',axisColor).text('x');
-  g.append('text').attr('transform','rotate(-90)').attr('x',-plotH/2).attr('y',-38)
-    .attr('text-anchor','middle').attr('font-size',12).attr('font-weight','700')
-    .attr('fill',axisColor).text('f(x; r)');
+  if(showCurve){
+    g.append('text').attr('transform','rotate(-90)').attr('x',-plotH/2).attr('y',-38)
+      .attr('text-anchor','middle').attr('font-size',12).attr('font-weight','700')
+      .attr('fill',axisColor).text('f(x; r)');
+  }
 
   /* Curve y = f(x; r) */
-  var line = d3.line().x(function(d){return xScale(d.x);}).y(function(d){return yScale(d.y);})
-    .defined(function(d){return isFinite(d.y) && d.y>=yMin && d.y<=yMax;});
-  g.append('path').datum(pts).attr('fill','none').attr('stroke',curveColor)
-    .attr('stroke-width',2.4).attr('stroke-linejoin','round').attr('d',line);
+  if(showCurve){
+    var line = d3.line().x(function(d){return xScale(d.x);}).y(function(d){return yScale(d.y);})
+      .defined(function(d){return isFinite(d.y) && d.y>=yMin && d.y<=yMax;});
+    g.append('path').datum(pts).attr('fill','none').attr('stroke',curveColor)
+      .attr('stroke-width',2.4).attr('stroke-linejoin','round').attr('d',line);
+  }
 
   /* Equilibria (intersections with y=0) */
   var eqs = P.equilibria(ST.r);
@@ -1354,6 +1372,15 @@ document.addEventListener('DOMContentLoaded', function(){
     say('High-contrast '+(isHC()?'enabled':'disabled'));
     renderAll();
   });
+
+  /* Show / hide curve toggle for the phase-line panel */
+  var showCurveEl = document.getElementById('show-curve');
+  if(showCurveEl){
+    showCurveEl.addEventListener('change', function(){
+      renderPhaseLine();
+      say('Curve '+(showCurveEl.checked?'shown':'hidden'));
+    });
+  }
 
   /* Initial paint — render the default preset (supercritical pitchfork, r=-1)
      immediately so the graphs appear on landing. Runs before any MathJax
