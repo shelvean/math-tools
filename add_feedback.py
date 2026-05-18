@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
-"""Add a floating 'Feedback / Report a bug' button + in-page modal to every tool page.
+"""Add a feedback button + in-page modal to every tool page, and add
+a highlighted inline "Leave feedback" link on every major hub page.
 
-The modal POSTs to the Web3Forms API. The visitor needs no account and
-no mail client; submissions land in the email tied to your access key.
+Tool pages get a floating bottom-right pill. Major hubs get an inline
+highlighted button placed right after the page's subtitle, since their
+clean layouts don't need a floating element competing for attention.
+
+The modal POSTs to the Web3Forms API, so the visitor needs no account
+and no mail client; submissions land in the email tied to ACCESS_KEY.
 
 Setup (one-time, ~30 seconds)
 -----------------------------
-1. Open https://web3forms.com and enter your email address (kapita@tamu.edu).
-2. They send a confirmation email containing a single access key (a UUID).
-3. Paste the access key into ACCESS_KEY below.
+1. Open https://web3forms.com and enter your email.
+2. Confirm via the email they send; copy the access key (a UUID).
+3. Paste it into ACCESS_KEY below.
 4. Re-run:   python3 add_feedback.py
 
-That's it. There's no dashboard to babysit; submissions arrive as emails.
-
-Until ACCESS_KEY is filled in, the modal opens and looks correct, but
-the Send button reports that it isn't wired up yet (instead of silently
-swallowing submissions).
-
 The script is idempotent: previously-injected blocks are stripped and
-re-written, so it's safe to re-run after editing CONFIG or the HTML.
+re-written, so re-running after edits is safe.
 """
 import os
 import re
@@ -27,13 +26,14 @@ import glob
 BASE = '/home/user/math-tools'
 
 # ============================================================================
-# CONFIG -- paste your Web3Forms access key here (see docstring).
+# CONFIG
 # ============================================================================
 ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743'
 # ============================================================================
 
-# Hub / landing pages -- skip.
-SKIP = {
+# Hubs / landing pages: get the modal + inline CTA, but NOT the floating button
+# (their layouts are cleaner without it; the inline link is the entry point).
+HUB_PAGES = {
     'index.html',
     'teaching.html',
     'projects.html',
@@ -44,10 +44,26 @@ SKIP = {
     'pdftools.html',
 }
 
+# Pages that receive an inline highlighted "Leave feedback" link, placed
+# immediately after the listed anchor text. The anchor must be unique within
+# the page (or just appear first in the natural subtitle/intro spot).
+INLINE_CTA_ANCHORS = {
+    'index.html':     'All processing happens client-side.',
+    'linear.html':    'Matrix operations, geometric transformations, decompositions, and least squares.',
+    'numerical.html': 'Root-finding, interpolation, least-squares data fitting, and finite differences.',
+    'optim.html':     'Graphical methods for two-variable problems &mdash; feasible regions, corner points, and the method of corners.',
+    'projects.html':  'First-order ODEs, oscillations, integral transforms, and phase-plane analysis.',
+    'dynamical.html': 'Continuous and discrete dynamics, bifurcations, chaos, and physical oscillators.',
+    'teaching.html':  'A record of courses taught across institutions, spanning differential equations, linear algebra, numerical methods, calculus, and PDEs.',
+    'pdftools.html':  'no files are uploaded to any server.',
+}
+
 CSS_START = '/* feedback-mark-css:start */'
 CSS_END = '/* feedback-mark-css:end */'
 HTML_START = '<!-- feedback-mark:start -->'
 HTML_END = '<!-- feedback-mark:end -->'
+CTA_START = '<!-- fb-cta:start -->'
+CTA_END = '<!-- fb-cta:end -->'
 
 FEEDBACK_CSS = f"""{CSS_START}
 .fb-btn{{position:fixed;right:1rem;bottom:1rem;z-index:9999;
@@ -62,7 +78,15 @@ FEEDBACK_CSS = f"""{CSS_START}
 .fb-btn svg{{flex-shrink:0;}}
 @media(max-width:480px){{.fb-btn span{{display:none;}}
   .fb-btn{{padding:.6rem;border-radius:50%;}}}}
-@media print{{.fb-btn,.fb-bd{{display:none!important;}}}}
+@media print{{.fb-btn,.fb-bd,.fb-link{{display:none!important;}}}}
+
+.fb-link{{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}}
+.fb-link:hover,.fb-link:focus-visible{{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}}
+.fb-link:focus-visible{{outline:2px solid #4338ca;outline-offset:1px;}}
 
 .fb-bd{{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
   display:flex;align-items:center;justify-content:center;padding:1rem;
@@ -105,14 +129,17 @@ FEEDBACK_CSS = f"""{CSS_START}
 {CSS_END}
 """
 
-FEEDBACK_HTML_TMPL = """{HTML_START}
-<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+# Floating button (omitted on hubs).
+FB_BUTTON_HTML = """<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
   <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
     <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
   </svg>
   <span>Feedback</span>
 </button>
-<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+"""
+
+# Modal + JS (always injected).
+FB_MODAL_TMPL = """<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
   <div class="fb-dlg">
     <div class="fb-hd">
       <h2 id="fb-title">Feedback / report a bug</h2>
@@ -138,7 +165,7 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
   var configured = !!ACCESS_KEY;
 
   var bd = document.getElementById('fb-bd');
-  var openBtn = document.getElementById('fb-open');
+  if (!bd) return;
   var closeBtn = document.getElementById('fb-x');
   var cancelBtn = document.getElementById('fb-cancel');
   var form = document.getElementById('fb-form');
@@ -154,7 +181,8 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
   }}
   function clearMsg() {{ msg.textContent = ''; msg.className = 'fb-msg'; }}
 
-  function open() {{
+  function open(e) {{
+    if (e && e.preventDefault) e.preventDefault();
     lastFocus = document.activeElement;
     bd.hidden = false;
     requestAnimationFrame(function () {{ bd.classList.add('fb-open'); }});
@@ -181,7 +209,10 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
     }}
   }}
 
-  openBtn.addEventListener('click', open);
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) {{ t.addEventListener('click', open); }}
+  );
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
   bd.addEventListener('click', function (e) {{ if (e.target === bd) close(); }});
@@ -232,39 +263,51 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
   }});
 }})();
 </script>
-{HTML_END}
 """
 
+INLINE_CTA = (
+    f' {CTA_START}'
+    'Spotted a bug or have a suggestion? '
+    '<button type="button" class="fb-link" data-fb-open>Leave feedback</button>.'
+    f'{CTA_END}'
+)
 
-def feedback_html():
-    return FEEDBACK_HTML_TMPL.format(
-        HTML_START=HTML_START,
-        HTML_END=HTML_END,
-        access_key=ACCESS_KEY,
-    )
+
+def feedback_block(with_button):
+    parts = [HTML_START + '\n']
+    if with_button:
+        parts.append(FB_BUTTON_HTML)
+    parts.append(FB_MODAL_TMPL.format(access_key=ACCESS_KEY))
+    parts.append(HTML_END + '\n')
+    return ''.join(parts)
 
 
 def strip_old(html):
-    # Drop any prior feedback-mark CSS / HTML / legacy mailto block.
     html = re.sub(
         re.escape(CSS_START) + r'.*?' + re.escape(CSS_END) + r'\n?',
-        '',
-        html,
-        flags=re.DOTALL,
+        '', html, flags=re.DOTALL,
     )
     html = re.sub(
         re.escape(HTML_START) + r'.*?' + re.escape(HTML_END) + r'\n?',
-        '',
-        html,
-        flags=re.DOTALL,
+        '', html, flags=re.DOTALL,
     )
+    # strip prior inline CTA (with any leading space we added)
+    html = re.sub(
+        r' ?' + re.escape(CTA_START) + r'.*?' + re.escape(CTA_END),
+        '', html, flags=re.DOTALL,
+    )
+    # legacy v1 mailto block
     html = re.sub(
         r'\n?/\* ===== Feedback mark ===== \*/.*?@media print\{\.feedback-mark\{display:none;\}\}\n?',
-        '',
-        html,
-        flags=re.DOTALL,
+        '', html, flags=re.DOTALL,
     )
     return html
+
+
+def inject_inline_cta(html, anchor):
+    if anchor not in html:
+        return html, False
+    return html.replace(anchor, anchor + INLINE_CTA, 1), True
 
 
 def process(path):
@@ -273,6 +316,7 @@ def process(path):
         html = f.read()
     html = strip_old(html)
 
+    # CSS
     if '</style>' in html:
         idx = html.rfind('</style>')
         html = html[:idx] + FEEDBACK_CSS + html[idx:]
@@ -280,39 +324,56 @@ def process(path):
         html = html.replace('</head>', '<style>' + FEEDBACK_CSS + '</style>\n</head>', 1)
     else:
         print(f"  FAIL {name} (no </head>)")
-        return False
+        return None
 
-    block = feedback_html()
+    # Button + modal
+    with_button = name not in HUB_PAGES
+    block = feedback_block(with_button)
     if '</body>' in html:
         html = html.replace('</body>', block + '</body>', 1)
     else:
-        html = html + '\n' + block
+        html += '\n' + block
+
+    # Inline CTA
+    cta_added = False
+    if name in INLINE_CTA_ANCHORS:
+        html, cta_added = inject_inline_cta(html, INLINE_CTA_ANCHORS[name])
 
     with open(path, 'w', encoding='utf-8') as f:
         f.write(html)
-    return True
+    return ('hub' if not with_button else 'tool',
+            'cta' if cta_added else None)
 
 
 def main():
-    count = 0
-    skipped = 0
+    counts = {'tool': 0, 'hub': 0, 'cta': 0, 'missed_cta': 0}
     for path in sorted(glob.glob(os.path.join(BASE, '*.html'))):
         name = os.path.basename(path)
-        if name in SKIP:
-            print(f"  SKIP {name} (hub page)")
-            skipped += 1
+        result = process(path)
+        if result is None:
             continue
-        if process(path):
-            count += 1
-            print(f"  OK   {name}")
+        kind, cta = result
+        counts[kind] += 1
+        if name in INLINE_CTA_ANCHORS:
+            if cta:
+                counts['cta'] += 1
+            else:
+                counts['missed_cta'] += 1
+                print(f"  WARN {name}: anchor not found for inline CTA")
+        marker = ' +CTA' if cta else ''
+        print(f"  OK   {name} ({'hub, no button' if kind == 'hub' else 'tool, with button'}){marker}")
 
-    print(f"\nDone. Updated {count} pages ({skipped} hubs skipped).")
+    print(
+        f"\nDone. {counts['tool']} tool pages with floating button, "
+        f"{counts['hub']} hub pages without button, "
+        f"{counts['cta']} inline CTAs injected"
+        + (f", {counts['missed_cta']} anchors missing" if counts['missed_cta'] else '')
+        + '.'
+    )
     if not ACCESS_KEY:
         print(
-            "\nNOTE: ACCESS_KEY is empty, so the modal will say 'Feedback isn't\n"
-            "      wired up yet' on Send. Visit https://web3forms.com, enter your\n"
-            "      email, copy the access key they send you, paste it into\n"
-            "      ACCESS_KEY at the top of this script, and re-run.")
+            "\nNOTE: ACCESS_KEY is empty. Visit https://web3forms.com, enter your\n"
+            "      email, paste the access key here, and re-run.")
 
 
 if __name__ == '__main__':
