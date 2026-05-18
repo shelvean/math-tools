@@ -29,7 +29,7 @@ BASE = '/home/user/math-tools'
 # ============================================================================
 # CONFIG -- paste your Web3Forms access key here (see docstring).
 # ============================================================================
-ACCESS_KEY = ''   # the UUID emailed to you by web3forms.com
+ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743'
 # ============================================================================
 
 # Hub / landing pages -- skip.
