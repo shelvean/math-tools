@@ -203,6 +203,7 @@ canvas{display:block;width:100%;height:auto;}
   box-shadow:0 0 0 3px rgba(67,56,202,.18);}
 .fb-bd textarea{min-height:7rem;}
 .fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
 .fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
   padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
   border-radius:0 0 .75rem .75rem;}
@@ -1161,6 +1162,7 @@ document.addEventListener('DOMContentLoaded',function(){
       <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
       <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
       <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
       <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
     </form>
     <div class="fb-ft">
@@ -1169,17 +1171,10 @@ document.addEventListener('DOMContentLoaded',function(){
     </div>
   </div>
 </div>
-<iframe name="fb-sink" id="fb-sink" style="display:none" aria-hidden="true" title="feedback sink"></iframe>
 <script>
 (function () {
-  var CFG = {
-    formId: '',
-    entryPage: '',
-    entryUrl: '',
-    entryFeedback: '',
-    entryEmail: ''
-  };
-  var configured = !!(CFG.formId && CFG.entryFeedback);
+  var ACCESS_KEY = '';
+  var configured = !!ACCESS_KEY;
 
   var bd = document.getElementById('fb-bd');
   var openBtn = document.getElementById('fb-open');
@@ -1190,7 +1185,6 @@ document.addEventListener('DOMContentLoaded',function(){
   var emailEl = document.getElementById('fb-email');
   var sendBtn = document.getElementById('fb-send');
   var msg = document.getElementById('fb-msg');
-  var sink = document.getElementById('fb-sink');
   var lastFocus = null;
 
   function showMsg(text, kind) {
@@ -1218,7 +1212,7 @@ document.addEventListener('DOMContentLoaded',function(){
   function onKey(e) {
     if (e.key === 'Escape') { e.preventDefault(); close(); return; }
     if (e.key === 'Tab') {
-      var f = bd.querySelectorAll('button,textarea,input,[tabindex]:not([tabindex="-1"])');
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
       if (!f.length) return;
       var first = f[0], last = f[f.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -1236,41 +1230,44 @@ document.addEventListener('DOMContentLoaded',function(){
     var text = textEl.value.trim();
     if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
     if (!configured) {
-      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to configure the form.", 'err');
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
       return;
     }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
     sendBtn.disabled = true;
     sendBtn.textContent = 'Sending\u2026';
-    var f = document.createElement('form');
-    f.action = 'https://docs.google.com/forms/d/e/' + CFG.formId + '/formResponse';
-    f.method = 'POST';
-    f.target = 'fb-sink';
-    f.style.display = 'none';
-    function add(name, value) {
-      if (!name) return;
-      var i = document.createElement('input');
-      i.type = 'hidden'; i.name = 'entry.' + name; i.value = value;
-      f.appendChild(i);
-    }
-    add(CFG.entryPage, document.title || location.pathname);
-    add(CFG.entryUrl, location.href);
-    add(CFG.entryFeedback, text);
-    add(CFG.entryEmail, emailEl.value.trim());
-    document.body.appendChild(f);
-    var done = false;
-    function onLoad() {
-      if (done) return; done = true;
-      sink.removeEventListener('load', onLoad);
-      showMsg('Thanks \u2014 your feedback was sent.', 'ok');
-      sendBtn.disabled = false; sendBtn.textContent = 'Send';
-      textEl.value = ''; emailEl.value = '';
-      setTimeout(close, 1400);
-      f.remove();
-    }
-    sink.addEventListener('load', onLoad);
-    // Fallback: the iframe load event sometimes doesn't fire cross-origin.
-    setTimeout(onLoad, 2500);
-    f.submit();
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
   });
 })();
 </script>

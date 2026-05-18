@@ -1,36 +1,21 @@
 #!/usr/bin/env python3
 """Add a floating 'Feedback / Report a bug' button + in-page modal to every tool page.
 
-The modal POSTs to a Google Form via a hidden iframe (no CORS, no mail
-client needed on the visitor's end). On submit the form receives:
+The modal POSTs to the Web3Forms API. The visitor needs no account and
+no mail client; submissions land in the email tied to your access key.
 
-    Page      <document.title>
-    URL       <location.href>
-    Feedback  <visitor's message>
-    Email     <visitor's email, optional>
+Setup (one-time, ~30 seconds)
+-----------------------------
+1. Open https://web3forms.com and enter your email address (kapita@tamu.edu).
+2. They send a confirmation email containing a single access key (a UUID).
+3. Paste the access key into ACCESS_KEY below.
+4. Re-run:   python3 add_feedback.py
 
-Setup (one-time, ~2 minutes)
-----------------------------
-1. Go to https://forms.google.com and create a new form with these
-   questions, in any order:
-       - "Page" (Short answer)
-       - "URL"  (Short answer)
-       - "Feedback" (Paragraph)
-       - "Email" (Short answer, NOT required)
-2. Click the Send button (top-right) -> the link tab -> copy the URL.
-   It looks like https://docs.google.com/forms/d/e/FORM_ID/viewform
-   The FORM_ID is the long string between /e/ and /viewform.
-3. To get the entry IDs, click the three-dot menu (top-right) ->
-   "Get pre-filled link". Fill each field with a distinctive dummy
-   value (e.g. PAGE, URL, FEEDBACK, EMAIL), click "Get link" and copy
-   it. The resulting URL contains entry.NNNN=PAGE&entry.NNNN=URL&...
-   Note which entry number maps to which question.
-4. Paste the five values into the CONFIG block below and re-run:
-       python3 add_feedback.py
+That's it. There's no dashboard to babysit; submissions arrive as emails.
 
-Until the CONFIG block is filled in, the modal still opens and looks
-right, but the Send button shows "Feedback isn't wired up yet" instead
-of submitting silently into the void.
+Until ACCESS_KEY is filled in, the modal opens and looks correct, but
+the Send button reports that it isn't wired up yet (instead of silently
+swallowing submissions).
 
 The script is idempotent: previously-injected blocks are stripped and
 re-written, so it's safe to re-run after editing CONFIG or the HTML.
@@ -42,13 +27,9 @@ import glob
 BASE = '/home/user/math-tools'
 
 # ============================================================================
-# CONFIG -- fill these in after creating the Google Form (see docstring).
+# CONFIG -- paste your Web3Forms access key here (see docstring).
 # ============================================================================
-FORM_ID = ''          # the long ID between /forms/d/e/ and /viewform
-ENTRY_PAGE = ''       # numeric ID from entry.NNNN= for the "Page" question
-ENTRY_URL = ''        # numeric ID for the "URL" question
-ENTRY_FEEDBACK = ''   # numeric ID for the "Feedback" question
-ENTRY_EMAIL = ''      # numeric ID for the "Email" question (optional field)
+ACCESS_KEY = ''   # the UUID emailed to you by web3forms.com
 # ============================================================================
 
 # Hub / landing pages -- skip.
@@ -107,6 +88,7 @@ FEEDBACK_CSS = f"""{CSS_START}
   box-shadow:0 0 0 3px rgba(67,56,202,.18);}}
 .fb-bd textarea{{min-height:7rem;}}
 .fb-body{{padding:0 1.25rem 1rem;}}
+.fb-hp{{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}}
 .fb-ft{{display:flex;justify-content:flex-end;gap:.5rem;
   padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
   border-radius:0 0 .75rem .75rem;}}
@@ -141,6 +123,7 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
       <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
       <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
       <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
       <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
     </form>
     <div class="fb-ft">
@@ -149,17 +132,10 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
     </div>
   </div>
 </div>
-<iframe name="fb-sink" id="fb-sink" style="display:none" aria-hidden="true" title="feedback sink"></iframe>
 <script>
 (function () {{
-  var CFG = {{
-    formId: {form_id!r},
-    entryPage: {entry_page!r},
-    entryUrl: {entry_url!r},
-    entryFeedback: {entry_feedback!r},
-    entryEmail: {entry_email!r}
-  }};
-  var configured = !!(CFG.formId && CFG.entryFeedback);
+  var ACCESS_KEY = {access_key!r};
+  var configured = !!ACCESS_KEY;
 
   var bd = document.getElementById('fb-bd');
   var openBtn = document.getElementById('fb-open');
@@ -170,7 +146,6 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
   var emailEl = document.getElementById('fb-email');
   var sendBtn = document.getElementById('fb-send');
   var msg = document.getElementById('fb-msg');
-  var sink = document.getElementById('fb-sink');
   var lastFocus = null;
 
   function showMsg(text, kind) {{
@@ -198,7 +173,7 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
   function onKey(e) {{
     if (e.key === 'Escape') {{ e.preventDefault(); close(); return; }}
     if (e.key === 'Tab') {{
-      var f = bd.querySelectorAll('button,textarea,input,[tabindex]:not([tabindex="-1"])');
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
       if (!f.length) return;
       var first = f[0], last = f[f.length - 1];
       if (e.shiftKey && document.activeElement === first) {{ e.preventDefault(); last.focus(); }}
@@ -216,41 +191,44 @@ FEEDBACK_HTML_TMPL = """{HTML_START}
     var text = textEl.value.trim();
     if (!text) {{ showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }}
     if (!configured) {{
-      showMsg("Feedback isn't wired up yet \\u2014 the site owner needs to configure the form.", 'err');
+      showMsg("Feedback isn't wired up yet \\u2014 the site owner needs to add an access key.", 'err');
       return;
     }}
+    var page = (document.title || location.pathname).trim();
+    var payload = {{
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    }};
     sendBtn.disabled = true;
     sendBtn.textContent = 'Sending\\u2026';
-    var f = document.createElement('form');
-    f.action = 'https://docs.google.com/forms/d/e/' + CFG.formId + '/formResponse';
-    f.method = 'POST';
-    f.target = 'fb-sink';
-    f.style.display = 'none';
-    function add(name, value) {{
-      if (!name) return;
-      var i = document.createElement('input');
-      i.type = 'hidden'; i.name = 'entry.' + name; i.value = value;
-      f.appendChild(i);
-    }}
-    add(CFG.entryPage, document.title || location.pathname);
-    add(CFG.entryUrl, location.href);
-    add(CFG.entryFeedback, text);
-    add(CFG.entryEmail, emailEl.value.trim());
-    document.body.appendChild(f);
-    var done = false;
-    function onLoad() {{
-      if (done) return; done = true;
-      sink.removeEventListener('load', onLoad);
-      showMsg('Thanks \\u2014 your feedback was sent.', 'ok');
-      sendBtn.disabled = false; sendBtn.textContent = 'Send';
-      textEl.value = ''; emailEl.value = '';
-      setTimeout(close, 1400);
-      f.remove();
-    }}
-    sink.addEventListener('load', onLoad);
-    // Fallback: the iframe load event sometimes doesn't fire cross-origin.
-    setTimeout(onLoad, 2500);
-    f.submit();
+    fetch('https://api.web3forms.com/submit', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json', 'Accept': 'application/json'}},
+      body: JSON.stringify(payload)
+    }})
+      .then(function (r) {{ return r.json().catch(function () {{ return {{success: r.ok}}; }}); }})
+      .then(function (data) {{
+        if (data && data.success) {{
+          showMsg('Thanks \\u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        }} else {{
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }}
+      }})
+      .catch(function () {{
+        showMsg("Network error \\u2014 please try again.", 'err');
+      }})
+      .finally(function () {{
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      }});
   }});
 }})();
 </script>
@@ -262,15 +240,12 @@ def feedback_html():
     return FEEDBACK_HTML_TMPL.format(
         HTML_START=HTML_START,
         HTML_END=HTML_END,
-        form_id=FORM_ID,
-        entry_page=ENTRY_PAGE,
-        entry_url=ENTRY_URL,
-        entry_feedback=ENTRY_FEEDBACK,
-        entry_email=ENTRY_EMAIL,
+        access_key=ACCESS_KEY,
     )
 
 
 def strip_old(html):
+    # Drop any prior feedback-mark CSS / HTML / legacy mailto block.
     html = re.sub(
         re.escape(CSS_START) + r'.*?' + re.escape(CSS_END) + r'\n?',
         '',
@@ -283,7 +258,6 @@ def strip_old(html):
         html,
         flags=re.DOTALL,
     )
-    # Strip the legacy mailto-era block too (no CSS markers in v1).
     html = re.sub(
         r'\n?/\* ===== Feedback mark ===== \*/.*?@media print\{\.feedback-mark\{display:none;\}\}\n?',
         '',
@@ -332,14 +306,13 @@ def main():
             count += 1
             print(f"  OK   {name}")
 
-    configured = bool(FORM_ID and ENTRY_FEEDBACK)
     print(f"\nDone. Updated {count} pages ({skipped} hubs skipped).")
-    if not configured:
+    if not ACCESS_KEY:
         print(
-            "\nNOTE: the CONFIG block at the top of this file is empty, so the modal\n"
-            "      will show 'Feedback isn't wired up yet' on Send. Create the Google\n"
-            "      Form (see the docstring at the top of this file for the 4-step\n"
-            "      setup), paste the IDs into CONFIG, and re-run this script.")
+            "\nNOTE: ACCESS_KEY is empty, so the modal will say 'Feedback isn't\n"
+            "      wired up yet' on Send. Visit https://web3forms.com, enter your\n"
+            "      email, copy the access key they send you, paste it into\n"
+            "      ACCESS_KEY at the top of this script, and re-run.")
 
 
 if __name__ == '__main__':
