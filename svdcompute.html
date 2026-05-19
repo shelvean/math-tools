@@ -412,10 +412,10 @@
     <fieldset class="display-mode" aria-label="Output display format">
       <legend>Display values as:</legend>
       <label class="radio-label">
-        <input type="radio" name="displayMode" value="decimal" checked> Decimal
+        <input type="radio" name="displayMode" value="decimal"> Decimal
       </label>
       <label class="radio-label">
-        <input type="radio" name="displayMode" value="surd"> Surd / Fraction
+        <input type="radio" name="displayMode" value="surd" checked> Surd / Fraction
       </label>
     </fieldset>
 
@@ -509,7 +509,7 @@ function attachMatrixKeyNav(tableEl) {
 // ============================================================
 //  STATE
 // ============================================================
-var currentDisplayMode = 'decimal';
+var currentDisplayMode = 'surd';
 document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
   radio.addEventListener('change', function() { currentDisplayMode = this.value; });
 });
@@ -646,8 +646,8 @@ function clearAll() {
   document.getElementById('matrixInput').innerHTML = '';
   document.getElementById('result').innerHTML = '';
   document.querySelector('input[name="svdType"][value="full"]').checked = true;
-  document.querySelector('input[name="displayMode"][value="decimal"]').checked = true;
-  currentDisplayMode = 'decimal';
+  document.querySelector('input[name="displayMode"][value="surd"]').checked = true;
+  currentDisplayMode = 'surd';
   announce('All inputs and results cleared.');
 }
 
@@ -732,6 +732,44 @@ function formatSurdLatex(sign, coeff, radicand, rden) {
   return sign + "\\dfrac{" + (c === 1 ? "" : c) + "\\sqrt{" + r + "}}{" + rden + "}";
 }
 
+// Nested surd: val = √((A + B√c)/D) → rationalize to √(A·D + B·D·√c)/D,
+// then pull out any perfect-square factor k² shared by A and B (and reduce against D).
+function formatNestedSurdLatex(sign, a, b, c, den) {
+  // First simplify √c (in case detection passed a non-square-free c).
+  let cSimp = simplifyRadicand(1, c);
+  let cRed = cSimp.radicand;
+  let A = a * den;
+  let B = b * den * cSimp.coeff;
+  let D = den;
+
+  // √(A + B√cRed)/D: pull out k where k² | gcd(A,B) and k | D.
+  let g = gcdInt(Math.abs(A), Math.abs(B));
+  for (let p = 2; p * p <= g; p++) {
+    while (g % (p * p) === 0 && D % p === 0) {
+      g /= (p * p);
+      A /= (p * p);
+      B /= (p * p);
+      D /= p;
+    }
+  }
+
+  let bAbs = Math.abs(B);
+  let bSign = B < 0 ? '-' : '+';
+  let radPart;
+  if (cRed === 1) {
+    // Degenerate: collapses to √(A + B) — shouldn't normally occur here.
+    let s = A + B;
+    if (s < 0) return null;
+    radPart = '' + s;
+  } else if (bAbs === 1) {
+    radPart = A + ' ' + bSign + ' \\sqrt{' + cRed + '}';
+  } else {
+    radPart = A + ' ' + bSign + ' ' + bAbs + '\\sqrt{' + cRed + '}';
+  }
+  if (D === 1) return sign + '\\sqrt{' + radPart + '}';
+  return sign + '\\dfrac{\\sqrt{' + radPart + '}}{' + D + '}';
+}
+
 function formatCompoundSurdLatex(isNeg, intPart, surdCoeff, radicand, rden) {
   let { radicand: r } = simplifyRadicand(1, radicand);
   let dispInt = isNeg ? -intPart : intPart;
@@ -754,29 +792,85 @@ function formatCompoundSurdLatex(isNeg, intPart, surdCoeff, radicand, rden) {
   return "\\dfrac{" + numStr + "}{" + rden + "}";
 }
 
+// Priority c values (the irrational under the radical) extracted from the
+// current SVD's singular values. Set by renderResult before each render so
+// that U/V entries — whose denominators after rationalization can exceed the
+// default search bound — are matched against the same √c as the σ_i values.
+var __nestedSurdPriorityCs = null;
+
+// Best rational p/q with q <= maxDen via continued-fraction convergents.
+function ratApprox(x, maxDen) {
+  let h0 = 1, k0 = 0, h1 = Math.floor(x), k1 = 1;
+  let frac = x - h1;
+  for (let i = 0; i < 64 && Math.abs(frac) > 1e-15; i++) {
+    let inv = 1 / frac;
+    let a = Math.floor(inv);
+    let h2 = a * h1 + h0, k2 = a * k1 + k0;
+    if (k2 > maxDen) break;
+    h0 = h1; k0 = k1;
+    h1 = h2; k1 = k2;
+    frac = inv - a;
+  }
+  return { p: h1, q: k1 };
+}
+
+// Search val² for (a ± b√cR)/den with small a,b,den. Returns the LaTeX
+// representation of √val² (i.e. of val itself with the given sign) or null.
+function tryNestedSurdAtC(sign, sq, cR, maxDen) {
+  const sqrtCR = Math.sqrt(cR);
+  const aTol = 1e-6, reconTol = 1e-10;
+  for (let den = 1; den <= maxDen; den++) {
+    const scaledSq = sq * den;
+    if (scaledSq > 5000) continue;
+    // Cap b: b√c ≤ scaledSq + small_a, so b ≤ (scaledSq + maxA) / √c.
+    const bMax = Math.min(30, Math.floor((scaledSq + 50) / sqrtCR) + 1);
+    for (let b = 1; b <= bMax; b++) {
+      const bSqrtC = b * sqrtCR;
+      let aFloat = scaledSq - bSqrtC;
+      let a = Math.round(aFloat);
+      if (a >= 0 && a <= 5000 && Math.abs(aFloat - a) < aTol) {
+        const recon = (a + bSqrtC) / den;
+        if (recon > 0 && Math.abs(recon - sq) < reconTol) {
+          const out = formatNestedSurdLatex(sign, a, b, cR, den);
+          if (out) return out;
+        }
+      }
+      aFloat = scaledSq + bSqrtC;
+      a = Math.round(aFloat);
+      if (a >= 0 && a <= 5000 && Math.abs(aFloat - a) < aTol) {
+        const recon = (a - bSqrtC) / den;
+        if (recon > 0 && Math.abs(recon - sq) < reconTol) {
+          const out = formatNestedSurdLatex(sign, a, -b, cR, den);
+          if (out) return out;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Find the underlying irrational c in val² = (a + b√c)/den, scanning a wide
+// (c, den) range. Called once per singular value to seed the priority list.
+// Skip rationals — no irrational c to find, and the search would scan to
+// the full bound and return null.
+function detectNestedSurdC(sq) {
+  if (sq <= 0) return null;
+  const r = ratApprox(sq, 10000);
+  if (r.q > 0 && Math.abs(sq - r.p / r.q) < 1e-12) return null;
+  for (let cR = 2; cR <= 500; cR++) {
+    const rootC = Math.floor(Math.sqrt(cR) + 0.5);
+    if (rootC * rootC === cR) continue;
+    if (tryNestedSurdAtC('', sq, cR, 50)) return cR;
+  }
+  return null;
+}
+
 function toSurd(val) {
   if (Math.abs(val) < 1e-7) return "0";
   let isNeg = val < 0;
   let sign = isNeg ? "-" : "";
   let absVal = Math.abs(val);
   let tol = 1e-6;
-
-  // Best rational p/q with q <= maxDen via continued-fraction convergents.
-  // O(log maxDen), reaches denominators the nested loops below can't.
-  function ratApprox(x, maxDen) {
-    let h0 = 1, k0 = 0, h1 = Math.floor(x), k1 = 1;
-    let frac = x - h1;
-    for (let i = 0; i < 64 && Math.abs(frac) > 1e-15; i++) {
-      let inv = 1 / frac;
-      let a = Math.floor(inv);
-      let h2 = a * h1 + h0, k2 = a * k1 + k0;
-      if (k2 > maxDen) break;
-      h0 = h1; k0 = k1;
-      h1 = h2; k1 = k2;
-      frac = inv - a;
-    }
-    return { p: h1, q: k1 };
-  }
 
   // 1. Pure surd: if val² ≈ p/q then val = √(p·q)/q (rationalized).
   // Run before the rational branch so values like 1/√14 don't accidentally
@@ -801,7 +895,36 @@ function toSurd(val) {
     return formatSurdLatex(sign, r1.p, 1, r1.q);
   }
 
-  // 3. Compound surd a ± b√c (rationalized) — narrow search as fallback.
+  // 3. Nested surd: val² = (a + b√c)/den. Two-phase search keeps the inner
+  // loop small while still covering U/V entries with large rationalized
+  // denominators. Phase A: c values pulled from the σ_i for the current
+  // SVD (set by renderResult) — these are the only c that can appear in
+  // U/V cells, so we scan a large den range. Phase B: general small-c
+  // sweep as fallback. c-first ordering ensures the canonical small-c
+  // representation wins over coincidental matches at larger c.
+  if (__nestedSurdPriorityCs) {
+    for (const cR of __nestedSurdPriorityCs) {
+      const out = tryNestedSurdAtC(sign, sq, cR, 1000);
+      if (out) return out;
+    }
+  }
+  // General fallback. When the priority list is empty (e.g. cubic-irrational
+  // σ_i or rational σ_i — neither of which can yield nested-surd U/V cells),
+  // a wide scan finds nothing and costs measurable time on every cell, so
+  // keep it narrow. Real nested surds in U/V always inherit their c from
+  // some σ_i and are already handled by the priority loop above.
+  const rfb = ratApprox(sq, 10000);
+  if (!(rfb.q > 0 && Math.abs(sq - rfb.p / rfb.q) < 1e-12)) {
+    for (let cR = 2; cR <= 50; cR++) {
+      const rootC = Math.floor(Math.sqrt(cR) + 0.5);
+      if (rootC * rootC === cR) continue;
+      if (__nestedSurdPriorityCs && __nestedSurdPriorityCs.indexOf(cR) >= 0) continue;
+      const out = tryNestedSurdAtC(sign, sq, cR, 30);
+      if (out) return out;
+    }
+  }
+
+  // 4. Compound surd a ± b√c (rationalized) — narrow search as fallback.
   const compTol = 1e-9;
   for (let rden = 1; rden <= 100; rden++) {
     let scaled = absVal * rden;
@@ -952,8 +1075,11 @@ function gramSchmidtColumns(vecs, outCount) {
 }
 
 function jacobiEigenDecomposition(A, maxIter, tol) {
-  maxIter = maxIter || 100;
-  tol = tol || 1e-7;
+  // Tight tolerance so eigenvalues converge close to machine precision,
+  // letting the surd-detector use a strict residual test without missing
+  // real nested-surd matches due to Jacobi truncation error.
+  maxIter = maxIter || 200;
+  tol = tol || 1e-14;
   const n = A.length;
   let V = identityMatrix(n);
   let B = A.map(row => row.slice());
@@ -1078,6 +1204,19 @@ function computeSVD(A) {
 function renderResult(A, U_disp, S_disp, Vt_disp, singularValues, svdType) {
   var resultDiv = document.getElementById('result');
   resultDiv.innerHTML = '';
+
+  // Extract the underlying √c from each σ_i so toSurd can recognise U/V
+  // entries whose squares share that c but have large denominators.
+  __nestedSurdPriorityCs = [];
+  if (currentDisplayMode === 'surd') {
+    for (var si = 0; si < singularValues.length; si++) {
+      var sv = singularValues[si];
+      if (sv < 1e-7) continue;
+      var cFound = detectNestedSurdC(sv * sv);
+      if (cFound && __nestedSurdPriorityCs.indexOf(cFound) < 0)
+        __nestedSurdPriorityCs.push(cFound);
+    }
+  }
 
   var A_label = "\\mathbf{A}";
   var U_label = "\\mathbf{U}";
