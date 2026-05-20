@@ -111,6 +111,26 @@
   .iconbtn.active{color:var(--ui-accent);border-color:var(--ui-accent)}
   .iconbtn svg{width:16px;height:16px}
 
+  /* fullscreen presentation mode */
+  .fs-exit{
+    position:fixed;top:16px;right:16px;z-index:60;
+    width:40px;height:40px;border-radius:50%;
+    background:rgba(15,17,22,.62);color:#fff;
+    border:1px solid rgba(255,255,255,.16);
+    display:none;align-items:center;justify-content:center;
+    cursor:pointer;
+    backdrop-filter:blur(12px) saturate(150%);
+    -webkit-backdrop-filter:blur(12px) saturate(150%);
+    transition:background .15s,transform .15s,opacity .2s;
+    opacity:.55;
+  }
+  .fs-exit:hover{background:rgba(36,40,55,.85);opacity:1;transform:scale(1.06)}
+  .fs-exit svg{width:18px;height:18px}
+  body.fs .fs-exit{display:flex}
+  body.fs .toolbar,
+  body.fs .strip{display:none}
+  body.fs .stage{padding:18px}
+
   /* mode info strip */
   .strip{
     flex:0 0 auto;font-size:11.5px;color:var(--ui-dim);
@@ -449,6 +469,9 @@
       </button>
     </div>
 
+    <button id="fsBtn" class="iconbtn" title="Fullscreen (F)" aria-label="Toggle fullscreen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
     <button id="maxBtn" class="iconbtn" title="Toggle maximized window" aria-label="Toggle maximized window">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
     </button>
@@ -476,6 +499,11 @@
   </main>
 </div>
 
+<!-- floating exit, only shown when body.fs is active -->
+<button class="fs-exit" id="fsExit" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+</button>
+
 <!-- ============ HELP ============ -->
 <div class="help" id="help">
   <div class="help-card">
@@ -491,6 +519,9 @@
 
     <h3>Resolution presets</h3>
     <p>Changing the resolution changes the page's actual viewport width, so responsive layouts reflow exactly as they would on that real display. The current page viewport size is shown in the strip above the desktop.</p>
+
+    <h3>Fullscreen</h3>
+    <p>Press <b>F</b> or click the fullscreen button to hide the tool's chrome and fill your monitor — useful for client presentations or seeing a site at true wide-screen scale. The OS desktop itself enlarges to fill the available space. Press <b>Esc</b> or the floating exit button to come back.</p>
 
     <h3>Window controls</h3>
     <p>The green macOS button and the Windows maximize button toggle between a framed window and a maximized one. To save the composed preview, use your system screenshot shortcut (⌘⇧4 on macOS, Win+Shift+S on Windows).</p>
@@ -522,7 +553,7 @@ var PRESETS = {
 
 var state = {
   os:'mac', mode:'live', theme:'light',
-  maximized:false,
+  maximized:false, fullscreen:false,
   url:'https://shelvean.github.io/math-tools',
   preset: PRESETS.mac[2]   // MacBook Pro 16"
 };
@@ -853,6 +884,50 @@ function render(){
 function reloadContent(){ contentNode = null; lastBuildKey = ''; render(); }
 
 /* ============================================================
+   FULLSCREEN  (presentation mode)
+   Hides the tool's own toolbar/strip and requests browser
+   fullscreen so the OS preview fills the whole monitor.
+   Fullscreen API may be denied; the chrome-hidden state still
+   works on its own and the floating exit button stays usable.
+   ============================================================ */
+function setFullscreen(on){
+  state.fullscreen = !!on;
+  document.body.classList.toggle('fs', state.fullscreen);
+  el('fsBtn').classList.toggle('active', state.fullscreen);
+
+  if(state.fullscreen){
+    var de  = document.documentElement;
+    var req = de.requestFullscreen || de.webkitRequestFullscreen ||
+              de.mozRequestFullScreen || de.msRequestFullscreen;
+    if(req){ try{ req.call(de); }catch(e){} }
+  } else {
+    if(document.fullscreenElement || document.webkitFullscreenElement ||
+       document.mozFullScreenElement || document.msFullscreenElement){
+      var ex = document.exitFullscreen || document.webkitExitFullscreen ||
+               document.mozCancelFullScreen || document.msExitFullscreen;
+      if(ex){ try{ ex.call(document); }catch(e){} }
+    }
+  }
+  /* the stage just resized — recompute scale on the next frame, and once more
+     after the browser's fullscreen animation settles. */
+  requestAnimationFrame(fit);
+  setTimeout(fit, 120);
+}
+
+/* Sync with browser-driven exits (user pressed Esc on the Fullscreen API
+   itself, or the OS revoked fullscreen). */
+function syncFullscreen(){
+  var isFS = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+                document.mozFullScreenElement || document.msFullscreenElement);
+  if(!isFS && state.fullscreen){
+    state.fullscreen = false;
+    document.body.classList.remove('fs');
+    el('fsBtn').classList.remove('active');
+    requestAnimationFrame(fit);
+  }
+}
+
+/* ============================================================
    CONTROLS WIRING
    ============================================================ */
 function buildResSelect(){
@@ -922,13 +997,37 @@ el('maxBtn').addEventListener('click', function(){
 });
 el('refreshBtn').addEventListener('click', reloadContent);
 
+el('fsBtn').addEventListener('click', function(){ setFullscreen(!state.fullscreen); });
+el('fsExit').addEventListener('click', function(){ setFullscreen(false); });
+document.addEventListener('fullscreenchange',       syncFullscreen);
+document.addEventListener('webkitfullscreenchange', syncFullscreen);
+document.addEventListener('mozfullscreenchange',    syncFullscreen);
+document.addEventListener('MSFullscreenChange',     syncFullscreen);
+
 el('helpBtn').addEventListener('click', function(){ el('help').classList.add('open'); });
 el('helpClose').addEventListener('click', function(){ el('help').classList.remove('open'); });
 el('help').addEventListener('click', function(e){
   if(e.target === el('help')) el('help').classList.remove('open');
 });
+
 document.addEventListener('keydown', function(e){
-  if(e.key==='Escape') el('help').classList.remove('open');
+  /* Esc cascades: close help first, then exit fullscreen */
+  if(e.key === 'Escape'){
+    if(el('help').classList.contains('open')){
+      el('help').classList.remove('open');
+    } else if(state.fullscreen){
+      setFullscreen(false);
+    }
+    return;
+  }
+  /* don't capture keys while the user is typing a URL */
+  var t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  if(e.key === 'f' || e.key === 'F'){
+    e.preventDefault();
+    setFullscreen(!state.fullscreen);
+  }
 });
 
 window.addEventListener('resize', fit);
