@@ -14,6 +14,14 @@ Used by hundreds of students.
 - Finite difference schemes
 - and 30+ more
 
-**Built independently.**  
-Code: MIT License · Content: CC BY-NC-SA 4.0
+**Built independently.**
+
+## License
+
+This project is distributed under two complementary licenses:
+
+- **Educational content** (text, equations, figures, explanations, and other non-code material on this site) is licensed under the [Creative Commons Attribution 4.0 International License (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/). You are free to share and adapt the material for any purpose, provided you give appropriate credit to Shelvean Kapita.
+- **Source code** (HTML, JavaScript, CSS, and Python in this repository) is released under the [MIT License](https://opensource.org/licenses/MIT). See [LICENSE](LICENSE) for the full text.
+
+Copyright (c) 2025 Shelvean Kapita.
 
