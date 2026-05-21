@@ -50,7 +50,7 @@ TOOL_MAP = {
     'choleskyfactors.html': ('linear.html', 'Linear Algebra'),
     'ffs.html': ('linear.html', 'Linear Algebra'),
     'cr.html': ('linear.html', 'Linear Algebra'),
-    'magicfactors.html': ('linear.html', 'Linear Algebra'),
+    'cmrfactor.html': ('linear.html', 'Linear Algebra'),
     'linearequation.html': ('linear.html', 'Linear Algebra'),
     'lineareqn.html': ('linear.html', 'Linear Algebra'),
     'generalizedinverse.html': ('linear.html', 'Linear Algebra'),
