@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Add a "Cite this tool" disclosure block with a copy-to-clipboard
-button to every tool page. Each citation is auto-customized using the
-page's <h1> as the title and its filename as the URL slug. The format
-is APA 7th edition for a web tool — universal, single-line, and
-copy-paste friendly.
+"""Add a "Cite this tool" disclosure block with three tabs — APA 7,
+MLA 9, and BibTeX (@online) — to every tool page. Each citation is
+auto-customized using the page's <h1> as the title and its filename as
+the URL slug.
 
 The block is placed immediately before the page's <footer> (the
 natural "metadata about this page" location), so it sits with the
@@ -18,12 +17,13 @@ import glob
 
 BASE = '/home/user/math-tools'
 SITE_URL = 'https://shelvean.github.io/math-tools/'
-AUTHOR = 'Kapita, S.'
+AUTHOR_LAST = 'Kapita'
+AUTHOR_FIRST = 'Shelvean'
+AUTHOR_INITIAL = 'S.'
 PUBLISHER = 'Math Tools'
 YEAR = '2026'
 
-# Hub/landing/personal pages — they aggregate tools rather than being
-# tools themselves, so a citation block doesn't add value.
+# Hub/landing/personal/utility pages — citations don't apply.
 SKIP_PAGES = {
     'index.html', 'about.html', 'cv.html',
     'teaching.html', 'projects.html', 'linear.html',
@@ -38,7 +38,7 @@ HTML_START = '<!-- cite-mark:start -->'
 HTML_END = '<!-- cite-mark:end -->'
 
 CITE_CSS = f"""{CSS_START}
-.cite-box{{max-width:42rem;margin:.75rem auto;border:1px solid #d1d5db;
+.cite-box{{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
   border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}}
 .cite-box[open]{{background:#fff;}}
@@ -53,11 +53,22 @@ CITE_CSS = f"""{CSS_START}
 .cite-summary:focus-visible{{outline:2px solid #4338ca;outline-offset:1px;
   border-radius:.3rem;}}
 .cite-content{{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}}
+.cite-tabs{{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}}
+.cite-tab{{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}}
+.cite-tab:hover{{color:#374151;}}
+.cite-tab[aria-selected="true"]{{color:#4338ca;border-bottom-color:#4338ca;}}
+.cite-tab:focus-visible{{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}}
 .cite-text{{margin:0;padding:.55rem .7rem;background:#f3f4f6;
   border:1px solid #e5e7eb;border-radius:.3rem;
   font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color:#111827;white-space:pre-wrap;word-break:break-word;
   user-select:text;}}
+.cite-pane[hidden]{{display:none;}}
 .cite-copy{{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
   border-radius:.35rem;background:#fff;color:#374151;
   font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
@@ -73,20 +84,66 @@ CITE_HTML_TMPL = """{start}
 <details class="cite-box">
   <summary class="cite-summary">Cite this tool</summary>
   <div class="cite-content">
-    <p class="sr-only" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">APA 7th edition citation. Click the button below to copy to your clipboard, or select and copy the text manually.</p>
-    <pre class="cite-text">{citation}</pre>
-    <button type="button" class="cite-copy" data-cite-copy aria-label="Copy citation to clipboard">Copy citation</button>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">{apa}</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>{mla}</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>{bib}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
   </div>
 </details>
 <script>
 (function(){{
-  var btns = document.querySelectorAll('[data-cite-copy]');
-  btns.forEach(function(btn){{
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){{
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){{
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){{
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      }});
+      panes.forEach(function(p){{
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      }});
+    }}
+    tabs.forEach(function(tab, i){{
+      tab.addEventListener('click', function(){{ activate(tab); }});
+      tab.addEventListener('keydown', function(e){{
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      }});
+    }});
+  }});
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){{
     btn.addEventListener('click', function(){{
       var box = btn.closest('.cite-box');
       if (!box) return;
-      var pre = box.querySelector('.cite-text');
-      var text = (pre.textContent || '').trim();
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
       function showOk(){{
         var orig = btn.getAttribute('data-orig') || btn.textContent;
         btn.setAttribute('data-orig', orig);
@@ -127,15 +184,14 @@ CITE_HTML_TMPL = """{start}
 
 
 def clean(s):
-    """Strip nested HTML, decode common entities, collapse whitespace,
-    and unwrap inline MathJax delimiters so the citation reads as plain text."""
+    """Strip nested HTML, decode common entities, unwrap inline MathJax,
+    collapse whitespace."""
     s = re.sub(r'<br\s*/?>', ' ', s, flags=re.IGNORECASE)
     s = re.sub(r'<[^>]+>', '', s)
     s = (s.replace('&mdash;', '—').replace('&ndash;', '–')
            .replace('&amp;', '&').replace('&nbsp;', ' ')
            .replace('&quot;', '"').replace('&#39;', "'")
            .replace('&lt;', '<').replace('&gt;', '>'))
-    # Unwrap inline MathJax: \(x\) -> x, $$x$$/$x$ kept (rare in titles).
     s = re.sub(r'\\\(\s*(.*?)\s*\\\)', r'\1', s)
     s = re.sub(r'\s+', ' ', s).strip()
     return s
@@ -159,10 +215,50 @@ def extract_title(html):
     return 'Untitled'
 
 
-def build_citation(title, filename):
-    """APA 7th edition for a web tool: Author. (Year). Title [descriptor]. Site. URL"""
+def bibtex_escape(s):
+    """Escape characters that BibTeX/LaTeX would otherwise misinterpret."""
+    out = []
+    for ch in s:
+        if ch == '\\':
+            out.append('\\textbackslash{}')
+        elif ch in '&%$#_{}':
+            out.append('\\' + ch)
+        elif ch == '~':
+            out.append('\\textasciitilde{}')
+        elif ch == '^':
+            out.append('\\textasciicircum{}')
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+
+def html_escape(s):
+    """Escape for safe insertion into <pre> innerHTML."""
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def bib_key(filename):
+    stem = filename.replace('.html', '').lower()
+    return AUTHOR_LAST.lower() + YEAR + re.sub(r'[^a-z0-9]', '', stem)
+
+
+def build_citations(title, filename):
     url = SITE_URL + filename
-    return f'{AUTHOR} ({YEAR}). {title} [Web tool]. {PUBLISHER}. {url}'
+    mla_url = url.replace('https://', '').replace('http://', '')
+
+    apa = f'{AUTHOR_LAST}, {AUTHOR_INITIAL} ({YEAR}). {title}. {PUBLISHER}. {url}'
+    mla = (f'{AUTHOR_LAST}, {AUTHOR_FIRST}. "{title}." '
+           f'{PUBLISHER}, {YEAR}, {mla_url}.')
+    bib = (
+        f'@online{{{bib_key(filename)},\n'
+        f'  author       = {{{AUTHOR_FIRST} {AUTHOR_LAST}}},\n'
+        f'  title        = {{{{{bibtex_escape(title)}}}}},\n'
+        f'  year         = {{{YEAR}}},\n'
+        f'  organization = {{{PUBLISHER}}},\n'
+        f'  url          = {{{url}}}\n'
+        f'}}'
+    )
+    return html_escape(apa), html_escape(mla), html_escape(bib)
 
 
 def strip_old(html):
@@ -199,7 +295,7 @@ def process(path):
         html = f.read()
     html = strip_old(html)
     title = extract_title(html)
-    citation = build_citation(title, name)
+    apa, mla, bib = build_citations(title, name)
 
     if '</style>' in html:
         idx = html.rfind('</style>')
@@ -209,7 +305,10 @@ def process(path):
     else:
         return ('FAIL', name, title, None)
 
-    block = CITE_HTML_TMPL.format(start=HTML_START, end=HTML_END, citation=citation)
+    block = CITE_HTML_TMPL.format(
+        start=HTML_START, end=HTML_END,
+        apa=apa, mla=mla, bib=bib,
+    )
     html, where = inject_block(html, block)
 
     with open(path, 'w', encoding='utf-8') as f:
@@ -223,7 +322,7 @@ def main():
         status, name, title, where = process(path)
         counts[status] += 1
         if status == 'OK':
-            print(f'  OK   {name:42s} -> "{title}" @ {where}')
+            print(f'  OK   {name:42s} -> "{title}"')
         elif status == 'SKIP':
             print(f'  SKIP {name}')
         else:
