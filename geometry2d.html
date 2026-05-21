@@ -477,7 +477,7 @@
 .fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
 /* feedback-mark-css:end */
 /* cite-mark-css:start */
-.cite-box{max-width:42rem;margin:.75rem auto;border:1px solid #d1d5db;
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
   border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
 .cite-box[open]{background:#fff;}
@@ -492,11 +492,22 @@
 .cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
   border-radius:.3rem;}
 .cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
 .cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
   border:1px solid #e5e7eb;border-radius:.3rem;
   font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color:#111827;white-space:pre-wrap;word-break:break-word;
   user-select:text;}
+.cite-pane[hidden]{display:none;}
 .cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
   border-radius:.35rem;background:#fff;color:#374151;
   font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
@@ -703,20 +714,72 @@
 <details class="cite-box">
   <summary class="cite-summary">Cite this tool</summary>
   <div class="cite-content">
-    <p class="sr-only" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">APA 7th edition citation. Click the button below to copy to your clipboard, or select and copy the text manually.</p>
-    <pre class="cite-text">Kapita, S. (2026). Geometry of Linear Systems in 2D [Web tool]. Math Tools. https://shelvean.github.io/math-tools/geometry2d.html</pre>
-    <button type="button" class="cite-copy" data-cite-copy aria-label="Copy citation to clipboard">Copy citation</button>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Geometry of Linear Systems in 2D. Math Tools. https://shelvean.github.io/math-tools/geometry2d.html</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Geometry of Linear Systems in 2D." Math Tools, 2026, shelvean.github.io/math-tools/geometry2d.html.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026geometry2d,
+  author       = {Shelvean Kapita},
+  title        = {{Geometry of Linear Systems in 2D}},
+  year         = {2026},
+  organization = {Math Tools},
+  url          = {https://shelvean.github.io/math-tools/geometry2d.html}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
   </div>
 </details>
 <script>
 (function(){
-  var btns = document.querySelectorAll('[data-cite-copy]');
-  btns.forEach(function(btn){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
     btn.addEventListener('click', function(){
       var box = btn.closest('.cite-box');
       if (!box) return;
-      var pre = box.querySelector('.cite-text');
-      var text = (pre.textContent || '').trim();
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
       function showOk(){
         var orig = btn.getAttribute('data-orig') || btn.textContent;
         btn.setAttribute('data-orig', orig);
