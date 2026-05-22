@@ -756,20 +756,39 @@ function wrapNeg(v){return v<0?'('+fmtPV(v)+')':fmtPV(v);}
 
 /* -- substitute current parameter values into a LaTeX template --
    handles \omega, a, b carefully (won't touch letters inside LaTeX
-   command names like \tau, \dfrac, \sin, \cos). */
+   command names like \tau, \dfrac, \sin, \cos). Omits coefficients
+   equal to 1 (and renders -1 as a bare "-") when the symbol is acting
+   as a coefficient (followed by a letter, backslash, or '('). */
 function substParams(latex, p){
   if(!latex)return latex;
+  function makeReplacer(v){
+    return function(match, offset, str){
+      var after =str.charAt(offset+match.length);
+      var before=str.charAt(offset-1);
+      var isCoef    = after !== '' && /[A-Za-z\\(]/.test(after);
+      var followsNum= before !== '' && /[0-9]/.test(before);
+      var rep;
+      if(isCoef && v===1)       rep='';
+      else if(isCoef && v===-1) rep='-';
+      else                      rep=wrapNeg(v);
+      if(followsNum && /^[0-9(]/.test(rep)) rep='\\cdot '+rep;
+      return rep;
+    };
+  }
   var s=latex;
   if(p && p.w!==undefined && s.indexOf('\\omega')>=0){
-    s=s.replace(/\\omega/g, wrapNeg(p.w));
+    /* \omega in LaTeX is often written with a trailing space (e.g.
+       "\omega t") since the command name must be terminated; consume
+       it so the after-char check sees the real next token. */
+    s=s.replace(/\\omega\s*/g, makeReplacer(p.w));
   }
   if(p && p.a!==undefined){
     s=s.replace(/u_a\b/g, 'u_{'+fmtPV(p.a)+'}');
-    s=s.replace(/(?<![A-Za-z])a/g, wrapNeg(p.a));
+    s=s.replace(/(?<![A-Za-z])a/g, makeReplacer(p.a));
   }
   if(p && p.b!==undefined){
     s=s.replace(/u_b\b/g, 'u_{'+fmtPV(p.b)+'}');
-    s=s.replace(/(?<![A-Za-z])b/g, wrapNeg(p.b));
+    s=s.replace(/(?<![A-Za-z])b/g, makeReplacer(p.b));
   }
   return s;
 }
