@@ -212,6 +212,19 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .chip mjx-container{font-size:1.1em !important;vertical-align:middle;}
 .csw{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
 
+/* -- per-plot legend (rendered outside plot area, LaTeX) -- */
+.plegend{
+  display:flex;flex-wrap:wrap;gap:.4rem .9rem;justify-content:center;align-items:center;
+  padding:.4rem .65rem;background:var(--sect);border-top:1px solid var(--bdr2);
+  font-size:.8125rem;color:var(--txt2);min-height:1.9rem;
+}
+.plegend:empty{display:none;}
+.plegend .lgi{display:inline-flex;align-items:center;gap:.4rem;line-height:1.2;}
+.plegend .lgsw{width:18px;height:3px;border-radius:1.5px;display:inline-block;flex-shrink:0;}
+.plegend .lgdot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;
+  border:1.5px solid #1e40af;background:#2563eb;}
+.plegend mjx-container{font-size:1em !important;vertical-align:middle;}
+
 /* -- custom LaTeX listbox --------------- */
 .csel-wrap{position:relative;}
 .csel-btn{
@@ -571,6 +584,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
       </div>
       <div id="plotFG" class="pplot" role="img"
            aria-label="f(tau) in blue and g(t minus tau) in orange overlaid; shaded overlap shows where both are nonzero"></div>
+      <div class="plegend" id="legFG" aria-label="Legend for f and g plot"></div>
     </div>
 
     <!-- Top-right: integrand -->
@@ -581,6 +595,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
       </div>
       <div id="plotProd" class="pplot" role="img"
            aria-label="Product of f and g; shaded area equals h(t)"></div>
+      <div class="plegend" id="legProd" aria-label="Legend for integrand plot"></div>
     </div>
 
     <!-- Bottom: h(t) centered at half-width -->
@@ -591,6 +606,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
       </div>
       <div id="plotH" class="pplot-wide" role="img"
            aria-label="Convolution h(t) tracing out as t increases; blue dot marks current numerical value"></div>
+      <div class="plegend" id="legH" aria-label="Legend for h of t plot"></div>
     </div>
 
   </div>
@@ -728,6 +744,35 @@ function linspace(a,b,n){var r=[];for(var i=0;i<n;i++)r.push(a+(b-a)*i/(n-1));re
 function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
 function fmt(v,d){d=d==null?5:d;if(!isFinite(v))return 'undef.';if(Math.abs(v)<1e-5&&v!==0)return v.toExponential(3);return v.toFixed(d);}
 function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* -- pretty-print a parameter value, stripping trailing zeros -- */
+function fmtPV(v){
+  if(!isFinite(v))return String(v);
+  var s=Number(v).toFixed(2);
+  if(s.indexOf('.')>=0)s=s.replace(/0+$/,'').replace(/\.$/,'');
+  return s;
+}
+function wrapNeg(v){return v<0?'('+fmtPV(v)+')':fmtPV(v);}
+
+/* -- substitute current parameter values into a LaTeX template --
+   handles \omega, a, b carefully (won't touch letters inside LaTeX
+   command names like \tau, \dfrac, \sin, \cos). */
+function substParams(latex, p){
+  if(!latex)return latex;
+  var s=latex;
+  if(p && p.w!==undefined && s.indexOf('\\omega')>=0){
+    s=s.replace(/\\omega/g, wrapNeg(p.w));
+  }
+  if(p && p.a!==undefined){
+    s=s.replace(/u_a\b/g, 'u_{'+fmtPV(p.a)+'}');
+    s=s.replace(/(?<![A-Za-z])a/g, wrapNeg(p.a));
+  }
+  if(p && p.b!==undefined){
+    s=s.replace(/u_b\b/g, 'u_{'+fmtPV(p.b)+'}');
+    s=s.replace(/(?<![A-Za-z])b/g, wrapNeg(p.b));
+  }
+  return s;
+}
 
 /* -- Gauss-Legendre 10-point -- */
 var GN=[-0.9739065285171717,-0.8650633666889845,-0.6794095682990244,-0.4333953941292472,-0.1488743389816312,
@@ -1134,9 +1179,6 @@ function drawFG(){
   var yr=yRange([fy_full,gy], 0.5);
   var layout=lay('$\\tau$','');
   layout.yaxis.range=yr;
-  layout.showlegend=true;
-  layout.legend={orientation:'h',x:0,y:-0.22,font:{size:10},
-    bgcolor:'rgba(255,255,255,.88)',bordercolor:'#d1d5db',borderwidth:1};
   layout.shapes=[
     {type:'rect',x0:0,x1:t,y0:yr[0],y1:yr[1],
      fillcolor:'rgba(124,58,237,.06)',line:{width:0}},
@@ -1148,15 +1190,15 @@ function drawFG(){
     text:'t='+t.toFixed(2),showarrow:false,
     font:{size:10,color:'#555'},bgcolor:'rgba(255,255,255,.8)'
   }];
-  layout.margin={t:8,r:12,b:60,l:48};
+  layout.margin={t:8,r:12,b:46,l:48};
   Plotly.react('plotFG',[
     {x:tg,y:overlapY,type:'scatter',mode:'none',fill:'tozeroy',
      fillcolor:'rgba(124,58,237,.18)',hoverinfo:'skip',showlegend:false},
     {x:tg,y:gy,type:'scatter',mode:'lines',name:'g(t\u2212\u03c4)',
-     line:{color:'#c2410c',width:2.5},connectgaps:false,
+     line:{color:'#c2410c',width:2.5},connectgaps:false,showlegend:false,
      hovertemplate:'\u03c4=%{x:.3f}<br>g(t\u2212\u03c4)=%{y:.4f}<extra>g(t\u2212\u03c4)</extra>'},
     {x:tg,y:fy_full,type:'scatter',mode:'lines',name:'f(\u03c4)',
-     line:{color:'#1d4ed8',width:2.5},connectgaps:false,
+     line:{color:'#1d4ed8',width:2.5},connectgaps:false,showlegend:false,
      hovertemplate:'\u03c4=%{x:.3f}<br>f(\u03c4)=%{y:.4f}<extra>f(\u03c4)</extra>'}
   ],layout,CFG);
 }
@@ -1172,7 +1214,6 @@ function drawProd(){
   });
   var prodPos=prod.map(function(v){return v!=null?Math.max(v,0):null;});
   var prodNeg=prod.map(function(v){return v!=null?Math.min(v,0):null;});
-  var hExact=ex.h(t,p);
   var yr=yRange([prod], 0.5);
   if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
   var layout=lay('$\\tau$','$f(\\tau)\\cdot g(t-\\tau)$');
@@ -1181,18 +1222,11 @@ function drawProd(){
     {type:'line',x0:0,x1:ST.tMax,y0:0,y1:0,line:{color:'#9ca3af',width:1}},
     {type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],line:{color:'rgba(15,118,110,.55)',width:1.8,dash:'dot'}}
   ];
-  layout.annotations=[{
-    x:1,y:1,xref:'paper',yref:'paper',
-    text:'h('+t.toFixed(2)+') = '+(isFinite(hExact)?fmt(hExact,4):'—'),
-    showarrow:false,xanchor:'right',yanchor:'top',
-    bgcolor:'rgba(255,255,255,.9)',bordercolor:'#d1d5db',borderwidth:1,borderpad:4,
-    font:{size:12,color:'#0f766e'}
-  }];
   Plotly.react('plotProd',[
     {x:tg,y:prodPos,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(15,118,110,.3)',hoverinfo:'skip'},
     {x:tg,y:prodNeg,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(239,68,68,.3)',hoverinfo:'skip'},
     {x:tg,y:prod,type:'scatter',mode:'lines',line:{color:'#0f766e',width:2.8},connectgaps:false,
-     hovertemplate:'\u03c4=%{x:.3f}<br>product=%{y:.5f}<extra>f\u00b7g</extra>'}
+     showlegend:false,hovertemplate:'\u03c4=%{x:.3f}<br>product=%{y:.5f}<extra>f\u00b7g</extra>'}
   ],layout,CFG);
 }
 
@@ -1205,16 +1239,15 @@ function drawH(){
   if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
   var layout=lay('$t$','$h(t)$',{height:215});
   layout.yaxis.range=yr;
-  layout.showlegend=true;
-  layout.legend={x:.02,y:.98,bgcolor:'rgba(255,255,255,.88)',bordercolor:'#d1d5db',borderwidth:1,font:{size:10}};
   layout.shapes=[{type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],
     line:{color:'rgba(37,99,235,.4)',width:1.5,dash:'dot'}}];
   Plotly.react('plotH',[
     {x:tArr,y:hExact,type:'scatter',mode:'lines',name:'h(t)',
-     line:{color:'#7c3aed',width:2.8},connectgaps:false,
+     line:{color:'#7c3aed',width:2.8},connectgaps:false,showlegend:false,
      hovertemplate:'t=%{x:.3f}<br>h(t)=%{y:.5f}<extra>h(t)</extra>'},
     {x:[t],y:[isFinite(hNow)?hNow:null],type:'scatter',mode:'markers',name:'current t',
      marker:{color:'#2563eb',size:12,symbol:'circle',line:{color:'#1e40af',width:2.5}},
+     showlegend:false,
      hovertemplate:'t='+t.toFixed(3)+'<br>h='+fmt(hNow,5)+'<extra>current</extra>'}
   ],layout,CFG);
   document.getElementById('hvt').textContent    = t.toFixed(3);
@@ -1226,16 +1259,56 @@ function drawH(){
 --------------------------------------------------- */
 var fmPending=false;
 function updateFormula(){
-  var ex=EX[ST.exId];
+  var ex=EX[ST.exId], p=ST.p;
+  var lf_tau=substParams(ex.lf_tau,p);
+  var lg_ttau=substParams(ex.lg_ttau,p);
+  var lh=substParams(ex.lh,p);
+  var desc=substParams(ex.desc,p);
   var html=
     '<div style="text-align:center">\\[ (f*g)(t) \\;=\\; \\int_0^t '+
-    ex.lf_tau+'\\cdot '+ex.lg_ttau+'\\,d\\tau \\;=\\; '+ex.lh+' \\]</div>'+
-    '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+ex.desc+'</div>';
+    lf_tau+'\\cdot '+lg_ttau+'\\,d\\tau \\;=\\; '+lh+' \\]</div>'+
+    '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+desc+'</div>';
   var box=document.getElementById('formulaBox');
   box.innerHTML=html;
   if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
     fmPending=true;
     MathJax.typesetPromise([box]).then(function(){fmPending=false;}).catch(function(){fmPending=false;});
+  }
+}
+
+/* ---------------------------------------------------
+   Per-plot LaTeX legends (rendered outside graphs)
+--------------------------------------------------- */
+var lgPending=false;
+function legendChip(color, tex, dot){
+  var sw=dot
+    ?'<span class="lgdot" aria-hidden="true" style="background:'+color+';border-color:'+color+'"></span>'
+    :'<span class="lgsw" aria-hidden="true" style="background:'+color+'"></span>';
+  return '<span class="lgi">'+sw+'\\('+tex+'\\)</span>';
+}
+function updateLegends(){
+  var ex=EX[ST.exId], p=ST.p;
+  var lf_tau=substParams(ex.lf_tau,p);
+  var lg_ttau=substParams(ex.lg_ttau,p);
+  var lh=substParams(ex.lh,p);
+
+  document.getElementById('legFG').innerHTML=
+    legendChip('#1d4ed8','f(\\tau)='+lf_tau)+
+    legendChip('#c2410c','g(t-\\tau)='+lg_ttau);
+
+  document.getElementById('legProd').innerHTML=
+    legendChip('#0f766e','f(\\tau)\\cdot g(t-\\tau)='+lf_tau+'\\cdot '+lg_ttau);
+
+  document.getElementById('legH').innerHTML=
+    legendChip('#7c3aed','h(t)='+lh)+
+    legendChip('#2563eb','\\text{current }t','dot');
+
+  if(!lgPending&&window.MathJax&&MathJax.typesetPromise){
+    lgPending=true;
+    var nodes=[document.getElementById('legFG'),
+               document.getElementById('legProd'),
+               document.getElementById('legH')];
+    MathJax.typesetPromise(nodes).then(function(){lgPending=false;}).catch(function(){lgPending=false;});
   }
 }
 
@@ -1247,7 +1320,15 @@ function redrawAll(){
   if(pending)return; pending=true;
   requestAnimationFrame(function(){
     pending=false;
-    drawFG(); drawProd(); drawH(); updateFormula();
+    drawFG(); drawProd(); drawH(); updateFormula(); updateLegends();
+  });
+}
+/* lighter redraw for t-only changes (no MathJax re-typeset) */
+function redrawT(){
+  if(pending)return; pending=true;
+  requestAnimationFrame(function(){
+    pending=false;
+    drawFG(); drawProd(); drawH();
   });
 }
 
@@ -1257,7 +1338,7 @@ function redrawAll(){
 document.getElementById('tNum').addEventListener('change',function(){
   ST.t=clamp(parseFloat(this.value)||0,0,ST.tMax);
   this.value=ST.t;
-  redrawAll();
+  redrawT();
 });
 document.getElementById('tNum').addEventListener('keydown',function(e){
   if(e.key==='Enter'){e.preventDefault();this.dispatchEvent(new Event('change'));}
@@ -1298,7 +1379,7 @@ function startAnim(){
     if(!ST.animating){clearInterval(animTimer);return;}
     ST.t=Math.min(ST.t+step,ST.tMax);
     document.getElementById('tNum').value=ST.t.toFixed(2);
-    redrawAll();
+    redrawT();
     if(ST.t>=ST.tMax){stopAnim();say('Animation complete');}
   },ms);
   say('Animation started');
@@ -1309,7 +1390,7 @@ document.getElementById('btnReset').addEventListener('click',function(){
   stopAnim();
   ST.t=0;
   document.getElementById('tNum').value=0;
-  redrawAll();
+  redrawT();
   say('Reset to t = 0');
 });
 
