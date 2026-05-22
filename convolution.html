@@ -754,6 +754,71 @@ function fmtPV(v){
 }
 function wrapNeg(v){return v<0?'('+fmtPV(v)+')':fmtPV(v);}
 
+/* -- pretty-print a computed number, rounding away float noise -- */
+function fmtN(v){
+  if(!isFinite(v))return String(v);
+  var s=(Math.round(v*1e6)/1e6).toString();
+  return s;
+}
+
+/* -- repeatedly fold pure-numeric sub-expressions (after substitution),
+   so things like 3+2, 2\cdot 2, (-0.5)^2, (t-3-2) collapse to 5, 4,
+   0.25, (t-5). Variables (t, \tau, \sin, ...) are never touched. */
+function simplifyArith(s){
+  if(!s)return s;
+  var prev;
+  for(var i=0;i<30;i++){
+    prev=s;
+    /* a \cdot b → product (each side: bare number or (negative) ) */
+    s=s.replace(/(\(-?\d+(?:\.\d+)?\)|-?\d+(?:\.\d+)?)\s*\\cdot\s*(\(-?\d+(?:\.\d+)?\)|-?\d+(?:\.\d+)?)/g,
+      function(m,a,b){
+        var av=parseFloat(a.replace(/[()]/g,''));
+        var bv=parseFloat(b.replace(/[()]/g,''));
+        return fmtN(av*bv);
+      });
+    /* (n)^2 → n*n */
+    s=s.replace(/\((-?\d+(?:\.\d+)?)\)\^2/g, function(m,a){
+      var v=parseFloat(a); return fmtN(v*v);
+    });
+    /* n^2 → n*n (bare digit base) */
+    s=s.replace(/(\d+(?:\.\d+)?)\^2/g, function(m,a){
+      var v=parseFloat(a); return fmtN(v*v);
+    });
+    /* num op (num)  e.g. 1-(-0.5) */
+    s=s.replace(/(-?\d+(?:\.\d+)?)\s*([+\-])\s*\((-?\d+(?:\.\d+)?)\)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* (num) op (num) */
+    s=s.replace(/\((-?\d+(?:\.\d+)?)\)\s*([+\-])\s*\((-?\d+(?:\.\d+)?)\)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* (num) op num */
+    s=s.replace(/\((-?\d+(?:\.\d+)?)\)\s*([+\-])\s*(\d+(?:\.\d+)?)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* num op num — second number must be non-negative digits only, so
+       this doesn't latch onto things like '2t-2t' where the '2's are
+       coefficients of variables. */
+    s=s.replace(/(-?\d+(?:\.\d+)?)\s*([+\-])\s*(\d+(?:\.\d+)?)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* collapse ((x)) → (x) where x has no nested parens — fixes
+       double-paren artefacts like \cos((t-\tau)) when omega=1 was
+       dropped before '('. */
+    s=s.replace(/\(\(([^()]+)\)\)/g, '($1)');
+    if(s===prev)break;
+  }
+  return s;
+}
+
 /* -- substitute current parameter values into a LaTeX template --
    handles \omega, a, b carefully (won't touch letters inside LaTeX
    command names like \tau, \dfrac, \sin, \cos). Omits coefficients
@@ -790,7 +855,7 @@ function substParams(latex, p){
     s=s.replace(/u_b\b/g, 'u_{'+fmtPV(p.b)+'}');
     s=s.replace(/(?<![A-Za-z])b/g, makeReplacer(p.b));
   }
-  return s;
+  return simplifyArith(s);
 }
 
 /* -- Gauss-Legendre 10-point -- */
