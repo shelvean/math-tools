@@ -761,6 +761,28 @@ function fmtN(v){
   return s;
 }
 
+/* -- negate a LaTeX expression by flipping its top-level +/- signs
+   (those at brace/paren depth 0). If it doesn't start with a sign,
+   a leading '-' is prepended. Used to factor a negative denominator
+   into the numerator: X/(-N) ≡ (-X)/N. */
+function negateLatexExpr(expr){
+  if(!expr)return expr;
+  var out='', depth=0;
+  for(var i=0;i<expr.length;i++){
+    var c=expr.charAt(i);
+    if(depth===0 && (c==='+'||c==='-')){
+      out += c==='+' ? '-' : '+';
+    } else {
+      out += c;
+    }
+    if(c==='{'||c==='(') depth++;
+    else if(c==='}'||c===')') depth--;
+  }
+  var first=expr.charAt(0);
+  if(first!=='+' && first!=='-') out='-'+out;
+  return out;
+}
+
 /* -- repeatedly fold pure-numeric sub-expressions (after substitution),
    so things like 3+2, 2\cdot 2, (-0.5)^2, (t-3-2) collapse to 5, 4,
    0.25, (t-5). Variables (t, \tau, \sin, ...) are never touched. */
@@ -839,6 +861,13 @@ function simplifyArith(s){
        double-paren artefacts like \cos((t-\tau)) when omega=1 was
        dropped before '('. */
     s=s.replace(/\(\(([^()]+)\)\)/g, '($1)');
+    /* \dfrac{X}{-N} → \dfrac{negate(X)}{N}  (division by a negative is
+       multiplication by -1; factor the sign into the numerator so the
+       /1 rule below can then drop the fraction when N=1). */
+    s=s.replace(/\\dfrac\{((?:[^{}]|\{[^{}]*\})*)\}\{-(\d+(?:\.\d+)?)\}/g,
+      function(m, num, n){
+        return '\\dfrac{'+negateLatexExpr(num)+'}{'+n+'}';
+      });
     /* \dfrac{X}{1} → X  (drop division by 1). The numerator pattern
        allows one level of nested brace-groups, which covers things
        like e^{0.5t} or u_{5} inside the numerator. */
