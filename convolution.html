@@ -769,11 +769,20 @@ function simplifyArith(s){
   var prev;
   for(var i=0;i<30;i++){
     prev=s;
-    /* Sign simplifications: -(-x) → +x, +(-x) → -x */
-    s=s.replace(/-\((-?\d+(?:\.\d+)?)\)/g, function(m,n){
+    /* Raw double-sign collapses (e.g. e^{-t}--\sin(t) → e^{-t}+\sin(t)).
+       These arise when a coefficient of -1 substitutes a bare "-" right
+       after an existing "-". */
+    s=s.replace(/--/g, '+');
+    s=s.replace(/\+\+/g, '+');
+    s=s.replace(/\+-/g, '-');
+    s=s.replace(/-\+/g, '-');
+    /* Sign simplifications: -(-x) → +x, +(-x) → -x.
+       Guarded by (?!\^) so we don't break -(-1)^2, which by PEMDAS is -1
+       (negation applies after the square), not +1. */
+    s=s.replace(/-\((-?\d+(?:\.\d+)?)\)(?!\^)/g, function(m,n){
       return n.charAt(0)==='-' ? '+'+n.substring(1) : '-'+n;
     });
-    s=s.replace(/\+\((-?\d+(?:\.\d+)?)\)/g, function(m,n){
+    s=s.replace(/\+\((-?\d+(?:\.\d+)?)\)(?!\^)/g, function(m,n){
       return n.charAt(0)==='-' ? '-'+n.substring(1) : '+'+n;
     });
     /* Strip wrapper parens around (-num) when preceded by '{', '(', or
@@ -830,6 +839,10 @@ function simplifyArith(s){
        double-paren artefacts like \cos((t-\tau)) when omega=1 was
        dropped before '('. */
     s=s.replace(/\(\(([^()]+)\)\)/g, '($1)');
+    /* \dfrac{X}{1} → X  (drop division by 1). The numerator pattern
+       allows one level of nested brace-groups, which covers things
+       like e^{0.5t} or u_{5} inside the numerator. */
+    s=s.replace(/\\dfrac\{((?:[^{}]|\{[^{}]*\})*)\}\{1\}/g, '$1');
     if(s===prev)break;
   }
   return s;
