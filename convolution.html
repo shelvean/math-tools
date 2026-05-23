@@ -769,6 +769,17 @@ function simplifyArith(s){
   var prev;
   for(var i=0;i<30;i++){
     prev=s;
+    /* Sign simplifications: -(-x) → +x, +(-x) → -x */
+    s=s.replace(/-\((-?\d+(?:\.\d+)?)\)/g, function(m,n){
+      return n.charAt(0)==='-' ? '+'+n.substring(1) : '-'+n;
+    });
+    s=s.replace(/\+\((-?\d+(?:\.\d+)?)\)/g, function(m,n){
+      return n.charAt(0)==='-' ? '-'+n.substring(1) : '+'+n;
+    });
+    /* Strip wrapper parens around (-num) when preceded by '{', '(', or
+       start of string AND not followed by '^' (which would change
+       meaning by precedence — (-0.5)^2 ≠ -0.5^2). */
+    s=s.replace(/(^|[{(])\((-\d+(?:\.\d+)?)\)(?!\^)/g, '$1$2');
     /* a \cdot b → product (each side: bare number or (negative) ) */
     s=s.replace(/(\(-?\d+(?:\.\d+)?\)|-?\d+(?:\.\d+)?)\s*\\cdot\s*(\(-?\d+(?:\.\d+)?\)|-?\d+(?:\.\d+)?)/g,
       function(m,a,b){
@@ -810,6 +821,11 @@ function simplifyArith(s){
         var av=parseFloat(a), bv=parseFloat(b);
         return fmtN(op==='+'?av+bv:av-bv);
       });
+    /* strip leading '+' after '{' or '(' or start of string, when
+       followed by a digit/paren — handles cases like {+0.5\sin(t)}
+       that arise after sign simplification. */
+    s=s.replace(/([{(])\s*\+(?=[\d(])/g, '$1');
+    s=s.replace(/^\s*\+(?=[\d(])/, '');
     /* collapse ((x)) → (x) where x has no nested parens — fixes
        double-paren artefacts like \cos((t-\tau)) when omega=1 was
        dropped before '('. */
