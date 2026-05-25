@@ -483,7 +483,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <!-- Trajectory arrowhead size -->
     <div class="cfield cfield-xs">
       <label for="trajHeadSize">Head size</label>
-      <input type="number" id="trajHeadSize" value="5.5" min="1" max="20" step="0.5">
+      <input type="number" id="trajHeadSize" value="0" min="0" max="20" step="0.5" aria-label="Trajectory arrowhead size in pixels (0 to disable)">
+    </div>
+
+    <!-- Trajectory colour -->
+    <div class="cfield cfield-sm">
+      <label for="trajColor">Traj colour</label>
+      <select id="trajColor">
+        <option value="multicolor">Multicolor</option>
+        <option value="#3b82f6">Blue</option>
+        <option value="#dc2626">Red</option>
+        <option value="#000000" selected>Black</option>
+      </select>
     </div>
 
     <!-- Field colour -->
@@ -1180,9 +1191,11 @@ function drawPortrait(){
   }
 
   /* Trajectories with directional arrowheads */
+  var trajColorPick=(document.getElementById('trajColor')||{}).value||'#000000';
+  function getTrajColor(idx){return trajColorPick==='multicolor'?COLORS[idx%COLORS.length]:trajColorPick;}
   trajectories.forEach(function(traj,idx){
     if(traj.length<2)return;
-    var color=COLORS[idx%COLORS.length];
+    var color=getTrajColor(idx);
     ctx.save();
     ctx.strokeStyle=color;ctx.lineWidth=2;
     ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash([]);
@@ -1191,30 +1204,33 @@ function drawPortrait(){
     for(var i=1;i<traj.length;i++)ctx.lineTo(traj[i].cx,traj[i].cy);
     ctx.stroke();
 
-    /* Directional arrowheads — adaptive spacing, max 8, min 60px separation */
-    var totalLen=0;
-    for(var i=1;i<traj.length;i++){var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;totalLen+=Math.sqrt(ddx*ddx+ddy*ddy);}
+    /* Directional arrowheads — adaptive spacing, max 8, min 60px separation.
+       A head size of 0 disables arrowheads entirely. */
     var headSzIn=parseFloat(document.getElementById('trajHeadSize').value);
-    var arrowSz=isFinite(headSzIn)&&headSzIn>0?headSzIn:5.5;
-    var maxArr=8,arrowSp=Math.max(100,totalLen/(maxArr+1));
-    ctx.fillStyle=color;ctx.globalAlpha=0.92;
-    var accum=arrowSp*0.45,placed=[];
-    for(var i=1;i<traj.length;i++){
-      var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;
-      var seg=Math.sqrt(ddx*ddx+ddy*ddy);if(seg<0.5)continue;
-      accum+=seg;
-      if(accum>=arrowSp){
-        var ax=traj[i].cx,ay=traj[i].cy;
-        var tooClose=false;
-        for(var k=0;k<placed.length;k++){var ex=ax-placed[k].x,ey=ay-placed[k].y;if(ex*ex+ey*ey<3600){tooClose=true;break;}}
-        if(tooClose)continue;
-        accum=0;placed.push({x:ax,y:ay});
-        var ang=Math.atan2(ddy,ddx);
-        ctx.beginPath();
-        ctx.moveTo(ax+arrowSz*Math.cos(ang),ay+arrowSz*Math.sin(ang));
-        ctx.lineTo(ax-arrowSz*Math.cos(ang-Math.PI/3.2),ay-arrowSz*Math.sin(ang-Math.PI/3.2));
-        ctx.lineTo(ax-arrowSz*Math.cos(ang+Math.PI/3.2),ay-arrowSz*Math.sin(ang+Math.PI/3.2));
-        ctx.closePath();ctx.fill();
+    if(isFinite(headSzIn)&&headSzIn>0){
+      var totalLen=0;
+      for(var i=1;i<traj.length;i++){var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;totalLen+=Math.sqrt(ddx*ddx+ddy*ddy);}
+      var arrowSz=headSzIn;
+      var maxArr=8,arrowSp=Math.max(100,totalLen/(maxArr+1));
+      ctx.fillStyle=color;ctx.globalAlpha=0.92;
+      var accum=arrowSp*0.45,placed=[];
+      for(var i=1;i<traj.length;i++){
+        var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;
+        var seg=Math.sqrt(ddx*ddx+ddy*ddy);if(seg<0.5)continue;
+        accum+=seg;
+        if(accum>=arrowSp){
+          var ax=traj[i].cx,ay=traj[i].cy;
+          var tooClose=false;
+          for(var k=0;k<placed.length;k++){var ex=ax-placed[k].x,ey=ay-placed[k].y;if(ex*ex+ey*ey<3600){tooClose=true;break;}}
+          if(tooClose)continue;
+          accum=0;placed.push({x:ax,y:ay});
+          var ang=Math.atan2(ddy,ddx);
+          ctx.beginPath();
+          ctx.moveTo(ax+arrowSz*Math.cos(ang),ay+arrowSz*Math.sin(ang));
+          ctx.lineTo(ax-arrowSz*Math.cos(ang-Math.PI/3.2),ay-arrowSz*Math.sin(ang-Math.PI/3.2));
+          ctx.lineTo(ax-arrowSz*Math.cos(ang+Math.PI/3.2),ay-arrowSz*Math.sin(ang+Math.PI/3.2));
+          ctx.closePath();ctx.fill();
+        }
       }
     }
     ctx.restore();
@@ -1223,7 +1239,7 @@ function drawPortrait(){
   /* Initial points — colour-filled with white ring + dark outline */
   if(showInit){
     userPoints.forEach(function(pt,idx){
-      var color=COLORS[idx%COLORS.length];
+      var color=getTrajColor(idx);
       var ix=s2cx(pt.x),iy=s2cy(pt.y);
       ctx.globalAlpha=1;
       ctx.fillStyle=color;
@@ -1403,6 +1419,7 @@ document.addEventListener('DOMContentLoaded',function(){
   /* Settings throttled */
   var thDraw=throttle(drawPortrait,80);
   ['arrowCount','arrowScale','arrowOpacity','trajHeadSize'].forEach(function(id){document.getElementById(id).addEventListener('input',thDraw);});
+  document.getElementById('trajColor').addEventListener('change',drawPortrait);
   document.getElementById('fieldColor').addEventListener('change',drawPortrait);
   document.getElementById('showField').addEventListener('change',drawPortrait);
   document.getElementById('showGrid').addEventListener('change',drawPortrait);
