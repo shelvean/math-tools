@@ -66,7 +66,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-s
 
 /* ── Card ── */
 .card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
-  max-width:1350px;width:calc(100% - 2rem);margin:1rem auto 1.5rem;}
+  max-width:1600px;width:calc(100% - 2rem);margin:1rem auto 1.5rem;}
 h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .2rem;letter-spacing:-.02em;}
 .subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.1rem;}
 
@@ -157,7 +157,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .2rem;letter-s
 canvas{display:block;width:100%;height:auto;}
 
 /* ── Canvas grid ── */
-.canvas-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem;}
+/* Enlarged spring-pendulum simulation on the left; trajectory on the right. */
+.canvas-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:.6rem;margin-bottom:.6rem;}
 .canvas-grid .pwrap-dark{margin-bottom:0;}
 @media(max-width:640px){.canvas-grid{grid-template-columns:1fr;}}
 
@@ -861,6 +862,9 @@ function isDark(selectId){return document.getElementById(selectId).value==='dark
 function drawSimulation(){
   var W=simC.width,H=simC.height;
   var dark=isDark('simBg');
+  /* UI scale: grow all fixed-size elements with the canvas so the pendulum
+     reads large on big canvases (never smaller than the original baseline). */
+  var S=Math.max(1,Math.min(W/480,2));
 
   /* background */
   if(dark){
@@ -875,7 +879,7 @@ function drawSimulation(){
   simX.fillRect(0,0,W,H);
 
   /* ground */
-  var gndY=H-36;
+  var gndY=H-36*S;
   simX.fillStyle=dark?'#3a2f2a':'#795548';
   simX.fillRect(0,gndY,W,H-gndY);
   simX.strokeStyle=dark?'#5a4f4a':'#6d4c41';
@@ -887,13 +891,13 @@ function drawSimulation(){
   var pivX=W/2, pivY=Math.round(H*PIVOT_Y_FRAC);
 
   /* support bar */
-  var barW=120,barH=24,barX=pivX-60,barY=pivY-barH;
+  var barW=120*S,barH=24*S,barX=pivX-barW/2,barY=pivY-barH;
   var barG=simX.createLinearGradient(barX,barY,barX,barY+barH);
   barG.addColorStop(0,'#c0c0c0');barG.addColorStop(0.5,'#909090');barG.addColorStop(1,'#707070');
   simX.fillStyle=barG;simX.fillRect(barX,barY,barW,barH);
-  simX.strokeStyle='#606060';simX.lineWidth=2;simX.strokeRect(barX,barY,barW,barH);
-  [-40,0,40].forEach(function(dx){
-    simX.beginPath();simX.arc(pivX+dx,barY+barH/2,3.5,0,Math.PI*2);
+  simX.strokeStyle='#606060';simX.lineWidth=2*S;simX.strokeRect(barX,barY,barW,barH);
+  [-40*S,0,40*S].forEach(function(dx){
+    simX.beginPath();simX.arc(pivX+dx,barY+barH/2,3.5*S,0,Math.PI*2);
     simX.fillStyle='#404040';simX.fill();
   });
 
@@ -904,79 +908,83 @@ function drawSimulation(){
   simX.setLineDash([]);
 
   /* pivot dot */
-  simX.beginPath();simX.arc(pivX,pivY,5,0,Math.PI*2);
+  simX.beginPath();simX.arc(pivX,pivY,5*S,0,Math.PI*2);
   simX.fillStyle=dark?'#ccc':'#303030';simX.fill();
 
   /* auto-scale so bob stays on screen */
   if(r>maxRSeen)maxRSeen=r;
-  var margin=BOB_R+14;
+  var margin=BOB_R*S+14*S;
   var scaleV=(H*PIVOT_Y_FRAC*2.4-margin)/Math.max(maxRSeen,0.5);
   var scaleH=((W/2)-margin)/Math.max(maxRSeen,0.5);
-  var scale=Math.min(scaleV,scaleH,180);
+  var scale=Math.min(scaleV,scaleH,220*S);
 
   var bobX=pivX+r*Math.sin(theta)*scale;
   var bobY=pivY+r*Math.cos(theta)*scale;
 
   /* helical spring */
-  drawSpring(simX,pivX,pivY,bobX,bobY,dark);
+  drawSpring(simX,pivX,pivY,bobX,bobY,dark,S);
 
   /* angle arc */
   if(Math.abs(theta)>0.02){
-    var arcR=44;
+    var arcR=44*S;
     simX.strokeStyle=dark?'rgba(100,180,255,.7)':'rgba(37,99,235,.6)';
-    simX.lineWidth=2;
+    simX.lineWidth=2*S;
     simX.beginPath();
     if(theta>0)simX.arc(pivX,pivY,arcR,Math.PI/2-theta,Math.PI/2);
     else simX.arc(pivX,pivY,arcR,Math.PI/2,Math.PI/2-theta);
     simX.stroke();
     simX.fillStyle=dark?'#7eb8f7':'#2563eb';
-    simX.font='italic 14px serif';simX.textAlign='center';simX.textBaseline='middle';
-    simX.fillText('\u03B8',pivX+arcR*0.7*Math.sin(theta/2),pivY+arcR*0.7*Math.cos(theta/2)+5);
+    simX.font='italic '+Math.round(14*S)+'px serif';simX.textAlign='center';simX.textBaseline='middle';
+    simX.fillText('\u03B8',pivX+arcR*0.7*Math.sin(theta/2),pivY+arcR*0.7*Math.cos(theta/2)+5*S);
   }
 
   /* bob */
-  drawBob(simX,bobX,bobY);
+  drawBob(simX,bobX,bobY,S);
 
   /* readout pill */
   var lines=['t = '+simTime.toFixed(2)+' s','r = '+r.toFixed(3)+' m','\u03B8 = '+theta.toFixed(3)+' rad'];
-  simX.font='bold 13px monospace';
+  var fs=Math.round(13*S),lh=Math.round(18*S),pad=Math.round(9*S);
+  simX.font='bold '+fs+'px monospace';
   var maxW=lines.reduce(function(a,s){return Math.max(a,simX.measureText(s).width);},0);
   simX.fillStyle='rgba(0,0,0,.48)';
   simX.beginPath();
-  if(simX.roundRect)simX.roundRect(7,7,maxW+18,lines.length*18+8,5);
-  else simX.rect(7,7,maxW+18,lines.length*18+8);
+  if(simX.roundRect)simX.roundRect(pad,pad,maxW+18*S,lines.length*lh+8,5);
+  else simX.rect(pad,pad,maxW+18*S,lines.length*lh+8);
   simX.fill();
   simX.fillStyle='rgba(255,255,255,.92)';simX.textAlign='left';simX.textBaseline='top';
-  lines.forEach(function(l,i){simX.fillText(l,16,12+i*18);});
+  lines.forEach(function(l,i){simX.fillText(l,pad+9*S,pad+5*S+i*lh);});
 }
 
-function drawSpring(ctx,x1,y1,x2,y2,dark){
+function drawSpring(ctx,x1,y1,x2,y2,dark,s){
+  s=s||1;
   var dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy);
   if(len<1)return;
   var nx=-dy/len,ny=dx/len;
   ctx.beginPath();
   ctx.strokeStyle=dark?'#8ab4f8':'#181b59';
-  ctx.lineWidth=2.5;ctx.lineCap='round';
+  ctx.lineWidth=2.5*s;ctx.lineCap='round';
   var segs=SPRING_COILS*20;
   for(var i=0;i<=segs;i++){
     var p=i/segs;
     var px=x1+dx*p,py=y1+dy*p;
-    var off=SPRING_R*Math.sin(p*Math.PI*2*SPRING_COILS);
+    var off=SPRING_R*s*Math.sin(p*Math.PI*2*SPRING_COILS);
     var sx=px+nx*off,sy=py+ny*off;
     if(i===0)ctx.moveTo(sx,sy);else ctx.lineTo(sx,sy);
   }
   ctx.stroke();
 }
 
-function drawBob(ctx,bx,by){
-  var grad=ctx.createRadialGradient(bx-4,by-4,2,bx,by,BOB_R);
+function drawBob(ctx,bx,by,s){
+  s=s||1;
+  var R=BOB_R*s;
+  var grad=ctx.createRadialGradient(bx-4*s,by-4*s,2*s,bx,by,R);
   grad.addColorStop(0,'#f4a261');grad.addColorStop(0.5,'#a0522d');grad.addColorStop(1,'#5c3317');
   ctx.fillStyle=grad;
-  ctx.beginPath();ctx.arc(bx,by,BOB_R,0,Math.PI*2);ctx.fill();
-  ctx.strokeStyle='#5D4037';ctx.lineWidth=2;
-  ctx.beginPath();ctx.arc(bx,by,BOB_R,0,Math.PI*2);ctx.stroke();
+  ctx.beginPath();ctx.arc(bx,by,R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#5D4037';ctx.lineWidth=2*s;
+  ctx.beginPath();ctx.arc(bx,by,R,0,Math.PI*2);ctx.stroke();
   ctx.fillStyle='rgba(255,255,255,.22)';
-  ctx.beginPath();ctx.arc(bx-5,by-5,BOB_R*.38,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(bx-5*s,by-5*s,R*.38,0,Math.PI*2);ctx.fill();
 }
 
 /* ══════════════════════════════════════
