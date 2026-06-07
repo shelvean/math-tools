@@ -179,6 +179,14 @@
     .display-mode legend { font-weight: 600; color: var(--text-primary); margin-right: 0.5rem; }
     .radio-label { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; font-size: 0.9rem; color: var(--text-secondary); }
 
+    /* Method / expansion control */
+    .method-control { display: flex; justify-content: center; align-items: center; gap: 0.75rem; flex-wrap: wrap; background: var(--bg-info); padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-info); font-size: 0.9rem; color: var(--text-secondary); }
+    .method-control:empty { display: none; }
+    .method-control label { font-weight: 600; color: var(--text-primary); }
+    .method-control select { padding: 0.45rem 0.6rem; border: 1px solid var(--border-color); border-radius: 0.375rem; background: var(--bg-card); color: var(--text-primary); font-size: 0.9rem; min-height: 40px; cursor: pointer; }
+    .method-control select:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 1px; }
+    .method-control .method-note { color: var(--text-secondary); text-align: center; }
+
     /* Result */
     .result-area { background: var(--bg-section); border-radius: 0.5rem; padding: 1.5rem; border: 1px solid var(--border-color); }
     .step-block { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color); }
@@ -419,7 +427,12 @@
           <li>Sum of diagonal entries: \(\operatorname{tr}(A) = a_{11} + a_{22} + \cdots + a_{nn}\)</li>
           <li>For eigenvalues \(\lambda_1, \ldots, \lambda_n\): \(\operatorname{tr}(A) = \lambda_1 + \cdots + \lambda_n\)</li>
         </ul>
-        <p><strong>This calculator</strong> uses elementary row operations<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> to reduce \(A\) to an upper-triangular matrix \(U\), then computes \(\det(A)\) as the product of the diagonal entries of \(U\) times the product of the elementary matrix determinants.</p>
+        <p><strong>This calculator</strong> picks the method that shows the clearest steps for each size:</p>
+        <ul>
+          <li><strong>\(2\times 2\):</strong> the direct rule \(\det(A) = a_{11}a_{22} - a_{12}a_{21}\) (i.e. \(ad - bc\)).</li>
+          <li><strong>\(3\times 3\) and \(4\times 4\):</strong> cofactor (Laplace) expansion along a <em>row or column of your choice</em> — pick it from the selector that appears above the results.</li>
+          <li><strong>\(n \ge 5\):</strong> elementary row operations<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a> reduce \(A\) to an upper-triangular matrix \(U\); then \(\det(A)\) is the product of the diagonal entries of \(U\) times the product of the elementary matrix determinants.</li>
+        </ul>
       </div>
     </div>
 
@@ -435,6 +448,9 @@
 
     <!-- Matrix input -->
     <div id="matrixInput" class="matrix-area" role="region" aria-label="Matrix input area"></div>
+
+    <!-- Method / cofactor-expansion control (populated after a matrix is generated) -->
+    <div id="methodControl" class="method-control" role="group" aria-label="Determinant method"></div>
 
     <!-- Display mode -->
     <fieldset class="display-mode" aria-label="Result display format">
@@ -640,7 +656,10 @@ function attachMatrixKeyNav(tableEl) {
 // ============================================================
 var currentDisplayMode = 'decimal';
 document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
-  radio.addEventListener('change', function() { currentDisplayMode = this.value; });
+  radio.addEventListener('change', function() {
+    currentDisplayMode = this.value;
+    if (document.getElementById('result').innerHTML.trim() !== '') runCompute();
+  });
 });
 
 // ============================================================
@@ -698,6 +717,10 @@ function generateMatrix() {
   block.appendChild(table);
   area.appendChild(block);
 
+  // Refresh the method / cofactor-expansion control and clear any stale result.
+  populateMethodControl(n);
+  document.getElementById('result').innerHTML = '';
+
   if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
     MathJax.typesetPromise([area]).catch(function(err) { console.warn('MathJax error:', err); });
   }
@@ -709,11 +732,46 @@ function generateMatrix() {
 }
 
 // ============================================================
+//  METHOD / EXPANSION CONTROL
+// ============================================================
+function populateMethodControl(n) {
+  var mc = document.getElementById('methodControl');
+  if (!mc) return;
+  mc.innerHTML = '';
+  if (n === 1) {
+    mc.innerHTML = '<span class="method-note">\\(1\\times 1\\) matrix: \\(\\det(A) = a_{11}\\).</span>';
+  } else if (n === 2) {
+    mc.innerHTML = '<span class="method-note">\\(2\\times 2\\) matrix: \\(\\det(A) = a_{11}a_{22} - a_{12}a_{21}\\) (the \\(ad - bc\\) rule).</span>';
+  } else if (n === 3 || n === 4) {
+    var label = document.createElement('label');
+    label.setAttribute('for', 'expandLine');
+    label.textContent = 'Cofactor expansion — expand along:';
+    var sel = document.createElement('select');
+    sel.id = 'expandLine';
+    sel.setAttribute('aria-label', 'Choose the row or column for cofactor expansion');
+    var r, o;
+    for (r = 0; r < n; r++) { o = document.createElement('option'); o.value = 'row-' + r; o.textContent = 'Row ' + (r + 1); sel.appendChild(o); }
+    for (r = 0; r < n; r++) { o = document.createElement('option'); o.value = 'col-' + r; o.textContent = 'Column ' + (r + 1); sel.appendChild(o); }
+    sel.addEventListener('change', function () {
+      if (document.getElementById('result').innerHTML.trim() !== '') runCompute();
+    });
+    mc.appendChild(label);
+    mc.appendChild(sel);
+  } else {
+    mc.innerHTML = '<span class="method-note">\\(' + n + '\\times ' + n + '\\) matrix: computed by elementary row reduction to upper-triangular form (steps shown after you compute).</span>';
+  }
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([mc]).catch(function () {});
+  }
+}
+
+// ============================================================
 //  CLEAR ALL
 // ============================================================
 function clearAll() {
   document.getElementById('n').value = '';
   document.getElementById('matrixInput').innerHTML = '';
+  document.getElementById('methodControl').innerHTML = '';
   document.getElementById('result').innerHTML = '';
   document.querySelector('input[value="decimal"]').checked = true;
   currentDisplayMode = 'decimal';
@@ -882,9 +940,10 @@ function computeDeterminantWithSteps(A) {
   return { det: detProduct * detU, steps: steps };
 }
 
-function matrixToLatex(M, styleDiagonal) {
+function matToLatex(M, env, styleDiagonal) {
+  env = env || 'pmatrix';
   var rows = M.length, cols = M[0].length;
-  var latex = '\\begin{pmatrix}';
+  var latex = '\\begin{' + env + '}';
   for (var i = 0; i < rows; i++) {
     for (var j = 0; j < cols; j++) {
       var fv = formatForLatex(M[i][j]);
@@ -894,8 +953,91 @@ function matrixToLatex(M, styleDiagonal) {
     }
     if (i < rows - 1) latex += ' \\\\ ';
   }
-  latex += '\\end{pmatrix}';
+  latex += '\\end{' + env + '}';
   return latex;
+}
+
+function matrixToLatex(M, styleDiagonal) { return matToLatex(M, 'pmatrix', styleDiagonal); }
+
+// ============================================================
+//  COFACTOR (LAPLACE) EXPANSION — for n = 1..4
+// ============================================================
+function det2x2(m) { return m[0][0] * m[1][1] - m[0][1] * m[1][0]; }
+
+function getMinor(M, r, c) {
+  var out = [];
+  for (var i = 0; i < M.length; i++) {
+    if (i === r) continue;
+    var row = [];
+    for (var j = 0; j < M[i].length; j++) { if (j === c) continue; row.push(M[i][j]); }
+    out.push(row);
+  }
+  return out;
+}
+
+// Numeric determinant via first-row cofactor expansion (used for minor/total values).
+function detGeneric(M) {
+  var n = M.length;
+  if (n === 1) return M[0][0];
+  if (n === 2) return det2x2(M);
+  var d = 0;
+  for (var j = 0; j < n; j++) d += ((j % 2 === 0) ? 1 : -1) * M[0][j] * detGeneric(getMinor(M, 0, j));
+  return d;
+}
+
+// Build the cofactor terms for an expansion along a chosen row or column.
+function laplaceExpand(M, choice) {
+  var n = M.length, terms = [];
+  if (choice.type === 'row') {
+    var i = choice.index;
+    for (var j = 0; j < n; j++) terms.push({ i: i, j: j, sign: ((i + j) % 2 === 0) ? 1 : -1, entry: M[i][j], minor: getMinor(M, i, j) });
+  } else {
+    var c = choice.index;
+    for (var ii = 0; ii < n; ii++) terms.push({ i: ii, j: c, sign: ((ii + c) % 2 === 0) ? 1 : -1, entry: M[ii][c], minor: getMinor(M, ii, c) });
+  }
+  return terms;
+}
+
+// Detailed step lines for the determinant of a small (1×1, 2×2, 3×3) minor.
+function detSmallSteps(M) {
+  var n = M.length;
+  if (n === 1) {
+    return { val: M[0][0], lines: [matToLatex(M, 'vmatrix') + ' = ' + formatForLatex(M[0][0])] };
+  }
+  if (n === 2) {
+    var a = M[0][0], b = M[0][1], c = M[1][0], d = M[1][1], val = a * d - b * c;
+    return { val: val, lines: [
+      matToLatex(M, 'vmatrix') + ' = (' + formatForLatex(a) + ')(' + formatForLatex(d) +
+      ') - (' + formatForLatex(b) + ')(' + formatForLatex(c) + ') = ' + formatForLatex(val)
+    ] };
+  }
+  // 3×3 minor: expand along its first row down to 2×2 blocks.
+  var lines = [], expandParts = [], combineParts = [], evals = [], val3 = 0;
+  for (var j = 0; j < 3; j++) {
+    var sign = ((j) % 2 === 0) ? 1 : -1;
+    var minor = getMinor(M, 0, j), mv = det2x2(minor);
+    val3 += sign * M[0][j] * mv;
+    var pE = expandParts.length === 0 ? (sign < 0 ? '-' : '') : (sign < 0 ? ' - ' : ' + ');
+    expandParts.push(pE + '(' + formatForLatex(M[0][j]) + ')\\,' + matToLatex(minor, 'vmatrix'));
+    var pC = combineParts.length === 0 ? (sign < 0 ? '-' : '') : (sign < 0 ? ' - ' : ' + ');
+    combineParts.push(pC + '(' + formatForLatex(M[0][j]) + ')(' + formatForLatex(mv) + ')');
+    evals.push({ entry: M[0][j], minor: minor, mv: mv });
+  }
+  lines.push(matToLatex(M, 'vmatrix') + ' = ' + expandParts.join(''));
+  evals.forEach(function (e) {
+    if (e.entry === 0) return; // term vanishes; no need to evaluate its minor
+    lines.push(matToLatex(e.minor, 'vmatrix') + ' = (' + formatForLatex(e.minor[0][0]) + ')(' + formatForLatex(e.minor[1][1]) +
+      ') - (' + formatForLatex(e.minor[0][1]) + ')(' + formatForLatex(e.minor[1][0]) + ') = ' + formatForLatex(e.mv));
+  });
+  lines.push(matToLatex(M, 'vmatrix') + ' = ' + combineParts.join('') + ' = ' + formatForLatex(val3));
+  return { val: val3, lines: lines };
+}
+
+function getExpansionChoice() {
+  var sel = document.getElementById('expandLine');
+  if (!sel) return { type: 'row', index: 0 };
+  var parts = sel.value.split('-');
+  return { type: parts[0], index: parseInt(parts[1], 10) };
 }
 
 // ============================================================
@@ -1022,17 +1164,122 @@ function renderSteps(A, trace, det, steps) {
 }
 
 // ============================================================
+//  RENDER — small cases (n = 1..4)
+// ============================================================
+function summaryBlockHTML(A, trace, det) {
+  var n = A.length;
+  var trace_frac = formatForLatex(trace);
+  var det_frac = formatForLatex(det);
+  var A_latex = matrixToLatex(A, true);
+  var traceProductLatex = '';
+  for (var i = 0; i < n; i++) {
+    var fv = formatForLatex(A[i][i]);
+    if (i === 0) traceProductLatex += fv;
+    else traceProductLatex += (A[i][i] < 0 ? ' - ' + formatForLatex(-A[i][i]) : ' + ' + fv);
+  }
+  return '<div class="step-block"><div style="text-align:center;">' +
+    '\\[ A = ' + A_latex + ' \\]' +
+    '\\[ \\operatorname{tr}(A) = ' + traceProductLatex + ' = ' + trace_frac + ' \\]' +
+    '\\[ \\det(A) = ' + det_frac + ' \\]' +
+    '</div><p class="step-title" style="text-align:center;margin-top:0.5rem;">Steps for calculating det(A) shown below:</p></div>';
+}
+
+function cofactorHTML(A, det) {
+  var n = A.length;
+  var choice = getExpansionChoice();
+  var I = choice.index, isRow = choice.type === 'row';
+  var lineName = isRow ? ('Row ' + (I + 1)) : ('Column ' + (I + 1));
+  var terms = laplaceExpand(A, choice);
+
+  var html = '<div class="step-block">';
+  html += '<p class="step-title">Cofactor (Laplace) expansion along <strong>' + lineName + '</strong>:</p>';
+
+  var symbolic = isRow
+    ? '\\det(A) = \\sum_{j=1}^{' + n + '} (-1)^{' + (I + 1) + '+j}\\,a_{' + (I + 1) + 'j}\\,M_{' + (I + 1) + 'j}'
+    : '\\det(A) = \\sum_{i=1}^{' + n + '} (-1)^{i+' + (I + 1) + '}\\,a_{i' + (I + 1) + '}\\,M_{i' + (I + 1) + '}';
+  html += '<div style="text-align:center;">\\[' + symbolic + '\\]</div>';
+  html += '<p class="btn-desc" style="text-align:center;">where the minor \\(M_{ij}\\) is the determinant of the ' + (n - 1) + '×' + (n - 1) +
+    ' matrix left after deleting row \\(i\\) and column \\(j\\), and \\((-1)^{i+j}\\) is the cofactor sign.</p>';
+
+  var subParts = [];
+  terms.forEach(function (t, idx) {
+    var pref = idx === 0 ? (t.sign < 0 ? '-\\,' : '') : (t.sign < 0 ? ' \\;-\\; ' : ' \\;+\\; ');
+    subParts.push(pref + '(' + formatForLatex(t.entry) + ')\\,' + matToLatex(t.minor, 'vmatrix'));
+  });
+  html += '<div style="text-align:center;">\\[ \\det(A) = ' + subParts.join('') + ' \\]</div></div>';
+
+  // Evaluate each minor whose entry is non-zero (zero entries contribute nothing).
+  terms.forEach(function (t) {
+    if (t.entry === 0) return;
+    var sd = detSmallSteps(t.minor);
+    var sub = (t.i + 1) + ',' + (t.j + 1);
+    var mhtml = '<div class="step-block"><p class="step-title">Minor \\(M_{' + sub + '}\\) — delete row ' + (t.i + 1) + ', column ' + (t.j + 1) + ':</p>';
+    sd.lines.forEach(function (ln) { mhtml += '<div style="text-align:center;">\\[' + ln + '\\]</div>'; });
+    mhtml += '</div>';
+    html += mhtml;
+  });
+
+  // Combine all cofactor terms numerically.
+  var combParts = [];
+  terms.forEach(function (t, idx) {
+    var mv = detGeneric(t.minor);
+    var pref = idx === 0 ? (t.sign < 0 ? '-' : '') : (t.sign < 0 ? ' - ' : ' + ');
+    combParts.push(pref + '(' + formatForLatex(t.entry) + ')(' + formatForLatex(mv) + ')');
+  });
+  html += '<div class="step-block"><p class="step-title">Combine the cofactor terms:</p>' +
+    '<div style="text-align:center;">\\[ \\det(A) = ' + combParts.join('') + ' = ' + formatForLatex(det) + ' \\]</div></div>';
+
+  return html;
+}
+
+function renderSmall(A, trace, det) {
+  var resultDiv = document.getElementById('result');
+  var n = A.length;
+  var html = summaryBlockHTML(A, trace, det);
+
+  if (n === 1) {
+    html += '<div class="step-block"><p class="step-title">\\(1\\times 1\\) determinant:</p>' +
+      '<div style="text-align:center;">\\[ \\det(A) = a_{11} = ' + formatForLatex(A[0][0]) + ' \\]</div></div>';
+  } else if (n === 2) {
+    var a = A[0][0], b = A[0][1], c = A[1][0], d = A[1][1];
+    html += '<div class="step-block"><p class="step-title">\\(2\\times 2\\) determinant — the \\(ad - bc\\) rule:</p>' +
+      '<div style="text-align:center;">' +
+      '\\[ \\det(A) = ' + matToLatex(A, 'vmatrix') + ' = a_{11}a_{22} - a_{12}a_{21} \\]' +
+      '\\[ = (' + formatForLatex(a) + ')(' + formatForLatex(d) + ') - (' + formatForLatex(b) + ')(' + formatForLatex(c) + ') = ' + formatForLatex(det) + ' \\]' +
+      '</div></div>';
+  } else {
+    html += cofactorHTML(A, det);
+  }
+
+  resultDiv.innerHTML = html;
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([resultDiv]).catch(function (err) { console.warn('MathJax error:', err); });
+  }
+  announce('Computation complete. Trace equals ' + formatNumber(trace) + '. Determinant equals ' + formatNumber(det) + '.');
+}
+
+// ============================================================
+//  COMPUTE DISPATCHER
+// ============================================================
+function runCompute() {
+  var A = readMatrix();
+  if (A === null) return;
+  var n = A.length;
+  var trace = computeTrace(A);
+  if (n >= 5) {
+    var result = computeDeterminantWithSteps(A);
+    renderSteps(A, trace, result.det, result.steps);
+  } else {
+    renderSmall(A, trace, detGeneric(A));
+  }
+}
+
+// ============================================================
 //  EVENT LISTENERS
 // ============================================================
 document.getElementById('genBtn').addEventListener('click', generateMatrix);
 document.getElementById('exampleBtn').addEventListener('click', loadExample);
-document.getElementById('calcBtn').addEventListener('click', function() {
-  var A = readMatrix();
-  if (A === null) return;
-  var trace = computeTrace(A);
-  var result = computeDeterminantWithSteps(A);
-  renderSteps(A, trace, result.det, result.steps);
-});
+document.getElementById('calcBtn').addEventListener('click', runCompute);
 document.getElementById('clearBtn').addEventListener('click', clearAll);
 
 function loadExample() {
