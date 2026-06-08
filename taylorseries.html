@@ -419,6 +419,15 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
           <option value="atan0">arctan(x) at a = 0</option>
           <option value="exp1">e^x at a = 1</option>
           <option value="runge0">1/(1 + x²) at a = 0</option>
+          <optgroup label="Surd coefficients">
+            <option value="sinpi4">sin(x) at a = π/4 (√2 surds)</option>
+            <option value="cospi6">cos(x) at a = π/6 (√3 surds)</option>
+          </optgroup>
+          <optgroup label="Finite centered polynomials">
+            <option value="poly3">x³ − 2x + 1 at a = 1</option>
+            <option value="poly4">x⁴ − 3x² + 2 at a = 1</option>
+            <option value="poly2">2x² − 3x + 5 at a = 2</option>
+          </optgroup>
         </select>
         <p class="ex-note">Selecting an example fills the inputs and plots immediately. Then use <strong>+1 Next</strong> to raise the degree.</p>
       </div>
@@ -724,43 +733,75 @@ function taylorCoeffs(expr,a,n){
   return out;
 }
 
-// ── A Taylor coefficient as an exact fraction when it is rational, else decimal ──
-function coeffFraction(ck){
-  var r=toRational(ck);
-  if(r){
-    if(r.n===0)return{n:0,d:1,exact:true};
-    var g=gcd(r.n,r.d);
-    return{n:r.n/g,d:r.d/g,exact:true};
+// ── "Most powerful" value rendering: integer, rational (dfrac), rational×surd
+//    (e.g. sin x at pi/4 gives sqrt(2)/2), rational×pi, else decimal. A tight
+//    tolerance with a bounded denominator keeps genuine exact forms while
+//    rejecting spurious matches for transcendental values (e.g. e/k!). ──
+var SQUAREFREE=[2,3,5,6,7,10,11,13,14,15,17,19,21,22,23,26,29,30,31,33,34,35,37,38,39,41,42,43,46,47];
+// Bounded denominator + machine-precision tolerance: genuine exact forms match
+// (error ~1e-15) while spurious rational approximations of irrationals (best
+// error ~1/maxDen^2 ~ 1e-10) are rejected, so e.g. sqrt(2)/2 is NOT mistaken
+// for a Pell-convergent fraction.
+function ratOf(x){
+  if(!isFinite(x))return null;
+  if(Math.abs(x)<1e-300)return{n:0,d:1};
+  var sign=x<0?-1:1,ax=Math.abs(x),h1=1,h2=0,k1=0,k2=1,b=ax;
+  for(var i=0;i<48;i++){
+    var a=Math.floor(b),h=a*h1+h2,k=a*k1+k2;
+    if(k>100000)break;
+    if(Math.abs(ax-h/k)<=1e-12*ax)return{n:sign*h,d:k};  // relative tolerance
+    h2=h1;h1=h;k2=k1;k1=k;b=1/(b-a);
   }
-  return{val:ck,exact:false};
+  return null;
 }
-function coeffIsZero(fr){return fr.exact?(fr.n===0):(Math.abs(fr.val)<1e-12);}
-function coeffIsNeg(fr){return fr.exact?(fr.n<0):(fr.val<0);}
-function coeffIsOne(fr){return fr.exact?(Math.abs(fr.n)===1&&fr.d===1):(Math.abs(Math.abs(fr.val)-1)<1e-12);}
-function coeffAbsLatex(fr){
-  if(fr.exact){var n=Math.abs(fr.n);return fr.d===1?(''+n):'\\dfrac{'+n+'}{'+fr.d+'}';}
-  return toFraction(Math.abs(fr.val));
+function fracTex(p,q,sym){       // (p/q)*sym  as LaTeX, sym='' for plain rational
+  var num=(p===1&&sym)?sym:(sym?p+sym:String(p));
+  return q===1?num:'\\dfrac{'+num+'}{'+q+'}';
 }
+function fracPlain(p,q,sym){
+  var num=(p===1&&sym)?sym:(sym?p+sym:String(p));
+  return q===1?num:'('+num+')/'+q;
+}
+function magLatex(x){            // x > 0  ->  prettiest LaTeX (no sign)
+  if(Math.abs(x-Math.round(x))<1e-11)return String(Math.round(x));
+  var inv=1/x,mi=Math.round(inv);  // unit fractions 1/m (e.g. 1/9!) at any size
+  if(mi>1&&mi<1e15&&Math.abs(inv-mi)<=1e-9*inv)return '\\dfrac{1}{'+mi+'}';
+  var r=ratOf(x);
+  if(r)return fracTex(r.n,r.d,'');
+  for(var i=0;i<SQUAREFREE.length;i++){var d=SQUAREFREE[i],rr=ratOf(x/Math.sqrt(d));if(rr)return fracTex(rr.n,rr.d,'\\sqrt{'+d+'}');}
+  var rp=ratOf(x/Math.PI); if(rp)return fracTex(rp.n,rp.d,'\\pi');
+  var re=ratOf(x/Math.E);  if(re)return fracTex(re.n,re.d,'e');
+  return parseFloat(x.toPrecision(8)).toString();
+}
+function magPlain(x){            // x > 0  ->  prettiest plain text (no sign)
+  if(Math.abs(x-Math.round(x))<1e-11)return String(Math.round(x));
+  var inv=1/x,mi=Math.round(inv);
+  if(mi>1&&mi<1e15&&Math.abs(inv-mi)<=1e-9*inv)return '1/'+mi;
+  var r=ratOf(x);
+  if(r)return fracPlain(r.n,r.d,'');
+  for(var i=0;i<SQUAREFREE.length;i++){var d=SQUAREFREE[i],rr=ratOf(x/Math.sqrt(d));if(rr)return fracPlain(rr.n,rr.d,'sqrt('+d+')');}
+  var rp=ratOf(x/Math.PI); if(rp)return fracPlain(rp.n,rp.d,'pi');
+  var re=ratOf(x/Math.E);  if(re)return fracPlain(re.n,re.d,'e');
+  return parseFloat(x.toPrecision(8)).toString();
+}
+function coeffInfo(v){var av=Math.abs(v);return{isZero:av<1e-12,neg:v<0,one:Math.abs(av-1)<1e-9,abs:av};}
 
-// ── Base (x - a) string ──
+// ── Base (x - a) string — surd / pi / dfrac aware ──
 function baseStr(a){
   if(Math.abs(a)<1e-13)return 'x';
-  var al=toFraction(a);
-  if(al.charAt(0)==='-')return '\\left(x + '+al.slice(1)+'\\right)';
-  return '\\left(x - '+al+'\\right)';
+  return '\\left(x '+(a<0?'+ ':'- ')+magLatex(Math.abs(a))+'\\right)';
 }
 
 // ── Build simplified Taylor polynomial LaTeX ──
 function taylorLatex(coeffs,a,n){
   var base=baseStr(a),out='T_{'+n+'}(x) = ',first=true;
   for(var k=0;k<=n;k++){
-    var fr=coeffFraction(coeffs[k]);
-    if(coeffIsZero(fr))continue;
-    var neg=coeffIsNeg(fr),mag=coeffAbsLatex(fr),one=coeffIsOne(fr);
-    var sign=first?(neg?'-':''):(neg?' - ':' + ');
+    var ci=coeffInfo(coeffs[k]);
+    if(ci.isZero)continue;
+    var sign=first?(ci.neg?'-':''):(ci.neg?' - ':' + ');
     var body;
-    if(k===0){body=mag;}
-    else{var bp=(k===1)?base:base+'^{'+k+'}';body=one?bp:mag+'\\,'+bp;}
+    if(k===0){body=magLatex(ci.abs);}
+    else{var bp=(k===1)?base:base+'^{'+k+'}';body=ci.one?bp:magLatex(ci.abs)+'\\,'+bp;}
     out+=sign+body;first=false;
   }
   if(first)out+='0';
@@ -769,17 +810,15 @@ function taylorLatex(coeffs,a,n){
 
 // Plain-text version (for export).
 function taylorPlain(coeffs,a,n){
-  function baseP(){if(Math.abs(a)<1e-13)return 'x';var av=parseFloat(a.toFixed(6)).toString();return a<0?'(x + '+Math.abs(a)+')':'(x - '+av+')';}
+  function baseP(){if(Math.abs(a)<1e-13)return 'x';return '(x '+(a<0?'+ ':'- ')+magPlain(Math.abs(a))+')';}
   var parts=[],b=baseP();
   for(var k=0;k<=n;k++){
-    var fr=coeffFraction(coeffs[k]);
-    if(coeffIsZero(fr))continue;
-    var neg=coeffIsNeg(fr),one=coeffIsOne(fr);
-    var mag=fr.exact?(fr.d===1?String(Math.abs(fr.n)):Math.abs(fr.n)+'/'+fr.d):parseFloat(Math.abs(fr.val).toPrecision(8)).toString();
+    var ci=coeffInfo(coeffs[k]);
+    if(ci.isZero)continue;
     var t;
-    if(k===0)t=mag;
-    else{var bp=(k===1)?b:b+'^'+k;t=one?bp:mag+'*'+bp;}
-    parts.push((neg?'- ':(parts.length?'+ ':''))+t);
+    if(k===0)t=magPlain(ci.abs);
+    else{var bp=(k===1)?b:b+'^'+k;t=ci.one?bp:magPlain(ci.abs)+'*'+bp;}
+    parts.push((ci.neg?'- ':(parts.length?'+ ':''))+t);
   }
   return 'T_'+n+'(x) = '+(parts.length?parts.join(' '):'0');
 }
@@ -832,7 +871,7 @@ function computeAndDraw(){
   // Result polynomial
   document.getElementById('result-wrap').style.display='block';
   document.getElementById('result-title').textContent='Taylor Polynomial — degree '+n;
-  var aLatex=toFraction(a);
+  var aLatex=(Math.abs(a)<1e-13)?'0':(a<0?'-':'')+magLatex(Math.abs(a));
   var kind=(Math.abs(a)<1e-13)?'Maclaurin':'Taylor';
   document.getElementById('poly-meta').innerHTML=kind+' polynomial of \\(f(x)='+exprToLatex(expr)+'\\) about \\(a = '+aLatex+'\\).';
   resEl.innerHTML='';
@@ -846,11 +885,13 @@ function computeAndDraw(){
   document.getElementById('copy-section').style.display='block';
   updateExport();
 
-  // Legend
-  document.getElementById('legend-bar').innerHTML=
-    '<span class="legitem"><span class="legicon-fun"></span>f(x)</span>'+
-    '<span class="legitem"><span class="legicon-tay"></span>Taylor T<sub>'+n+'</sub>(x)</span>'+
-    '<span class="legitem"><span class="legicon-pt"></span>Expansion point a</span>';
+  // Legend (LaTeX-rendered)
+  var legEl=document.getElementById('legend-bar');
+  legEl.innerHTML=
+    '<span class="legitem"><span class="legicon-fun"></span>\\(f(x)\\)</span>'+
+    '<span class="legitem"><span class="legicon-tay"></span>\\(T_{'+n+'}(x)\\)</span>'+
+    '<span class="legitem"><span class="legicon-pt"></span>\\(\\left(a,\\,f(a)\\right)\\)</span>';
+  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([legEl]).catch(function(){});
 
   drawPlot(f,coeffs,a,n,xmin,xmax);
   document.getElementById('download-btn').style.display='inline-flex';
@@ -976,7 +1017,12 @@ var EXAMPLES={
   sqrt1:  {f:'sqrt(x)',    a:'1',    xmin:'0.05', xmax:'4',   deg:5},
   atan0:  {f:'atan(x)',    a:'0',    xmin:'-3',   xmax:'3',   deg:7},
   exp1:   {f:'exp(x)',     a:'1',    xmin:'-2',   xmax:'4',   deg:5},
-  runge0: {f:'1/(1+x^2)',  a:'0',    xmin:'-3',   xmax:'3',   deg:8}
+  runge0: {f:'1/(1+x^2)',  a:'0',    xmin:'-3',   xmax:'3',   deg:8},
+  sinpi4: {f:'sin(x)',     a:'pi/4', xmin:'-3.5', xmax:'6.5', deg:5},
+  cospi6: {f:'cos(x)',     a:'pi/6', xmin:'-4',   xmax:'6',   deg:4},
+  poly3:  {f:'x^3 - 2*x + 1',          a:'1', xmin:'-2',  xmax:'4', deg:3},
+  poly4:  {f:'x^4 - 3*x^2 + 2',        a:'1', xmin:'-2.5',xmax:'3', deg:4},
+  poly2:  {f:'2*x^2 - 3*x + 5',        a:'2', xmin:'-3',  xmax:'6', deg:2}
 };
 function loadExample(key){
   var ex=EXAMPLES[key];if(!ex)return;
