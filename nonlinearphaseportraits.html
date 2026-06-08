@@ -372,6 +372,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <div class="defn-box">\[\dot{x} = f(x,y),\qquad \dot{y} = g(x,y)\]</div>
       <h2>Equilibria and Linearisation</h2>
       <p>An <strong>equilibrium</strong> is a point \((x^*,y^*)\) satisfying \(f(x^*,y^*)=g(x^*,y^*)=0\). Near each equilibrium, the system behaves like a linear system governed by the <strong>Jacobian matrix</strong> \(J = \partial(f,g)/\partial(x,y)\). The eigenvalues of \(J\) at the equilibrium determine the local classification — saddle, node, spiral, or center. Away from equilibria, the nonlinear terms dominate and the global portrait can differ substantially from any local linearisation.</p>
+      <h2>Nullclines</h2>
+      <p>The <strong>x-nullcline</strong> is the set of points where \(\dot{x}=f(x,y)=0\) (the field is vertical there) and the <strong>y-nullcline</strong> is where \(\dot{y}=g(x,y)=0\) (the field is horizontal). Equilibria are exactly the points where the two nullclines intersect. Enable <em>Nullclines</em> to overlay them — the x-nullcline is drawn solid and the y-nullcline dashed, in your chosen colour — and use the regions they carve up to reason about the sign of \(\dot{x}\) and \(\dot{y}\) and the qualitative flow.</p>
       <h2>Limit Cycles</h2>
       <p>A <strong>limit cycle</strong> is an isolated closed orbit that neighbouring trajectories spiral toward (stable) or away from (unstable). Limit cycles cannot occur in linear systems. The Van der Pol and FitzHugh-Nagumo systems in the example dropdown both exhibit stable limit cycles. The Poincaré-Bendixson theorem guarantees that if a trajectory is bounded and avoids equilibria, it must approach a limit cycle.</p>
       <h2>Numerical Solvers</h2>
@@ -502,6 +504,17 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <div class="cfield cfield-chk"><input type="checkbox" id="variableArrows" checked><label for="variableArrows">Variable length</label></div>
     <div class="cfield cfield-chk"><input type="checkbox" id="showField" checked><label for="showField">Vector field</label></div>
     <div class="cfield cfield-chk"><input type="checkbox" id="showGrid" checked><label for="showGrid">Grid</label></div>
+    <div class="cfield cfield-chk"><input type="checkbox" id="showNullclines"><label for="showNullclines" title="x-nullcline (ẋ=0) drawn solid, y-nullcline (ẏ=0) drawn dashed; equilibria lie at their intersections">Nullclines</label></div>
+    <div class="cfield cfield-sm"><label for="nullclineColor">Nullcline color</label>
+      <select id="nullclineColor">
+        <option value="#7c3aed" selected>Purple</option>
+        <option value="#dc2626">Red</option>
+        <option value="#059669">Green</option>
+        <option value="#ea580c">Orange</option>
+        <option value="#0891b2">Teal</option>
+        <option value="#000000">Black</option>
+      </select>
+    </div>
   </div>
 
   <!-- Row 3: trajectory settings -->
@@ -867,6 +880,10 @@ function drawPhasePlane(clearTrajs){
   drawAxes(xMin,xMax,yMin,yMax,showGrid);
   var showField=document.getElementById('showField').checked;
   if(showField)drawVectorField(fCompiled,gCompiled,xMin,xMax,yMin,yMax,arrowCount,arrowLength,arrowOpacity,variableArrows,fieldColor);
+  if(document.getElementById('showNullclines').checked){
+    var nullColor=document.getElementById('nullclineColor').value||'#7c3aed';
+    drawNullclines(fCompiled,gCompiled,xMin,xMax,yMin,yMax,nullColor);
+  }
   trajectories.forEach(function(traj){drawTraj(traj,xMin,xMax,yMin,yMax);});
 }
 
@@ -968,6 +985,59 @@ function drawVectorField(f,g,xMin,xMax,yMin,yMax,arrowCount,arrowLength,arrowOpa
     fieldCtx.closePath();
     fieldCtx.fill();
   });
+}
+
+/* ── Nullclines ──
+   The x-nullcline is the curve f(x,y)=0 (where ẋ=0, field is vertical) and the
+   y-nullcline is g(x,y)=0 (where ẏ=0, field is horizontal). Equilibria sit at
+   their intersections. Both are zero-level contours, traced with marching
+   squares: the x-nullcline solid, the y-nullcline dashed, in the chosen color. */
+function drawNullclines(f,g,xMin,xMax,yMin,yMax,color){
+  drawZeroContour(f,xMin,xMax,yMin,yMax,color,false);/* ẋ=0, solid  */
+  drawZeroContour(g,xMin,xMax,yMin,yMax,color,true); /* ẏ=0, dashed */
+}
+
+function drawZeroContour(fn,xMin,xMax,yMin,yMax,color,dashed){
+  var W=fieldCanvas.width,H=fieldCanvas.height,N=200;
+  var stepX=(xMax-xMin)/N,stepY=(yMax-yMin)/N;
+  /* Sample the function on an (N+1)×(N+1) grid. */
+  var vals=new Float64Array((N+1)*(N+1)),scope={x:0,y:0};
+  for(var j=0;j<=N;j++){
+    var rowY=yMin+j*stepY,base=j*(N+1);
+    for(var i=0;i<=N;i++){
+      scope.x=xMin+i*stepX;scope.y=rowY;
+      var v;try{v=fn.evaluate(scope);}catch(e){v=NaN;}
+      vals[base+i]=(typeof v==='number'&&isFinite(v))?v:NaN;
+    }
+  }
+  function px(x){return (x-xMin)/(xMax-xMin)*W;}
+  function py(y){return (yMax-y)/(yMax-yMin)*H;}
+  fieldCtx.save();
+  fieldCtx.strokeStyle=color;fieldCtx.lineWidth=isHC()?2.4:2;fieldCtx.lineCap='round';fieldCtx.lineJoin='round';
+  fieldCtx.setLineDash(dashed?[7,5]:[]);
+  fieldCtx.beginPath();
+  for(var j=0;j<N;j++){
+    var y0=yMin+j*stepY,y1=y0+stepY,b0=j*(N+1),b1=(j+1)*(N+1);
+    for(var i=0;i<N;i++){
+      var x0=xMin+i*stepX,x1=x0+stepX;
+      var v00=vals[b0+i],v10=vals[b0+i+1],v11=vals[b1+i+1],v01=vals[b1+i];
+      if(!(isFinite(v00)&&isFinite(v10)&&isFinite(v11)&&isFinite(v01)))continue;
+      /* Collect zero crossings on the four cell edges (data coords). */
+      var pts=[],t;
+      if((v00>0)!==(v10>0)){t=v00/(v00-v10);pts.push(x0+t*stepX,y0);}            /* bottom */
+      if((v10>0)!==(v11>0)){t=v10/(v10-v11);pts.push(x1,y0+t*stepY);}            /* right  */
+      if((v11>0)!==(v01>0)){t=v11/(v11-v01);pts.push(x1-t*stepX,y1);}           /* top    */
+      if((v01>0)!==(v00>0)){t=v01/(v01-v00);pts.push(x0,y1-t*stepY);}           /* left   */
+      if(pts.length===4){
+        fieldCtx.moveTo(px(pts[0]),py(pts[1]));fieldCtx.lineTo(px(pts[2]),py(pts[3]));
+        fieldCtx.moveTo(px(pts[4]),py(pts[5]));fieldCtx.lineTo(px(pts[6]),py(pts[7]));
+      } else if(pts.length===2){
+        fieldCtx.moveTo(px(pts[0]),py(pts[1]));fieldCtx.lineTo(px(pts[2]),py(pts[3]));
+      }
+    }
+  }
+  fieldCtx.stroke();
+  fieldCtx.restore();
 }
 
 /* ── Equation display ── */
@@ -1874,7 +1944,8 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('trajHeadSize').addEventListener('input',redrawTraj);
   document.getElementById('trajHeadCount').addEventListener('input',redrawTraj);
   document.getElementById('fieldColor').addEventListener('change',function(){drawPhasePlane(false);});
-  ['showGrid','variableArrows','showField','trajColor'].forEach(function(id){document.getElementById(id).addEventListener('change',tDraw);});
+  document.getElementById('nullclineColor').addEventListener('change',function(){drawPhasePlane(false);});
+  ['showGrid','variableArrows','showField','showNullclines','trajColor'].forEach(function(id){document.getElementById(id).addEventListener('change',tDraw);});
 
   /* Examples dropdown */
   document.getElementById('exampleSel').addEventListener('change',function(){
