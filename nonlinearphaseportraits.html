@@ -765,6 +765,9 @@ var trajCtx=trajCanvas.getContext('2d');
 /* ── State ── */
 var userPoints=[],trajectories=[],fCompiled,gCompiled;
 var timeVarX=true,timeVarY=false;
+/* When the user types into a time-series scale field, stop auto-fitting so the
+   manual scale is preserved; Auto Fit (or clearing) re-enables auto-adjust. */
+var timeScaleManual=false;
 
 /* ── Example data ── */
 var EXAMPLES={
@@ -1781,7 +1784,7 @@ function drawTraj(pts,xMin,xMax,yMin,yMax){
 
 /* ── Clear ── */
 function clearTrajectories(){
-  userPoints=[];trajectories=[];
+  userPoints=[];trajectories=[];timeScaleManual=false;
   trajCtx.clearRect(0,0,trajCanvas.width,trajCanvas.height);
   document.getElementById('instruction').style.display='block';
   var tc=document.getElementById('time-canvas');
@@ -1807,16 +1810,20 @@ function updateTimeBtns(){
 }
 function autoFitTimePlot(){
   if(!trajectories.length)return;
-  var tMax=-Infinity,vMin=Infinity,vMax=-Infinity;
+  /* Auto-fitting re-enables auto-adjust and clears any manual scale. */
+  timeScaleManual=false;
+  /* Fit the full integrated time span, including backward (t<0) integration. */
+  var tMin=Infinity,tMax=-Infinity,vMin=Infinity,vMax=-Infinity;
   trajectories.forEach(function(traj){traj.forEach(function(p){
-    if(p.t===undefined||!isFinite(p.t)||p.t<0)return;
+    if(p.t===undefined||!isFinite(p.t))return;
+    if(p.t<tMin)tMin=p.t;
     if(p.t>tMax)tMax=p.t;
     if(timeVarX&&isFinite(p.x)){if(p.x<vMin)vMin=p.x;if(p.x>vMax)vMax=p.x;}
     if(timeVarY&&isFinite(p.y)){if(p.y<vMin)vMin=p.y;if(p.y>vMax)vMax=p.y;}
   });});
-  if(!isFinite(tMax))tMax=30;if(!isFinite(vMin))vMin=-3;if(!isFinite(vMax))vMax=3;
-  var vp=(vMax-vMin)*0.08||1,tp=(tMax)*0.02||1;
-  document.getElementById('tPlotMin').value=0;
+  if(!isFinite(tMin))tMin=0;if(!isFinite(tMax))tMax=30;if(!isFinite(vMin))vMin=-3;if(!isFinite(vMax))vMax=3;
+  var vp=(vMax-vMin)*0.08||1,tp=(tMax-tMin)*0.02||1;
+  document.getElementById('tPlotMin').value=(tMin-tp).toPrecision(4);
   document.getElementById('tPlotMax').value=(tMax+tp).toPrecision(4);
   document.getElementById('vPlotMin').value=(vMin-vp).toPrecision(4);
   document.getElementById('vPlotMax').value=(vMax+vp).toPrecision(4);
@@ -1839,9 +1846,10 @@ function drawTimePlot(){
   if(tmin<=0&&tmax>=0){var x0=(0-tmin)/(tmax-tmin)*W;ctx.beginPath();ctx.moveTo(x0,0);ctx.lineTo(x0,H);ctx.stroke();}
   function drawCurve(getV,color){
     ctx.strokeStyle=color;ctx.lineWidth=1.8;ctx.lineJoin='round';ctx.lineCap='round';
-    ctx.beginPath();var started=false;
-    trajectories.forEach(function(traj){traj.forEach(function(p){
-      if(p.t===undefined||!isFinite(p.t)||p.t<0)return;
+    ctx.beginPath();
+    /* started resets per trajectory so independent curves aren't joined. */
+    trajectories.forEach(function(traj){var started=false;traj.forEach(function(p){
+      if(p.t===undefined||!isFinite(p.t))return;
       var v=getV(p);if(!isFinite(v))return;
       var px2=(p.t-tmin)/(tmax-tmin)*W,py2=(vmax-v)/(vmax-vmin)*H;
       started?ctx.lineTo(px2,py2):ctx.moveTo(px2,py2);started=true;
@@ -1898,7 +1906,7 @@ document.addEventListener('DOMContentLoaded',function(){
     drawTraj(traj,xMin,xMax,yMin,yMax);
     document.getElementById('instruction').style.display='none';
     if(document.getElementById('timePanel').style.display!=='none'){
-      trajectories.length===1?autoFitTimePlot():drawTimePlot();
+      timeScaleManual?drawTimePlot():autoFitTimePlot();
     }
     say('Trajectory added at ('+sx.toFixed(3)+', '+sy.toFixed(3)+')');
     trackEvent('trajectory_added',{event_category:'phase_portrait',event_label:solver,value:trajectories.length});
@@ -1927,15 +1935,16 @@ document.addEventListener('DOMContentLoaded',function(){
     panel.style.display=open?'none':'block';
     this.setAttribute('aria-expanded',String(!open));
     this.textContent=open?'Time series':'Hide time series';
-    if(!open&&trajectories.length)autoFitTimePlot();
+    if(!open&&trajectories.length){timeScaleManual?drawTimePlot():autoFitTimePlot();}
   });
 
-  /* Time var toggles */
-  document.getElementById('btnX').addEventListener('click',function(){timeVarX=!timeVarX;updateTimeBtns();drawTimePlot();});
-  document.getElementById('btnY').addEventListener('click',function(){timeVarY=!timeVarY;updateTimeBtns();drawTimePlot();});
+  /* Time var toggles — auto-adjust to the shown variable unless scale is manual */
+  document.getElementById('btnX').addEventListener('click',function(){timeVarX=!timeVarX;updateTimeBtns();timeScaleManual?drawTimePlot():autoFitTimePlot();});
+  document.getElementById('btnY').addEventListener('click',function(){timeVarY=!timeVarY;updateTimeBtns();timeScaleManual?drawTimePlot():autoFitTimePlot();});
   document.getElementById('btnAutoFit').addEventListener('click',autoFitTimePlot);
+  /* Typing into a scale field switches off auto-fit so the manual scale sticks. */
   var dTime=debounce(drawTimePlot,150);
-  ['tPlotMin','tPlotMax','vPlotMin','vPlotMax'].forEach(function(id){document.getElementById(id).addEventListener('input',dTime);});
+  ['tPlotMin','tPlotMax','vPlotMin','vPlotMax'].forEach(function(id){document.getElementById(id).addEventListener('input',function(){timeScaleManual=true;dTime();});});
 
   /* Debounced redraw on equation/domain change */
   var dDraw=debounce(function(){
