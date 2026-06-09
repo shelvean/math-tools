@@ -153,6 +153,10 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
   border-radius:.375rem;background:#ffffff;}
 #field-canvas{border:1px solid var(--bdr2);cursor:crosshair;}
 #traj-canvas{pointer-events:none;background:transparent!important;border:none;}
+.eq-tooltip{position:absolute;z-index:5;pointer-events:none;transform:translate(-50%,-115%);
+  background:rgba(17,24,39,.92);color:#fff;padding:.25rem .5rem;border-radius:.35rem;
+  font-size:.8125rem;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.25);}
+.eq-tooltip .mjx-chtml,.eq-tooltip mjx-container{color:#fff!important;}
 .click-hint{position:absolute;top:1rem;left:50%;transform:translateX(-50%);
   background:rgba(255,255,255,.95);border:2px solid var(--focus);border-radius:50px;
   padding:.35rem 1.2rem;font-size:.8125rem;font-weight:700;color:var(--txt);
@@ -600,6 +604,7 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
               aria-label="Nonlinear phase portrait canvas. Click to add trajectories."></canvas>
             <canvas id="traj-canvas" width="875" height="625" aria-hidden="true"></canvas>
             <div id="instruction" class="click-hint" role="status">Click anywhere on the plane to draw a trajectory</div>
+            <div id="eq-tooltip" class="eq-tooltip" role="status" aria-live="polite" hidden></div>
           </div>
           <div id="x-labels" aria-hidden="true"></div>
           <div style="text-align:center;font-weight:700;font-size:.875rem;color:var(--txt2);margin-top:.15rem;" aria-hidden="true">x</div>
@@ -909,8 +914,10 @@ function drawPhasePlane(clearTrajs){
   if(document.getElementById('showEquilibria').checked){
     drawEquilibria(f,g,fCompiled,gCompiled,xMin,xMax,yMin,yMax);
   }else{
+    eqHoverState=null;
     var lg=document.getElementById('eq-legend');if(lg){lg.hidden=true;lg.innerHTML='';}
     var tb=document.getElementById('eq-table-wrap');if(tb){tb.hidden=true;tb.innerHTML='';}
+    var tip=document.getElementById('eq-tooltip');if(tip){tip.hidden=true;tip.innerHTML='';}
   }
   trajectories.forEach(function(traj){drawTraj(traj,xMin,xMax,yMin,yMax);});
 }
@@ -1300,9 +1307,13 @@ function drawEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
     drawEqGlyph(eqKind(p),(p.x-xMin)/(xMax-xMin)*W,(yMax-p.y)/(yMax-yMin)*H,6);
   });
   fieldCtx.restore();
+  eqHoverState={eqs:eqs,xMin:xMin,xMax:xMax,yMin:yMin,yMax:yMax};
   updateEquilibriaLegend(eqs);
   updateEquilibriaTable(eqs);
 }
+/* Hover lookup: last-drawn equilibria + the view used, so mousemove can map a
+   pixel back to the nearest fixed point and show its coordinates in LaTeX. */
+var eqHoverState=null;
 
 /* ── Equation display ── */
 function updateEq(f,g){
@@ -2159,6 +2170,37 @@ document.addEventListener('DOMContentLoaded',function(){
     }
     say('Trajectory added at ('+sx.toFixed(3)+', '+sy.toFixed(3)+')');
     trackEvent('trajectory_added',{event_category:'phase_portrait',event_label:solver,value:trajectories.length});
+  });
+
+  /* Hover over an equilibrium to show its coordinates in LaTeX. */
+  var eqTipPt=null;
+  fieldCanvas.addEventListener('mousemove',function(e){
+    var tip=document.getElementById('eq-tooltip');if(!tip)return;
+    var st=eqHoverState;
+    if(!st||!st.eqs.length){if(!tip.hidden){tip.hidden=true;eqTipPt=null;}return;}
+    var rect=fieldCanvas.getBoundingClientRect();
+    var scX=fieldCanvas.width/rect.width,scY=fieldCanvas.height/rect.height;
+    var cx=(e.clientX-rect.left)*scX,cy=(e.clientY-rect.top)*scY;
+    var W=fieldCanvas.width,H=fieldCanvas.height,R=12,best=null,bestD=R*R;
+    st.eqs.forEach(function(p){
+      var px=(p.x-st.xMin)/(st.xMax-st.xMin)*W,py=(st.yMax-p.y)/(st.yMax-st.yMin)*H;
+      var dx=px-cx,dy=py-cy,d=dx*dx+dy*dy;
+      if(d<bestD){bestD=d;best=p;}
+    });
+    if(!best){if(!tip.hidden){tip.hidden=true;eqTipPt=null;}return;}
+    /* Position in CSS pixels relative to the (relative-positioned) container. */
+    var bx=(best.x-st.xMin)/(st.xMax-st.xMin)*W/scX,by=(st.yMax-best.y)/(st.yMax-st.yMin)*H/scY;
+    tip.style.left=bx+'px';tip.style.top=by+'px';
+    if(best!==eqTipPt){
+      eqTipPt=best;
+      var cT=(best.dScale||0)*1e-6;
+      tip.innerHTML='\\(\\left('+texNum(best.x,cT)+',\\ '+texNum(best.y,cT)+'\\right)\\)';
+      if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([tip]).catch(function(){});
+    }
+    tip.hidden=false;
+  });
+  fieldCanvas.addEventListener('mouseleave',function(){
+    var tip=document.getElementById('eq-tooltip');if(tip){tip.hidden=true;}eqTipPt=null;
   });
 
   /* Generate */
