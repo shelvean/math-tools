@@ -114,6 +114,13 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
 - `leastsquaresrational.html` (MathJax, math.js, numeric, D3)
 - MathJax-only batch: `businessmath`, `linear`, `numerical`, `series`, `duffing`, `poincare`
   (`duffing`/`poincare` use the `tex-mml-chtml` entry, also vendored)
+- MathJax-only tier-1 (config normalized to assistive-MathML-only + vendored, 27):
+  `bifurcation`, `cmrfactor`, `coupled`, `cr`, `determinants`, `dynamical`,
+  `elastic_pendulum`, `ffs`, `finance`, `forcing`, `generalizedinverse`,
+  `gramschmidtorthogonal`, `linearequation`, `linearportrait`, `lineartransform`,
+  `massspring-horizontal`, `massspring`, `matrixvectorviz`, `projects`, `refsolver`,
+  `rref`, `rrefsolver`, `slope`, `svdcompute`, `tipe-cycles-boucles`,
+  `transformations2d`, `vanderpol`
 
 Tools not yet migrated still load these libraries from pinned CDN URLs.
 Each migrated tool is gated by both `offline-smoke-test.mjs` and `render-test.mjs`.
