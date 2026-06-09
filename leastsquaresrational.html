@@ -577,15 +577,22 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 </button>
   <script>
     // ===== MathJax compatibility shim (replaces KaTeX API) =====
+    // MathJax loads async: typeset now if ready, else wait for startup, else poll.
+    function __typesetWhenReady(el){
+      if (!el) return;
+      function go(){ if (MathJax.typesetClear) MathJax.typesetClear([el]);
+        MathJax.typesetPromise([el]).catch(function(e){ console.warn('MathJax error:', e); }); }
+      if (window.MathJax && MathJax.typesetPromise) { go(); }
+      else if (window.MathJax && MathJax.startup && MathJax.startup.promise) { MathJax.startup.promise.then(go); }
+      else { var iv = setInterval(function(){ if (window.MathJax && MathJax.typesetPromise) { clearInterval(iv); go(); } }, 50);
+             setTimeout(function(){ clearInterval(iv); }, 15000); }
+    }
     var katex = {
       render: function(tex, el, opts) {
         if (!el) return;
         var display = opts && opts.displayMode;
         el.innerHTML = (display ? '\\[' : '\\(') + tex + (display ? '\\]' : '\\)');
-        if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-          MathJax.typesetClear([el]);
-          MathJax.typesetPromise([el]).catch(function(e) { console.warn('MathJax error:', e); });
-        }
+        __typesetWhenReady(el);
       },
       renderToString: function(tex) {
         return '\\(' + tex + '\\)';

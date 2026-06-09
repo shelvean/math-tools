@@ -770,24 +770,28 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 <script>
 
     // ===== MathJax shim =====
+    // MathJax loads async: typeset now if ready, else wait for startup, else poll
+    // until the script parses. Prevents the race where math inserted before
+    // MathJax is ready silently never typesets.
+    function __typesetWhenReady(el) {
+      if (!el) return;
+      function go(){ if (MathJax.typesetClear) MathJax.typesetClear([el]);
+        MathJax.typesetPromise([el]).catch(function(e){ console.warn('MathJax error:', e); }); }
+      if (window.MathJax && MathJax.typesetPromise) { go(); }
+      else if (window.MathJax && MathJax.startup && MathJax.startup.promise) { MathJax.startup.promise.then(go); }
+      else { var iv = setInterval(function(){ if (window.MathJax && MathJax.typesetPromise) { clearInterval(iv); go(); } }, 50);
+             setTimeout(function(){ clearInterval(iv); }, 15000); }
+    }
     var katex = {
       render: function(tex, el, opts) {
         if (!el) return;
         var display = opts && opts.displayMode;
         el.innerHTML = (display ? '\\[' : '\\(') + tex + (display ? '\\]' : '\\)');
-        if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-          MathJax.typesetClear([el]);
-          MathJax.typesetPromise([el]).catch(function(e) { console.warn('MathJax error:', e); });
-        }
+        __typesetWhenReady(el);
       },
       renderToString: function(tex) { return '\\(' + tex + '\\)'; }
     };
-    function renderMathInElement(el, opts) {
-      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetClear([el]);
-        MathJax.typesetPromise([el]).catch(function(e) { console.warn('MathJax error:', e); });
-      }
-    }
+    function renderMathInElement(el, opts) { __typesetWhenReady(el); }
 
     function gcd(a, b) {
         a = Math.abs(a); b = Math.abs(b);
