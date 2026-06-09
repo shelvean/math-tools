@@ -488,6 +488,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <select id="format-select">
         <option value="latex">LaTeX</option>
         <option value="plain">Plain text</option>
+        <option value="matlab">MATLAB</option>
+        <option value="python">Python</option>
+        <option value="numpy">NumPy</option>
+        <option value="julia">Julia</option>
       </select>
       <button id="copy-btn" class="abtn abtn-copy" type="button" aria-label="Copy Taylor polynomial to clipboard">&#128203; Copy</button>
     </div>
@@ -856,6 +860,49 @@ function taylorEval(coeffs,a,n,x){
   var s=0;for(var k=0;k<=n;k++){s+=coeffs[k]*Math.pow(x-a,k);}return s;
 }
 
+// ── Code export (MATLAB / Python / NumPy / Julia) ──
+// Full-precision numeric literal, valid in all four languages.
+function numCode(v){return ''+v;}
+// Build the polynomial body in (x - a) form using the given operators.
+function polyExprCode(coeffs,a,n,mul,pow){
+  var base=(Math.abs(a)<1e-13)?'x':'(x - a)',parts=[];
+  for(var k=0;k<=n;k++){
+    var ci=coeffInfo(coeffs[k]);if(ci.isZero)continue;
+    var t;
+    if(k===0)t=numCode(ci.abs);
+    else{var bp=(k===1)?base:base+pow+k;t=ci.one?bp:numCode(ci.abs)+mul+bp;}
+    parts.push((ci.neg?'- ':(parts.length?'+ ':''))+t);
+  }
+  return parts.length?parts.join(' '):'0';
+}
+function taylorCode(coeffs,a,n,lang){
+  var aval=numCode(a),hdr='Taylor polynomial T_'+n+'(x) about a = '+aval;
+  if(lang==='matlab'){
+    return '% '+hdr+'\n'+
+           'a = '+aval+';\n'+
+           'T = @(x) '+polyExprCode(coeffs,a,n,'.*','.^')+';';
+  }
+  if(lang==='julia'){
+    return '# '+hdr+'\n'+
+           'a = '+aval+'\n'+
+           'T(x) = '+polyExprCode(coeffs,a,n,'*','^')+'\n'+
+           '# evaluate on a vector with T.(xs)';
+  }
+  if(lang==='numpy'){
+    return '# '+hdr+'\n'+
+           'import numpy as np\n'+
+           'a = '+aval+'\n'+
+           'def T(x):\n'+
+           '    x = np.asarray(x, dtype=float)\n'+
+           '    return '+polyExprCode(coeffs,a,n,'*','**');
+  }
+  // plain python
+  return '# '+hdr+'\n'+
+         'a = '+aval+'\n'+
+         'def T(x):\n'+
+         '    return '+polyExprCode(coeffs,a,n,'*','**');
+}
+
 // ── State ──
 var ST={hasResult:false,coeffs:null,a:0,n:0,fnExpr:''};
 
@@ -1012,7 +1059,8 @@ function updateExport(){
   var fmt=document.getElementById('format-select').value;
   var el=document.getElementById('poly-output');
   if(fmt==='latex'){el.textContent=taylorLatex(ST.coeffs,ST.a,ST.n);}
-  else{el.textContent=taylorPlain(ST.coeffs,ST.a,ST.n);}
+  else if(fmt==='plain'){el.textContent=taylorPlain(ST.coeffs,ST.a,ST.n);}
+  else{el.textContent=taylorCode(ST.coeffs,ST.a,ST.n,fmt);}
 }
 
 // ── Degree stepper ──
