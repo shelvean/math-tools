@@ -372,6 +372,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <div class="defn-box">\[\dot{x} = f(x,y),\qquad \dot{y} = g(x,y)\]</div>
       <h2>Equilibria and Linearisation</h2>
       <p>An <strong>equilibrium</strong> is a point \((x^*,y^*)\) satisfying \(f(x^*,y^*)=g(x^*,y^*)=0\). Near each equilibrium, the system behaves like a linear system governed by the <strong>Jacobian matrix</strong> \(J = \partial(f,g)/\partial(x,y)\). The eigenvalues of \(J\) at the equilibrium determine the local classification — saddle, node, spiral, or center. Away from equilibria, the nonlinear terms dominate and the global portrait can differ substantially from any local linearisation.</p>
+      <p>Enable <em>Equilibria</em> to locate and classify the fixed points automatically: Newton's method is seeded across the domain to solve \(f=g=0\), and each root is classified from the trace \(\tau\) and determinant \(\Delta\) of the numerical Jacobian. Markers follow the convention <strong>filled disc = stable</strong> (node or spiral), <strong>hollow disc = unstable</strong>, <strong>× = saddle</strong> (\(\Delta&lt;0\)), and <strong>ring with a dot = centre</strong> (\(\tau=0,\ \Delta&gt;0\)); a legend lists the types present. A linear centre is borderline — the true nonlinear behaviour there may be a slow spiral.</p>
       <h2>Nullclines</h2>
       <p>The <strong>x-nullcline</strong> is the set of points where \(\dot{x}=f(x,y)=0\) (the field is vertical there) and the <strong>y-nullcline</strong> is where \(\dot{y}=g(x,y)=0\) (the field is horizontal). Equilibria are exactly the points where the two nullclines intersect. Enable <em>Nullclines</em> to overlay them — the x-nullcline is drawn solid and the y-nullcline dashed, in your chosen colour — and use the regions they carve up to reason about the sign of \(\dot{x}\) and \(\dot{y}\) and the qualitative flow.</p>
       <h2>Limit Cycles</h2>
@@ -515,6 +516,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <option value="#000000">Black</option>
       </select>
     </div>
+    <div class="cfield cfield-chk"><input type="checkbox" id="showEquilibria"><label for="showEquilibria" title="Find fixed points (ẋ=ẏ=0) and classify each from the Jacobian: filled = stable, hollow = unstable, × = saddle, ring+dot = center">Equilibria</label></div>
   </div>
 
   <!-- Row 3: trajectory settings -->
@@ -887,6 +889,9 @@ function drawPhasePlane(clearTrajs){
     var nullColor=document.getElementById('nullclineColor').value||'#7c3aed';
     drawNullclines(fCompiled,gCompiled,xMin,xMax,yMin,yMax,nullColor);
   }
+  if(document.getElementById('showEquilibria').checked){
+    drawEquilibria(f,g,fCompiled,gCompiled,xMin,xMax,yMin,yMax);
+  }
   trajectories.forEach(function(traj){drawTraj(traj,xMin,xMax,yMin,yMax);});
 }
 
@@ -1053,6 +1058,152 @@ function drawZeroContour(fn,xMin,xMax,yMin,yMax,color,dashed){
   }
   fieldCtx.stroke();
   fieldCtx.restore();
+}
+
+/* ── Equilibria ──
+   Find the fixed points (f=g=0) by seeding Newton's method on a grid and
+   classify each from the Jacobian's trace/determinant. Results depend only on
+   f, g and the domain, so they are cached to keep slider redraws fast. */
+var equilibriaCache=null,equilibriaKey='';
+var EQ_COLORS={stable:'#16a34a',unstable:'#dc2626',saddle:'#d97706',center:'#2563eb',degenerate:'#6b7280'};
+
+function eqColor(kind){
+  if(kind==='saddle')return EQ_COLORS.saddle;
+  if(kind==='center')return EQ_COLORS.center;
+  if(kind==='degenerate')return EQ_COLORS.degenerate;
+  return kind.charAt(0)==='s'?EQ_COLORS.stable:EQ_COLORS.unstable;/* stable-* vs unstable-* */
+}
+function eqKind(p){
+  if(p.type==='saddle')return 'saddle';
+  if(p.type==='center')return 'center';
+  if(p.type==='degenerate')return 'degenerate';
+  return p.stab+'-'+p.type;/* e.g. stable-node, unstable-spiral */
+}
+
+function findEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
+  var key=fSrc+'|'+gSrc+'|'+xMin+'|'+xMax+'|'+yMin+'|'+yMax;
+  if(key===equilibriaKey&&equilibriaCache)return equilibriaCache;
+  var scope={x:0,y:0},spanX=xMax-xMin,spanY=yMax-yMin,dScale=Math.max(spanX,spanY)||1;
+  function F(x,y){scope.x=x;scope.y=y;var a,b;
+    try{a=fC.evaluate(scope);b=gC.evaluate(scope);}catch(e){return null;}
+    if(typeof a!=='number'||typeof b!=='number'||!isFinite(a)||!isFinite(b))return null;
+    return [a,b];
+  }
+  function jac(x,y){
+    var hx=(spanX*1e-6)||1e-7,hy=(spanY*1e-6)||1e-7;
+    var fp=F(x+hx,y),fm=F(x-hx,y),gp=F(x,y+hy),gm=F(x,y-hy);
+    if(!fp||!fm||!gp||!gm)return null;
+    return [[(fp[0]-fm[0])/(2*hx),(gp[0]-gm[0])/(2*hy)],   /* [df/dx, df/dy] */
+            [(fp[1]-fm[1])/(2*hx),(gp[1]-gm[1])/(2*hy)]];  /* [dg/dx, dg/dy] */
+  }
+  function newton(x,y){
+    for(var it=0;it<60;it++){
+      var Fv=F(x,y);if(!Fv)return null;
+      if(Math.abs(Fv[0])+Math.abs(Fv[1])<1e-12*(1+dScale))return {x:x,y:y};
+      var J=jac(x,y);if(!J)return null;
+      var det=J[0][0]*J[1][1]-J[0][1]*J[1][0];
+      if(Math.abs(det)<1e-15)return null;/* singular seed */
+      var dx=-( J[1][1]*Fv[0]-J[0][1]*Fv[1])/det;
+      var dy=-(-J[1][0]*Fv[0]+J[0][0]*Fv[1])/det;
+      var mag=Math.sqrt(dx*dx+dy*dy),cap=dScale*0.5;
+      if(mag>cap){dx*=cap/mag;dy*=cap/mag;}
+      x+=dx;y+=dy;
+      if(!isFinite(x)||!isFinite(y))return null;
+      if(x<xMin-spanX||x>xMax+spanX||y<yMin-spanY||y>yMax+spanY)return null;
+    }
+    var Ff=F(x,y);
+    return (Ff&&Math.abs(Ff[0])+Math.abs(Ff[1])<1e-9*(1+dScale))?{x:x,y:y}:null;
+  }
+  var seeds=22,found=[],tol=dScale*0.012,padX=spanX*0.02,padY=spanY*0.02;
+  for(var i=0;i<=seeds&&found.length<400;i++){
+    for(var j=0;j<=seeds&&found.length<400;j++){
+      var r=newton(xMin+i/seeds*spanX,yMin+j/seeds*spanY);
+      if(!r)continue;
+      if(r.x<xMin-padX||r.x>xMax+padX||r.y<yMin-padY||r.y>yMax+padY)continue;
+      var dup=false;
+      for(var k=0;k<found.length;k++){if(Math.abs(found[k].x-r.x)<tol&&Math.abs(found[k].y-r.y)<tol){dup=true;break;}}
+      if(!dup)found.push(r);
+    }
+  }
+  /* Classify each via the Jacobian's trace and determinant. */
+  found.forEach(function(p){
+    var J=jac(p.x,p.y);p.type='degenerate';p.stab='non-hyperbolic';
+    if(J){
+      var a=J[0][0],b=J[0][1],c=J[1][0],d=J[1][1];
+      var tr=a+d,det=a*d-b*c,disc=tr*tr-4*det;
+      var M=Math.max(Math.abs(a),Math.abs(b),Math.abs(c),Math.abs(d),1e-300);
+      p.trace=tr;p.det=det;
+      if(det<-1e-9*M*M){p.type='saddle';p.stab='unstable';}
+      else if(Math.abs(det)<=1e-9*M*M){p.type='degenerate';p.stab='non-hyperbolic';}
+      else if(disc>=0){p.type='node';p.stab=tr<0?'stable':'unstable';}
+      else if(Math.abs(tr)<=1e-6*M){p.type='center';p.stab='neutral';}
+      else{p.type='spiral';p.stab=tr<0?'stable':'unstable';}
+    }
+  });
+  equilibriaKey=key;equilibriaCache=found;
+  return found;
+}
+
+function drawEqGlyph(kind,cx,cy,R){
+  var c=eqColor(kind);
+  fieldCtx.lineJoin='round';fieldCtx.lineCap='round';fieldCtx.setLineDash([]);
+  if(kind==='saddle'){
+    fieldCtx.strokeStyle=c;fieldCtx.lineWidth=2.6;
+    fieldCtx.beginPath();
+    fieldCtx.moveTo(cx-R,cy-R);fieldCtx.lineTo(cx+R,cy+R);
+    fieldCtx.moveTo(cx-R,cy+R);fieldCtx.lineTo(cx+R,cy-R);
+    fieldCtx.stroke();return;
+  }
+  fieldCtx.beginPath();fieldCtx.arc(cx,cy,R,0,2*Math.PI);
+  if(kind==='center'){
+    fieldCtx.fillStyle='#fff';fieldCtx.fill();
+    fieldCtx.strokeStyle=c;fieldCtx.lineWidth=2.4;fieldCtx.stroke();
+    fieldCtx.beginPath();fieldCtx.arc(cx,cy,Math.max(2,R*0.34),0,2*Math.PI);fieldCtx.fillStyle=c;fieldCtx.fill();
+  }else if(kind==='degenerate'){
+    fieldCtx.fillStyle='#fff';fieldCtx.fill();
+    fieldCtx.strokeStyle=c;fieldCtx.lineWidth=2;fieldCtx.setLineDash([3,2]);fieldCtx.stroke();fieldCtx.setLineDash([]);
+  }else if(kind.charAt(0)==='s'){/* stable-* : filled */
+    fieldCtx.fillStyle=c;fieldCtx.fill();
+    fieldCtx.strokeStyle='#fff';fieldCtx.lineWidth=1.5;fieldCtx.stroke();
+  }else{/* unstable-* : hollow */
+    fieldCtx.fillStyle='#fff';fieldCtx.fill();
+    fieldCtx.strokeStyle=c;fieldCtx.lineWidth=2.6;fieldCtx.stroke();
+  }
+}
+
+function drawEquilibriaLegend(eqs){
+  var order=[['stable-node','Stable node'],['unstable-node','Unstable node'],
+             ['stable-spiral','Stable spiral'],['unstable-spiral','Unstable spiral'],
+             ['saddle','Saddle'],['center','Center'],['degenerate','Non-hyperbolic']];
+  var present={};eqs.forEach(function(p){present[eqKind(p)]=true;});
+  var rows=order.filter(function(o){return present[o[0]];});
+  if(!rows.length)return;
+  var pad=8,rowH=17,sw=20,fontPx=12;
+  fieldCtx.save();
+  fieldCtx.font='600 '+fontPx+'px -apple-system,Arial,sans-serif';fieldCtx.textBaseline='middle';
+  var maxW=0;rows.forEach(function(r){var w=fieldCtx.measureText(r[1]).width;if(w>maxW)maxW=w;});
+  var boxW=pad*2+sw+6+maxW,boxH=pad*2+rows.length*rowH,x0=8,y0=8;
+  fieldCtx.fillStyle=isHC()?'rgba(255,255,255,0.97)':'rgba(255,255,255,0.9)';
+  fieldCtx.strokeStyle='rgba(0,0,0,0.28)';fieldCtx.lineWidth=1;
+  fieldCtx.beginPath();fieldCtx.rect(x0,y0,boxW,boxH);fieldCtx.fill();fieldCtx.stroke();
+  rows.forEach(function(r,idx){
+    var cy=y0+pad+idx*rowH+rowH/2;
+    drawEqGlyph(r[0],x0+pad+sw/2,cy,6);
+    fieldCtx.fillStyle=isHC()?'#000':'#222';
+    fieldCtx.fillText(r[1],x0+pad+sw+6,cy);
+  });
+  fieldCtx.restore();
+}
+
+function drawEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
+  var eqs=findEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax);
+  var W=fieldCanvas.width,H=fieldCanvas.height;
+  fieldCtx.save();
+  eqs.forEach(function(p){
+    drawEqGlyph(eqKind(p),(p.x-xMin)/(xMax-xMin)*W,(yMax-p.y)/(yMax-yMin)*H,6);
+  });
+  fieldCtx.restore();
+  drawEquilibriaLegend(eqs);
 }
 
 /* ── Equation display ── */
@@ -1966,7 +2117,7 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('trajHeadCount').addEventListener('input',redrawTraj);
   document.getElementById('fieldColor').addEventListener('change',function(){drawPhasePlane(false);});
   document.getElementById('nullclineColor').addEventListener('change',function(){drawPhasePlane(false);});
-  ['showGrid','variableArrows','showField','showNullclines','trajColor'].forEach(function(id){document.getElementById(id).addEventListener('change',tDraw);});
+  ['showGrid','variableArrows','showField','showNullclines','showEquilibria','trajColor'].forEach(function(id){document.getElementById(id).addEventListener('change',tDraw);});
 
   /* Examples dropdown */
   document.getElementById('exampleSel').addEventListener('change',function(){
