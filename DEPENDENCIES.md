@@ -30,6 +30,10 @@ redistribution.
 | three.js | r128 (0.128.0) | `vendor/three@r128/three.min.js` | `registry.npmjs.org/three/-/three-0.128.0.tgz` | MIT | 2026-06-09 |
 | jsPDF | 2.5.1 | `vendor/jspdf@2.5.1/jspdf.umd.min.js` | `registry.npmjs.org/jspdf/-/jspdf-2.5.1.tgz` | MIT | 2026-06-09 |
 | topojson | 3.0.2 | `vendor/topojson@3.0.2/topojson.min.js` | `registry.npmjs.org/topojson/-/topojson-3.0.2.tgz` | ISC | 2026-06-09 |
+| pdf-lib | 1.17.1 | `vendor/pdf-lib@1.17.1/pdf-lib.min.js` | `registry.npmjs.org/pdf-lib/-/pdf-lib-1.17.1.tgz` | MIT | 2026-06-09 |
+| pdf.js (pdfjs-dist) | 3.11.174 | `vendor/pdfjs-dist@3.11.174/build/` (pdf + worker) | `registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-3.11.174.tgz` | Apache-2.0 | 2026-06-09 |
+| pdf.js (pdfjs-dist) | 2.11.338 | `vendor/pdfjs-dist@2.11.338/build/pdf.min.js` | `registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-2.11.338.tgz` | Apache-2.0 | 2026-06-09 |
+| JSZip | 3.10.1 | `vendor/jszip@3.10.1/jszip.min.js` | `registry.npmjs.org/jszip/-/jszip-3.10.1.tgz` | MIT | 2026-06-09 |
 | PapaParse | 5.4.0 | `vendor/papaparse@5.4.0/papaparse.min.js` | `registry.npmjs.org/papaparse/-/papaparse-5.4.0.tgz` | MIT | 2026-06-09 |
 | SheetJS (xlsx) | 0.18.5 | `vendor/xlsx@0.18.5/xlsx.full.min.js` | `registry.npmjs.org/xlsx/-/xlsx-0.18.5.tgz` | Apache-2.0 | 2026-06-09 |
 | numeric | 1.2.6 | `vendor/numeric@1.2.6/numeric.min.js` | `registry.npmjs.org/numeric/-/numeric-1.2.6.tgz` | MIT* | 2026-06-09 |
@@ -156,6 +160,11 @@ The MathJax `tex-svg.js` entry (SVG output, used by `integration`) is also vendo
 - Google-Fonts batch (self-hosted woff2 + config normalized, 4): `double_potential`,
   `potential` (IBM Plex Sans/Serif), `prod` (Atkinson Hyperlegible, +math.js 12.4.2),
   `odeclassify` (IBM Plex Mono/Sans/Serif)
+- PDF tools batch (pdf-lib / pdf.js / JSZip vendored, 4): `pdf_dark` (pdf.js 3.11.174
+  + worker, pdf-lib), `pdf_extract` (pdf.js 2.11.338, pdf-lib, JSZip), `pdf_manager`
+  (pdf-lib), `pdf_sort` (pdf.js 2.11.338, pdf-lib). For pdf_dark, `workerSrc` is
+  repointed to the vendored worker; the v2 tools use pdf.js's main-thread fallback
+  (no workerSrc, unchanged). `pdftools.html` is a static page with no libraries.
 
 > **Self-hosted fonts:** Google Fonts CSS was fetched and rewritten to load woff2
 > from `vendor/fonts/` (latin + latin-ext subsets only — these are English tools).
