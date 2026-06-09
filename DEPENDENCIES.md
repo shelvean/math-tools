@@ -20,6 +20,7 @@ redistribution.
 | math.js | 13.1.1 | `vendor/mathjs@13.1.1/math.js` | `registry.npmjs.org/mathjs/-/mathjs-13.1.1.tgz` | Apache-2.0 | 2026-06-09 |
 | math.js | 14.6.0 | `vendor/mathjs@14.6.0/math.js` | `registry.npmjs.org/mathjs/-/mathjs-14.6.0.tgz` | Apache-2.0 | 2026-06-09 |
 | decimal.js | 10.4.3 | `vendor/decimal.js@10.4.3/decimal.js` | `registry.npmjs.org/decimal.js/-/decimal.js-10.4.3.tgz` | MIT | 2026-06-09 |
+| Tailwind CSS (prebuilt) | 2.2.19 | `vendor/tailwindcss@2.2.19/tailwind.min.css` | `registry.npmjs.org/tailwindcss/-/tailwindcss-2.2.19.tgz` | MIT | 2026-06-09 |
 | D3 | 7.8.5 | `vendor/d3@7.8.5/d3.min.js` | `registry.npmjs.org/d3/-/d3-7.8.5.tgz` | ISC | 2026-06-09 |
 | Plotly | 2.27.0 | `vendor/plotly@2.27.0/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.27.0.tgz` | MIT | 2026-06-09 |
 | Plotly | 2.35.2 | `vendor/plotly@2.35.2/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.35.2.tgz` | MIT | 2026-06-09 |
@@ -135,6 +136,15 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
   `leastsquaresqr`, `leastsquaressvd`, `lufactor`, `qrfactor`, `interpolation` (+D3),
   `phaseline` (+D3, +decimal.js), `multi_pendulum`, `pend`, `pendulum_simulator`,
   `swinging_atwood`, `nonlinearphaseportraits`
+- static-Tailwind batch (vendored prebuilt Tailwind 2.2.19 CSS + config normalized, 8):
+  `changebasis`, `changebasisviz`, `elementary`, `gradecalc` (no MathJax; D3 + xlsx),
+  `inversematrix`, `lineareqn`, `nonlinear` (+math.js), `svd2d`
+
+> **Tailwind, two kinds:** the *prebuilt* `tailwindcss@2.2.19/dist/tailwind.min.css`
+> is a complete CSS file, vendored 1:1 (safe). The `cdn.tailwindcss.com` **JIT
+> runtime** (used by `corners`, `corners_v1`, `mathjs`, `plotfunction`, `slopev1`,
+> `timer`) compiles utility classes in the browser and can't be vendored as-is —
+> it needs a Tailwind build producing a CSS file for those pages (a separate task).
 
 Tools not yet migrated still load these libraries from pinned CDN URLs.
 Each migrated tool is gated by both `offline-smoke-test.mjs` and `render-test.mjs`.
