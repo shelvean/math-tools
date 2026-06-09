@@ -24,6 +24,10 @@ redistribution.
 | D3 | 7.8.5 | `vendor/d3@7.8.5/d3.min.js` | `registry.npmjs.org/d3/-/d3-7.8.5.tgz` | ISC | 2026-06-09 |
 | Plotly | 2.27.0 | `vendor/plotly@2.27.0/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.27.0.tgz` | MIT | 2026-06-09 |
 | Plotly | 2.35.2 | `vendor/plotly@2.35.2/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.35.2.tgz` | MIT | 2026-06-09 |
+| Plotly | 2.24.1 | `vendor/plotly@2.24.1/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.24.1.tgz` | MIT | 2026-06-09 |
+| three.js | r128 (0.128.0) | `vendor/three@r128/three.min.js` | `registry.npmjs.org/three/-/three-0.128.0.tgz` | MIT | 2026-06-09 |
+| jsPDF | 2.5.1 | `vendor/jspdf@2.5.1/jspdf.umd.min.js` | `registry.npmjs.org/jspdf/-/jspdf-2.5.1.tgz` | MIT | 2026-06-09 |
+| topojson | 3.0.2 | `vendor/topojson@3.0.2/topojson.min.js` | `registry.npmjs.org/topojson/-/topojson-3.0.2.tgz` | ISC | 2026-06-09 |
 | PapaParse | 5.4.0 | `vendor/papaparse@5.4.0/papaparse.min.js` | `registry.npmjs.org/papaparse/-/papaparse-5.4.0.tgz` | MIT | 2026-06-09 |
 | SheetJS (xlsx) | 0.18.5 | `vendor/xlsx@0.18.5/xlsx.full.min.js` | `registry.npmjs.org/xlsx/-/xlsx-0.18.5.tgz` | Apache-2.0 | 2026-06-09 |
 | numeric | 1.2.6 | `vendor/numeric@1.2.6/numeric.min.js` | `registry.npmjs.org/numeric/-/numeric-1.2.6.tgz` | MIT* | 2026-06-09 |
@@ -139,6 +143,14 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
 - static-Tailwind batch (vendored prebuilt Tailwind 2.2.19 CSS + config normalized, 8):
   `changebasis`, `changebasisviz`, `elementary`, `gradecalc` (no MathJax; D3 + xlsx),
   `inversematrix`, `lineareqn`, `nonlinear` (+math.js), `svd2d`
+- stragglers batch (Plotly 2.24.1 / three.js r128 / jsPDF 2.5.1 / topojson 3.0.2 vendored
+  + config normalized, 12): `about` (D3+topojson), `statesdata` (D3+topojson),
+  `geometry2d` (+D3), `graphtransform` (+D3), `bifurcation-family` (+D3),
+  `detviz` (+D3+three.js), `cooling` (+Plotly 2.27.0), `integration` (MathJax tex-svg
+  + Plotly 2.27.0), `fourier` (+math.js+Plotly 2.24.1), `bisection`, `pendulum_wave`,
+  `seatallocator` (jsPDF+Plotly 2.27.0)
+
+The MathJax `tex-svg.js` entry (SVG output, used by `integration`) is also vendored.
 
 > **Tailwind, two kinds:** the *prebuilt* `tailwindcss@2.2.19/dist/tailwind.min.css`
 > is a complete CSS file, vendored 1:1 (safe). The `cdn.tailwindcss.com` **JIT

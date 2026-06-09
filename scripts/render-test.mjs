@@ -56,7 +56,7 @@ function renderOne(rel) {
     if (!existsSync(htmlPath)) { console.log(`  ✗ ${rel}: file not found`); return res(false); }
     const src = readFileSync(htmlPath, 'utf8');
     const cfg = extractMathJaxConfig(src);
-    const mj = extract(src, /vendor\/[^"']*tex(?:-mml)?-chtml\.js/);
+    const mj = extract(src, /vendor\/[^"']*(?:tex(?:-mml)?-chtml|tex-svg)\.js/);
     if (!mj) { console.log(`  – ${rel}: no vendored MathJax (skipped)`); return res(true); }
 
     const page = `<!DOCTYPE html><html><head>${cfg ? '<script>' + cfg + '</script>' : ''}` +
