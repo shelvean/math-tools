@@ -1146,11 +1146,12 @@ function findEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
   }
   /* Classify each via the Jacobian's trace and determinant. */
   found.forEach(function(p){
-    var J=jac(p.x,p.y);p.type='degenerate';p.stab='non-hyperbolic';
+    var J=jac(p.x,p.y);p.type='degenerate';p.stab='non-hyperbolic';p.dScale=dScale;
     if(J){
       var a=J[0][0],b=J[0][1],c=J[1][0],d=J[1][1];
       var tr=a+d,det=a*d-b*c,disc=tr*tr-4*det;
       var M=Math.max(Math.abs(a),Math.abs(b),Math.abs(c),Math.abs(d),1e-300);
+      p.jScale=M;
       p.trace=tr;p.det=det;
       if(det<-1e-9*M*M){p.type='saddle';p.stab='unstable';}
       else if(Math.abs(det)<=1e-9*M*M){p.type='degenerate';p.stab='non-hyperbolic';}
@@ -1228,8 +1229,11 @@ function updateEquilibriaLegend(eqs){
 /* Tabulate every located equilibrium: coordinates, classification (with glyph),
    stability, and the trace/determinant that drive the classification. Numbers
    and symbols are emitted as LaTeX and typeset with MathJax. */
-function texNum(v){
+function texNum(v,zeroTol){
   if(typeof v!=='number'||!isFinite(v))return '\\text{—}';
+  /* Snap numerical noise to 0 using the same scale the classifier uses, so the
+     table never shows a spurious 1e-14 where the value is effectively zero. */
+  if(zeroTol&&Math.abs(v)<=zeroTol)return '0';
   if(v!==0&&(Math.abs(v)<1e-3||Math.abs(v)>=1e5)){
     var e=v.toExponential(2).split('e');
     return parseFloat(e[0])+'\\times 10^{'+parseInt(e[1],10)+'}';
@@ -1244,13 +1248,14 @@ function updateEquilibriaTable(eqs){
   var rows=eqs.slice().sort(function(a,b){return (a.x-b.x)||(a.y-b.y);});
   var body=rows.map(function(p,i){
     var kind=eqKind(p);
+    var cTol=(p.dScale||0)*1e-6,jM=p.jScale||0;
     return '<tr>'+
       '<td>'+(i+1)+'</td>'+
-      '<td class="eq-coord">\\(\\left('+texNum(p.x)+',\\ '+texNum(p.y)+'\\right)\\)</td>'+
+      '<td class="eq-coord">\\(\\left('+texNum(p.x,cTol)+',\\ '+texNum(p.y,cTol)+'\\right)\\)</td>'+
       '<td class="eq-type-cell" style="color:'+eqColor(kind)+'">'+eqGlyphSVG(kind)+EQ_LABELS[kind]+'</td>'+
       '<td>'+(stabLabel[p.stab]||p.stab||'—')+'</td>'+
-      '<td class="eq-coord">\\('+texNum(p.trace)+'\\)</td>'+
-      '<td class="eq-coord">\\('+texNum(p.det)+'\\)</td>'+
+      '<td class="eq-coord">\\('+texNum(p.trace,jM*1e-6)+'\\)</td>'+
+      '<td class="eq-coord">\\('+texNum(p.det,jM*jM*1e-9)+'\\)</td>'+
     '</tr>';
   }).join('');
   el.innerHTML='<table class="eq-table">'+
