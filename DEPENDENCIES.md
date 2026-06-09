@@ -43,6 +43,26 @@ cp package/LICENSE*    "vendor/<pkg>@<version>/"
 Then point the tool's `<script src>` / `<link href>` at the relative
 `vendor/...` path and add a row to the manifest above.
 
+## Verifying a vendored tool (offline smoke-test)
+
+`scripts/offline-smoke-test.mjs` is a browser-free, dependency-free Node check
+that a tool's bundle is genuinely self-contained:
+
+```sh
+node scripts/offline-smoke-test.mjs            # default: vendored tools
+node scripts/offline-smoke-test.mjs foo.html   # a specific file
+```
+
+It verifies that every runtime `<script src>` / stylesheet `<link>` resolves to a
+local file (no library/CDN URLs), that each local `.js` parses, that vendored
+math.js actually evaluates expressions, and that MathJax's `woff-v2` fonts are
+present. Non-blocking analytics (loaded `async` and guarded) is reported as a
+warning, not a failure — it can't break the tool. Exit code is non-zero on any
+real failure, so it can be wired into CI or a SessionStart hook.
+
+It does **not** render MathJax in a real browser, so a quick visual spot-check of
+formula rendering is still worthwhile after vendoring.
+
 ## Migration status
 
 Vendoring is being rolled out tool by tool. **Vendored so far:**
