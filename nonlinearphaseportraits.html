@@ -1229,12 +1229,35 @@ function updateEquilibriaLegend(eqs){
 /* Tabulate every located equilibrium: coordinates, classification (with glyph),
    stability, and the trace/determinant that drive the classification. Numbers
    and symbols are emitted as LaTeX and typeset with MathJax. */
+/* Recognise a value as a simple fraction p/q (small, "nice" denominators) so
+   that equilibria at e.g. 1/2 or 2/3 print exactly instead of as decimals. */
+var NICE_Q=[1,2,3,4,5,6,8,12];
+function gcdInt(a,b){a=Math.abs(a);b=Math.abs(b);while(b){var t=b;b=a%b;a=t;}return a||1;}
+function ratApprox(v,tol){
+  for(var i=0;i<NICE_Q.length;i++){var q=NICE_Q[i],p=Math.round(v*q);
+    if(p===0)continue;
+    if(Math.abs(v-p/q)<=tol*Math.max(1,Math.abs(v))){
+      var g=gcdInt(p,q);return {p:p/g,q:q/g};
+    }
+  }
+  return null;
+}
+function texFrac(p,q){return q===1?(''+p):(p<0?'-':'')+'\\frac{'+Math.abs(p)+'}{'+q+'}';}
+function texPi(p,q){
+  var sign=p<0?'-':'',num=(Math.abs(p)===1?'\\pi':Math.abs(p)+'\\pi');
+  return q===1?sign+num:sign+'\\frac{'+num+'}{'+q+'}';
+}
 function texNum(v,zeroTol){
   if(typeof v!=='number'||!isFinite(v))return '\\text{—}';
+  if(v===0)return '0';
   /* Snap numerical noise to 0 using the same scale the classifier uses, so the
      table never shows a spurious 1e-14 where the value is effectively zero. */
   if(zeroTol&&Math.abs(v)<=zeroTol)return '0';
-  if(v!==0&&(Math.abs(v)<1e-3||Math.abs(v)>=1e5)){
+  /* Detect rational multiples of pi (trig systems) and simple fractions. */
+  var tol=1e-6,r;
+  if((r=ratApprox(v/Math.PI,tol)))return texPi(r.p,r.q);
+  if((r=ratApprox(v,tol)))return texFrac(r.p,r.q);
+  if(Math.abs(v)<1e-3||Math.abs(v)>=1e5){
     var e=v.toExponential(2).split('e');
     return parseFloat(e[0])+'\\times 10^{'+parseInt(e[1],10)+'}';
   }
