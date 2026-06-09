@@ -541,10 +541,16 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
 
     // ===== MathJax compatibility shim (replaces KaTeX auto-render) =====
     function renderMathInElement(el, opts) {
-      if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
-        MathJax.typesetClear([el]);
-        MathJax.typesetPromise([el]).catch(function(e) { console.warn('MathJax error:', e); });
-      }
+      if (!el) return;
+      function go(){ if (MathJax.typesetClear) MathJax.typesetClear([el]);
+        MathJax.typesetPromise([el]).catch(function(e){ console.warn('MathJax error:', e); }); }
+      // MathJax loads async: render now if ready, else wait for startup, else poll
+      // until the script has parsed. Without this, math inserted before MathJax
+      // is ready would silently never typeset (timing race).
+      if (window.MathJax && MathJax.typesetPromise) { go(); }
+      else if (window.MathJax && MathJax.startup && MathJax.startup.promise) { MathJax.startup.promise.then(go); }
+      else { var iv = setInterval(function(){ if (window.MathJax && MathJax.typesetPromise) { clearInterval(iv); go(); } }, 50);
+             setTimeout(function(){ clearInterval(iv); }, 15000); }
     }
 
     document.addEventListener('DOMContentLoaded', function() {
