@@ -30,6 +30,10 @@ The full MathJax `es5` tree is ~24 MB. We vendor only the subset the tools use (
 - `es5/tex-chtml.js` — combined TeX-input + CHTML-output (bundles the font *data*)
 - `es5/output/chtml/fonts/woff-v2/` — the actual `.woff` glyph files CHTML fetches
 - `es5/a11y/assistive-mml.js` — accessible MathML for screen readers (self-contained)
+- `es5/input/tex/extensions/` — autoloaded TeX extensions (e.g. `boldsymbol`,
+  `cancel`, `color`). MathJax fetches these **on demand** when a macro like
+  `\boldsymbol` appears, so a page can render simple math fine yet fail on richer
+  content if they're missing. The render-test exercises `\boldsymbol` to guard this.
 
 MathJax resolves its root — and therefore the font/component directories — from
 the `<script src>` location, so `vendor/mathjax@3.2.2/es5/tex-chtml.js` makes it

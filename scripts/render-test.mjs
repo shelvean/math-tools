@@ -24,7 +24,10 @@ let JSDOM;
 try { ({ JSDOM } = await import('jsdom')); }
 catch { console.log('! jsdom not installed — skipping render test (npm install jsdom to enable)'); process.exit(0); }
 
-const SAMPLE = '\\(T_3(x)=x-\\dfrac{1}{6}x^3+\\dfrac{1}{120}x^5\\)';
+// Includes \boldsymbol (an autoloaded TeX extension) so a vendored MathJax tree
+// missing input/tex/extensions/ is caught — that failure mode renders the simple
+// case fine but rejects on the macro.
+const SAMPLE = '\\(T_3(x)=x-\\dfrac{1}{6}x^3,\\ \\boldsymbol{v}=\\begin{aligned}a&=b\\end{aligned}\\)';
 let failures = 0;
 
 function extract(html, re) { const m = html.match(re); return m ? m[0] : null; }
@@ -43,6 +46,11 @@ function renderOne(rel) {
     const dom = new JSDOM(page, { runScripts: 'dangerously', resources: 'usable',
       pretendToBeVisual: true, url: 'file://' + ROOT + '/__rendertest.html' });
     const { window } = dom;
+
+    // Catch MathJax autoload failures (e.g. a missing input/tex/extensions/*.js),
+    // which surface as "Can't load" console warnings rather than a rejection.
+    let loadErr = null;
+    window.console.warn = (...a) => { const s = a.join(' '); if (/Can't load|MathJax error/i.test(s)) loadErr = s; };
 
     // Trip a flag if MathJax tries to reach any non-local URL during startup.
     let cdnHit = null;
@@ -72,6 +80,7 @@ function renderOne(rel) {
           const h = window.document.getElementById('m').innerHTML;
           const rendered = h.includes('mjx-container');
           if (cdnHit) return finish(false, `startup reached CDN: ${cdnHit}`);
+          if (loadErr) return finish(false, `MathJax could not load a component: ${loadErr.slice(0, 120)}`);
           finish(rendered, rendered
             ? `rendered${h.includes('assistive-mml') ? ' (+assistive MathML)' : ''}`
             : 'NO mjx-container produced');
