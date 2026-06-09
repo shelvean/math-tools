@@ -135,6 +135,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .eq-legend-title{font-weight:700;font-size:.8125rem;color:var(--txt2);}
 .eq-legend-item{display:inline-flex;align-items:center;gap:.3rem;font-size:.8125rem;font-weight:600;color:var(--txt2);}
 .eq-legend-item svg{flex-shrink:0;display:block;}
+.eq-table-wrap{margin:.25rem .75rem .6rem;overflow-x:auto;}
+.eq-table-wrap caption{font-weight:700;font-size:.8125rem;color:var(--txt2);text-align:left;padding:.1rem 0 .35rem;}
+table.eq-table{border-collapse:collapse;width:100%;font-size:.8125rem;}
+table.eq-table th,table.eq-table td{border:1px solid var(--bdr2);padding:.3rem .5rem;text-align:center;white-space:nowrap;}
+table.eq-table thead th{background:var(--sect);font-weight:700;color:var(--txt2);}
+table.eq-table td.eq-type-cell{font-weight:700;}
+table.eq-table .eq-type-cell svg{vertical-align:middle;margin-right:.3rem;}
+table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
 
 /* Canvas area */
 .canvas-area{position:relative;display:flex;justify-content:center;
@@ -598,6 +606,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       </div>
     </div>
     <div id="eq-legend" class="eq-legend" role="group" aria-label="Equilibria classification legend" hidden></div>
+    <div id="eq-table-wrap" class="eq-table-wrap" hidden></div>
   </div>
 
   <!-- Time series panel -->
@@ -900,6 +909,7 @@ function drawPhasePlane(clearTrajs){
     drawEquilibria(f,g,fCompiled,gCompiled,xMin,xMax,yMin,yMax);
   }else{
     var lg=document.getElementById('eq-legend');if(lg){lg.hidden=true;lg.innerHTML='';}
+    var tb=document.getElementById('eq-table-wrap');if(tb){tb.hidden=true;tb.innerHTML='';}
   }
   trajectories.forEach(function(traj){drawTraj(traj,xMin,xMax,yMin,yMax);});
 }
@@ -1196,17 +1206,54 @@ function eqGlyphSVG(kind){
   return s+'</svg>';
 }
 
+/* Human-readable labels for each classification kind, shared by the legend
+   and the coordinate table below the plot. */
+var EQ_LABELS={'stable-node':'Stable node','unstable-node':'Unstable node',
+  'stable-spiral':'Stable spiral','unstable-spiral':'Unstable spiral',
+  'saddle':'Saddle','center':'Center','degenerate':'Non-hyperbolic'};
+var EQ_ORDER=['stable-node','unstable-node','stable-spiral','unstable-spiral',
+  'saddle','center','degenerate'];
+
 /* Render the classification key as an HTML row beneath the plot (off-canvas). */
 function updateEquilibriaLegend(eqs){
   var el=document.getElementById('eq-legend');if(!el)return;
-  var order=[['stable-node','Stable node'],['unstable-node','Unstable node'],
-             ['stable-spiral','Stable spiral'],['unstable-spiral','Unstable spiral'],
-             ['saddle','Saddle'],['center','Center'],['degenerate','Non-hyperbolic']];
   var present={};eqs.forEach(function(p){present[eqKind(p)]=true;});
-  var rows=order.filter(function(o){return present[o[0]];});
+  var rows=EQ_ORDER.filter(function(k){return present[k];});
   if(!rows.length){el.hidden=true;el.innerHTML='';return;}
   el.innerHTML='<span class="eq-legend-title">Equilibria ('+eqs.length+'):</span>'+
-    rows.map(function(r){return '<span class="eq-legend-item">'+eqGlyphSVG(r[0])+'<span>'+r[1]+'</span></span>';}).join('');
+    rows.map(function(k){return '<span class="eq-legend-item">'+eqGlyphSVG(k)+'<span>'+EQ_LABELS[k]+'</span></span>';}).join('');
+  el.hidden=false;
+}
+
+/* Tabulate every located equilibrium: coordinates, classification (with glyph),
+   stability, and the trace/determinant that drive the classification. */
+function fmtNum(v){
+  if(typeof v!=='number'||!isFinite(v))return '—';
+  if(v!==0&&(Math.abs(v)<1e-3||Math.abs(v)>=1e5))return v.toExponential(2);
+  var s=v.toFixed(3);return s.replace(/\.?0+$/,'')||'0';
+}
+function updateEquilibriaTable(eqs){
+  var el=document.getElementById('eq-table-wrap');if(!el)return;
+  if(!eqs.length){el.hidden=true;el.innerHTML='';return;}
+  var stabLabel={stable:'Stable',unstable:'Unstable',neutral:'Neutral','non-hyperbolic':'—'};
+  /* Sort for a stable, readable order: by x then y. */
+  var rows=eqs.slice().sort(function(a,b){return (a.x-b.x)||(a.y-b.y);});
+  var body=rows.map(function(p,i){
+    var kind=eqKind(p);
+    return '<tr>'+
+      '<td>'+(i+1)+'</td>'+
+      '<td class="eq-coord">('+fmtNum(p.x)+', '+fmtNum(p.y)+')</td>'+
+      '<td class="eq-type-cell" style="color:'+eqColor(kind)+'">'+eqGlyphSVG(kind)+EQ_LABELS[kind]+'</td>'+
+      '<td>'+(stabLabel[p.stab]||p.stab||'—')+'</td>'+
+      '<td class="eq-coord">'+fmtNum(p.trace)+'</td>'+
+      '<td class="eq-coord">'+fmtNum(p.det)+'</td>'+
+    '</tr>';
+  }).join('');
+  el.innerHTML='<table class="eq-table">'+
+    '<caption>Equilibria ('+eqs.length+')</caption>'+
+    '<thead><tr><th>#</th><th>(x, y)</th><th>Classification</th><th>Stability</th>'+
+    '<th title="trace of the Jacobian">τ</th><th title="determinant of the Jacobian">Δ</th></tr></thead>'+
+    '<tbody>'+body+'</tbody></table>';
   el.hidden=false;
 }
 
@@ -1219,6 +1266,7 @@ function drawEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
   });
   fieldCtx.restore();
   updateEquilibriaLegend(eqs);
+  updateEquilibriaTable(eqs);
 }
 
 /* ── Equation display ── */
