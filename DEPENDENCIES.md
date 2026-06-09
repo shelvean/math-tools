@@ -112,6 +112,8 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
 - `finitediff.html` (MathJax, Plotly)
 - `leastsquaresdata.html` (MathJax, math.js, D3, PapaParse, xlsx)
 - `leastsquaresrational.html` (MathJax, math.js, numeric, D3)
+- MathJax-only batch: `businessmath`, `linear`, `numerical`, `series`, `duffing`, `poincare`
+  (`duffing`/`poincare` use the `tex-mml-chtml` entry, also vendored)
 
 Tools not yet migrated still load these libraries from pinned CDN URLs.
 Each migrated tool is gated by both `offline-smoke-test.mjs` and `render-test.mjs`.
