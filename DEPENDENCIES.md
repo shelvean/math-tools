@@ -16,6 +16,12 @@ redistribution.
 | MathJax (CHTML) | 3.2.2 | `vendor/mathjax@3.2.2/es5/` | `registry.npmjs.org/mathjax/-/mathjax-3.2.2.tgz` | Apache-2.0 | 2026-06-09 |
 | math.js | 11.9.1 | `vendor/mathjs@11.9.1/math.js` | `registry.npmjs.org/mathjs/-/mathjs-11.9.1.tgz` | Apache-2.0 | 2026-06-09 |
 | D3 | 7.8.5 | `vendor/d3@7.8.5/d3.min.js` | `registry.npmjs.org/d3/-/d3-7.8.5.tgz` | ISC | 2026-06-09 |
+| Plotly | 2.27.0 | `vendor/plotly@2.27.0/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.27.0.tgz` | MIT | 2026-06-09 |
+| PapaParse | 5.4.0 | `vendor/papaparse@5.4.0/papaparse.min.js` | `registry.npmjs.org/papaparse/-/papaparse-5.4.0.tgz` | MIT | 2026-06-09 |
+| SheetJS (xlsx) | 0.18.5 | `vendor/xlsx@0.18.5/xlsx.full.min.js` | `registry.npmjs.org/xlsx/-/xlsx-0.18.5.tgz` | Apache-2.0 | 2026-06-09 |
+| numeric | 1.2.6 | `vendor/numeric@1.2.6/numeric.min.js` | `registry.npmjs.org/numeric/-/numeric-1.2.6.tgz` | MIT* | 2026-06-09 |
+
+\* numeric's npm tarball ships no LICENSE file; the project is MIT-licensed (Sébastien Loisel).
 
 ### MathJax footprint + the a11y/CDN gotcha
 
@@ -99,5 +105,9 @@ startup reaches any `http(s)://` URL** — i.e. it catches both "doesn't render"
 Vendoring is being rolled out tool by tool. **Vendored so far:**
 
 - `taylorseries.html` — pilot (MathJax, math.js, D3)
+- `finitediff.html` (MathJax, Plotly)
+- `leastsquaresdata.html` (MathJax, math.js, D3, PapaParse, xlsx)
+- `leastsquaresrational.html` (MathJax, math.js, numeric, D3)
 
 Tools not yet migrated still load these libraries from pinned CDN URLs.
+Each migrated tool is gated by both `offline-smoke-test.mjs` and `render-test.mjs`.
