@@ -80,6 +80,27 @@ function checkMathjaxFonts(htmlDir, scriptUrl) {
   pass(`MathJax fonts present (${fonts.length} files, incl. Main-Regular)`);
 }
 
+// If the page's MathJax config enables a11y features, those components are
+// lazy-loaded at startup from the vendored es5 tree — if missing, MathJax fails
+// to render at all. Assert each enabled feature's component is present.
+function checkMathjaxComponents(htmlDir, scriptUrl, html) {
+  const es5 = resolve(htmlDir, dirname(scriptUrl));
+  const need = [];
+  if (/enableAssistiveMml\s*:\s*true/.test(html)) need.push(['assistiveMml', 'a11y/assistive-mml.js']);
+  if (/enableExplorer\s*:\s*true/.test(html)) {
+    need.push(['explorer', 'a11y/explorer.js']);
+    need.push(['explorer→semantic-enrich', 'a11y/semantic-enrich.js']);
+  }
+  if (/\bspeech\s*:\s*true/.test(html)) need.push(['speech (SRE)', 'sre']);
+  if (!need.length) return;
+  for (const [feat, rel] of need) {
+    const p = join(es5, rel);
+    const ok = existsSync(p) && (statSync(p).isFile() || readdirSync(p).length > 0);
+    ok ? pass(`MathJax a11y component for ${feat}: ${rel}`)
+       : fail(`MathJax config enables ${feat} but component missing: ${rel} (MathJax will fail to render)`);
+  }
+}
+
 for (const rel of TARGETS) {
   const htmlPath = resolve(ROOT, rel);
   console.log('\n\x1b[1m' + rel + '\x1b[0m');
@@ -110,7 +131,7 @@ for (const rel of TARGETS) {
     } else {
       pass(`present: ${r.url}`);
     }
-    if (/tex-chtml\.js$/.test(abs)) checkMathjaxFonts(htmlDir, r.url);
+    if (/tex-chtml\.js$/.test(abs)) { checkMathjaxFonts(htmlDir, r.url); checkMathjaxComponents(htmlDir, r.url, html); }
   }
 }
 
