@@ -19,13 +19,28 @@ redistribution.
 
 ### MathJax footprint note
 
-The full MathJax `es5` tree is ~24 MB (SVG output, input components, multiple
-font formats). CHTML output only needs the combined `es5/tex-chtml.js` plus the
-fonts in `es5/output/chtml/fonts/woff-v2/`, so only that minimal set (~1.5 MB) is
-vendored. MathJax resolves its root — and therefore the font directory — from the
-`<script src>` location, so the relative path `vendor/mathjax@3.2.2/es5/tex-chtml.js`
-makes it load fonts from the vendored tree automatically. **Do not flatten** the
-`es5/output/chtml/fonts/woff-v2/` path.
+The full MathJax `es5` tree is ~24 MB (SVG output, MathML input, multiple font
+formats). We vendor only the subset the tools actually use (~6 MB):
+
+- `es5/tex-chtml.js` — combined TeX-input + CHTML-output (bundles the font *data*)
+- `es5/output/chtml/fonts/woff-v2/` — the actual `.woff` glyph files CHTML fetches
+- `es5/a11y/` and `es5/sre/` — accessibility components (assistive MathML,
+  explorer, speech rules)
+
+MathJax resolves its root — and therefore the font and component directories —
+from the `<script src>` location, so the relative path
+`vendor/mathjax@3.2.2/es5/tex-chtml.js` makes it load everything from the vendored
+tree automatically. **Do not flatten** the `es5/...` substructure.
+
+> **Why `a11y/` + `sre/` are required, not optional:** the tools' MathJax config
+> sets `enableExplorer`, `enableAssistiveMml`, and `a11y.speech`. MathJax
+> *lazy-loads* those components at startup; if they're missing, the startup
+> promise rejects and **nothing renders at all** (math.js/D3 still work, so the
+> failure looks MathJax-specific). The smoke-test asserts that every a11y feature
+> enabled in a page's config has its component vendored.
+
+GitHub Pages note: a root `.nojekyll` file is committed so Pages serves the
+`vendor/` tree verbatim (Jekyll otherwise has special handling for some paths).
 
 ## How to vendor a new library
 
