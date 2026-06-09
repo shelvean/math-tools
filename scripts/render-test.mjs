@@ -32,13 +32,31 @@ let failures = 0;
 
 function extract(html, re) { const m = html.match(re); return m ? m[0] : null; }
 
+// Extract `window.MathJax = { ... }` by matching braces (robust to one-liner or
+// multi-line configs), returning a reconstructable assignment.
+function extractMathJaxConfig(src) {
+  const i = src.indexOf('window.MathJax');
+  if (i < 0) return null;
+  const open = src.indexOf('{', i);
+  if (open < 0) return null;
+  let depth = 0, str = null;
+  for (let j = open; j < src.length; j++) {
+    const c = src[j];
+    if (str) { if (c === '\\') { j++; continue; } if (c === str) str = null; continue; }
+    if (c === '"' || c === "'") { str = c; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return 'window.MathJax=' + src.slice(open, j + 1) + ';'; }
+  }
+  return null;
+}
+
 function renderOne(rel) {
   return new Promise((res) => {
     const htmlPath = resolve(ROOT, rel);
     if (!existsSync(htmlPath)) { console.log(`  ✗ ${rel}: file not found`); return res(false); }
     const src = readFileSync(htmlPath, 'utf8');
-    const cfg = extract(src, /window\.MathJax\s*=\s*\{[\s\S]*?\n\s*\};/);
-    const mj = extract(src, /vendor\/[^"']*tex-chtml\.js/);
+    const cfg = extractMathJaxConfig(src);
+    const mj = extract(src, /vendor\/[^"']*tex(?:-mml)?-chtml\.js/);
     if (!mj) { console.log(`  – ${rel}: no vendored MathJax (skipped)`); return res(true); }
 
     const page = `<!DOCTYPE html><html><head>${cfg ? '<script>' + cfg + '</script>' : ''}` +
