@@ -17,6 +17,7 @@ redistribution.
 | math.js | 11.9.1 | `vendor/mathjs@11.9.1/math.js` | `registry.npmjs.org/mathjs/-/mathjs-11.9.1.tgz` | Apache-2.0 | 2026-06-09 |
 | D3 | 7.8.5 | `vendor/d3@7.8.5/d3.min.js` | `registry.npmjs.org/d3/-/d3-7.8.5.tgz` | ISC | 2026-06-09 |
 | Plotly | 2.27.0 | `vendor/plotly@2.27.0/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.27.0.tgz` | MIT | 2026-06-09 |
+| Plotly | 2.35.2 | `vendor/plotly@2.35.2/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.35.2.tgz` | MIT | 2026-06-09 |
 | PapaParse | 5.4.0 | `vendor/papaparse@5.4.0/papaparse.min.js` | `registry.npmjs.org/papaparse/-/papaparse-5.4.0.tgz` | MIT | 2026-06-09 |
 | SheetJS (xlsx) | 0.18.5 | `vendor/xlsx@0.18.5/xlsx.full.min.js` | `registry.npmjs.org/xlsx/-/xlsx-0.18.5.tgz` | Apache-2.0 | 2026-06-09 |
 | numeric | 1.2.6 | `vendor/numeric@1.2.6/numeric.min.js` | `registry.npmjs.org/numeric/-/numeric-1.2.6.tgz` | MIT* | 2026-06-09 |
@@ -121,6 +122,9 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
   `massspring-horizontal`, `massspring`, `matrixvectorviz`, `projects`, `refsolver`,
   `rref`, `rrefsolver`, `slope`, `svdcompute`, `tipe-cycles-boucles`,
   `transformations2d`, `vanderpol`
+- MathJax + Plotly 2.35.2 batch (config normalized + vendored, 10): `cobweb`,
+  `convolution`, `laplace`, `logistic`, `lorenzsystem`, `lotkavolterra`,
+  `lvcarrying`, `malkus-flywheel`, `newton`, `rossler`
 
 Tools not yet migrated still load these libraries from pinned CDN URLs.
 Each migrated tool is gated by both `offline-smoke-test.mjs` and `render-test.mjs`.
