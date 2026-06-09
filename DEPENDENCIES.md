@@ -23,6 +23,10 @@ redistribution.
 | Google Fonts (woff2) | n/a | `vendor/fonts/` | `fonts.googleapis.com` CSS → `fonts.gstatic.com` woff2 (latin + latin-ext) | OFL-1.1 | 2026-06-09 |
 | decimal.js | 10.4.3 | `vendor/decimal.js@10.4.3/decimal.js` | `registry.npmjs.org/decimal.js/-/decimal.js-10.4.3.tgz` | MIT | 2026-06-09 |
 | Tailwind CSS (prebuilt) | 2.2.19 | `vendor/tailwindcss@2.2.19/tailwind.min.css` | `registry.npmjs.org/tailwindcss/-/tailwindcss-2.2.19.tgz` | MIT | 2026-06-09 |
+| Tailwind CSS (built) | 3.4.17 | `vendor/tailwindcss@3.4.17/tailwind.build.css` | built locally from the 6 JIT pages via `tailwindcss` CLI | MIT | 2026-06-09 |
+| math.js | 14.2.1 | `vendor/mathjs@14.2.1/math.js` | `registry.npmjs.org/mathjs/-/mathjs-14.2.1.tgz` | Apache-2.0 | 2026-06-09 |
+| function-plot | 1.22.4 | `vendor/function-plot@1.22.4/function-plot.js` | `registry.npmjs.org/function-plot/-/function-plot-1.22.4.tgz` | MIT | 2026-06-09 |
+| Vue | 3.5.13 | `vendor/vue@3.5.13/vue.global.js` | `registry.npmjs.org/vue/-/vue-3.5.13.tgz` | MIT | 2026-06-09 |
 | D3 | 7.8.5 | `vendor/d3@7.8.5/d3.min.js` | `registry.npmjs.org/d3/-/d3-7.8.5.tgz` | ISC | 2026-06-09 |
 | Plotly | 2.27.0 | `vendor/plotly@2.27.0/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.27.0.tgz` | MIT | 2026-06-09 |
 | Plotly | 2.35.2 | `vendor/plotly@2.35.2/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.35.2.tgz` | MIT | 2026-06-09 |
@@ -165,6 +169,25 @@ The MathJax `tex-svg.js` entry (SVG output, used by `integration`) is also vendo
   (pdf-lib), `pdf_sort` (pdf.js 2.11.338, pdf-lib). For pdf_dark, `workerSrc` is
   repointed to the vendored worker; the v2 tools use pdf.js's main-thread fallback
   (no workerSrc, unchanged). `pdftools.html` is a static page with no libraries.
+- Tailwind JIT-runtime batch (6): `corners`, `corners_v1` (+Plotly 2.24.1, +fonts),
+  `mathjs` (+math.js 14.2.1), `plotfunction` (+function-plot, +math.js 13.1.1, +D3),
+  `slopev1`, `timer` (+Vue 3.5.13, +fonts). The `cdn.tailwindcss.com` in-browser
+  compiler was **replaced** by a Tailwind v3 build (`tailwind.build.css`, generated
+  by scanning all 6 pages — including their inline JS, so dynamically-applied
+  classes are captured). Google Fonts for `corners`/`corners_v1`/`timer` were
+  self-hosted into `vendor/fonts/`.
+
+> **The Tailwind JIT runtime can't be vendored as a file** — it compiles utility
+> classes in the browser. We instead run the Tailwind CLI over the pages to emit a
+> static CSS. To regenerate after editing any of the 6 pages' classes:
+> ```sh
+> npx tailwindcss@3.4.17 -i in.css -o vendor/tailwindcss@3.4.17/tailwind.build.css --minify \
+>   --content "corners.html,corners_v1.html,mathjs.html,plotfunction.html,slopev1.html,timer.html"
+> ```
+> (`in.css` = the three `@tailwind base/components/utilities` directives.)
+
+**All math/visualization tools are now self-hosted — no third-party CDN at runtime
+(only optional, async, non-blocking Google Analytics remains).**
 
 > **Self-hosted fonts:** Google Fonts CSS was fetched and rewritten to load woff2
 > from `vendor/fonts/` (latin + latin-ext subsets only — these are English tools).
