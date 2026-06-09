@@ -129,6 +129,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   background:var(--sect);border-bottom:1px solid var(--bdr2);
   font-size:.8125rem;font-weight:700;color:var(--txt2);}
 .pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.eq-legend{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:.3rem .9rem;
+  margin:.6rem .75rem .25rem;padding:.45rem .7rem;background:var(--sect);
+  border:1px solid var(--bdr2);border-radius:var(--r);}
+.eq-legend-title{font-weight:700;font-size:.8125rem;color:var(--txt2);}
+.eq-legend-item{display:inline-flex;align-items:center;gap:.3rem;font-size:.8125rem;font-weight:600;color:var(--txt2);}
+.eq-legend-item svg{flex-shrink:0;display:block;}
 
 /* Canvas area */
 .canvas-area{position:relative;display:flex;justify-content:center;
@@ -591,6 +597,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         </div>
       </div>
     </div>
+    <div id="eq-legend" class="eq-legend" role="group" aria-label="Equilibria classification legend" hidden></div>
   </div>
 
   <!-- Time series panel -->
@@ -891,6 +898,8 @@ function drawPhasePlane(clearTrajs){
   }
   if(document.getElementById('showEquilibria').checked){
     drawEquilibria(f,g,fCompiled,gCompiled,xMin,xMax,yMin,yMax);
+  }else{
+    var lg=document.getElementById('eq-legend');if(lg){lg.hidden=true;lg.innerHTML='';}
   }
   trajectories.forEach(function(traj){drawTraj(traj,xMin,xMax,yMin,yMax);});
 }
@@ -1171,28 +1180,34 @@ function drawEqGlyph(kind,cx,cy,R){
   }
 }
 
-function drawEquilibriaLegend(eqs){
+function eqGlyphSVG(kind){
+  var c=eqColor(kind),s='<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">';
+  if(kind==='saddle'){
+    s+='<path d="M2.5 2.5 L13.5 13.5 M2.5 13.5 L13.5 2.5" stroke="'+c+'" stroke-width="2.4" stroke-linecap="round"/>';
+  }else if(kind==='center'){
+    s+='<circle cx="8" cy="8" r="6" fill="#fff" stroke="'+c+'" stroke-width="2.2"/><circle cx="8" cy="8" r="2.2" fill="'+c+'"/>';
+  }else if(kind==='degenerate'){
+    s+='<circle cx="8" cy="8" r="6" fill="#fff" stroke="'+c+'" stroke-width="2" stroke-dasharray="3 2"/>';
+  }else if(kind.charAt(0)==='s'){/* stable-* : filled */
+    s+='<circle cx="8" cy="8" r="6" fill="'+c+'" stroke="#fff" stroke-width="1.5"/>';
+  }else{/* unstable-* : hollow */
+    s+='<circle cx="8" cy="8" r="6" fill="#fff" stroke="'+c+'" stroke-width="2.4"/>';
+  }
+  return s+'</svg>';
+}
+
+/* Render the classification key as an HTML row beneath the plot (off-canvas). */
+function updateEquilibriaLegend(eqs){
+  var el=document.getElementById('eq-legend');if(!el)return;
   var order=[['stable-node','Stable node'],['unstable-node','Unstable node'],
              ['stable-spiral','Stable spiral'],['unstable-spiral','Unstable spiral'],
              ['saddle','Saddle'],['center','Center'],['degenerate','Non-hyperbolic']];
   var present={};eqs.forEach(function(p){present[eqKind(p)]=true;});
   var rows=order.filter(function(o){return present[o[0]];});
-  if(!rows.length)return;
-  var pad=8,rowH=17,sw=20,fontPx=12;
-  fieldCtx.save();
-  fieldCtx.font='600 '+fontPx+'px -apple-system,Arial,sans-serif';fieldCtx.textBaseline='middle';
-  var maxW=0;rows.forEach(function(r){var w=fieldCtx.measureText(r[1]).width;if(w>maxW)maxW=w;});
-  var boxW=pad*2+sw+6+maxW,boxH=pad*2+rows.length*rowH,x0=8,y0=8;
-  fieldCtx.fillStyle=isHC()?'rgba(255,255,255,0.97)':'rgba(255,255,255,0.9)';
-  fieldCtx.strokeStyle='rgba(0,0,0,0.28)';fieldCtx.lineWidth=1;
-  fieldCtx.beginPath();fieldCtx.rect(x0,y0,boxW,boxH);fieldCtx.fill();fieldCtx.stroke();
-  rows.forEach(function(r,idx){
-    var cy=y0+pad+idx*rowH+rowH/2;
-    drawEqGlyph(r[0],x0+pad+sw/2,cy,6);
-    fieldCtx.fillStyle=isHC()?'#000':'#222';
-    fieldCtx.fillText(r[1],x0+pad+sw+6,cy);
-  });
-  fieldCtx.restore();
+  if(!rows.length){el.hidden=true;el.innerHTML='';return;}
+  el.innerHTML='<span class="eq-legend-title">Equilibria ('+eqs.length+'):</span>'+
+    rows.map(function(r){return '<span class="eq-legend-item">'+eqGlyphSVG(r[0])+'<span>'+r[1]+'</span></span>';}).join('');
+  el.hidden=false;
 }
 
 function drawEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
@@ -1203,7 +1218,7 @@ function drawEquilibria(fSrc,gSrc,fC,gC,xMin,xMax,yMin,yMax){
     drawEqGlyph(eqKind(p),(p.x-xMin)/(xMax-xMin)*W,(yMax-p.y)/(yMax-yMin)*H,6);
   });
   fieldCtx.restore();
-  drawEquilibriaLegend(eqs);
+  updateEquilibriaLegend(eqs);
 }
 
 /* ── Equation display ── */
