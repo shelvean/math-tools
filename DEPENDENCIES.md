@@ -18,7 +18,9 @@ redistribution.
 | math.js | 11.7.0 | `vendor/mathjs@11.7.0/math.js` | `registry.npmjs.org/mathjs/-/mathjs-11.7.0.tgz` | Apache-2.0 | 2026-06-09 |
 | math.js | 12.0.0 | `vendor/mathjs@12.0.0/math.js` | `registry.npmjs.org/mathjs/-/mathjs-12.0.0.tgz` | Apache-2.0 | 2026-06-09 |
 | math.js | 13.1.1 | `vendor/mathjs@13.1.1/math.js` | `registry.npmjs.org/mathjs/-/mathjs-13.1.1.tgz` | Apache-2.0 | 2026-06-09 |
+| math.js | 12.4.2 | `vendor/mathjs@12.4.2/math.js` | `registry.npmjs.org/mathjs/-/mathjs-12.4.2.tgz` | Apache-2.0 | 2026-06-09 |
 | math.js | 14.6.0 | `vendor/mathjs@14.6.0/math.js` | `registry.npmjs.org/mathjs/-/mathjs-14.6.0.tgz` | Apache-2.0 | 2026-06-09 |
+| Google Fonts (woff2) | n/a | `vendor/fonts/` | `fonts.googleapis.com` CSS → `fonts.gstatic.com` woff2 (latin + latin-ext) | OFL-1.1 | 2026-06-09 |
 | decimal.js | 10.4.3 | `vendor/decimal.js@10.4.3/decimal.js` | `registry.npmjs.org/decimal.js/-/decimal.js-10.4.3.tgz` | MIT | 2026-06-09 |
 | Tailwind CSS (prebuilt) | 2.2.19 | `vendor/tailwindcss@2.2.19/tailwind.min.css` | `registry.npmjs.org/tailwindcss/-/tailwindcss-2.2.19.tgz` | MIT | 2026-06-09 |
 | D3 | 7.8.5 | `vendor/d3@7.8.5/d3.min.js` | `registry.npmjs.org/d3/-/d3-7.8.5.tgz` | ISC | 2026-06-09 |
@@ -151,6 +153,14 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
   `seatallocator` (jsPDF+Plotly 2.27.0)
 
 The MathJax `tex-svg.js` entry (SVG output, used by `integration`) is also vendored.
+- Google-Fonts batch (self-hosted woff2 + config normalized, 4): `double_potential`,
+  `potential` (IBM Plex Sans/Serif), `prod` (Atkinson Hyperlegible, +math.js 12.4.2),
+  `odeclassify` (IBM Plex Mono/Sans/Serif)
+
+> **Self-hosted fonts:** Google Fonts CSS was fetched and rewritten to load woff2
+> from `vendor/fonts/` (latin + latin-ext subsets only — these are English tools).
+> Each tool has a small `vendor/fonts/<tool>.css`; woff2 files are shared/deduped.
+> Fonts are licensed OFL-1.1 (IBM Plex, Atkinson Hyperlegible).
 
 > **Tailwind, two kinds:** the *prebuilt* `tailwindcss@2.2.19/dist/tailwind.min.css`
 > is a complete CSS file, vendored 1:1 (safe). The `cdn.tailwindcss.com` **JIT
