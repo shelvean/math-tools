@@ -382,7 +382,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       <h2>Using this tool</h2>
       <ul>
         <li><strong>Tick any number of methods</strong> in the selector to overlay their approximations on the solution plot.</li>
-        <li>Pick a built-in example (stiff and non-stiff) or enter a custom \(f(t,y)\). Provide an exact solution to measure error, or leave it blank and the tool uses a fine RK4 reference.</li>
+        <li>Pick a built-in example (stiff and non-stiff) or enter a custom \(f(t,y)\). Provide an exact solution to measure error, or leave it blank and the tool builds a fine numerical reference &mdash; dense RK4, automatically switching to an A-stable implicit solver if the problem is stiff.</li>
         <li>Drag the <strong>step-size slider</strong> with <em>Live update</em> on to watch accuracy and stability change instantly.</li>
         <li>For parameterized examples like \(y'=\lambda y\) (exact \(y_0e^{\lambda t}\)), drag \(\lambda\) from gentle to stiff.</li>
         <li>The plot supports scroll-zoom, drag-to-pan, and box-zoom; the graph height is adjustable.</li>
@@ -418,7 +418,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         </div>
         <div class="cfield cfield-lg">
           <label for="exactInput">Exact solution \(y(t)\) <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
-          <input type="text" id="exactInput" value="y0*exp(lambda*t)" placeholder="leave blank to use an RK4 reference">
+          <input type="text" id="exactInput" value="y0*exp(lambda*t)" placeholder="leave blank to use a numerical reference">
         </div>
         <div class="cfield cfield-tr">
           <label for="t0Input">Start \(t_0\)</label>
@@ -504,7 +504,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
           <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
           <button class="view-btn" id="resetViewBtn" type="button" aria-label="Reset view">Reset view</button>
         </div>
-        <p class="note">The black curve is the exact solution (or a fine RK4 reference). Coloured curves with markers are the selected methods sampled at their step nodes. The view is auto-scaled to the exact solution so it fills the frame; divergent (unstable) runs simply shoot off the top or bottom &mdash; scroll to zoom or drag to pan to follow them.</p>
+        <p class="note">The black curve is the exact solution (or a fine numerical reference &mdash; dense RK4, or an A-stable implicit solver when the problem is stiff). Coloured curves with markers are the selected methods sampled at their step nodes. The view is auto-scaled to the reference so it fills the frame; divergent (unstable) runs simply shoot off the top or bottom &mdash; scroll to zoom or drag to pan to follow them.</p>
       </div>
 
       <!-- Error vs t -->
@@ -974,7 +974,7 @@ var EXAMPLES = [
   {group:'Custom', id:'custom', name:'Custom … (edit the fields)',
     tex:"Custom &hellip; <span style=\"font-weight:400;\">(edit the fields)</span>",
     f:'y - t^2 + 1', exact:'', t0:'0', y0:'0.5', tEnd:'2', h:0.2,
-    lam:{val:-2, min:-50, max:5}, note:'Type any f(t,y). Leave the exact solution blank to use an RK4 reference.'}
+    lam:{val:-2, min:-50, max:5}, note:'Type any f(t,y). Leave the exact solution blank to use a numerical reference (stable even when stiff).'}
 ];
 var exById = {}; EXAMPLES.forEach(function(e){ exById[e.id]=e; });
 var currentEx = EXAMPLES[0];
@@ -1009,15 +1009,33 @@ function readProblem(){
     P.exact = function(t){ es.t=t; return num(eComp.evaluate(es)); };
     P.hasExact = true;
     P.ref = P.exact;
+    P.refName = 'Exact';
   } else {
     P.hasExact = false;
     var Nref = 8000, hr=(tEnd-t0)/Nref;
     var rt=new Float64Array(Nref+1), ry=new Float64Array(Nref+1);
     rt[0]=t0; ry[0]=y0;
+    /* Dense explicit RK4 reference — extremely accurate for non-stiff
+       problems. But a fixed-step explicit method can itself go unstable on a
+       stiff custom problem, so watch for blow-up. */
+    var refStable=true;
     for (var i=1;i<=Nref;i++){
       var t=rt[i-1], yv=ry[i-1];
       var k1=f(t,yv), k2=f(t+hr/2,yv+hr/2*k1), k3=f(t+hr/2,yv+hr/2*k2), k4=f(t+hr,yv+hr*k3);
       ry[i]=yv+hr/6*(k1+2*k2+2*k3+k4); rt[i]=t0+i*hr;
+      if(!isFinite(ry[i]) || Math.abs(ry[i])>1e9){ refStable=false; break; }
+    }
+    P.refName = 'RK4 reference';
+    if(!refStable){
+      /* Stiff: rebuild with the A-stable implicit trapezoidal rule (solved by
+         Newton each step), which stays bounded for any step when Re(f_y)<0. */
+      P.refName = 'Reference (A-stable)';
+      ry[0]=y0; rt[0]=t0;
+      for (var ii=1;ii<=Nref;ii++){
+        var tt=rt[ii-1], yy=ry[ii-1], fn=f(tt,yy);
+        ry[ii]=implicitSolve(tt+hr, yy+0.5*hr*fn, 0.5, hr, P, yy+hr*fn);
+        rt[ii]=t0+ii*hr;
+      }
     }
     P.ref = function(t){
       var x=(t-t0)/hr; if(x<=0) return ry[0]; if(x>=Nref) return ry[Nref];
@@ -1349,8 +1367,8 @@ var PCONFIG={responsive:true, scrollZoom:true, displaylogo:false,
 function plotSolution(P,results){
   var h=parseInt(document.getElementById('sizeSlider').value,10);
   var xr=linspace(P.t0,P.tEnd,600), yr=xr.map(function(t){return P.ref(t);});
-  var traces=[{x:xr, y:yr, mode:'lines', name:P.hasExact?'Exact':'RK4 reference',
-    line:{color:'#111827', width:2.6}, hovertemplate:'t=%{x:.3f}<br>y=%{y:.5f}<extra>'+(P.hasExact?'Exact':'Reference')+'</extra>'}];
+  var traces=[{x:xr, y:yr, mode:'lines', name:P.refName,
+    line:{color:'#111827', width:2.6}, hovertemplate:'t=%{x:.3f}<br>y=%{y:.5f}<extra>'+P.refName+'</extra>'}];
   /* y-range: scale to the exact/reference solution so it fills most of the
      frame. Approximation points are included only if they stay within a
      modest band around the reference, so an unstable blow-up never dominates
