@@ -1434,11 +1434,38 @@ function refreshStabSelect(){
   if (ids.indexOf(prev)>=0) sel.value=prev; else if(ids.length) sel.value=ids[0];
   if (!ids.length){ var o=document.createElement('option'); o.value=''; o.textContent='(select a method)'; sel.appendChild(o); }
 }
+/* Frame the stability plot to the selected method's region: coarse-scan a
+   generous domain for where |amp| <= 1, take its bounding box (with the
+   origin), and build a square window around it. This keeps tiny regions
+   (e.g. AB3) from being a coarsely-sampled speck, while unbounded
+   (A-stable) regions just fill the frame. */
+function stabWindow(id){
+  var X0=-12, X1=4, Y0=-8, Y1=8, gx=130, gy=130;
+  var xmin=Infinity, xmax=-Infinity, ymin=Infinity, ymax=-Infinity, found=false;
+  for (var j=0;j<gy;j++){
+    var y=Y0+(Y1-Y0)*j/(gy-1);
+    for (var i=0;i<gx;i++){
+      var x=X0+(X1-X0)*i/(gx-1);
+      if (ampMax(id, cx(x,y))<=1.0000001){
+        found=true;
+        if(x<xmin)xmin=x; if(x>xmax)xmax=x; if(y<ymin)ymin=y; if(y>ymax)ymax=y;
+      }
+    }
+  }
+  if (!found){ xmin=-2.5; xmax=0.5; ymin=-1.5; ymax=1.5; }
+  /* always include the origin (every method's boundary passes through it) */
+  xmin=Math.min(xmin,0); xmax=Math.max(xmax,0); ymin=Math.min(ymin,0); ymax=Math.max(ymax,0);
+  var cxr=(xmin+xmax)/2, cyr=(ymin+ymax)/2;
+  var hw=Math.max((xmax-xmin)/2, (ymax-ymin)/2)*1.4;
+  hw=Math.max(0.9, Math.min(hw, 13));
+  return {cx:cxr, cy:cyr, hw:hw, x0:cxr-hw, x1:cxr+hw, y0:cyr-hw, y1:cyr+hw};
+}
 function plotStability(P){
   var id=document.getElementById('stabSelect').value;
   if (!id){ Plotly.purge('stabPlot'); return; }
-  var nx=121, ny=121;
-  var xs=linspace(-5,2,nx), ys=linspace(-4,4,ny);
+  var W=stabWindow(id);
+  var nx=141, ny=141;
+  var xs=linspace(W.x0,W.x1,nx), ys=linspace(W.y0,W.y1,ny);
   var zval=new Array(ny);
   for (var jy=0;jy<ny;jy++){
     var row=new Array(nx);
@@ -1449,23 +1476,26 @@ function plotStability(P){
     }
     zval[jy]=row;
   }
-  /* current z = h*lambda */
+  /* current z = h*lambda, clamped into the frame so it stays visible */
   var lamEff;
   if (currentEx.lam) lamEff=P.lambda; else lamEff=P.fy(P.t0,P.y0);
   var zr=lastH*lamEff, zi=0;
+  var mxp=Math.max(W.x0+0.03*2*W.hw, Math.min(W.x1-0.03*2*W.hw, zr));
+  var myp=Math.max(W.y0+0.03*2*W.hw, Math.min(W.y1-0.03*2*W.hw, zi));
+  var offFrame=(Math.abs(mxp-zr)>1e-9);
   var heat={ type:'heatmap', x:xs, y:ys, z:zval, zmin:0, zmax:2, showscale:false,
     colorscale:[[0,'#1d4ed8'],[0.42,'#60a5fa'],[0.499,'#bfdbfe'],[0.5,'#ffffff'],[0.75,'#fde2e2'],[1,'#fca5a5']],
     hovertemplate:'Re=%{x:.2f}, Im=%{y:.2f}<br>|amp|=%{z:.2f}<extra></extra>' };
   var bound={ type:'contour', x:xs, y:ys, z:zval, showscale:false,
     contours:{start:1, end:2, size:1, coloring:'lines'}, line:{color:'#0b3b8f', width:2.5},
     hoverinfo:'skip' };
-  var pt={ type:'scatter', x:[zr], y:[zi], mode:'markers',
+  var pt={ type:'scatter', x:[mxp], y:[myp], mode:'markers',
     marker:{color:'#dc2626', size:12, symbol:'x', line:{width:3}},
-    hovertemplate:'h·λ = %{x:.3f}<extra>current step</extra>' };
+    hovertemplate:'h·λ = '+zr.toFixed(3)+(offFrame?' (off-frame)':'')+'<extra>current step</extra>' };
   var layout={ height:430, margin:{l:50,r:12,t:10,b:44}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'Re(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[-5,2], tickfont:{size:12}}, linTicks(-5,2,7)),
+    xaxis:Object.assign({title:{text:'Re(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[W.x0,W.x1], tickfont:{size:12}}, linTicks(W.x0,W.x1,7)),
     yaxis:Object.assign({title:{text:'Im(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb',
-      range:[-4,4], scaleanchor:'x', scaleratio:1, tickfont:{size:12}}, linTicks(-4,4,8)),
+      range:[W.y0,W.y1], scaleanchor:'x', scaleratio:1, tickfont:{size:12}}, linTicks(W.y0,W.y1,7)),
     showlegend:false, paper_bgcolor:'#fff', plot_bgcolor:'#fff' };
   Plotly.react('stabPlot', [heat, bound, pt], layout, PCONFIG);
   stabInited=true;
