@@ -1558,21 +1558,45 @@ function refreshStabSelect(){
   if (ids.indexOf(prev)>=0) sel.value=prev; else if(ids.length) sel.value=ids[0];
   if (!ids.length){ var o=document.createElement('option'); o.value=''; o.textContent='(select a method)'; sel.appendChild(o); }
 }
-/* Frame the stability plot to the selected method's region: coarse-scan a
-   generous domain for where |amp| <= 1, take its bounding box (with the
-   origin), and build a square window around it. This keeps tiny regions
-   (e.g. AB3) from being a coarsely-sampled speck, while unbounded
-   (A-stable) regions just fill the frame. */
+/* Bounding box of a linear multistep method's stability boundary, traced
+   exactly by the boundary locus z(θ)=ρ(e^{iθ})/σ(e^{iθ}). For AB/AM this
+   encloses the (bounded) stable lobe; for BDF it encloses the (bounded)
+   instability region — so framing to it shows ALL of the instability area. */
+function boundaryLocusBBox(id){
+  var rs=RHOSIG[id], n=360*6;
+  var xmin=Infinity, xmax=-Infinity, ymin=Infinity, ymax=-Infinity;
+  for (var t=0;t<n;t++){
+    var th=2*Math.PI*t/n, z=cx(Math.cos(th), Math.sin(th)), rho=cx(0,0), sig=cx(0,0), k;
+    for (k=0;k<rs.rho.length;k++) rho=cadd(cmul(rho,z), cx(rs.rho[k],0));
+    for (k=0;k<rs.sig.length;k++) sig=cadd(cmul(sig,z), cx(rs.sig[k],0));
+    if (cabs(sig)<1e-9) continue;
+    var w=cdiv(rho,sig);
+    if(!isFinite(w.re)||!isFinite(w.im)) continue;
+    if(w.re<xmin)xmin=w.re; if(w.re>xmax)xmax=w.re; if(w.im<ymin)ymin=w.im; if(w.im>ymax)ymax=w.im;
+  }
+  return {xmin:xmin, xmax:xmax, ymin:ymin, ymax:ymax, ok:isFinite(xmin)};
+}
+/* Frame the stability plot to the selected method's region. Linear multistep
+   methods use the exact boundary locus (so BDF show their full instability
+   region); one-step methods coarse-scan for where |amp| <= 1. A square
+   window with margin keeps tiny regions (e.g. AB3) from being a speck, while
+   unbounded (A-stable) one-step regions just fill the frame. */
 function stabWindow(id){
-  var X0=-12, X1=4, Y0=-8, Y1=8, gx=130, gy=130;
+  var m=METBY[id];
   var xmin=Infinity, xmax=-Infinity, ymin=Infinity, ymax=-Infinity, found=false;
-  for (var j=0;j<gy;j++){
-    var y=Y0+(Y1-Y0)*j/(gy-1);
-    for (var i=0;i<gx;i++){
-      var x=X0+(X1-X0)*i/(gx-1);
-      if (ampMax(id, cx(x,y))<=1.0000001){
-        found=true;
-        if(x<xmin)xmin=x; if(x>xmax)xmax=x; if(y<ymin)ymin=y; if(y>ymax)ymax=y;
+  if (m.kind==='ab' || m.kind==='am' || m.kind==='bdf'){
+    var bb=boundaryLocusBBox(id);
+    if (bb.ok){ xmin=bb.xmin; xmax=bb.xmax; ymin=bb.ymin; ymax=bb.ymax; found=true; }
+  } else {
+    var X0=-12, X1=4, Y0=-8, Y1=8, gx=130, gy=130;
+    for (var j=0;j<gy;j++){
+      var y=Y0+(Y1-Y0)*j/(gy-1);
+      for (var i=0;i<gx;i++){
+        var x=X0+(X1-X0)*i/(gx-1);
+        if (ampMax(id, cx(x,y))<=1.0000001){
+          found=true;
+          if(x<xmin)xmin=x; if(x>xmax)xmax=x; if(y<ymin)ymin=y; if(y>ymax)ymax=y;
+        }
       }
     }
   }
@@ -1580,8 +1604,8 @@ function stabWindow(id){
   /* always include the origin (every method's boundary passes through it) */
   xmin=Math.min(xmin,0); xmax=Math.max(xmax,0); ymin=Math.min(ymin,0); ymax=Math.max(ymax,0);
   var cxr=(xmin+xmax)/2, cyr=(ymin+ymax)/2;
-  var hw=Math.max((xmax-xmin)/2, (ymax-ymin)/2)*1.4;
-  hw=Math.max(0.9, Math.min(hw, 13));
+  var hw=Math.max((xmax-xmin)/2, (ymax-ymin)/2)*1.25;
+  hw=Math.max(0.9, Math.min(hw, 16));
   return {cx:cxr, cy:cyr, hw:hw, x0:cxr-hw, x1:cxr+hw, y0:cyr-hw, y1:cyr+hw};
 }
 function plotStability(P){
