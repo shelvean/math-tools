@@ -373,6 +373,15 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       <h2>Order of accuracy</h2>
       <p>A method has <strong>order \(p\)</strong> if its local truncation error per step is \(O(h^{p+1})\), giving a global error \(O(h^p)\) over a fixed interval. Halving \(h\) then cuts the error by a factor \(2^p\). The <em>Convergence</em> panel measures this slope directly on a log&ndash;log plot.</p>
 
+      <h2>Measuring the error</h2>
+      <p>The global error can be summarised by a single number in several ways; the <em>norm</em> selector controls which is used in the error table and the convergence plot:</p>
+      <ul>
+        <li><strong>\(L^2\) (RMS):</strong> \(\sqrt{\frac1N\sum_n e_n^2}\) &mdash; the error averaged over the whole trajectory. Robust and gives the cleanest convergence slopes; a good default.</li>
+        <li><strong>Max (\(L^\infty\)):</strong> \(\max_n|e_n|\) &mdash; the worst error anywhere; this is the textbook &ldquo;global error&rdquo;.</li>
+        <li><strong>Final-time:</strong> \(|y_N-y(t_N)|\) &mdash; only the endpoint. Useful when that value is what you want, but it can read accidentally small when the error oscillates (e.g. the flame problem, which sits at \(y=1\) by \(t_{\text{end}}\)).</li>
+      </ul>
+      <p>All consistent norms share the same asymptotic order \(p\); they differ in robustness and in what they emphasise.</p>
+
       <h2>Absolute stability</h2>
       <p>Apply a method to the linear test equation \(y'=\lambda y\) with step \(h\). Each step multiplies the numerical solution by an amplification factor that depends only on \(z=h\lambda\). The method is <strong>absolutely stable</strong> when that factor has modulus \(\le 1\), so errors do not grow. The set of such \(z\) in the complex plane is the method&rsquo;s <strong>region of absolute stability</strong>, drawn in the <em>Stability</em> panel.</p>
       <ul>
@@ -491,7 +500,16 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
 
       <!-- Results -->
       <div class="pwrap">
-        <div class="phdr"><span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>Global error at \(t_{\text{end}}\)</div>
+        <div class="phdr" style="justify-content:space-between;">
+          <span style="display:inline-flex;align-items:center;gap:.4rem;"><span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>Global error</span>
+          <label style="display:inline-flex;align-items:center;gap:.35rem;font-weight:700;font-size:.78rem;">norm:
+            <select id="normSelect" aria-label="Error norm" style="min-height:30px;padding:.1rem .35rem;font-size:.78rem;font-weight:600;border:2px solid var(--bdr);border-radius:.3rem;background:var(--card);color:var(--txt);">
+              <option value="l2">L² (RMS)</option>
+              <option value="max">Max (L∞)</option>
+              <option value="final">Final-time</option>
+            </select>
+          </label>
+        </div>
         <div id="resWrap" class="res-wrap"><div class="res-empty">Select methods and press Solve.</div></div>
       </div>
     </div>
@@ -528,7 +546,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         </button>
         <div id="convSecBody" hidden>
           <div id="convPlot"></div>
-          <p class="note">Log&ndash;log plot of the final-time error against \(h\) (each \(h\) halved). Solid lines are the measured error; the fitted empirical order \(p\) appears in the legend. <strong>Dashed lines</strong> show the theoretical \(O(h^{p})\) rate for each method (same colour). A solid line parallel to its dashed reference confirms \(O(h^p)\) convergence, until round-off dominates at small \(h\).</p>
+          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). Solid lines are the measured error; the fitted empirical order \(p\) appears in the legend. <strong>Dashed lines</strong> show the theoretical \(O(h^{p})\) rate for each method (same colour). A solid line parallel to its dashed reference confirms \(O(h^p)\) convergence, until round-off dominates at small \(h\).</p>
         </div>
       </div>
 
@@ -1514,7 +1532,7 @@ function plotConvergence(P){
     hs.forEach(function(h){
       if (h<hFloor) return;
       var R=integrate(id,P,h); if(!R) return;
-      var e=Math.abs(R.ys[R.N]-P.ref(P.tEnd));
+      var e=methodError(R,P);
       if (isFinite(e) && e>0){ xx.push(R.h); yy.push(e); errs.push(e); }
     });
     /* empirical order from least-squares slope on log-log */
@@ -1650,27 +1668,40 @@ function plotStability(P){
   stabInited=true;
 }
 
+/* ----- error norm ----- */
+var NORM_LABEL = {l2:'L² error (RMS)', max:'max error (L∞)', final:'final-time error'};
+function selectedNorm(){ var s=document.getElementById('normSelect'); return s?s.value:'l2'; }
+/* Scalar global error of a run R against the reference, in the selected norm. */
+function methodError(R,P){
+  var norm=selectedNorm();
+  if (norm==='final') return Math.abs(R.ys[R.N]-P.ref(P.tEnd));
+  if (norm==='max'){
+    var mx=0; for (var i=0;i<=R.N;i++){ var e=Math.abs(R.ys[i]-P.ref(R.ts[i])); if(isFinite(e)&&e>mx) mx=e; }
+    return mx;
+  }
+  /* L2 / RMS over the grid points */
+  var s=0, c=0; for (var j=0;j<=R.N;j++){ var d=R.ys[j]-P.ref(R.ts[j]); if(isFinite(d)){ s+=d*d; c++; } }
+  return c?Math.sqrt(s/c):NaN;
+}
+
 /* ----- results table ----- */
 function buildResultTable(P,results){
   var host=document.getElementById('resWrap');
   if (!results.length){ host.innerHTML='<div class="res-empty">No methods selected.</div>'; return; }
   var rows='<table class="res-tbl"><thead><tr>'+
-    '<th>Method</th><th>p</th><th>N</th><th>h</th><th>final error</th><th>max error</th></tr></thead><tbody>';
+    '<th>Method</th><th>p</th><th>N</th><th>h</th><th>'+NORM_LABEL[selectedNorm()]+'</th></tr></thead><tbody>';
   results.forEach(function(R){
     var m;
     if (!R){ return; }
     m=METBY[R.id];
-    var finalErr=Math.abs(R.ys[R.N]-P.ref(P.tEnd));
-    var maxErr=0;
-    for (var i=0;i<=R.N;i++){ var e=Math.abs(R.ys[i]-P.ref(R.ts[i])); if(isFinite(e)&&e>maxErr) maxErr=e; }
-    var bad=!R.stable || !isFinite(finalErr);
+    var err=methodError(R,P);
+    var bad=!R.stable || !isFinite(err);
     rows+='<tr>'+
       '<td class="mname"><span class="mdot" style="background:'+m.color+'"></span>'+m.label+'</td>'+
       '<td>'+m.order+'</td>'+
       '<td>'+R.N+'</td>'+
       '<td>'+fmt(R.h)+'</td>'+
-      '<td class="'+(bad?'bad':'')+'">'+(bad?'unstable':fmtErr(finalErr))+'</td>'+
-      '<td class="'+(bad?'bad':'')+'">'+(bad?'—':fmtErr(maxErr))+'</td>'+
+      '<td class="'+(bad?'bad':'')+'">'+(bad?'unstable':fmtErr(err))+'</td>'+
       '</tr>';
   });
   rows+='</tbody></table>';
@@ -1776,6 +1807,11 @@ function init(){
     if (lastP) plotSolution(lastP,lastResults);
   });
   document.getElementById('stabSelect').addEventListener('change', function(){ if(lastP) plotStability(lastP); });
+  document.getElementById('normSelect').addEventListener('change', function(){
+    if(!lastP) return;
+    buildResultTable(lastP, lastResults);
+    if (isOpen('convSecBody')) plotConvergence(lastP);
+  });
 
   /* high contrast */
   var hc=document.getElementById('hcToggle');
