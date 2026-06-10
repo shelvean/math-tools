@@ -802,6 +802,48 @@ function fmtErr(v){
 }
 function linspace(a,b,n){ var o=new Array(n); for(var i=0;i<n;i++) o[i]=a+(b-a)*i/(n-1); return o; }
 
+/* ---------- axis tick helpers (>= 4 ticks per axis) ---------- */
+/* Linear axis: 1-2-5 "nice" step sized for ~target ticks. */
+function linTicks(lo,hi,target){
+  target=target||6;
+  if(!(hi>lo)) return {};
+  var raw=(hi-lo)/target;
+  var mag=Math.pow(10,Math.floor(Math.log10(raw)));
+  var n=raw/mag, step=(n<1.5?1:n<3?2:n<7?5:10)*mag;
+  var t0=Math.ceil(lo/step - 1e-9)*step;
+  return {tickmode:'linear', tick0:t0, dtick:step};
+}
+/* Decimal tick label: 0.5, 0.05, 0.005, 2, 10 … (no scientific notation). */
+function fmtDec(v){
+  if(v===0) return '0';
+  var a=Math.abs(v);
+  if(a>=1) return String(+v.toPrecision(6));
+  var d=-Math.floor(Math.log10(a)+1e-9); if(d<0)d=0;
+  return v.toFixed(d);
+}
+function fmtExp(v){ return v.toExponential(0); }
+/* Log axis: start with powers of ten (clean) and progressively densify with
+   finer mantissas until there are at least 4 ticks. `mode` picks the label
+   format (decimal like 0.01, or exponential like 1e-4). */
+function logTicks(lo,hi,mode){
+  if(!(lo>0)||!(hi>lo)) return {};
+  var e0=Math.floor(Math.log10(lo)-1e-9), e1=Math.ceil(Math.log10(hi)+1e-9);
+  function collect(mant){
+    var out=[];
+    for(var e=e0;e<=e1;e++) mant.forEach(function(mm){ var v=mm*Math.pow(10,e); if(v>=lo*0.999&&v<=hi*1.001) out.push(v); });
+    return out;
+  }
+  var tiers=[[1],[1,2,5],[1,1.5,2,3,4,5,6,8]], vals=[];
+  for(var ti=0; ti<tiers.length; ti++){ vals=collect(tiers[ti]); if(vals.length>=4 || ti===tiers.length-1) break; }
+  var fmtFn=(mode==='decimal')?fmtDec:fmtExp;
+  return {tickmode:'array', tickvals:vals, ticktext:vals.map(fmtFn)};
+}
+function dataRange(arrs){
+  var lo=Infinity, hi=-Infinity;
+  arrs.forEach(function(a){ for(var i=0;i<a.length;i++){ var v=a[i]; if(isFinite(v)&&v>0){ if(v<lo)lo=v; if(v>hi)hi=v; } } });
+  return (isFinite(lo)&&hi>0)?{lo:lo,hi:hi}:null;
+}
+
 /* ---------- complex helpers (for stability) ---------- */
 function cx(re,im){ return {re:re, im:im||0}; }
 function cadd(a,b){ return {re:a.re+b.re, im:a.im+b.im}; }
@@ -1300,8 +1342,8 @@ function plotSolution(P,results){
   });
   var layout={
     height:h, margin:{l:55,r:12,t:10,b:42}, dragmode:'pan',
-    xaxis:{title:{text:'t',font:{size:13}}, range:[P.t0,P.tEnd], zeroline:false, gridcolor:'#e5e7eb'},
-    yaxis:{title:{text:'y',font:{size:13}}, range:[ylo,yhi], gridcolor:'#e5e7eb', zeroline:true, zerolinecolor:'#cbd5e1'},
+    xaxis:Object.assign({title:{text:'t',font:{size:13}}, range:[P.t0,P.tEnd], zeroline:false, gridcolor:'#e5e7eb', tickfont:{size:12}}, linTicks(P.t0,P.tEnd,6)),
+    yaxis:Object.assign({title:{text:'y',font:{size:13}}, range:[ylo,yhi], gridcolor:'#e5e7eb', zeroline:true, zerolinecolor:'#cbd5e1', tickfont:{size:12}}, linTicks(ylo,yhi,5)),
     legend:{orientation:'h', y:1.12, x:0, font:{size:11}},
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'
   };
@@ -1310,7 +1352,7 @@ function plotSolution(P,results){
 }
 
 function plotError(P,results){
-  var traces=[];
+  var traces=[], allY=[];
   results.forEach(function(R){
     if(!R) return;
     var m=METBY[R.id];
@@ -1319,12 +1361,15 @@ function plotError(P,results){
       var e=Math.abs(R.ys[i]-P.ref(R.ts[i]));
       if (isFinite(e) && e>0){ x.push(R.ts[i]); y.push(e); }
     }
+    allY.push(y);
     traces.push({x:x, y:y, mode:'lines+markers', name:m.label,
       line:{color:m.color, width:1.7}, marker:{color:m.color, size:4}});
   });
+  var yr=dataRange(allY);
+  var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
   var layout={ height:320, margin:{l:62,r:12,t:10,b:42}, dragmode:'pan',
-    xaxis:{title:{text:'t'}, gridcolor:'#e5e7eb'},
-    yaxis:{title:{text:'|Error|',font:{size:14}}, type:'log', dtick:1, showgrid:true, gridcolor:'#e5e7eb', exponentformat:'e', tickfont:{size:12}},
+    xaxis:Object.assign({title:{text:'t'}, range:[P.t0,P.tEnd], gridcolor:'#e5e7eb', tickfont:{size:12}}, linTicks(P.t0,P.tEnd,6)),
+    yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:1.14, x:0, font:{size:11}},
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   Plotly.react('errPlot', traces, layout, PCONFIG);
@@ -1336,7 +1381,7 @@ function plotConvergence(P){
   var hFloor=spanT()/200000;
   var hStart=spanT()/4, levels=8, hs=[];
   for (var j=0;j<levels;j++) hs.push(hStart/Math.pow(2,j));
-  var traces=[];
+  var traces=[], allX=[], allY=[];
   ids.forEach(function(id){
     var m=METBY[id];
     if (m.kind==='taylor' && !P.taylorOK) return;
@@ -1355,20 +1400,25 @@ function plotConvergence(P){
       p=(n*sxy-sx*sy)/(n*sxx-sx*sx);
     }
     var nm=m.label + (isFinite(p)?('  (p≈'+p.toFixed(2)+')'):'');
+    allX.push(xx); allY.push(yy);
     traces.push({x:xx, y:yy, mode:'lines+markers', name:nm,
       line:{color:m.color, width:1.8}, marker:{color:m.color, size:6}});
     /* dashed theoretical O(h^p) reference, anchored to this method's data */
     if (xx.length>=2){
       var ri=Math.min(2, xx.length-1), p0=m.order;
       var refY=xx.map(function(h){ return yy[ri]*Math.pow(h/xx[ri], p0); });
+      allY.push(refY);
       traces.push({x:xx, y:refY, mode:'lines', name:m.label+' O(h^'+p0+')',
         line:{color:m.color, width:1.3, dash:'dash'}, opacity:0.6, showlegend:false,
         hovertemplate:'O(h^'+p0+') reference<extra>'+m.label+'</extra>'});
     }
   });
+  var xr=dataRange(allX), yr=dataRange(allY);
+  var xTicks=xr?logTicks(xr.lo,xr.hi,'decimal'):{};
+  var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
   var layout={ height:340, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
-    xaxis:{title:{text:'step size h'}, type:'log', gridcolor:'#e5e7eb'},
-    yaxis:{title:{text:'|Error|',font:{size:14}}, type:'log', dtick:1, showgrid:true, gridcolor:'#e5e7eb', exponentformat:'e', tickfont:{size:12}},
+    xaxis:Object.assign({title:{text:'step size h'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
+    yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:1.16, x:0, font:{size:11}},
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   Plotly.react('convPlot', traces, layout, PCONFIG);
@@ -1413,9 +1463,9 @@ function plotStability(P){
     marker:{color:'#dc2626', size:12, symbol:'x', line:{width:3}},
     hovertemplate:'h·λ = %{x:.3f}<extra>current step</extra>' };
   var layout={ height:430, margin:{l:50,r:12,t:10,b:44}, dragmode:'pan',
-    xaxis:{title:{text:'Re(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[-5,2]},
-    yaxis:{title:{text:'Im(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb',
-      range:[-4,4], scaleanchor:'x', scaleratio:1},
+    xaxis:Object.assign({title:{text:'Re(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[-5,2], tickfont:{size:12}}, linTicks(-5,2,7)),
+    yaxis:Object.assign({title:{text:'Im(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb',
+      range:[-4,4], scaleanchor:'x', scaleratio:1, tickfont:{size:12}}, linTicks(-4,4,8)),
     showlegend:false, paper_bgcolor:'#fff', plot_bgcolor:'#fff' };
   Plotly.react('stabPlot', [heat, bound, pt], layout, PCONFIG);
   stabInited=true;
