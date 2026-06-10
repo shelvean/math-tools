@@ -442,21 +442,22 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <p class="note" id="lamNote" style="margin:.1rem 0 0;">Drag the slider or type an exact \(\lambda\) (any value); large negative makes \(y'=\lambda y\) stiff.</p>
       </div>
 
-      <!-- Step size -->
+      <!-- Number of steps -->
       <div class="ctl-block">
-        <h4>Step size \(h\)</h4>
+        <h4>Number of steps \(N\)</h4>
         <div class="srow">
-          <input type="range" id="hSlider" min="0" max="1000" step="1" value="500"
-                 aria-label="Step size h">
-          <span class="sval" id="hVal">0.25</span>
-        </div>
-        <div class="srow">
-          <label for="hInput" style="font-size:.8125rem;font-weight:700;color:var(--txt2);">exact \(h\):</label>
-          <input type="number" id="hInput" value="0.25" step="0.001" min="0"
-                 style="width:6.5rem;min-height:34px;padding:.2rem .4rem;font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;">
+          <input type="range" id="nSlider" min="1" max="1000" step="1" value="8"
+                 aria-label="Number of steps N">
           <span class="sval" id="nVal" style="min-width:5rem;">N = 8</span>
         </div>
+        <div class="srow">
+          <label for="nInput" style="font-size:.8125rem;font-weight:700;color:var(--txt2);">exact \(N\):</label>
+          <input type="number" id="nInput" value="8" step="1" min="1"
+                 style="width:6.5rem;min-height:34px;padding:.2rem .4rem;font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;">
+          <span class="sval" id="hVal" style="min-width:6rem;">h = 0.25</span>
+        </div>
         <label class="ck" style="margin-top:.35rem;"><input type="checkbox" id="liveChk" checked> Live update (immediate)</label>
+        <p class="note" style="margin:.3rem 0 0;">Slide right to add steps (smaller \(h\)); each notch is one more step.</p>
       </div>
 
       <!-- Graph size -->
@@ -1086,7 +1087,7 @@ function ampMax(id,z){
 /* ============================================================
    UI wiring
    ============================================================ */
-var lastP=null, lastResults=[], lastH=0.25;
+var lastP=null, lastResults=[], lastH=0.25, lastN=8;
 var live=true;
 var solnInited=false, errInited=false, convInited=false, stabInited=false;
 
@@ -1213,7 +1214,7 @@ function loadExample(id){
   }
   document.getElementById('lamNote').textContent=e.note||'';
   /* step size */
-  setH(e.h);
+  setN(Math.round(spanT()/e.h));
   solve();
 }
 
@@ -1235,19 +1236,21 @@ function spanT(){
   var tE=parseFloat(document.getElementById('tEndInput').value);
   var s=tE-t0; return (isFinite(s)&&s>0)?s:1;
 }
-function hBounds(){ var s=spanT(); return {hi:s/2, lo:s/2000}; }
-function sliderToH(sv){ var b=hBounds(); return b.hi*Math.pow(b.lo/b.hi, sv/1000); }
-function hToSlider(h){ var b=hBounds(); var r=1000*Math.log(h/b.hi)/Math.log(b.lo/b.hi); return Math.max(0,Math.min(1000,r)); }
-function setH(h){
-  var b=hBounds(); h=Math.max(b.lo,Math.min(b.hi,h)); lastH=h;
-  document.getElementById('hSlider').value=Math.round(hToSlider(h));
-  document.getElementById('hInput').value=parseFloat(h.toFixed(6));
-  updateHLabel(h);
+/* The control is the number of steps N; the step size is h = span / N.
+   Sliding right increases N (more steps, smaller h). */
+function setN(N){
+  N=Math.round(N); if(!isFinite(N)||N<1) N=1;
+  lastN=N; lastH=spanT()/N;
+  var sl=document.getElementById('nSlider');
+  if (N>parseInt(sl.max,10)) sl.max=N;
+  sl.value=N;
+  document.getElementById('nInput').value=N;
+  updateStepLabels(N);
 }
-function updateHLabel(h){
-  document.getElementById('hVal').textContent=h<0.01?h.toExponential(2):h.toFixed(4);
-  var N=Math.round(spanT()/h); if(!isFinite(N)||N<1) N=1;
+function updateStepLabels(N){
   document.getElementById('nVal').textContent='N = '+N;
+  var h=spanT()/N;
+  document.getElementById('hVal').textContent='h = '+(h<0.01?h.toExponential(2):h.toFixed(4));
 }
 
 /* ----- collapsibles ----- */
@@ -1320,7 +1323,7 @@ function plotError(P,results){
 
 function plotConvergence(P){
   var ids=selectedIds();
-  var b=hBounds();
+  var hFloor=spanT()/200000;
   var hStart=spanT()/4, levels=8, hs=[];
   for (var j=0;j<levels;j++) hs.push(hStart/Math.pow(2,j));
   var traces=[];
@@ -1329,7 +1332,7 @@ function plotConvergence(P){
     if (m.kind==='taylor' && !P.taylorOK) return;
     var xx=[], yy=[], errs=[];
     hs.forEach(function(h){
-      if (h<b.lo) return;
+      if (h<hFloor) return;
       var R=integrate(id,P,h); if(!R) return;
       var e=Math.abs(R.ys[R.N]-P.ref(P.tEnd));
       if (isFinite(e) && e>0){ xx.push(R.h); yy.push(e); errs.push(e); }
@@ -1450,8 +1453,8 @@ function solve(){
   catch(e){ showErr('Could not read the problem: '+(e.message||e)); return; }
   lastP=P;
   /* current h from numeric field (authoritative) */
-  var hField=parseFloat(document.getElementById('hInput').value);
-  if (isFinite(hField) && hField>0) lastH=hField;
+  var Nfield=parseInt(document.getElementById('nInput').value,10);
+  if (isFinite(Nfield) && Nfield>=1){ lastN=Nfield; lastH=spanT()/Nfield; }
   var results=[];
   selectedIds().forEach(function(id){ results.push(integrate(id,P,lastH)); });
   results=results.filter(function(r){return r;});
@@ -1461,7 +1464,7 @@ function solve(){
   if (isOpen('errSecBody')) plotError(P,results);
   if (isOpen('convSecBody')) plotConvergence(P);
   if (isOpen('stabSecBody')) plotStability(P);
-  announce('Solved '+results.length+' method'+(results.length===1?'':'s')+' at step h = '+fmt(lastH)+'.');
+  announce('Solved '+results.length+' method'+(results.length===1?'':'s')+' with N = '+lastN+' steps (h = '+fmt(lastH)+').');
 }
 
 /* debounce for live updates */
@@ -1497,10 +1500,11 @@ function init(){
   lamSlider.addEventListener('input', function(){ lamInput.value=lamSlider.value; updateLamLabel(); scheduleSolve(); });
   lamInput.addEventListener('input', function(){ var v=parseFloat(lamInput.value); if(isFinite(v)) lamSlider.value=v; updateLamLabel(); scheduleSolve(); });
 
-  /* step size slider <-> number */
-  var hSlider=document.getElementById('hSlider'), hInput=document.getElementById('hInput');
-  hSlider.addEventListener('input', function(){ var h=sliderToH(parseFloat(hSlider.value)); lastH=h; hInput.value=parseFloat(h.toFixed(6)); updateHLabel(h); scheduleSolve(); });
-  hInput.addEventListener('input', function(){ var h=parseFloat(hInput.value); if(isFinite(h)&&h>0){ lastH=h; hSlider.value=Math.round(hToSlider(h)); updateHLabel(h); scheduleSolve(); } });
+  /* steps slider <-> exact number */
+  var nSlider=document.getElementById('nSlider'), nInput=document.getElementById('nInput');
+  nSlider.addEventListener('input', function(){ setN(parseInt(nSlider.value,10)); scheduleSolve(); });
+  nInput.addEventListener('input', function(){ var v=parseInt(nInput.value,10);
+    if(isFinite(v)&&v>=1){ lastN=v; lastH=spanT()/v; if(v>parseInt(nSlider.max,10))nSlider.max=v; nSlider.value=v; updateStepLabels(v); scheduleSolve(); } });
 
   /* graph size */
   var sizeSlider=document.getElementById('sizeSlider');
@@ -1516,7 +1520,7 @@ function init(){
   ['fnInput','exactInput','t0Input','y0Input','tEndInput'].forEach(function(idf){
     var el=document.getElementById(idf);
     el.addEventListener('change', function(){
-      if (idf==='t0Input'||idf==='tEndInput'){ setH(lastH); }
+      if (idf==='t0Input'||idf==='tEndInput'){ setN(lastN); }
       scheduleSolve();
     });
     el.addEventListener('keydown', function(e){ if(e.key==='Enter') solve(); });
