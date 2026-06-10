@@ -802,16 +802,21 @@ function fmtErr(v){
 }
 function linspace(a,b,n){ var o=new Array(n); for(var i=0;i<n;i++) o[i]=a+(b-a)*i/(n-1); return o; }
 
-/* ---------- axis tick helpers (>= 4 ticks per axis) ---------- */
-/* Linear axis: 1-2-5 "nice" step sized for ~target ticks. */
-function linTicks(lo,hi,target){
-  target=target||6;
+/* ---------- axis tick helpers: 4 to 8 ticks per axis ---------- */
+var MAXTICKS=8;
+/* Linear axis: pick the 1-2-5 "nice" step that gives as many ticks as
+   possible without exceeding MAXTICKS (typically 5-8, at least ~4). */
+function linTicks(lo,hi){
   if(!(hi>lo)) return {};
-  var raw=(hi-lo)/target;
-  var mag=Math.pow(10,Math.floor(Math.log10(raw)));
-  var n=raw/mag, step=(n<1.5?1:n<3?2:n<7?5:10)*mag;
-  var t0=Math.ceil(lo/step - 1e-9)*step;
-  return {tickmode:'linear', tick0:t0, dtick:step};
+  var span=hi-lo, e=Math.floor(Math.log10(span))-2, mags=[];
+  for(var k=e;k<=e+6;k++) [1,2,2.5,5].forEach(function(m){ mags.push(m*Math.pow(10,k)); });
+  mags.sort(function(a,b){ return a-b; });
+  for(var i=0;i<mags.length;i++){
+    var step=mags[i], t0=Math.ceil(lo/step - 1e-9)*step;
+    var cnt=Math.floor((hi-t0)/step + 1e-9)+1;
+    if(cnt<=MAXTICKS) return {tickmode:'linear', tick0:t0, dtick:step};
+  }
+  return {};
 }
 /* Decimal tick label: 0.5, 0.05, 0.005, 2, 10 … (no scientific notation). */
 function fmtDec(v){
@@ -822,19 +827,33 @@ function fmtDec(v){
   return v.toFixed(d);
 }
 function fmtExp(v){ return v.toExponential(0); }
-/* Log axis: start with powers of ten (clean) and progressively densify with
-   finer mantissas until there are at least 4 ticks. `mode` picks the label
-   format (decimal like 0.01, or exponential like 1e-4). */
+function thin(vals,maxn){
+  if(vals.length<=maxn) return vals;
+  var s=Math.ceil(vals.length/maxn), out=[];
+  for(var k=0;k<vals.length;k+=s) out.push(vals[k]);
+  if(out[out.length-1]!==vals[vals.length-1]) out.push(vals[vals.length-1]);
+  return out;
+}
+/* Log axis: prefer clean powers of ten; thin them if there'd be more than
+   MAXTICKS, or densify with finer mantissas if fewer than 4. `mode` picks
+   the label format (decimal like 0.01, or exponential like 1e-4). */
 function logTicks(lo,hi,mode){
   if(!(lo>0)||!(hi>lo)) return {};
-  var e0=Math.floor(Math.log10(lo)-1e-9), e1=Math.ceil(Math.log10(hi)+1e-9);
+  var e0=Math.floor(Math.log10(lo)-1e-9), e1=Math.ceil(Math.log10(hi)+1e-9), e;
   function collect(mant){
     var out=[];
-    for(var e=e0;e<=e1;e++) mant.forEach(function(mm){ var v=mm*Math.pow(10,e); if(v>=lo*0.999&&v<=hi*1.001) out.push(v); });
+    for(e=e0;e<=e1;e++) mant.forEach(function(mm){ var v=mm*Math.pow(10,e); if(v>=lo*0.999&&v<=hi*1.001) out.push(v); });
     return out;
   }
-  var tiers=[[1],[1,2,5],[1,1.5,2,3,4,5,6,8]], vals=[];
-  for(var ti=0; ti<tiers.length; ti++){ vals=collect(tiers[ti]); if(vals.length>=4 || ti===tiers.length-1) break; }
+  var dec=collect([1]), vals;
+  if(dec.length>MAXTICKS)      vals=thin(dec, MAXTICKS);
+  else if(dec.length>=4)       vals=dec;
+  else {
+    var tiers=[[1,2,5],[1,2,3,4,5,6,8]];
+    vals=dec;
+    for(var ti=0; ti<tiers.length; ti++){ var out=collect(tiers[ti]); if(out.length>=4){ vals=out; break; } vals=out; }
+    vals=thin(vals, MAXTICKS);
+  }
   var fmtFn=(mode==='decimal')?fmtDec:fmtExp;
   return {tickmode:'array', tickvals:vals, ticktext:vals.map(fmtFn)};
 }
