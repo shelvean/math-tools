@@ -1249,6 +1249,26 @@ function ratApprox(v,tol){
   return null;
 }
 function texFrac(p,q){return q===1?(''+p):(p<0?'-':'')+'\\dfrac{'+Math.abs(p)+'}{'+q+'}';}
+/* Detect simple surds: values of the form ±(a/b)·√d (d square-free). Since
+   v = (a/b)√d  ⟺  v² = (a²/b²)d is rational, square the value, look for a
+   nice fraction P/Q, then v = √(P·Q)/Q with the square factor pulled out of
+   the radical. Returns LaTeX, or null when v is not a simple surd. */
+function texSurd(v,tol){
+  if(typeof v!=='number'||!isFinite(v)||v===0)return null;
+  var r=ratApprox(v*v,tol||1e-6);
+  if(!r)return null;
+  var m=Math.abs(r.p)*r.q, Q=r.q;          /* v = √m / Q */
+  if(m===0)return null;
+  var s=1, rad=m;
+  for(var k=2;k*k<=rad;k++){ while(rad%(k*k)===0){ rad/=(k*k); s*=k; } }
+  if(rad===1)return null;                   /* perfect square ⇒ rational, handled elsewhere */
+  if(rad>30)return null;                     /* keep it to "simple" surds */
+  var g=gcdInt(s,Q), num=s/g, den=Q/g;
+  if(num>20||den>20)return null;
+  var sign=v<0?'-':'';
+  var core=(num===1?'':''+num)+'\\sqrt{'+rad+'}';
+  return den===1 ? sign+core : sign+'\\dfrac{'+core+'}{'+den+'}';
+}
 function texPi(p,q){
   var sign=p<0?'-':'',num=(Math.abs(p)===1?'\\pi':Math.abs(p)+'\\pi');
   return q===1?sign+num:sign+'\\dfrac{'+num+'}{'+q+'}';
@@ -1263,6 +1283,7 @@ function texNum(v,zeroTol){
   var tol=1e-6,r;
   if((r=ratApprox(v/Math.PI,tol)))return texPi(r.p,r.q);
   if((r=ratApprox(v,tol)))return texFrac(r.p,r.q);
+  var sd=texSurd(v,tol);if(sd)return sd;
   if(Math.abs(v)<1e-3||Math.abs(v)>=1e5){
     var e=v.toExponential(2).split('e');
     return parseFloat(e[0])+'\\times 10^{'+parseInt(e[1],10)+'}';
