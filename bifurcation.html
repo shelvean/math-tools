@@ -1452,7 +1452,12 @@ window.addEventListener('mouseup',function(e){
    worker (the only reliable way to interrupt a JS loop).
 ===================================================== */
 
-var DECIMAL_CDN = 'https://cdn.jsdelivr.net/npm/decimal.js@10.4.3/decimal.min.js';
+/* Load decimal.js from the vendored copy, resolved to an absolute same-origin
+   URL: the deep-zoom Blob worker has an opaque origin and cannot resolve a
+   page-relative path, so importScripts needs the full URL. (Previously this
+   pointed at a CDN, which is blocked on the deployed site — deep zoom then
+   silently fell back to float64 and appeared to do nothing.) */
+var DECIMAL_URL = new URL('vendor/decimal.js@10.4.3/decimal.js', document.baseURI).href;
 
 var WORKER_SRC = [
 'var MAPS={',
@@ -1520,7 +1525,7 @@ var WORKER_SRC = [
 '  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
 '}',
 'function runComputeDecimal(m){',
-'  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js from CDN.",token:m.token}); return; }',
+'  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js.",token:m.token}); return; }',
 '  Decimal.set({precision: m.useDecimal.digits||40});',
 '  var mapId=m.mapId; var f, df;',
 '  var DEC0=new Decimal(0), DEC1=new Decimal(1), DEChalf=new Decimal("0.5");',
@@ -1642,7 +1647,7 @@ var WORKER_SRC = [
    1 Decimal mult for y_n); the multi-worker pool absorbs the bulk
    of that. */
 'function runComputeHenonDecimal(m){',
-'  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js from CDN.",token:m.token}); return; }',
+'  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js.",token:m.token}); return; }',
 '  Decimal.set({precision: m.useDecimal.digits||40});',
 '  var Ntot=m.N_cols_total||m.N_cols, cs=m.colStart||0, ce=m.colEnd||Ntot;',
 '  var n=ce-cs, Nt=m.N_trans, Np=m.N_plot;',
@@ -2036,7 +2041,7 @@ function runProgressiveLevel(){
     var customSrc = null;
     if(ST.mapId==='custom' && MAPS.custom && MAPS.custom.customSrc) customSrc = MAPS.custom.customSrc;
     var useDecimal = isDeepZoomActive()
-      ? { digits: decimalPrecisionForRange(), url: DECIMAL_CDN }
+      ? { digits: decimalPrecisionForRange(), url: DECIMAL_URL }
       : null;
 
     /* Allocate the full target arrays once per level; shards drop their
