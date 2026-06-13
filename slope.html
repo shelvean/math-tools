@@ -366,12 +366,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 </div>
 <main id="main" class="card" role="main">
   <h1>Direction Field Visualizer</h1>
-  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) using an adaptive Tsitouras 5(4) (Tsit5) solver &mdash; click anywhere on the field to draw a solution curve through that point.</p>
+  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) with an adaptive Tsit5 solver and automatic stiffness switching to BDF5 &mdash; click anywhere on the field to draw a solution curve through that point.</p>
 
   <!-- ── About panel ── -->
   <div class="info-panel">
     <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
-      <span>About &mdash; Direction Fields, Solution Curves &amp; the Tsit5 Solver</span>
+      <span>About &mdash; Direction Fields, Solution Curves &amp; the Tsit5 / BDF5 Solvers</span>
       <span class="info-icon" id="infoIcon" aria-hidden="true">+</span>
     </button>
     <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
@@ -385,6 +385,15 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <li><strong>t-step (default)</strong> &mdash; integrates \(y(t)\) directly from \(y' = f(t,y)\). Fastest and most familiar; one \(y\) value per \(t\). Stops short of vertical tangents and pole-style singularities (e.g. \(y' = -t/y\) at \(y = 0\)).</li>
         <li><strong>Arc-length</strong> &mdash; integrates the equivalent autonomous 2D system \(\dot{t} = \cos\theta,\ \dot{y} = \sin\theta\) where \(\theta = \arctan f(t,y)\). The unit-speed RHS stays bounded as \(f \to \pm\infty\), so vertical tangents are crossed smoothly and full implicit curves close up &mdash; \(y' = -t/y\) traces complete circles in one click. This is exactly the trick used by phase portraits to draw trajectories of \(\dot{x} = Q(x,y),\ \dot{y} = P(x,y)\).</li>
       </ul>
+      <h2>Solver Method &mdash; Non-stiff vs. Stiff</h2>
+      <p>The <strong>Solver Method</strong> selector chooses the time integrator for the <em>t-step</em> mode:</p>
+      <ul>
+        <li><strong>Auto (default)</strong> &mdash; starts with explicit Tsit5 and watches a stiffness indicator \(|h\,\hat L|\), where \(\hat L \approx |\partial f/\partial y|\) is estimated for free from the FSAL stages (the Tsit5 linear-stability boundary on the negative real axis is \(\approx 3.3\)). When the indicator stays elevated for many steps &mdash; the signature of a step held down by <em>stability</em> rather than accuracy &mdash; the run is declared stiff and continued with BDF5. Smooth non-stiff equations (even steep or blow-up cases) stay on Tsit5.</li>
+        <li><strong>Tsit5 (non-stiff)</strong> &mdash; the adaptive explicit Runge&ndash;Kutta method above; best for smooth, non-stiff equations.</li>
+        <li><strong>BDF5 (stiff)</strong> &mdash; a 5th-order <strong>backward differentiation formula</strong>, an implicit linear multistep method solved at each step by Newton's method (first five points bootstrapped with Tsit5). Being A(\(\alpha\))-stable, it integrates stiff equations such as \(y' = -50\,(y - \cos t)\) without the tiny steps an explicit method would require.</li>
+      </ul>
+      <p class="method-box" style="text-align:left;">BDF5: \(\;\tfrac{137}{60}y_{n+1} - 5y_n + 5y_{n-1} - \tfrac{10}{3}y_{n-2} + \tfrac{5}{4}y_{n-3} - \tfrac{1}{5}y_{n-4} = h\,f(t_{n+1},y_{n+1})\)</p>
+      <p>(Arc-length mode always uses Tsit5: its unit-speed right-hand side is bounded and non-stiff by construction.)</p>
       <h2>How to Use</h2>
       <ul>
         <li>Type \(f(t,y)\) in the equation box. Use <code>t</code> or <code>x</code> for the independent variable.</li>
@@ -439,6 +448,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <select id="solveMode" aria-label="Choose integration parameterization">
         <option value="t" selected>t-step (current)</option>
         <option value="arc">Arc-length (handles vertical tangents)</option>
+      </select>
+    </div>
+    <div class="cbar-med cfield">
+      <label for="solveMethod">Solver Method</label>
+      <select id="solveMethod" aria-label="Choose numerical integration method">
+        <option value="auto" selected>Auto (detect stiffness)</option>
+        <option value="tsit5">Tsit5 (non-stiff)</option>
+        <option value="bdf5">BDF5 (stiff)</option>
       </select>
     </div>
   </div>
@@ -610,6 +627,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
             <li><button type="button" class="example-btn" data-eq="(t^3 - 2*y)/t" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t^3 - 2y}{t}\) &nbsp;&mdash;&nbsp;linear</button></li>
             <li><button type="button" class="example-btn" data-eq="exp(t) + y" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = e^{t} + y\) &nbsp;&mdash;&nbsp;linear, exp.\ forcing</button></li>
             <li><button type="button" class="example-btn" data-eq="exp(-2*t) - 3*y" data-tmin="-2" data-tmax="3" data-ymin="-1" data-ymax="2">\(y' = e^{-2t} - 3y\) &nbsp;&mdash;&nbsp;linear decay</button></li>
+            <li><button type="button" class="example-btn" data-eq="-200*(y - cos(t))" data-tmin="0" data-tmax="6" data-ymin="-2" data-ymax="2">\(y' = -200\,(y - \cos t)\) &nbsp;&mdash;&nbsp;stiff (auto &rarr; BDF5)</button></li>
+            <li><button type="button" class="example-btn" data-eq="-300*(y - sin(t))" data-tmin="0" data-tmax="6" data-ymin="-2" data-ymax="2">\(y' = -300\,(y - \sin t)\) &nbsp;&mdash;&nbsp;stiff (auto &rarr; BDF5)</button></li>
             <li><button type="button" class="example-btn" data-eq="exp(2*t) + y - 1" data-tmin="-3" data-tmax="2" data-ymin="-3" data-ymax="3">\(y' = e^{2t} + y - 1\) &nbsp;&mdash;&nbsp;linear</button></li>
             <li><button type="button" class="example-btn" data-eq="exp(t + y)" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = e^{t+y}\) &nbsp;&mdash;&nbsp;separable, blow-up</button></li>
             <li><button type="button" class="example-btn" data-eq="1/((1 + t^2)*(1 + y^2))" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{1}{(1+t^2)(1+y^2)}\) &nbsp;&mdash;&nbsp;separable</button></li>
@@ -1243,12 +1262,17 @@ document.addEventListener('DOMContentLoaded',function(){
       var k3=f(t+0.327*h, y+h*(-0.008480655492356989*k1+0.335480655492357*k2));
       var k4=f(t+0.9*h,   y+h*(2.8971530571054935*k1-6.359448489975075*k2+4.362295432869581*k3));
       var k5=f(t+0.9800255409045097*h, y+h*(5.325864828439257*k1-11.748883564062828*k2+7.4955393428898365*k3-0.09249506636175525*k4));
-      var k6=f(t+h,       y+h*(5.86145544294642*k1-12.92096931784711*k2+8.159367898576159*k3-0.071584973281401*k4-0.028269050394068383*k5));
+      var arg6=y+h*(5.86145544294642*k1-12.92096931784711*k2+8.159367898576159*k3-0.071584973281401*k4-0.028269050394068383*k5);
+      var k6=f(t+h, arg6);
       var yN=y+h*(0.09646076681806523*k1+0.01*k2+0.4798896504144996*k3+1.379008574103742*k4-3.290069515436081*k5+2.324710524099774*k6);
       var k7=f(t+h, yN);
       var err=Math.abs(h*(-0.001780011052225771*k1-0.0008164344596567469*k2+0.007880878010261996*k3-0.144711007173263*k4+0.5823571654525552*k5-0.4580821059291869*k6+0.015151515151515152*k7));
-      return{yNext:yN,error:err,k7:k7};
-    }catch(e){return{yNext:NaN,error:Infinity,k7:null};}
+      /* Lipschitz / dominant-eigenvalue estimate: k6 and k7 are both f(t+h, .)
+         evaluated at two nearby y values, so |Δf/Δy| approximates |∂f/∂y|.
+         Used by the auto solver to detect stiffness. */
+      var dn=Math.abs(yN-arg6),lip=dn>0?Math.abs(k7-k6)/dn:0;
+      return{yNext:yN,error:err,k7:k7,lip:lip};
+    }catch(e){return{yNext:NaN,error:Infinity,k7:null,lip:0};}
   }
 
   /* ── IVP solver ── */
@@ -1291,6 +1315,147 @@ document.addEventListener('DOMContentLoaded',function(){
         if(Math.abs(y)>BLOW_UP)break;
         if((dir>0&&t>=tMax)||(dir<0&&t<=tMin)){
           if(!pts.length||pts[pts.length-1].t!==t)pts.push({t:t,y:y});
+          break;
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().slice(1).concat(fwd);
+  }
+
+  /* ── BDF5 (5th-order backward differentiation formula, implicit) ──
+     Fixed-step linear multistep solver for stiff IVPs. The first five points
+     are bootstrapped with single Tsit5 steps; thereafter each new point solves
+     the implicit BDF5 relation
+       (137/60) y_{n+1} - 5 y_n + 5 y_{n-1} - (10/3) y_{n-2}
+          + (5/4) y_{n-3} - (1/5) y_{n-4} = h f(t_{n+1}, y_{n+1})
+     for y_{n+1} by Newton's method (scalar Jacobian by finite difference).
+     BDF5 is A(α)-stable, so it stays bounded on stiff equations where the
+     explicit Tsit5 step would need an impractically small h. */
+  function bdf5Newton(hist,tNew,h,f){
+    var n=hist.length;
+    var yn=hist[n-1],yn1=hist[n-2],yn2=hist[n-3],yn3=hist[n-4],yn4=hist[n-5];
+    var rhs=5*yn-5*yn1+(10/3)*yn2-(5/4)*yn3+(1/5)*yn4;
+    var a=137/60,y=yn;
+    for(var it=0;it<50;it++){
+      var fy;try{fy=f(tNew,y);}catch(e){return NaN;}
+      if(!isFinite(fy))return NaN;
+      var G=a*y-h*fy-rhs;
+      var eps=1e-7*(Math.abs(y)+1);
+      var fp=(f(tNew,y+eps)-fy)/eps;
+      var dG=a-h*fp;
+      if(dG===0)break;
+      var dy=G/dG;y-=dy;
+      if(Math.abs(dy)<1e-12*(Math.abs(y)+1))break;
+    }
+    return y;
+  }
+
+  /* Integrate one direction with fixed-step BDF5 starting from (t,y). */
+  function bdf5Run(t,y,dir,f,p){
+    var pts=[{t:t,y:y}],h=dir*p.h,steps=0,lastT=t;
+    var tEnd=dir>0?p.tMax:p.tMin;
+    var hist=[y];
+    /* Bootstrap four extra history values with single Tsit5 steps. */
+    for(var i=0;i<4&&steps<p.MAX;i++){
+      if((dir>0&&t+h>tEnd)||(dir<0&&t+h<tEnd))break;
+      var r=tsit5Step(t,y,h,f,null);
+      if(!isFinite(r.yNext))return pts;
+      t+=h;y=r.yNext;hist.push(y);
+      if(Math.abs(y)>p.BLOW_UP){pts.push({t:t,y:y});return pts;}
+      if(Math.abs(t-lastT)>=p.MIN_DT){pts.push({t:t,y:y});lastT=t;}
+      steps++;
+    }
+    if(hist.length<5)return pts; /* interval too short for BDF5; Tsit5 seed used */
+    while(steps<p.MAX){
+      if((dir>0&&t+h>=tEnd)||(dir<0&&t+h<=tEnd)){
+        var hf=tEnd-t;
+        if(Math.abs(hf)>1e-14){var rf=tsit5Step(t,y,hf,f,null);if(isFinite(rf.yNext)){t=tEnd;y=rf.yNext;pts.push({t:t,y:y});}}
+        break;
+      }
+      var tNew=t+h,yNew=bdf5Newton(hist,tNew,h,f);
+      if(!isFinite(yNew))break;
+      hist.push(yNew);if(hist.length>5)hist.shift();
+      t=tNew;y=yNew;
+      if(Math.abs(y)>p.BLOW_UP){pts.push({t:t,y:y});break;}
+      if(Math.abs(t-lastT)>=p.MIN_DT){pts.push({t:t,y:y});lastT=t;}
+      steps++;
+    }
+    return pts;
+  }
+
+  function bdf5Params(){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var tR=tMax-tMin,H=Math.min(0.02,tR/1000);
+    if(!(H>0))H=Math.abs(tR)/1000||0.01;
+    return{tMin:tMin,tMax:tMax,BLOW_UP:Math.max(1e6,(yMax-yMin)*1000),MIN_DT:tR/5000,h:H,MAX:20000};
+  }
+
+  function solveBDF5(t0,y0){
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+    var p=bdf5Params();
+    var fwd=bdf5Run(t0,y0,1,f,p),bwd=bdf5Run(t0,y0,-1,f,p);
+    return bwd.reverse().slice(1).concat(fwd);
+  }
+
+  /* ── Auto solver: Tsit5 with on-the-fly stiffness detection ──
+     Integrates with adaptive Tsit5; on each accepted step the stiffness
+     indicator |h·L| (step size × estimated |∂f/∂y|) is compared with the
+     Tsit5 real-axis stability boundary (~3.3). When the step is held back by
+     stability rather than accuracy for several consecutive steps, the run is
+     declared stiff and continued from that point with BDF5. */
+  function solveAuto(t0,y0){
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var tR=tMax-tMin;
+    var MAX_STEPS=50000,TOL=1e-8,SAFETY=0.9;
+    var MIN_H=1e-14,MAX_H=Math.min(0.05,tR/200);
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000),MIN_DT=tR/5000;
+    var STIFF_PROD=1.5,STIFF_DECAY=2,STIFF_COUNT=12;
+    var p=bdf5Params();
+
+    function integrate(dir){
+      var pts=[],t=t0,y=y0,h=dir*Math.min(0.001,tR/2000),steps=0,lastT=t;
+      pts.push({t:t,y:y});
+      var tEnd=dir>0?tMax:tMin,k1=null,stiff=0;
+      while(steps<MAX_STEPS/2){
+        if(dir>0&&t+h>tEnd)h=tEnd-t;
+        if(dir<0&&t+h<tEnd)h=tEnd-t;
+        if(Math.abs(h)<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=tsit5Step(t,y,curH,f,k1);
+          if(!isFinite(res.yNext)||res.error===Infinity){curH*=0.5;attempt++;k1=null;continue;}
+          var ratio=res.error/TOL;
+          var hOpt=Math.abs(curH)*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
+          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt))*dir;
+          if(ratio<=1){
+            t+=curH;y=res.yNext;h=hOpt;ok=true;k1=res.k7;
+            stiff=(Math.abs(curH)*res.lip>STIFF_PROD)?stiff+1:Math.max(0,stiff-STIFF_DECAY);
+            if(Math.abs(t-lastT)>=MIN_DT||Math.abs(t-tEnd)<MIN_H){pts.push({t:t,y:y});lastT=t;}
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if((dir>0&&t>=tMax)||(dir<0&&t<=tMin)){
+          if(!pts.length||pts[pts.length-1].t!==t)pts.push({t:t,y:y});
+          break;
+        }
+        if(stiff>=STIFF_COUNT){
+          /* Hand off the rest of this direction to BDF5. */
+          var tail=bdf5Run(t,y,dir,f,p);
+          pts=pts.concat(tail.slice(1));
           break;
         }
         steps++;
@@ -1427,7 +1592,12 @@ document.addEventListener('DOMContentLoaded',function(){
     var yVal=yMin+(canvas.height-PADDING-cy)/yScale;
 
     var mode=document.getElementById('solveMode').value;
-    var pts=mode==='arc'?solveArc(t,yVal):solve(t,yVal);
+    var method=document.getElementById('solveMethod').value;
+    var pts;
+    if(mode==='arc'){pts=solveArc(t,yVal);}            /* arc-length RHS is unit-speed (bounded), so it stays on Tsit5 */
+    else if(method==='bdf5'){pts=solveBDF5(t,yVal);}
+    else if(method==='auto'){pts=solveAuto(t,yVal);}
+    else{pts=solve(t,yVal);}
     if(pts.length>0){
       var tc=document.getElementById('trajColor').value;
       var color=tc==='multicolor'?TRAJ_COLORS[colorIndex%TRAJ_COLORS.length]:tc;
