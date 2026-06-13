@@ -1180,20 +1180,39 @@ document.addEventListener('DOMContentLoaded',function(){
       ctx.lineWidth=window.innerWidth<640?1.5:2;
       ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash([]);
       ctx.globalAlpha=0.85;
-      /* Build visible canvas-coord points and draw curve */
+      /* Build visible canvas-coord points and draw curve. Each segment is
+         clipped to the plot rectangle (Liang-Barsky) so trajectories trace
+         exactly to the walls instead of stopping at the last sampled point
+         that happened to fall inside the box. */
       var cpts=[];
+      var bx0=tMin,bx1=tMax,by0=yMin,by1=yMax;
+      function clipSeg(t0,y0,t1,y1){
+        var dt=t1-t0,dy=y1-y0,u0=0,u1=1;
+        var pp=[-dt,dt,-dy,dy],qq=[t0-bx0,bx1-t0,y0-by0,by1-y0];
+        for(var i=0;i<4;i++){
+          if(pp[i]===0){if(qq[i]<0)return null;}
+          else{var r=qq[i]/pp[i];
+            if(pp[i]<0){if(r>u1)return null;if(r>u0)u0=r;}
+            else{if(r<u0)return null;if(r<u1)u1=r;}}
+        }
+        return{ax:t0+u0*dt,ay:y0+u0*dy,bx:t0+u1*dt,by:y0+u1*dy};
+      }
       ctx.beginPath();
-      var started=false;
+      var prev=null,penX=NaN,penY=NaN;
       sol.points.forEach(function(p){
-        var cx=PADDING+(p.t-tMin)*xScale;
-        var cy=canvas.height-PADDING-(p.y-yMin)*yScale;
-        if(p.t>=tMin&&p.t<=tMax&&p.y>=yMin&&p.y<=yMax){
-          cpts.push({cx:cx,cy:cy});
-          if(!started){ctx.moveTo(cx,cy);started=true;}
-          else ctx.lineTo(cx,cy);
-        }else if(started){ctx.stroke();ctx.beginPath();started=false;}
+        if(prev&&isFinite(p.t)&&isFinite(p.y)&&isFinite(prev.t)&&isFinite(prev.y)){
+          var c=clipSeg(prev.t,prev.y,p.t,p.y);
+          if(c){
+            var Acx=PADDING+(c.ax-tMin)*xScale,Acy=canvas.height-PADDING-(c.ay-yMin)*yScale;
+            var Bcx=PADDING+(c.bx-tMin)*xScale,Bcy=canvas.height-PADDING-(c.by-yMin)*yScale;
+            if(Math.abs(Acx-penX)>0.01||Math.abs(Acy-penY)>0.01){ctx.moveTo(Acx,Acy);cpts.push({cx:Acx,cy:Acy});}
+            ctx.lineTo(Bcx,Bcy);cpts.push({cx:Bcx,cy:Bcy});
+            penX=Bcx;penY=Bcy;
+          }else{penX=NaN;penY=NaN;}
+        }
+        prev=p;
       });
-      if(started)ctx.stroke();
+      ctx.stroke();
 
       /* Directional arrowheads — adaptive spacing, max 8, min 60px separation.
          A head size of 0 disables arrowheads entirely. */
