@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Add a feedback button + in-page modal to every tool page, and add
-a highlighted inline "Leave feedback" link on every major hub page.
+"""Add a feedback button + in-page modal to every individual tool/app page.
 
-Tool pages get a floating bottom-right pill. Major hubs get an inline
-highlighted button placed right after the page's subtitle, since their
-clean layouts don't need a floating element competing for attention.
+Only the individual apps get feedback: a floating bottom-right pill that
+opens an in-page modal. The main pages (the top-nav hubs and info pages
+such as the home page, subject landing pages, About, and Teaching) get no
+feedback element at all — keeping their layouts clean and concentrating
+feedback where someone is actually using a tool.
 
 The modal POSTs to the Web3Forms API, so the visitor needs no account
 and no mail client; submissions land in the email tied to ACCESS_KEY.
@@ -31,31 +32,19 @@ BASE = '/home/user/math-tools'
 ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743'
 # ============================================================================
 
-# Hubs / landing pages: get the modal + inline CTA, but NOT the floating button
-# (their layouts are cleaner without it; the inline link is the entry point).
-HUB_PAGES = {
+# Main pages: the top-nav hubs and info pages. These get NO feedback element
+# at all — feedback lives only on the individual app/tool pages.
+MAIN_PAGES = {
     'index.html',
+    'about.html',
     'teaching.html',
     'projects.html',
+    'dynamical.html',
     'linear.html',
     'optim.html',
     'numerical.html',
-    'about.html',
+    'businessmath.html',
     'pdftools.html',
-}
-
-# Pages that receive an inline highlighted "Leave feedback" link, placed
-# immediately after the listed anchor text. The anchor must be unique within
-# the page (or just appear first in the natural subtitle/intro spot).
-INLINE_CTA_ANCHORS = {
-    'index.html':     'All processing happens client-side.',
-    'linear.html':    'Matrix operations, geometric transformations, decompositions, and least squares.',
-    'numerical.html': 'Root-finding, interpolation, least-squares data fitting, and finite differences.',
-    'optim.html':     'Graphical methods for two-variable problems &mdash; feasible regions, corner points, and the method of corners.',
-    'projects.html':  'First-order ODEs, oscillations, integral transforms, and phase-plane analysis.',
-    'dynamical.html': 'Continuous and discrete dynamics, bifurcations, chaos, and physical oscillators.',
-    'teaching.html':  'A record of courses taught across institutions, spanning differential equations, linear algebra, numerical methods, calculus, and PDEs.',
-    'pdftools.html':  'no files are uploaded to any server.',
 }
 
 CSS_START = '/* feedback-mark-css:start */'
@@ -265,18 +254,9 @@ FB_MODAL_TMPL = """<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true"
 </script>
 """
 
-INLINE_CTA = (
-    f' {CTA_START}'
-    "We'd love to hear what you think. "
-    '<button type="button" class="fb-link" data-fb-open>Leave feedback</button>.'
-    f'{CTA_END}'
-)
-
-
-def feedback_block(with_button):
+def feedback_block():
     parts = [HTML_START + '\n']
-    if with_button:
-        parts.append(FB_BUTTON_HTML)
+    parts.append(FB_BUTTON_HTML)
     parts.append(FB_MODAL_TMPL.format(access_key=ACCESS_KEY))
     parts.append(HTML_END + '\n')
     return ''.join(parts)
@@ -304,17 +284,20 @@ def strip_old(html):
     return html
 
 
-def inject_inline_cta(html, anchor):
-    if anchor not in html:
-        return html, False
-    return html.replace(anchor, anchor + INLINE_CTA, 1), True
-
-
 def process(path):
     name = os.path.basename(path)
     with open(path, 'r', encoding='utf-8') as f:
         html = f.read()
+    original = html
+    # Always strip any previously-injected feedback (CSS, modal, legacy CTA).
     html = strip_old(html)
+
+    # Main pages get no feedback at all — strip and leave it removed.
+    if name in MAIN_PAGES:
+        if html != original:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(html)
+        return 'main'
 
     # CSS
     if '</style>' in html:
@@ -326,49 +309,31 @@ def process(path):
         print(f"  FAIL {name} (no </head>)")
         return None
 
-    # Button + modal
-    with_button = name not in HUB_PAGES
-    block = feedback_block(with_button)
+    # Floating button + modal
+    block = feedback_block()
     if '</body>' in html:
         html = html.replace('</body>', block + '</body>', 1)
     else:
         html += '\n' + block
 
-    # Inline CTA
-    cta_added = False
-    if name in INLINE_CTA_ANCHORS:
-        html, cta_added = inject_inline_cta(html, INLINE_CTA_ANCHORS[name])
-
     with open(path, 'w', encoding='utf-8') as f:
         f.write(html)
-    return ('hub' if not with_button else 'tool',
-            'cta' if cta_added else None)
+    return 'app'
 
 
 def main():
-    counts = {'tool': 0, 'hub': 0, 'cta': 0, 'missed_cta': 0}
+    counts = {'app': 0, 'main': 0}
     for path in sorted(glob.glob(os.path.join(BASE, '*.html'))):
         name = os.path.basename(path)
-        result = process(path)
-        if result is None:
+        kind = process(path)
+        if kind is None:
             continue
-        kind, cta = result
         counts[kind] += 1
-        if name in INLINE_CTA_ANCHORS:
-            if cta:
-                counts['cta'] += 1
-            else:
-                counts['missed_cta'] += 1
-                print(f"  WARN {name}: anchor not found for inline CTA")
-        marker = ' +CTA' if cta else ''
-        print(f"  OK   {name} ({'hub, no button' if kind == 'hub' else 'tool, with button'}){marker}")
+        print(f"  OK   {name} ({'main page, no feedback' if kind == 'main' else 'app, with feedback button'})")
 
     print(
-        f"\nDone. {counts['tool']} tool pages with floating button, "
-        f"{counts['hub']} hub pages without button, "
-        f"{counts['cta']} inline CTAs injected"
-        + (f", {counts['missed_cta']} anchors missing" if counts['missed_cta'] else '')
-        + '.'
+        f"\nDone. {counts['app']} app pages with floating feedback button, "
+        f"{counts['main']} main pages with feedback removed."
     )
     if not ACCESS_KEY:
         print(
