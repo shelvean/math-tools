@@ -126,6 +126,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .ic-bar input{width:5rem;min-height:40px;padding:.35rem .5rem;border:2px solid var(--bdr);
   border-radius:.4rem;font-size:.95rem;background:var(--card);color:var(--txt);}
 .ic-bar .abtn{padding:.45rem .9rem;min-height:40px;}
+/* ── Readout bar ── */
+.rbar{display:flex;align-items:stretch;margin-bottom:.875rem;background:var(--card);border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);flex-wrap:wrap;}
+.rbar dt,.rbar dd{margin:0;padding:0;}
+.rcell{flex:1;text-align:center;padding:.5rem .4rem .4rem;border-right:1px solid var(--bdr2);min-width:90px;}
+.rcell:last-child{border-right:none;}
+.rlbl{font-size:.75rem;color:var(--txt2);margin-bottom:.1rem;line-height:1.3;font-weight:600;text-transform:uppercase;letter-spacing:.02em;}
+.rval{font-size:.875rem;font-weight:700;font-family:'Georgia',serif;line-height:1.3;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rval-b{color:#1e40af;}.rval-g{color:#14532d;}.rval-u{color:#7f1d1d;}.rval-q{color:#5b21b6;}
 
 /* Panel wrapper */
 .pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;
@@ -604,6 +612,26 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
     <button class="abtn abtn-go" id="btnAddIC" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add trajectory</button>
   </div>
 
+  <!-- ── Readout bar ── -->
+  <dl class="rbar" role="region" aria-label="Phase portrait status">
+    <div class="rcell">
+      <dt class="rlbl">Equation</dt>
+      <dd class="rval rval-b" id="rv-eq" title="Current system">ẋ = y + y², ẏ = -x + 1/5 y - x y + 6/5 y²</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Trajectories</dt>
+      <dd class="rval rval-g" id="rv-traj" aria-live="polite">0 trajectories</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Last Point</dt>
+      <dd class="rval" id="rv-click" aria-live="polite">&mdash;</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Status</dt>
+      <dd class="rval rval-b" id="rv-status" aria-live="polite" aria-atomic="true">Ready</dd>
+    </div>
+  </dl>
+
   <!-- Canvas panel -->
   <div class="pwrap">
     <div class="phdr">
@@ -905,13 +933,23 @@ function addImplicitMul(expr){
 }
 
 /* ── Draw direction field ── */
+function setRvStatus(txt,cls){var el=document.getElementById('rv-status');if(!el)return;el.className='rval '+(cls||'rval-b');el.textContent=txt;}
+function updateRvCount(){var el=document.getElementById('rv-traj');if(!el)return;var n=trajectories.length;el.textContent=n+(n===1?' trajectory':' trajectories');}
+function updateRvEq(){
+  var el=document.getElementById('rv-eq');if(!el)return;
+  var f=document.getElementById('fInput').value.trim()||'0';
+  var g=document.getElementById('gInput').value.trim()||'0';
+  el.textContent='ẋ = '+f+', ẏ = '+g;
+}
 function drawPhasePlane(clearTrajs){
   if(clearTrajs)clearTrajectories();
+  updateRvEq();
   fieldCtx.fillStyle=isHC()?'#fff':'#ffffff';fieldCtx.fillRect(0,0,fieldCanvas.width,fieldCanvas.height);
   var f=addImplicitMul(document.getElementById('fInput').value);
   var g=addImplicitMul(document.getElementById('gInput').value);
   try{fCompiled=math.compile(f);gCompiled=math.compile(g);}
-  catch(e){fieldCtx.fillStyle='#ef4444';fieldCtx.font='15px Arial';fieldCtx.fillText('Expression error: '+e.message,12,40);return;}
+  catch(e){fieldCtx.fillStyle='#ef4444';fieldCtx.font='15px Arial';fieldCtx.fillText('Expression error: '+e.message,12,40);setRvStatus('Expression error','rval-u');return;}
+  setRvStatus('Ready','rval-b');
   var xMin=parseMathInput(document.getElementById('xMin').value),xMax=parseMathInput(document.getElementById('xMax').value);
   var yMin=parseMathInput(document.getElementById('yMin').value),yMax=parseMathInput(document.getElementById('yMax').value);
   var arrowCount=+document.getElementById('arrowCount').value||30;
@@ -2203,6 +2241,8 @@ document.addEventListener('DOMContentLoaded',function(){
     if(document.getElementById('timePanel').style.display!=='none'){
       timeScaleManual?drawTimePlot():autoFitTimePlot();
     }
+    document.getElementById('rv-click').textContent='x='+sx.toFixed(3)+', y='+sy.toFixed(3);
+    updateRvCount();setRvStatus('Trajectory added','rval-g');
     say('Trajectory added at ('+sx.toFixed(3)+', '+sy.toFixed(3)+')');
     trackEvent('trajectory_added',{event_category:'phase_portrait',event_label:solver,value:trajectories.length});
   }
@@ -2222,13 +2262,13 @@ document.addEventListener('DOMContentLoaded',function(){
 
   /* Typed initial condition → same trajectory path as a click. */
   function addTrajFromInputs(){
-    if(!fCompiled||!gCompiled){say('Click Generate to build the field first.');return;}
+    if(!fCompiled||!gCompiled){setRvStatus('Generate first','rval-u');say('Click Generate to build the field first.');return;}
     var x0=parseMathInput(document.getElementById('icX').value);
     var y0=parseMathInput(document.getElementById('icY').value);
-    if(!isFinite(x0)||!isFinite(y0)){say('Enter valid numbers for the initial condition.');return;}
+    if(!isFinite(x0)||!isFinite(y0)){setRvStatus('Invalid input','rval-u');say('Enter valid numbers for the initial condition.');return;}
     var xMin=parseMathInput(document.getElementById('xMin').value),xMax=parseMathInput(document.getElementById('xMax').value);
     var yMin=parseMathInput(document.getElementById('yMin').value),yMax=parseMathInput(document.getElementById('yMax').value);
-    if(x0<xMin||x0>xMax||y0<yMin||y0>yMax){say('Initial condition ('+x0.toFixed(3)+', '+y0.toFixed(3)+') is outside the current view; widen the axis range to plot it.');return;}
+    if(x0<xMin||x0>xMax||y0<yMin||y0>yMax){setRvStatus('Outside view','rval-u');say('Initial condition ('+x0.toFixed(3)+', '+y0.toFixed(3)+') is outside the current view; widen the axis range to plot it.');return;}
     addTrajAt(x0,y0);
   }
   document.getElementById('btnAddIC').addEventListener('click',addTrajFromInputs);
@@ -2276,7 +2316,9 @@ document.addEventListener('DOMContentLoaded',function(){
 
   /* Clear */
   document.getElementById('btnClear').addEventListener('click',function(){
-    clearTrajectories();drawPhasePlane(false);say('Trajectories cleared.');
+    clearTrajectories();drawPhasePlane(false);
+    updateRvCount();document.getElementById('rv-click').textContent='—';setRvStatus('Cleared','rval-b');
+    say('Trajectories cleared.');
   });
 
   /* Download */
