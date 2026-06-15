@@ -134,6 +134,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .abtn-dl{background:var(--blue);color:#fff;}.abtn-dl:hover{background:var(--bl2);}
 .abtn-ts{background:var(--vio);color:#fff;}.abtn-ts:hover{background:#5b21b6;}
 .abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.ic-bar{display:flex;align-items:center;justify-content:center;gap:.4rem .55rem;flex-wrap:wrap;
+  margin:-.375rem 0 .875rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.ic-bar .ic-lbl{font-weight:700;font-size:.9375rem;color:var(--txt2);}
+.ic-bar label{font-weight:700;}
+.ic-bar input{width:5rem;min-height:40px;padding:.35rem .5rem;border:2px solid var(--bdr);
+  border-radius:.4rem;font-size:.95rem;background:var(--card);color:var(--txt);}
+.ic-bar .abtn{padding:.45rem .9rem;min-height:40px;}
 
 /* ── Panel wrapper ── */
 .pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;
@@ -405,7 +413,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
         <li>Select an <strong>example</strong> from the dropdown to load a preset matrix with strategic trajectories illustrating the classification.</li>
-        <li><strong>Click anywhere</strong> on the phase plane to integrate a trajectory through that initial condition (forward and backward). Trajectories are color-coded.</li>
+        <li><strong>Click anywhere</strong> on the phase plane to integrate a trajectory through that initial condition (forward and backward), or type an exact \((x_0, y_0)\) in the <strong>Initial condition</strong> box and press <strong>Add trajectory</strong> (keyboard-friendly). Trajectories are color-coded.</li>
         <li>Use <strong>Generate</strong> to redraw the field and clear trajectories; <strong>Clear trajectories</strong> removes curves while keeping the field.</li>
         <li>Adjust arrows per axis, arrow length, field opacity, and colors. Toggle grid and initial point markers using the checkboxes.</li>
         <li>Open the <strong>Time Series</strong> panel to plot \(x(t)\) and/or \(y(t)\) for all current trajectories.</li>
@@ -580,11 +588,21 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <button class="abtn abtn-ts"  id="btnTime"     type="button" aria-expanded="false" aria-controls="timePanel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Time series</button>
   </div>
 
+  <!-- Initial-condition input: keyboard-accessible alternative to clicking -->
+  <div class="ic-bar" role="group" aria-label="Add a trajectory from a typed initial condition">
+    <span class="ic-lbl">Initial condition</span>
+    <label for="icX">\(x_0\)</label>
+    <input type="text" inputmode="decimal" id="icX" value="1" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial x value (accepts expressions like pi/2)">
+    <label for="icY">\(y_0\)</label>
+    <input type="text" inputmode="decimal" id="icY" value="1" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial y value (accepts expressions like pi/2)">
+    <button class="abtn abtn-go" id="btnAddIC" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add trajectory</button>
+  </div>
+
   <!-- Phase portrait canvas panel -->
   <div class="pwrap">
     <div class="phdr">
       <span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>
-      Phase Plane &mdash; click the canvas to draw a trajectory
+      Phase Plane &mdash; click the canvas or type an initial condition to draw a trajectory
     </div>
     <div class="canvas-wrap">
       <div id="clickHint" class="click-hint" role="status">Click anywhere on the plane to add a trajectory</div>
@@ -1380,19 +1398,40 @@ document.addEventListener('DOMContentLoaded',function(){
 
   /* Canvas click */
   var canvas=document.getElementById('phCanvas');
-  canvas.addEventListener('click',function(e){
+  /* Shared: add a trajectory through scene point (x,y). Used by both the
+     canvas click and the typed initial-condition input. */
+  function addTrajAt(x,y){
     stopAnim();
-    var rect=canvas.getBoundingClientRect();
-    var scX=CW/rect.width,scY=CH/rect.height;
-    var cx=(e.clientX-rect.left)*scX,cy=(e.clientY-rect.top)*scY;
-    if(!inCanvas(cx,cy))return;
-    var sp={x:c2sx(cx),y:c2sy(cy)};
+    var sp={x:x,y:y};
     userPoints.push(sp);
-    computeTraj(sp.x,sp.y).then(function(pts){
+    return computeTraj(sp.x,sp.y).then(function(pts){
       trajectories.push(pts);drawPortrait();
       document.getElementById('clickHint').style.display='none';
       if(document.getElementById('timePanel').style.display!=='none')autoFitTimePlot();
       say('Trajectory added at ('+sp.x.toFixed(3)+', '+sp.y.toFixed(3)+')');
+    });
+  }
+
+  canvas.addEventListener('click',function(e){
+    var rect=canvas.getBoundingClientRect();
+    var scX=CW/rect.width,scY=CH/rect.height;
+    var cx=(e.clientX-rect.left)*scX,cy=(e.clientY-rect.top)*scY;
+    if(!inCanvas(cx,cy))return;
+    addTrajAt(c2sx(cx),c2sy(cy));
+  });
+
+  /* Typed initial condition → same trajectory path as a click. */
+  function addTrajFromInputs(){
+    var x0=parseMathInput(document.getElementById('icX').value);
+    var y0=parseMathInput(document.getElementById('icY').value);
+    if(!isFinite(x0)||!isFinite(y0)){say('Enter valid numbers for the initial condition.');return;}
+    if(!inBounds(x0,y0)){say('Initial condition ('+x0.toFixed(3)+', '+y0.toFixed(3)+') is outside the current view; widen the axis range to plot it.');return;}
+    addTrajAt(x0,y0);
+  }
+  document.getElementById('btnAddIC').addEventListener('click',addTrajFromInputs);
+  ['icX','icY'].forEach(function(id){
+    document.getElementById(id).addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();addTrajFromInputs();}
     });
   });
 

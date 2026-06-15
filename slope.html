@@ -105,6 +105,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .abtn-clear{background:#b45309;color:#fff;}.abtn-clear:hover{background:#92400e;}
 .abtn-dl{background:var(--vio);color:#fff;}.abtn-dl:hover{background:#5b21b6;}
 .abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.abtn-add{background:#1d4ed8;color:#fff;}.abtn-add:hover{background:#1e3a8a;}
+.ic-bar{display:flex;align-items:center;justify-content:center;gap:.4rem .55rem;flex-wrap:wrap;margin-bottom:.875rem;padding:.5rem .75rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+.ic-bar .ic-lbl{font-weight:700;font-size:.9375rem;color:var(--txt2);}
+.ic-bar label{font-weight:700;}
+.ic-bar input{width:5rem;min-height:40px;padding:.35rem .5rem;border:2px solid var(--bdr);border-radius:.4rem;font-size:.95rem;background:var(--card);color:var(--txt);}
+.ic-bar .abtn{min-width:auto;padding:.45rem .9rem;min-height:40px;}
 
 /* ── Readout bar ── */
 .rbar{display:flex;align-items:stretch;margin-bottom:.875rem;background:var(--card);border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);flex-wrap:wrap;}
@@ -399,7 +405,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <ul>
         <li>Type \(f(t,y)\) in the equation box. Use <code>t</code> or <code>x</code> for the independent variable.</li>
         <li>Press <kbd>Enter</kbd> or click <strong>Update Field</strong> to redraw the arrows.</li>
-        <li>Click anywhere on the canvas to trace a solution curve through that point.</li>
+        <li>Click anywhere on the canvas to trace a solution curve through that point, or type an exact \((t_0, y_0)\) in the <strong>Initial condition</strong> box and press <strong>Add curve</strong> (keyboard-friendly).</li>
         <li>Multiple curves use distinct colors automatically.</li>
         <li><strong>Clear Solutions</strong> removes all curves. <strong>Download PNG</strong> saves the view.</li>
       </ul>
@@ -547,6 +553,16 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
             aria-label="Download the current direction field as a PNG image">
       <span aria-hidden="true">&#8595;</span> Download PNG
     </button>
+  </div>
+
+  <!-- ── Initial-condition input: keyboard-accessible alternative to clicking ── -->
+  <div class="ic-bar" role="group" aria-label="Draw a solution curve from a typed initial condition">
+    <span class="ic-lbl">Initial condition</span>
+    <label for="icT">\(t_0\)</label>
+    <input type="text" inputmode="decimal" id="icT" value="0" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial t value (accepts expressions like pi/2)">
+    <label for="icY">\(y_0\)</label>
+    <input type="text" inputmode="decimal" id="icY" value="1" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial y value (accepts expressions like pi/2)">
+    <button type="button" id="btnAddIC" class="abtn abtn-add" aria-label="Draw solution curve through the typed initial condition"><span aria-hidden="true">&#43;</span> Add curve</button>
   </div>
 
   <!-- ── Readout bar ── -->
@@ -1598,19 +1614,9 @@ document.addEventListener('DOMContentLoaded',function(){
   }
 
   /* ── Canvas click ── */
-  canvas.addEventListener('click',function(e){
-    var rect=canvas.getBoundingClientRect();
-    var cx=(e.clientX-rect.left)*(canvas.width/rect.width);
-    var cy=(e.clientY-rect.top)*(canvas.height/rect.height);
-    var tMin=+document.getElementById('tMin').value;
-    var tMax=+document.getElementById('tMax').value;
-    var yMin=+document.getElementById('yMin').value;
-    var yMax=+document.getElementById('yMax').value;
-    var xScale=(canvas.width-2*PADDING)/(tMax-tMin);
-    var yScale=(canvas.height-2*PADDING)/(yMax-yMin);
-    var t=tMin+(cx-PADDING)/xScale;
-    var yVal=yMin+(canvas.height-PADDING-cy)/yScale;
-
+  /* Shared: trace and draw a solution curve through (t, yVal). Used by both
+     the canvas click and the typed initial-condition input. */
+  function addCurveAt(t,yVal){
     var mode=document.getElementById('solveMode').value;
     var method=document.getElementById('solveMethod').value;
     var pts;
@@ -1627,10 +1633,58 @@ document.addEventListener('DOMContentLoaded',function(){
       document.getElementById('rv-click').textContent='t='+t.toFixed(3)+', y='+yVal.toFixed(3);
       setStatus('Curve drawn \u2713','rval-g');
       say('Solution curve drawn through t='+t.toFixed(2)+', y='+yVal.toFixed(2));
-    }else{
-      setStatus('No solution','rval-u');
-      say('No solution curve could be drawn at this point');
+      return true;
     }
+    setStatus('No solution','rval-u');
+    say('No solution curve could be drawn at this point');
+    return false;
+  }
+
+  canvas.addEventListener('click',function(e){
+    var rect=canvas.getBoundingClientRect();
+    var cx=(e.clientX-rect.left)*(canvas.width/rect.width);
+    var cy=(e.clientY-rect.top)*(canvas.height/rect.height);
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var xScale=(canvas.width-2*PADDING)/(tMax-tMin);
+    var yScale=(canvas.height-2*PADDING)/(yMax-yMin);
+    var t=tMin+(cx-PADDING)/xScale;
+    var yVal=yMin+(canvas.height-PADDING-cy)/yScale;
+    addCurveAt(t,yVal);
+  });
+
+  /* Parse a number or simple expression (pi, sqrt, etc.) for the IC inputs. */
+  function icParse(s){
+    if(s==null)return NaN;
+    s=String(s).trim();
+    if(s==='')return NaN;
+    var v=Number(s);
+    if(isFinite(v))return v;
+    var p=s.replace(/\^/g,'**')
+      .replace(/\b(sin|cos|tan|asin|acos|atan|exp|log|sqrt|cbrt|abs)\b/gi,'Math.$1')
+      .replace(/\bpi\b/gi,'Math.PI')
+      .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+    try{var r=(new Function('return ('+p+');'))();return (typeof r==='number'&&isFinite(r))?r:NaN;}
+    catch(_){return NaN;}
+  }
+
+  /* Typed initial condition \u2192 same solution-curve path as a click. */
+  function addCurveFromInputs(){
+    var t0=icParse(document.getElementById('icT').value);
+    var y0=icParse(document.getElementById('icY').value);
+    if(!isFinite(t0)||!isFinite(y0)){setStatus('Invalid input','rval-u');say('Enter valid numbers for the initial condition.');return;}
+    var tMin=+document.getElementById('tMin').value,tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value,yMax=+document.getElementById('yMax').value;
+    if(t0<tMin||t0>tMax||y0<yMin||y0>yMax){setStatus('Outside view','rval-u');say('Initial condition (t='+t0.toFixed(3)+', y='+y0.toFixed(3)+') is outside the current axes; update the t/y range to include it.');return;}
+    addCurveAt(t0,y0);
+  }
+  document.getElementById('btnAddIC').addEventListener('click',addCurveFromInputs);
+  ['icT','icY'].forEach(function(id){
+    document.getElementById(id).addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();addCurveFromInputs();}
+    });
   });
 
   /* ── Actions ── */
