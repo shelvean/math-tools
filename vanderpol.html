@@ -519,6 +519,12 @@ if(document.referrer.includes('dynamical.html')){
                 <label for="multiICChk" style="cursor:pointer;">Multiple initial conditions scatter</label>
               </span>
             </div>
+            <div class="sl-row">
+              <span class="sl-lbl" style="min-width:150px;">
+                <input type="checkbox" id="multiFadeChk" checked style="margin-right:.3rem;vertical-align:middle;">
+                <label for="multiFadeChk" style="cursor:pointer;" title="On: only the last few periods of each trajectory are shown, fading out. Off: the full orbit is drawn at full opacity.">Fade older trail</label>
+              </span>
+            </div>
           </div>
           <div class="sl-block">
             <div class="sl-row">
@@ -1029,9 +1035,12 @@ function drawMultiPhaseFrame(ms, at){
   function toCy(v){return PH-pad.b-(v-multiPSc.vMin)/(multiPSc.vMax-multiPSc.vMin)*(PH-pad.t-pad.b);}
   phaseCtx.drawImage(multiAxesCv, 0, 0, PW, PH);
   phaseCtx.lineWidth=1.1; phaseCtx.lineJoin='round'; phaseCtx.lineCap='round';
+  /* Fade is optional: when on, only the last few periods are shown and older
+     parts fade out; when off, the full orbit is drawn at full opacity. */
+  var fadeOn = (document.getElementById('multiFadeChk')||{checked:true}).checked;
   /* Hold the transient visible for at least 3 periods so initial swings don't fade too fast. */
   var fadeT = Math.max(3 * estimatePeriod(ms.mu), 0.1);
-  var atStart = at - fadeT;
+  var atStart = fadeOn ? (at - fadeT) : -Infinity;
   for(var k=0;k<ms.trajs.length;k++){
     var pts=ms.trajs[k].pts;
     var lo=0, hi=pts.length-1;
@@ -1049,7 +1058,7 @@ function drawMultiPhaseFrame(ms, at){
       var bandSize = Math.max(1, Math.ceil(segCount / NBANDS));
       for(var b0 = startIdx; b0 < idx; b0 += bandSize){
         var b1 = Math.min(idx, b0 + bandSize);
-        phaseCtx.globalAlpha = Math.min(1, (b1 - startIdx) / segCount);
+        phaseCtx.globalAlpha = fadeOn ? Math.min(1, (b1 - startIdx) / segCount) : 1;
         phaseCtx.beginPath();
         phaseCtx.moveTo(toCx(pts[b0].x), toCy(pts[b0].v));
         for(var i=b0+1;i<=b1;i++) phaseCtx.lineTo(toCx(pts[i].x), toCy(pts[i].v));
@@ -1821,6 +1830,13 @@ document.addEventListener('DOMContentLoaded',function(){
     multiAxesCv=null; multiPSc=null;
     animIdx=0; animTime=0; trail=[]; srFrameCount=0;
     resetSimulation();
+  });
+
+  /* Fade toggle: redraw the current scatter frame immediately so the change is
+     visible even when the animation is paused. */
+  document.getElementById('multiFadeChk').addEventListener('change',function(){
+    say('Trail fade '+(this.checked?'enabled':'disabled')+'.');
+    if(sol&&sol.multi) drawMultiPhaseFrame(sol, animTime);
   });
 
   document.querySelectorAll('.sbtn').forEach(function(btn){
