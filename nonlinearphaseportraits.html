@@ -118,6 +118,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .abtn-dl{background:var(--blue);color:#fff;}.abtn-dl:hover{background:var(--bl2);}
 .abtn-ts{background:var(--vio);color:#fff;}.abtn-ts:hover{background:#5b21b6;}
 .abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.ic-bar{display:flex;align-items:center;justify-content:center;gap:.4rem .55rem;flex-wrap:wrap;
+  margin:-.375rem 0 .875rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.ic-bar .ic-lbl{font-weight:700;font-size:.9375rem;color:var(--txt2);}
+.ic-bar label{font-weight:700;}
+.ic-bar input{width:5rem;min-height:40px;padding:.35rem .5rem;border:2px solid var(--bdr);
+  border-radius:.4rem;font-size:.95rem;background:var(--card);color:var(--txt);}
+.ic-bar .abtn{padding:.45rem .9rem;min-height:40px;}
 
 /* Panel wrapper */
 .pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;
@@ -414,7 +422,7 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
       <ul>
         <li>Enter \(f(x,y)\) and \(g(x,y)\) in the expression fields, or select an <strong>example</strong> from the dropdown.</li>
         <li>Set the domain \([x_\min, x_\max]\times[y_\min, y_\max]\) and adjust arrow settings.</li>
-        <li>Click <strong>Generate</strong> to draw the direction field. Then <strong>click anywhere</strong> on the phase plane to integrate a trajectory through that initial condition.</li>
+        <li>Click <strong>Generate</strong> to draw the direction field. Then <strong>click anywhere</strong> on the phase plane to integrate a trajectory through that initial condition, or type an exact \((x_0, y_0)\) in the <strong>Initial condition</strong> box and press <strong>Add trajectory</strong> (keyboard-friendly).</li>
         <li><strong>Tsit5</strong> (default) handles most systems. For high-precision work, try <strong>DOP853</strong>. For stiff problems (e.g. Van der Pol with large \(\mu\)), <strong>Rodas5P</strong> is usually fastest, followed by <strong>RadauIIA5</strong> and <strong>SDIRK2</strong>. <strong>RK4</strong> provides fixed-step integration for comparison. The <strong>Step size</strong> selector controls the error tolerance (or fixed step for RK4).</li>
         <li>Open the <strong>Time Series</strong> panel to plot \(x(t)\) and/or \(y(t)\) for all current trajectories.</li>
         <li>Use <strong>Download PNG</strong> to save the current portrait.</li>
@@ -586,11 +594,21 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
     <button class="abtn abtn-ts"  id="btnTime"     type="button" aria-expanded="false" aria-controls="timePanel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Time series</button>
   </div>
 
+  <!-- Initial-condition input: keyboard-accessible alternative to clicking -->
+  <div class="ic-bar" role="group" aria-label="Add a trajectory from a typed initial condition">
+    <span class="ic-lbl">Initial condition</span>
+    <label for="icX">\(x_0\)</label>
+    <input type="text" inputmode="decimal" id="icX" value="1" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial x value (accepts expressions like pi/2)">
+    <label for="icY">\(y_0\)</label>
+    <input type="text" inputmode="decimal" id="icY" value="1" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial y value (accepts expressions like pi/2)">
+    <button class="abtn abtn-go" id="btnAddIC" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add trajectory</button>
+  </div>
+
   <!-- Canvas panel -->
   <div class="pwrap">
     <div class="phdr">
       <span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>
-      Phase Plane &mdash; click to add trajectories
+      Phase Plane &mdash; click the canvas or type an initial condition to add a trajectory
     </div>
     <div class="canvas-area" style="flex-direction:column;align-items:center;gap:.25rem;">
       <div style="display:flex;flex-direction:row;align-items:stretch;">
@@ -2164,15 +2182,11 @@ document.addEventListener('DOMContentLoaded',function(){
   }
 
   /* Canvas click */
-  fieldCanvas.addEventListener('click',function(e){
-    var rect=fieldCanvas.getBoundingClientRect();
-    var scX=fieldCanvas.width/rect.width,scY=fieldCanvas.height/rect.height;
-    var cx=(e.clientX-rect.left)*scX,cy=(e.clientY-rect.top)*scY;
-    if(cx<5||cx>fieldCanvas.width-5||cy<5||cy>fieldCanvas.height-5)return;
+  /* Shared: integrate and draw a trajectory through scene point (sx,sy).
+     Used by both the canvas click and the typed initial-condition input. */
+  function addTrajAt(sx,sy){
     var xMin=parseMathInput(document.getElementById('xMin').value),xMax=parseMathInput(document.getElementById('xMax').value);
     var yMin=parseMathInput(document.getElementById('yMin').value),yMax=parseMathInput(document.getElementById('yMax').value);
-    var sx=xMin+cx/fieldCanvas.width*(xMax-xMin);
-    var sy=yMax-cy/fieldCanvas.height*(yMax-yMin);
     userPoints.push({x:sx,y:sy});
     var solver=document.getElementById('solverMethod').value;
     var solveFn=computeTrajectoryTsit5;
@@ -2191,6 +2205,37 @@ document.addEventListener('DOMContentLoaded',function(){
     }
     say('Trajectory added at ('+sx.toFixed(3)+', '+sy.toFixed(3)+')');
     trackEvent('trajectory_added',{event_category:'phase_portrait',event_label:solver,value:trajectories.length});
+  }
+
+  fieldCanvas.addEventListener('click',function(e){
+    if(!fCompiled||!gCompiled)return;
+    var rect=fieldCanvas.getBoundingClientRect();
+    var scX=fieldCanvas.width/rect.width,scY=fieldCanvas.height/rect.height;
+    var cx=(e.clientX-rect.left)*scX,cy=(e.clientY-rect.top)*scY;
+    if(cx<5||cx>fieldCanvas.width-5||cy<5||cy>fieldCanvas.height-5)return;
+    var xMin=parseMathInput(document.getElementById('xMin').value),xMax=parseMathInput(document.getElementById('xMax').value);
+    var yMin=parseMathInput(document.getElementById('yMin').value),yMax=parseMathInput(document.getElementById('yMax').value);
+    var sx=xMin+cx/fieldCanvas.width*(xMax-xMin);
+    var sy=yMax-cy/fieldCanvas.height*(yMax-yMin);
+    addTrajAt(sx,sy);
+  });
+
+  /* Typed initial condition → same trajectory path as a click. */
+  function addTrajFromInputs(){
+    if(!fCompiled||!gCompiled){say('Click Generate to build the field first.');return;}
+    var x0=parseMathInput(document.getElementById('icX').value);
+    var y0=parseMathInput(document.getElementById('icY').value);
+    if(!isFinite(x0)||!isFinite(y0)){say('Enter valid numbers for the initial condition.');return;}
+    var xMin=parseMathInput(document.getElementById('xMin').value),xMax=parseMathInput(document.getElementById('xMax').value);
+    var yMin=parseMathInput(document.getElementById('yMin').value),yMax=parseMathInput(document.getElementById('yMax').value);
+    if(x0<xMin||x0>xMax||y0<yMin||y0>yMax){say('Initial condition ('+x0.toFixed(3)+', '+y0.toFixed(3)+') is outside the current view; widen the axis range to plot it.');return;}
+    addTrajAt(x0,y0);
+  }
+  document.getElementById('btnAddIC').addEventListener('click',addTrajFromInputs);
+  ['icX','icY'].forEach(function(id){
+    document.getElementById(id).addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();addTrajFromInputs();}
+    });
   });
 
   /* Hover over an equilibrium to show its coordinates in LaTeX. */
