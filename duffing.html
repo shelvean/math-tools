@@ -641,6 +641,12 @@ if(document.referrer.includes('dynamical.html')){
                 <label for="multiICChk" style="cursor:pointer;">Multiple initial conditions scatter</label>
               </span>
             </div>
+            <div class="sl-row">
+              <span class="sl-lbl" style="min-width:118px;">
+                <input type="checkbox" id="multiFadeChk" checked style="margin-right:.3rem;vertical-align:middle;">
+                <label for="multiFadeChk" style="cursor:pointer;" title="On: only recent motion of each trajectory is shown, fading out. Off: the full orbit is drawn at full opacity.">Fade older trail</label>
+              </span>
+            </div>
           </div>
           <div class="sl-block">
             <div class="sl-row">
@@ -1212,6 +1218,10 @@ function drawMultiPhaseFrame(ms,at){
   phaseCtx.drawImage(multiAxesCv,0,0,PW,PH);
   phaseCtx.lineWidth=1.1; phaseCtx.lineJoin='round'; phaseCtx.lineCap='round';
 
+  /* Fade is optional: on → only recent motion shown with a quadratic fade;
+     off → the full orbit is drawn from t=0 at full opacity. */
+  var fadeOn = (document.getElementById('multiFadeChk')||{checked:true}).checked;
+
   for(var k=0;k<ms.trajs.length;k++){
     var pts=ms.trajs[k].pts;
     var lo=0,hi=pts.length-1;
@@ -1223,15 +1233,15 @@ function drawMultiPhaseFrame(ms,at){
        in i, so we draw ~CHUNK consecutive samples as one sub-path with a
        midpoint alpha — cuts stroke calls from O(fadeLen) to O(fadeLen/CHUNK)
        per trajectory while remaining visually indistinguishable from
-       per-segment alpha. */
-    var startIdx=Math.max(0, idx-MULTI_FADE_LEN), fadeLen=idx-startIdx;
+       per-segment alpha. When fade is off we draw the whole orbit at alpha 1. */
+    var startIdx=fadeOn ? Math.max(0, idx-MULTI_FADE_LEN) : 0, fadeLen=idx-startIdx;
     phaseCtx.strokeStyle=ms.trajs[k].color;
     if(fadeLen>0){
       var CHUNK=15, i0=startIdx+1;
       while(i0<=idx){
         var i1=Math.min(i0+CHUNK-1, idx);
         var lin=((i0+i1)*0.5 - startIdx)/fadeLen;
-        phaseCtx.globalAlpha=lin*lin;   /* quadratic fade: old history dies fast */
+        phaseCtx.globalAlpha=fadeOn ? lin*lin : 1;   /* quadratic fade: old history dies fast */
         phaseCtx.beginPath();
         phaseCtx.moveTo(toCx(pts[i0-1].x), toCy(pts[i0-1].v));
         for(var j=i0; j<=i1; j++){
@@ -1872,6 +1882,7 @@ function onPC(){var q=readParams();updateRegimeBadge(q.p);updateEqDisplay(q.p);u
 document.addEventListener('DOMContentLoaded',function(){
   linkSlider('deltaSlider','deltaVal',onPC);linkSlider('alphaSlider','alphaVal',onPC);linkSlider('betaSlider','betaVal',onPC);linkSlider('gammaSlider','gammaVal',onPC);linkSlider('omegaSlider','omegaVal',onPC);linkSlider('x0Slider','x0Val');linkSlider('v0Slider','v0Val');linkSlider('tEndSlider','tEndVal');linkSlider('nICSlider','nICVal');
   document.getElementById('multiICChk').addEventListener('change',function(){say('Multiple initial conditions scatter '+(this.checked?'enabled':'disabled')+'.');resetSimulation();});
+  document.getElementById('multiFadeChk').addEventListener('change',function(){say('Trail fade '+(this.checked?'enabled':'disabled')+'.');if(sol&&sol.multi)drawMultiPhaseFrame(sol,animTime);});
   document.querySelectorAll('#speedBtns .sbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('#speedBtns .sbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');if(sol)dtPerFrame=computeDtPerFrame(sol);say('Speed set.');});});
   document.querySelectorAll('.stepbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.stepbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');say('Step size set. Press Reset to apply.');});});
   document.querySelectorAll('.trailbtn').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.trailbtn').forEach(function(b){b.setAttribute('aria-checked','false');});this.setAttribute('aria-checked','true');trailStyle=this.dataset.trail||'speed';resetTrailOverlay();say('Trail style: '+this.textContent+'.');});});
