@@ -72,9 +72,17 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
   border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);overflow-x:auto;}
 /* Method selector */
-.mfam{margin-bottom:.55rem;}
-.mfam-lbl{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
-  color:var(--muted);margin:.1rem 0 .3rem;}
+.mfam{margin-bottom:.4rem;}
+.mfam-lbl{display:flex;align-items:center;gap:.4rem;width:100%;font-size:.72rem;font-weight:800;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:.1rem 0 .3rem;
+  background:transparent;border:0;padding:.3rem .15rem;cursor:pointer;text-align:left;border-radius:.3rem;}
+.mfam-lbl:hover{color:var(--blue);}
+.mfam-lbl:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
+.mfam-chev{display:inline-block;font-size:.65rem;transition:transform .15s;flex-shrink:0;}
+.mfam.open .mfam-chev{transform:rotate(90deg);}
+.mfam-name{flex:1;}
+.mfam-count{font-size:.66rem;font-weight:800;color:#fff;background:var(--blue);
+  border-radius:999px;padding:.02rem .4rem;letter-spacing:0;}
 .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;}
 .mbtn{padding:.5rem .35rem;min-height:42px;border:2px solid var(--bdr2);border-radius:.4rem;
   background:var(--card);color:var(--txt2);font-size:.8125rem;font-weight:600;cursor:pointer;
@@ -1553,13 +1561,28 @@ var solnInited=false, errInited=false, convInited=false, stabInited=false;
 function announce(msg){ var lr=document.getElementById('liveRegion'); if(lr) lr.textContent=msg; }
 
 /* ----- method buttons ----- */
+var famOpen = {};   /* fam.key -> expanded? (persisted across rebuilds) */
 function buildMethodButtons(){
   var host=document.getElementById('methodGrid');
   host.innerHTML='';
   FAMS.forEach(function(fam){
-    var wrap=document.createElement('div'); wrap.className='mfam';
-    var lbl=document.createElement('div'); lbl.className='mfam-lbl'; lbl.textContent=fam.name; wrap.appendChild(lbl);
+    var hasSel=fam.ids.some(function(id){return selected[id];});
+    if (famOpen[fam.key]===undefined) famOpen[fam.key]=hasSel;  /* default: open if it has a selection */
+    if (hasSel) famOpen[fam.key]=true;                          /* always reveal selected methods */
+    var open=famOpen[fam.key];
+
+    var wrap=document.createElement('div'); wrap.className='mfam'+(open?' open':'');
+    wrap.dataset.fam=fam.key;
+
+    var lbl=document.createElement('button');
+    lbl.type='button'; lbl.className='mfam-lbl';
+    lbl.setAttribute('aria-expanded', open?'true':'false');
+    var nSel=fam.ids.filter(function(id){return selected[id];}).length;
+    lbl.innerHTML='<span class="mfam-chev">▸</span><span class="mfam-name">'+fam.name+'</span>'+
+      '<span class="mfam-count" data-fam-count="'+fam.key+'"'+(nSel?'':' hidden')+'>'+nSel+'</span>';
+
     var grid=document.createElement('div'); grid.className='mgrid';
+    if (!open) grid.style.display='none';
     fam.ids.forEach(function(id){
       var m=METBY[id];
       var b=document.createElement('button');
@@ -1571,13 +1594,29 @@ function buildMethodButtons(){
         selected[id]=!selected[id];
         if (selected[id]){ b.classList.add('active'); b.style.background=m.color; b.setAttribute('aria-pressed','true'); }
         else { b.classList.remove('active'); b.style.background=''; b.setAttribute('aria-pressed','false'); }
+        updateFamCount(fam);
         refreshStabSelect();
         solve();
       });
       grid.appendChild(b);
     });
-    wrap.appendChild(grid); host.appendChild(wrap);
+
+    lbl.addEventListener('click', function(){
+      famOpen[fam.key]=!famOpen[fam.key];
+      var nowOpen=famOpen[fam.key];
+      grid.style.display=nowOpen?'':'none';
+      lbl.setAttribute('aria-expanded', nowOpen?'true':'false');
+      wrap.classList.toggle('open', nowOpen);
+    });
+    wrap.appendChild(lbl); wrap.appendChild(grid); host.appendChild(wrap);
   });
+}
+/* keep a family's selected-count badge in sync when its buttons are toggled */
+function updateFamCount(fam){
+  var el=document.querySelector('[data-fam-count="'+fam.key+'"]');
+  if (!el) return;
+  var n=fam.ids.filter(function(id){return selected[id];}).length;
+  el.textContent=n; if (n) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
 }
 function selectedIds(){ return MET.map(function(m){return m.id;}).filter(function(id){return selected[id];}); }
 
