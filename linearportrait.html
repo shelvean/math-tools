@@ -109,12 +109,16 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .mat-grid input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .mat-grid input[type=number]{-moz-appearance:textfield;}
 
-/* ── Classification badge ── */
-.class-badge{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:.45rem 1rem;border-radius:.5rem;text-align:center;line-height:1.35;min-width:180px;color:#fff;}
-.class-badge .ct{font-size:.9375rem;font-weight:800;}
-.class-badge .cs{font-size:.8125rem;font-weight:600;opacity:.9;}
-.class-badge .cd{font-size:.75rem;font-weight:500;opacity:.8;margin-top:.1rem;}
+/* ── Classification table (shared format with the nonlinear phase portraits) ── */
+.eq-table-wrap{margin:.5rem .75rem .25rem;overflow-x:auto;}
+.eq-table-wrap caption{font-weight:700;font-size:.8125rem;color:var(--txt2);text-align:left;padding:.1rem 0 .35rem;}
+.eq-table-note{margin:0 0 .4rem;font-size:.8125rem;color:var(--txt2);}
+table.eq-table{border-collapse:collapse;width:100%;font-size:.8125rem;}
+table.eq-table th,table.eq-table td{border:1px solid var(--bdr2);padding:.3rem .5rem;text-align:center;white-space:nowrap;}
+table.eq-table thead th{background:var(--sect);font-weight:700;color:var(--txt2);}
+table.eq-table td.eq-type-cell{font-weight:700;}
+table.eq-table .eq-type-cell svg{vertical-align:middle;margin-right:.3rem;}
+table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
 .solver-active{display:block;margin-top:.2rem;font-size:.7rem;color:var(--muted);font-weight:600;}
 .solver-active #solverActiveName{color:var(--txt);}
 
@@ -452,15 +456,6 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       </div>
     </div>
 
-    <!-- Classification badge -->
-    <div class="cfield" style="flex:0 1 auto;">
-      <span class="clbl">Classification</span>
-      <div id="classBadge" class="class-badge" style="background:var(--vio);"
-        role="status" aria-live="polite" aria-label="Classification pending">
-        <span class="ct">—</span><span class="cs"></span><span class="cd"></span>
-      </div>
-    </div>
-
     <!-- Solver selector -->
     <div class="cfield cfield-med">
       <label for="solverSel">Solver</label>
@@ -642,6 +637,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         role="img" tabindex="0"
         aria-label="Phase portrait canvas. Click to add trajectories."></canvas>
     </div>
+    <div id="classTable" class="eq-table-wrap" role="status" aria-live="polite"></div>
   </div>
 
   <!-- Time series panel -->
@@ -875,13 +871,92 @@ function classifyEquilibrium(a,b,c,d){
   return{type:'Nilpotent',stability:'Unstable',description:'\u03bb = 0 repeated, not diagonalizable'};
 }
 
-function updateBadge(){
-  var M=getM(),cl=classifyEquilibrium(M.a,M.b,M.c,M.d);
-  var bg={'Asymptotically Stable':'#15803d','Stable':'#15803d','Stable (Lyapunov)':'#0f766e','Neutrally Stable':'#0f766e','Unstable':'#dc2626'}[cl.stability]||'#6d28d9';
-  var bd=document.getElementById('classBadge');
-  bd.style.background=bg;
-  bd.innerHTML='<span class="ct">'+cl.type+'</span><span class="cs">'+cl.stability+'</span><span class="cd">'+cl.description+'</span>';
-  bd.setAttribute('aria-label',cl.type+': '+cl.stability+'. '+cl.description);
+/* Classification glyph + colour scheme, matching the nonlinear phase portraits. */
+var EQ_COLORS={stable:'#16a34a',unstable:'#dc2626',saddle:'#d97706',center:'#2563eb',degenerate:'#6b7280'};
+function eqColor(kind){
+  if(kind==='saddle')return EQ_COLORS.saddle;
+  if(kind==='center')return EQ_COLORS.center;
+  if(kind==='degenerate')return EQ_COLORS.degenerate;
+  return kind.charAt(0)==='s'?EQ_COLORS.stable:EQ_COLORS.unstable;/* stable-* vs unstable-* */
+}
+function eqGlyphSVG(kind){
+  var c=eqColor(kind),s='<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">';
+  if(kind==='saddle'){
+    s+='<path d="M2.5 2.5 L13.5 13.5 M2.5 13.5 L13.5 2.5" stroke="'+c+'" stroke-width="2.4" stroke-linecap="round"/>';
+  }else if(kind==='center'){
+    s+='<circle cx="8" cy="8" r="6" fill="#fff" stroke="'+c+'" stroke-width="2.2"/><circle cx="8" cy="8" r="2.2" fill="'+c+'"/>';
+  }else if(kind==='degenerate'){
+    s+='<circle cx="8" cy="8" r="6" fill="#fff" stroke="'+c+'" stroke-width="2" stroke-dasharray="3 2"/>';
+  }else if(kind.charAt(0)==='s'){/* stable-* : filled */
+    s+='<circle cx="8" cy="8" r="6" fill="'+c+'" stroke="#fff" stroke-width="1.5"/>';
+  }else{/* unstable-* : hollow */
+    s+='<circle cx="8" cy="8" r="6" fill="#fff" stroke="'+c+'" stroke-width="2.4"/>';
+  }
+  return s+'</svg>';
+}
+/* Map a linear classification to a glyph kind (filled=stable, hollow=unstable,
+   ×=saddle, ring+dot=center, dashed=non-hyperbolic). */
+function classKind(cl){
+  var t=cl.type;
+  if(t==='Saddle Point')return 'saddle';
+  if(t==='Center')return 'center';
+  if(t.indexOf('Spiral Sink')===0)return 'stable-spiral';
+  if(t.indexOf('Spiral Source')===0)return 'unstable-spiral';
+  if(/Non-isolated|Plane of Equilibria|Nilpotent/.test(t))return 'degenerate';
+  return /Stable/.test(cl.stability)?'stable-node':'unstable-node';
+}
+/* Compact LaTeX number formatter (fractions, π multiples, simple surds) for τ and Δ. */
+var NICE_Q=[1,2,3,4,5,6,8,12];
+function gcdInt(a,b){a=Math.abs(a);b=Math.abs(b);while(b){var t=b;b=a%b;a=t;}return a||1;}
+function ratApprox(v,tol){
+  for(var i=0;i<NICE_Q.length;i++){var q=NICE_Q[i],p=Math.round(v*q);
+    if(p===0)continue;
+    if(Math.abs(v-p/q)<=tol*Math.max(1,Math.abs(v))){var g=gcdInt(p,q);return{p:p/g,q:q/g};}
+  }
+  return null;
+}
+function texFrac(p,q){return q===1?(''+p):(p<0?'-':'')+'\\dfrac{'+Math.abs(p)+'}{'+q+'}';}
+function texPi(p,q){var sign=p<0?'-':'',num=(Math.abs(p)===1?'\\pi':Math.abs(p)+'\\pi');return q===1?sign+num:sign+'\\dfrac{'+num+'}{'+q+'}';}
+function texSurd(v,tol){
+  if(typeof v!=='number'||!isFinite(v)||v===0)return null;
+  var r=ratApprox(v*v,tol||1e-6);if(!r)return null;
+  var m=Math.abs(r.p)*r.q,Q=r.q;if(m===0)return null;
+  var s=1,rad=m;for(var k=2;k*k<=rad;k++){while(rad%(k*k)===0){rad/=(k*k);s*=k;}}
+  if(rad===1||rad>30)return null;
+  var g=gcdInt(s,Q),num=s/g,den=Q/g;if(num>20||den>20)return null;
+  var sign=v<0?'-':'',core=(num===1?'':''+num)+'\\sqrt{'+rad+'}';
+  return den===1?sign+core:sign+'\\dfrac{'+core+'}{'+den+'}';
+}
+function texNum(v){
+  if(typeof v!=='number'||!isFinite(v))return '\\text{—}';
+  if(Math.abs(v)<1e-12)return '0';
+  var tol=1e-6,r;
+  if((r=ratApprox(v/Math.PI,tol)))return texPi(r.p,r.q);
+  if((r=ratApprox(v,tol)))return texFrac(r.p,r.q);
+  var sd=texSurd(v,tol);if(sd)return sd;
+  if(Math.abs(v)<1e-3||Math.abs(v)>=1e5){var e=v.toExponential(2).split('e');return parseFloat(e[0])+'\\times 10^{'+parseInt(e[1],10)+'}';}
+  return v.toFixed(3).replace(/\.?0+$/,'')||'0';
+}
+/* Classification table — same format as the nonlinear phase portraits, for the
+   single equilibrium at the origin. */
+function updateClassTable(){
+  var M=getM(),a=M.a,b=M.b,c=M.c,d=M.d;
+  var cl=classifyEquilibrium(a,b,c,d),kind=classKind(cl);
+  var tr=a+d,det=a*d-b*c;
+  var el=document.getElementById('classTable');if(!el)return;
+  el.innerHTML='<p class="eq-table-note">\\(\\tau\\) is the trace and \\(\\Delta\\) the determinant of \\(A\\).</p>'+
+    '<table class="eq-table">'+
+    '<caption>Classification of the origin</caption>'+
+    '<thead><tr><th>Classification</th><th>Stability</th>'+
+    '<th title="trace of A">\\(\\tau\\)</th><th title="determinant of A">\\(\\Delta\\)</th></tr></thead>'+
+    '<tbody><tr>'+
+    '<td class="eq-type-cell" style="color:'+eqColor(kind)+'">'+eqGlyphSVG(kind)+cl.type+'</td>'+
+    '<td>'+cl.stability+'</td>'+
+    '<td class="eq-coord">\\('+texNum(tr)+'\\)</td>'+
+    '<td class="eq-coord">\\('+texNum(det)+'\\)</td>'+
+    '</tr></tbody></table>';
+  el.setAttribute('aria-label',cl.type+': '+cl.stability+'. trace '+tr+', determinant '+det+'. '+cl.description);
+  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
 }
 
 /* ── Equation display ── */
@@ -1305,7 +1380,7 @@ function drawPortrait(){
     });
   }
 
-  updateBadge();updateEq();updateActiveSolver();
+  updateClassTable();updateEq();updateActiveSolver();
 }
 
 /* ── Bifurcation animation ── */
