@@ -443,10 +443,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
       <div class="matrix-wrap" role="group" aria-label="2 by 2 matrix entries">
         <span class="mat-bracket" aria-hidden="true">[</span>
         <div class="mat-grid">
-          <input type="text" inputmode="decimal" id="a" value="-1" aria-label="a: row 1, col 1 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
-          <input type="text" inputmode="decimal" id="b" value="2"  aria-label="b: row 1, col 2 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
-          <input type="text" inputmode="decimal" id="c" value="-2" aria-label="c: row 2, col 1 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
-          <input type="text" inputmode="decimal" id="d" value="-1" aria-label="d: row 2, col 2 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="a" value="-3" aria-label="a: row 1, col 1 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="b" value="1"  aria-label="b: row 1, col 2 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="c" value="1"  aria-label="c: row 2, col 1 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+          <input type="text" inputmode="decimal" id="d" value="-3" aria-label="d: row 2, col 2 (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
         </div>
         <span class="mat-bracket" aria-hidden="true">]</span>
       </div>
@@ -614,7 +614,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   <dl class="rbar" role="region" aria-label="Phase portrait status">
     <div class="rcell">
       <dt class="rlbl">Matrix</dt>
-      <dd class="rval rval-b" id="rv-eq" title="Current matrix A">A = [-1, 2; -2, -1]</dd>
+      <dd class="rval rval-b" id="rv-eq" title="Current matrix A">A = [-3, 1; 1, -3]</dd>
     </div>
     <div class="rcell">
       <dt class="rlbl">Trajectories</dt>
@@ -1345,7 +1345,29 @@ async function loadStrategicTrajs(){
     pts=[];
     for(var k=1;k<=8;k++){var r=rMax*k/8;pts.push({x:0,y:r});}
   } else {
-    pts=[{x:0,y:2},{x:2,y:0},{x:0,y:-2},{x:-2,y:0},{x:1.5,y:1.5},{x:-1.5,y:1.5},{x:1.5,y:-1.5},{x:-1.5,y:-1.5}];
+    /* 8 seeds on a ring at evenly-spaced angles. Rotate the whole ring so the
+       seeds stay clear of the (real) eigenvector directions — otherwise a seed
+       sitting on an eigenvector produces a degenerate straight-line trajectory. */
+    var evAng=computeEigenvectors(M.a,M.b,M.c,M.d).map(function(e){
+      return Math.atan2(e.v.y,e.v.x)*180/Math.PI;
+    });
+    var bestRot=22.5,bestSep=-1;
+    for(var r=0;r<45;r++){
+      var sep=Infinity;
+      for(var j=0;j<evAng.length;j++){
+        var diff=(((r-evAng[j])%45)+45)%45;   /* offset from nearest seed ray (mod 45°) */
+        diff=Math.min(diff,45-diff);
+        if(diff<sep)sep=diff;
+      }
+      if(!evAng.length)sep=999;
+      if(sep>bestSep){bestSep=sep;bestRot=r;}
+    }
+    var R=Math.min(SX_MAX,SY_MAX)*0.42;
+    pts=[];
+    for(var k=0;k<8;k++){
+      var ang=(k*45+bestRot)*Math.PI/180;
+      pts.push({x:R*Math.cos(ang),y:R*Math.sin(ang)});
+    }
   }
   userPoints=pts.map(function(p){return{x:p.x,y:p.y};});
   trajectories=[];
@@ -1557,8 +1579,8 @@ document.addEventListener('DOMContentLoaded',function(){
     say('High contrast '+(isHC()?'on':'off'));
   });
 
-  /* Initial draw */
-  drawPortrait();
+  /* Initial draw — default to the Stable Node example with strategic trajectories */
+  loadStrategicTrajs();
 });
 </script>
 <!-- feedback-mark:start -->
