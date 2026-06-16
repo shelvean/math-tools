@@ -674,6 +674,14 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
           </div>
         </details>
 
+        <details class="mdesc"><summary><span class="mdot" style="background:#65a30d;"></span>Gauss&ndash;Legendre (2-stage) <span class="badge imp">implicit</span><span class="badge">order 4</span></summary>
+          <div class="mbody">
+            <p>A <strong>fully implicit</strong> two-stage Runge&ndash;Kutta method whose nodes are the Gauss&ndash;Legendre quadrature points \(c=\tfrac12\pm\tfrac{\sqrt3}{6}\). With only two stages it attains <strong>order 4</strong> &mdash; the maximum possible &mdash; and is both <strong>A-stable</strong> and symplectic.</p>
+            <div class="defn-box">\[ \begin{array}{c|cc} \tfrac12-\tfrac{\sqrt3}{6} & \tfrac14 & \tfrac14-\tfrac{\sqrt3}{6}\\[2pt] \tfrac12+\tfrac{\sqrt3}{6} & \tfrac14+\tfrac{\sqrt3}{6} & \tfrac14\\[2pt] \hline & \tfrac12 & \tfrac12 \end{array} \]</div>
+            <p>Because both stages are coupled, each step solves a \(2\times2\) nonlinear system for the stage slopes by Newton iteration. Its stability function is the \((2,2)\) Pad&eacute; approximant of \(e^z\), \(R(z)=\dfrac{1+z/2+z^2/12}{1-z/2+z^2/12}\); the boundary is exactly the imaginary axis, so the whole left half-plane is stable. Unlike backward Euler it is <em>not</em> L-stable (\(|R|\to1\) as \(z\to-\infty\)), so it preserves oscillations but damps very stiff transients only slowly.</p>
+          </div>
+        </details>
+
         <h3 class="mdesc-grp">Taylor series methods</h3>
         <details class="mdesc"><summary><span class="mdot" style="background:#db2777;"></span>Taylor method, order 2<span class="badge exp">explicit</span><span class="badge">order 2</span></summary>
           <div class="mbody">
@@ -1024,6 +1032,7 @@ var MET = [
   {id:'rk4',    label:'Runge–Kutta 4',     fam:'rk',    color:'#6d28d9', order:4, kind:'explicit'},
   {id:'dopri5', label:'Dormand–Prince 5(4)',fam:'rk',    color:'#9333ea', order:5, kind:'explicit'},
   {id:'tsit5',  label:'Tsitouras 5(4)',     fam:'rk',    color:'#0284c7', order:5, kind:'explicit'},
+  {id:'gauss4', label:'Gauss–Legendre (2-stage)', fam:'rk', color:'#65a30d', order:4, kind:'irk'},
   {id:'taylor2',label:'Taylor 2',          fam:'taylor',color:'#db2777', order:2, kind:'taylor'},
   {id:'taylor3',label:'Taylor 3',          fam:'taylor',color:'#c026d3', order:3, kind:'taylor'},
   {id:'taylor4',label:'Taylor 4',          fam:'taylor',color:'#7c3aed', order:4, kind:'taylor'},
@@ -1045,7 +1054,7 @@ var MET = [
 var METBY = {}; MET.forEach(function(m){ METBY[m.id]=m; });
 var FAMS = [
   {key:'euler',  name:'Euler & one-step', ids:['euler','heun','beuler','trap']},
-  {key:'rk',     name:'Runge–Kutta',      ids:['rk2','rk3','rk4','dopri5','tsit5']},
+  {key:'rk',     name:'Runge–Kutta',      ids:['rk2','rk3','rk4','dopri5','tsit5','gauss4']},
   {key:'taylor', name:'Taylor series',    ids:['taylor2','taylor3','taylor4']},
   {key:'ab',     name:'Adams–Bashforth',  ids:['ab2','ab3','ab4']},
   {key:'am',     name:'Adams–Moulton',    ids:['am3','am4']},
@@ -1351,9 +1360,48 @@ function rkTableauR(T,z){
   var R=cx(1,0); for (i=0;i<s;i++) R=cadd(R, cmul(cx(T.b[i],0), ka[i]));
   return R;
 }
+/* Fully implicit Runge–Kutta tableaus. The two-stage Gauss–Legendre method is
+   order 4, A-stable and symplectic — the highest order possible with 2 stages.
+   Its two stages are coupled, so each step solves a 2×2 nonlinear system for
+   the stage slopes (k1,k2) by Newton iteration (scalar ODE → 2×2 Jacobian). */
+var IRK = {
+  gauss4:{ c:[0.5 - Math.sqrt(3)/6, 0.5 + Math.sqrt(3)/6],
+    A:[[0.25, 0.25 - Math.sqrt(3)/6],[0.25 + Math.sqrt(3)/6, 0.25]],
+    b:[0.5, 0.5] }
+};
+function makeIRKStep(T,P){
+  var f=P.f, fy=P.fy, A=T.A, c=T.c, b=T.b;
+  return function(t,y,h){
+    var k1=f(t,y), k2=k1;
+    for (var it=0; it<60; it++){
+      var Y1=y+h*(A[0][0]*k1+A[0][1]*k2), Y2=y+h*(A[1][0]*k1+A[1][1]*k2);
+      var t1=t+c[0]*h, t2=t+c[1]*h;
+      var G1=k1-f(t1,Y1), G2=k2-f(t2,Y2);
+      var j1=fy(t1,Y1), j2=fy(t2,Y2);
+      /* Jacobian of (G1,G2) w.r.t. (k1,k2) */
+      var J11=1-h*A[0][0]*j1, J12=-h*A[0][1]*j1, J21=-h*A[1][0]*j2, J22=1-h*A[1][1]*j2;
+      var det=J11*J22-J12*J21; if (Math.abs(det)<1e-14) det=(det<0?-1:1)*1e-14;
+      var d1=(G1*J22-G2*J12)/det, d2=(J11*G2-J21*G1)/det;
+      k1-=d1; k2-=d2;
+      if (Math.abs(d1)+Math.abs(d2) <= 1e-13*(1+Math.abs(k1)+Math.abs(k2))) break;
+    }
+    return y + h*(b[0]*k1 + b[1]*k2);
+  };
+}
+/* Stability function R(z)=1+z·bᵀ(I−zA)⁻¹𝟙 for a 2-stage implicit tableau. */
+function irkR(T,z){
+  var A=T.A, b=T.b;
+  var M11=csub(cx(1,0),cmul(z,cx(A[0][0],0))), M12=csub(cx(0,0),cmul(z,cx(A[0][1],0)));
+  var M21=csub(cx(0,0),cmul(z,cx(A[1][0],0))), M22=csub(cx(1,0),cmul(z,cx(A[1][1],0)));
+  var det=csub(cmul(M11,M22),cmul(M12,M21));
+  var x1=cdiv(csub(M22,M12),det), x2=cdiv(csub(M11,M21),det);
+  var bx=cadd(cmul(cx(b[0],0),x1),cmul(cx(b[1],0),x2));
+  return cadd(cx(1,0),cmul(z,bx));
+}
 function makeOneStep(id,P){
   var f=P.f;
   if (RKT[id]) return rkTableauStep(RKT[id], f);
+  if (IRK[id]) return makeIRKStep(IRK[id], P);
   switch(id){
     case 'euler': return function(t,y,h){ return y + h*f(t,y); };
     case 'heun':  return function(t,y,h){ var k1=f(t,y), k2=f(t+h,y+h*k1); return y + h*0.5*(k1+k2); };
@@ -1438,6 +1486,7 @@ function integrate(id,P,hReq){
 /* ---------- stability amplification ---------- */
 function Rfun(id,z){
   if (RKT[id]) return rkTableauR(RKT[id], z);
+  if (IRK[id]) return irkR(IRK[id], z);
   function poly(p){ var term=cx(1,0), sum=cx(1,0); for(var k=1;k<=p;k++){ term=cmul(term,z); term=cx(term.re/k,term.im/k); sum=cadd(sum,term);} return sum; }
   switch(id){
     case 'euler': return poly(1);
