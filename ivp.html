@@ -563,7 +563,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewConvBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). Solid lines are the measured error; the fitted empirical order \(p\) appears in the legend. <strong>Dashed lines</strong> show the theoretical \(O(h^{p})\) rate for each method (same colour). A solid line parallel to its dashed reference confirms \(O(h^p)\) convergence, until round-off dominates at small \(h\).</p>
+          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). Solid lines are the measured error; the fitted empirical order \(p\) appears in the legend. <strong>Dashed lines</strong> show the theoretical \(O(h^{p})\) rate for each method (same colour). A solid line parallel to its dashed reference confirms \(O(h^p)\) convergence, until round-off dominates at small \(h\). Step sizes where a method is unstable (error far beyond the solution&rsquo;s scale) are dropped automatically, so the axis stays focused on the convergent regime instead of being stretched by blow-ups.</p>
         </div>
       </div>
 
@@ -1696,7 +1696,16 @@ function plotConvergence(P){
      where a weakly-stable method finally shows its true order. */
   var hStart=(currentEx && currentEx.convH) ? currentEx.convH : spanT()/4, levels=8, hs=[];
   for (var j=0;j<levels;j++) hs.push(hStart/Math.pow(2,j));
-  var traces=[], allX=[], allY=[];
+  /* Scale of the reference solution, used to discard divergent runs: at large h
+     an unstable method's error can be 10^8–10^12, which stretches the log axis
+     across ~20 decades and visually flattens the meaningful convergence lines.
+     Points whose error is far beyond the solution scale carry no convergence
+     information, so we drop them and let the axis focus on the stable regime. */
+  var refScale=0, NS=200;
+  for (var s=0;s<=NS;s++){ var tt=P.t0+(P.tEnd-P.t0)*s/NS, rv=Math.abs(P.ref(tt)); if(isFinite(rv)&&rv>refScale) refScale=rv; }
+  if(!(refScale>0)) refScale=1;
+  var errCap = refScale*100;
+  var traces=[], allX=[], allY=[], anyDropped=false;
   ids.forEach(function(id){
     var m=METBY[id];
     if (m.kind==='taylor' && !P.taylorOK) return;
@@ -1705,8 +1714,11 @@ function plotConvergence(P){
       if (h<hFloor) return;
       var R=integrate(id,P,h); if(!R) return;
       var e=methodError(R,P);
-      if (isFinite(e) && e>0){ xx.push(R.h); yy.push(e); errs.push(e); }
+      if (!(isFinite(e) && e>0)) return;
+      if (e>errCap){ anyDropped=true; return; }   /* unstable / divergent at this h */
+      xx.push(R.h); yy.push(e); errs.push(e);
     });
+    if (!xx.length) return;
     /* empirical order from least-squares slope on log-log, using only the
        5 smallest h (the most asymptotic / finest steps) */
     var p=NaN;
@@ -1737,6 +1749,10 @@ function plotConvergence(P){
     yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:1.16, x:0, font:{size:11}},
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
+  if (anyDropped){
+    layout.annotations=[{ xref:'paper', yref:'paper', x:0.99, y:0.02, xanchor:'right', yanchor:'bottom',
+      text:'unstable large-h points omitted', showarrow:false, font:{size:10, color:'#9ca3af'} }];
+  }
   Plotly.react('convPlot', traces, layout, PCONFIG);
   convInited=true;
 }
