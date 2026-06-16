@@ -566,7 +566,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewConvBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). Solid lines are the measured error; the fitted empirical order \(p\) appears in the legend. <strong>Dashed lines</strong> show the theoretical \(O(h^{p})\) rate for each method (same colour). A solid line parallel to its dashed reference confirms \(O(h^p)\) convergence, until round-off dominates at small \(h\). Step sizes where a method is unstable (error far beyond the solution&rsquo;s scale) are dropped automatically, so the axis stays focused on the convergent regime instead of being stretched by blow-ups.</p>
+          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). Solid lines are the measured error; the fitted empirical order \(p\) appears in the legend. <strong>Dashed lines</strong> show the theoretical \(O(h^{p})\) rate for each method (same colour). A solid line parallel to its dashed reference confirms \(O(h^p)\) convergence. Step sizes where a method is unstable (large \(h\), error far beyond the solution scale) or round-off-dominated (very small \(h\), error stuck near machine precision) are dropped automatically, so the axis and the fitted order use only the clean convergent range.</p>
         </div>
       </div>
 
@@ -1818,19 +1818,33 @@ function plotConvergence(P){
   for (var s=0;s<=NS;s++){ var tt=P.t0+(P.tEnd-P.t0)*s/NS, rv=Math.abs(P.ref(tt)); if(isFinite(rv)&&rv>refScale) refScale=rv; }
   if(!(refScale>0)) refScale=1;
   var errCap = refScale*100;
-  var traces=[], allX=[], allY=[], anyDropped=false;
+  /* Round-off floor: at very small h a high-order method's error stops
+     improving and noisily plateaus near machine precision (~eps·scale). Those
+     fine-h points carry no convergence information and corrupt both the slope
+     fit and the axis, so they are peeled off the small-h end below. */
+  var absFloor = refScale*1e-13;
+  var traces=[], allX=[], allY=[], droppedHi=false, droppedLo=false;
   ids.forEach(function(id){
     var m=METBY[id];
     if (m.kind==='taylor' && !P.taylorOK) return;
-    var xx=[], yy=[], errs=[];
+    var xx=[], yy=[];
     hs.forEach(function(h){
       if (h<hFloor) return;
       var R=integrate(id,P,h); if(!R) return;
       var e=methodError(R,P);
       if (!(isFinite(e) && e>0)) return;
-      if (e>errCap){ anyDropped=true; return; }   /* unstable / divergent at this h */
-      xx.push(R.h); yy.push(e); errs.push(e);
+      if (e>errCap){ droppedHi=true; return; }   /* unstable / divergent at this h */
+      xx.push(R.h); yy.push(e);
     });
+    /* Peel round-off-dominated points off the fine (small-h) end: drop the
+       finest point while it failed to beat the next-coarser one by ~30% or sits
+       below the noise floor, stopping at the first genuinely converging point.
+       This only inspects the fine tail, so a coarse-h bump (e.g. Milne) stays. */
+    while (xx.length>=2){
+      var nl=xx.length-1, fineE=yy[nl], coarseE=yy[nl-1];
+      if (fineE >= coarseE*0.71 || fineE < absFloor){ xx.pop(); yy.pop(); droppedLo=true; }
+      else break;
+    }
     if (!xx.length) return;
     /* empirical order from least-squares slope on log-log, using only the
        5 smallest h (the most asymptotic / finest steps) */
@@ -1862,9 +1876,12 @@ function plotConvergence(P){
     yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:1.16, x:0, font:{size:11}},
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
-  if (anyDropped){
+  if (droppedHi || droppedLo){
+    var omitMsg = droppedHi && droppedLo ? 'unstable (large h) & round-off (small h) points omitted'
+                : droppedHi ? 'unstable large-h points omitted'
+                : 'round-off-dominated small-h points omitted';
     layout.annotations=[{ xref:'paper', yref:'paper', x:0.99, y:0.02, xanchor:'right', yanchor:'bottom',
-      text:'unstable large-h points omitted', showarrow:false, font:{size:10, color:'#9ca3af'} }];
+      text:omitMsg, showarrow:false, font:{size:10, color:'#9ca3af'} }];
   }
   Plotly.react('convPlot', traces, layout, PCONFIG);
   convInited=true;
