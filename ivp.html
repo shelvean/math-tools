@@ -151,6 +151,11 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .res-empty{padding:.7rem;color:var(--muted);font-size:.85rem;text-align:center;}
 /* Plot wrappers */
 #solnPlot{width:100%;height:460px;}
+.soln-eqn{font-size:.92rem;color:var(--txt);text-align:center;padding:.35rem .6rem .15rem;
+  line-height:1.5;overflow-x:auto;overflow-y:hidden;}
+.soln-eqn:empty{display:none;}
+.soln-eqn .eqsep{color:var(--bdr);margin:0 .3rem;}
+.soln-eqn-ref{color:var(--muted);font-size:.8rem;font-weight:600;}
 #errPlot{width:100%;height:320px;}
 #convPlot{width:100%;height:340px;}
 #stabPlot{width:100%;height:430px;}
@@ -412,7 +417,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       <h2>Using this tool</h2>
       <ul>
         <li><strong>Tick any number of methods</strong> in the selector to overlay their approximations on the solution plot.</li>
-        <li>Pick a built-in example (stiff and non-stiff) or enter a custom \(f(t,y)\). Provide an exact solution to measure error, or leave it blank and the tool builds a fine numerical reference &mdash; dense RK4, automatically switching to an A-stable implicit solver if the problem is stiff.</li>
+        <li>Pick a built-in example (stiff and non-stiff) &mdash; its equation and known exact solution are shown above the solution plot &mdash; or enter a custom \(f(t,y)\). Error is measured against the example&rsquo;s exact solution; a custom problem (or any edited equation) uses a high-accuracy numerical reference instead &mdash; dense RK4, automatically switching to an A-stable implicit solver if the problem is stiff. Exact solutions are never typed in, so a wrong formula can&rsquo;t silently distort the error and convergence panels.</li>
         <li>Drag the <strong>step-size slider</strong> with <em>Live update</em> on to watch accuracy and stability change instantly.</li>
         <li>For parameterized examples like \(y'=\lambda y\) (exact \(y_0e^{\lambda t}\)), drag \(\lambda\) from gentle to stiff.</li>
         <li>The plot supports scroll-zoom, drag-to-pan, and box-zoom; the graph height is adjustable.</li>
@@ -673,10 +678,6 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
           <label for="fnInput">Right-hand side \(f(t,y)\)</label>
           <input type="text" id="fnInput" value="lambda*y" placeholder="e.g. y - t^2 + 1, lambda*y, -2*t*y">
         </div>
-        <div class="cfield cfield-lg">
-          <label for="exactInput">Exact solution \(y(t)\) <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
-          <input type="text" id="exactInput" value="y0*exp(lambda*t)" placeholder="leave blank to use a numerical reference">
-        </div>
         <div class="cfield cfield-tr">
           <label for="t0Input">Start \(t_0\)</label>
           <input type="text" id="t0Input" value="0">
@@ -765,12 +766,13 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
     <div class="col-plot">
       <div class="pwrap">
         <div class="phdr"><span class="pdot" style="background:var(--vio);" aria-hidden="true"></span><span>Solution &amp; approximations</span></div>
+        <div id="solnEqn" class="soln-eqn" aria-live="polite"></div>
         <div id="solnPlot"></div>
         <div class="plot-foot">
           <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
           <button class="view-btn" id="resetViewBtn" type="button" aria-label="Reset view">Reset view</button>
         </div>
-        <p class="note">The black curve is the exact solution (or a fine numerical reference &mdash; dense RK4, or an A-stable implicit solver when the problem is stiff). Coloured curves with markers are the selected methods sampled at their step nodes. The view is auto-scaled to the reference so it fills the frame; divergent (unstable) runs simply shoot off the top or bottom &mdash; scroll to zoom or drag to pan to follow them.</p>
+        <p class="note">The equation and reference shown above the plot identify what is being solved. The black curve is the exact solution (for built-in examples) or a fine numerical reference (dense RK4, or an A-stable implicit solver when the problem is stiff). Coloured curves with markers are the selected methods sampled at their step nodes. The view is auto-scaled to the reference so it fills the frame; divergent (unstable) runs simply shoot off the top or bottom &mdash; scroll to zoom or drag to pan to follow them.</p>
       </div>
 
       <!-- Error vs t -->
@@ -1240,7 +1242,6 @@ var currentEx = EXAMPLES[0];
 /* ---------- problem assembly ---------- */
 function readProblem(){
   var fExpr   = document.getElementById('fnInput').value.trim();
-  var exExpr  = document.getElementById('exactInput').value.trim();
   var lambda  = currentLambda();
   var sc = {lambda:lambda};
   var es = {lambda:lambda};
@@ -1260,6 +1261,20 @@ function readProblem(){
   if (!isFinite(f(t0,y0))) throw new Error('f(t,y) does not evaluate to a number at the start.');
 
   var P = {f:f, fy:fy, t0:t0, y0:y0, tEnd:tEnd, lambda:lambda, fExpr:fExpr};
+
+  /* Trusted exact solution: taken only from a built-in example whose equation
+     and initial data are unedited. It is never typed by the user — a wrong
+     formula would silently corrupt the error and convergence panels. Editing f,
+     t0 or y0, or using the Custom problem, falls back to the high-accuracy
+     numerical reference below. (λ and t_end may vary — the exact formulas allow it.) */
+  var exExpr='';
+  if (currentEx && currentEx.id!=='custom' && currentEx.exact &&
+      fExpr===currentEx.f.trim() &&
+      document.getElementById('t0Input').value.trim()===currentEx.t0 &&
+      document.getElementById('y0Input').value.trim()===currentEx.y0){
+    exExpr=currentEx.exact;
+  }
+  P.exExpr=exExpr;
 
   /* exact or dense reference */
   if (exExpr){
@@ -1696,7 +1711,6 @@ function loadExample(id){
     }
   }
   document.getElementById('fnInput').value=e.f;
-  document.getElementById('exactInput').value=e.exact;
   document.getElementById('t0Input').value=e.t0;
   document.getElementById('y0Input').value=e.y0;
   document.getElementById('tEndInput').value=e.tEnd;
@@ -1774,7 +1788,23 @@ var PCONFIG={responsive:true, scrollZoom:true, displaylogo:false,
   modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d'],
   toImageButtonOptions:{filename:'ivp-methods'}};
 
+/* LaTeX for an expression, falling back to the raw text if it can't be parsed. */
+function safeTex(expr){ try{ return math.parse(expr).toTex(); }catch(e){ return expr; } }
+/* Caption above the solution plot: the ODE, plus the exact solution for a
+   built-in example, or a note that a numerical reference is being used. */
+function updateSolnEqn(P){
+  var el=document.getElementById('solnEqn'); if(!el) return;
+  var html="\\(y' = "+safeTex(P.fExpr)+"\\)";
+  if (P.hasExact && P.exExpr){
+    html+='<span class="eqsep">|</span>'+"\\(y(t) = "+safeTex(P.exExpr)+"\\)";
+  } else {
+    html+=' <span class="soln-eqn-ref">&middot; high-accuracy numerical reference</span>';
+  }
+  el.innerHTML=html;
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(function(){});
+}
 function plotSolution(P,results){
+  updateSolnEqn(P);
   var h=parseInt(document.getElementById('sizeSlider').value,10);
   var xr=linspace(P.t0,P.tEnd,600), yr=xr.map(function(t){return P.ref(t);});
   var traces=[{x:xr, y:yr, mode:'lines', name:P.refName,
@@ -2145,7 +2175,7 @@ function init(){
   document.getElementById('liveChk').addEventListener('change', function(e){ live=e.target.checked; });
 
   /* problem fields */
-  ['fnInput','exactInput','t0Input','y0Input','tEndInput'].forEach(function(idf){
+  ['fnInput','t0Input','y0Input','tEndInput'].forEach(function(idf){
     var el=document.getElementById(idf);
     el.addEventListener('change', function(){
       if (idf==='t0Input'||idf==='tEndInput'){ setN(lastN); }
