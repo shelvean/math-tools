@@ -92,6 +92,8 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .mbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
 .mbtn .mdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:.25rem;vertical-align:baseline;}
 .mbtn.active .mdot{background:#fff!important;}
+.mbtn-dis{opacity:.38;cursor:not-allowed;}
+.mbtn-dis:hover{border-color:var(--bdr2);color:var(--txt2);background:var(--card);}
 @media(max-width:640px){.mgrid{grid-template-columns:repeat(2,1fr);}}
 /* Two-col */
 .two-col{display:flex;gap:1.25rem;align-items:flex-start;margin-bottom:.875rem;}
@@ -709,8 +711,20 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <p class="note" id="lamNote" style="margin:.1rem 0 0;">Drag the slider or type an exact \(\lambda\) (any value); large negative makes \(y'=\lambda y\) stiff.</p>
       </div>
 
+      <!-- Adaptive step size -->
+      <div class="ctl-block" id="adaptBlock">
+        <label class="ck"><input type="checkbox" id="adaptChk"> Adaptive step size</label>
+        <div id="tolRow" hidden>
+          <div class="srow" style="margin-top:.45rem;">
+            <input type="range" id="tolSlider" min="2" max="12" step="1" value="6" aria-label="Tolerance exponent">
+            <span class="sval" id="tolVal" style="min-width:6.5rem;">tol = 10⁻⁶</span>
+          </div>
+          <p class="note" style="margin:.3rem 0 0;">Error-controlled stepping to this tolerance. Only RK4, Tsitouras 5(4) and Dormand&ndash;Prince 5(4) run; other methods are disabled and the stability panel (a fixed-step notion) is hidden.</p>
+        </div>
+      </div>
+
       <!-- Number of steps -->
-      <div class="ctl-block">
+      <div class="ctl-block" id="stepBlock">
         <h4>Number of steps \(N\)</h4>
         <div class="srow">
           <input type="range" id="nSlider" min="1" max="1000" step="1" value="8"
@@ -1606,7 +1620,10 @@ function buildMethodButtons(){
       b.setAttribute('aria-pressed', selected[id]?'true':'false');
       b.innerHTML='<span class="mdot" style="background:'+m.color+'"></span>'+m.label;
       if (selected[id]){ b.classList.add('active'); b.style.background=m.color; }
+      var disabled = adaptiveMode && !adaptiveSupported(id);
+      if (disabled){ b.disabled=true; b.classList.add('mbtn-dis'); b.title='Not available in adaptive mode'; b.setAttribute('aria-disabled','true'); }
       b.addEventListener('click', function(){
+        if (b.disabled) return;
         selected[id]=!selected[id];
         if (selected[id]){ b.classList.add('active'); b.style.background=m.color; b.setAttribute('aria-pressed','true'); }
         else { b.classList.remove('active'); b.style.background=''; b.setAttribute('aria-pressed','false'); }
@@ -1635,6 +1652,83 @@ function updateFamCount(fam){
   el.textContent=n; if (n) el.removeAttribute('hidden'); else el.setAttribute('hidden','');
 }
 function selectedIds(){ return MET.map(function(m){return m.id;}).filter(function(id){return selected[id];}); }
+
+/* ============================================================
+   Adaptive (error-controlled) stepping
+   ============================================================ */
+var adaptiveMode=false;
+var ADAPT_IDS=['rk4','dopri5','tsit5'];
+function adaptiveSupported(id){ return ADAPT_IDS.indexOf(id)>=0; }
+function currentTol(){ var k=parseInt(document.getElementById('tolSlider').value,10); return Math.pow(10,-(isFinite(k)?k:6)); }
+/* 7-stage embedded tableaus; e = b(order 5) − b̂(order 4) gives the local error
+   estimate err = h·Σ e_i k_i used to drive the step-size controller. */
+var ARK={
+  dopri5:{ c:[0,1/5,3/10,4/5,8/9,1,1],
+    A:[[],[1/5],[3/40,9/40],[44/45,-56/15,32/9],[19372/6561,-25360/2187,64448/6561,-212/729],
+       [9017/3168,-355/33,46732/5247,49/176,-5103/18656],[35/384,0,500/1113,125/192,-2187/6784,11/84]],
+    b:[35/384,0,500/1113,125/192,-2187/6784,11/84,0],
+    e:[71/57600,0,-71/16695,71/1920,-17253/339200,22/525,-1/40] },
+  tsit5:{ c:[0,0.161,0.327,0.9,0.9800255409045097,1,1],
+    A:[[],[0.161],[-0.008480655492356989,0.335480655492357],[2.8971530571054935,-6.359448489975075,4.3622954328695815],
+       [5.325864828439257,-11.748883564062828,7.4955393428898365,-0.09249506636175525],
+       [5.86145544294642,-12.92096931784711,8.159367898576159,-0.071584973281401,-0.028269050394068383],
+       [0.09646076681806523,0.01,0.4798896504144996,1.379008574103742,-3.290069515436081,2.324710524099774]],
+    b:[0.09646076681806523,0.01,0.4798896504144996,1.379008574103742,-3.290069515436081,2.324710524099774,0],
+    e:[-0.00178001105222577714,-0.0008164344596567469,0.007880878010261995,-0.1447110071732629,0.5823571654525552,-0.45808210592918697,0.015151515151515152] }
+};
+var ADAPT_CAP=50000;
+/* Error-controlled integration with a standard step-size controller (safety
+   0.9, exponent 1/(q+1) with q=4, growth limited after a rejected step). RK4
+   has no embedded estimate, so it uses step-doubling (one step h vs. two of
+   h/2, Richardson error ≈ |y₂−y₁|/15). */
+function integrateAdaptive(id,P,tol){
+  var f=P.f, t0=P.t0, tEnd=P.tEnd, est;
+  if (id==='rk4'){
+    var st=makeOneStep('rk4',P);
+    est=function(t,y,h,nf){ var yb=st(t,y,h), ym=st(t,y,h/2), y2=st(t+h/2,ym,h/2); nf.n+=11;
+      return {ynew:y2+(y2-yb)/15, err:Math.abs(y2-yb)/15}; };
+  } else {
+    var T=ARK[id];
+    est=function(t,y,h,nf){ var s=T.c.length,k=new Array(s),i,j;
+      for(i=0;i<s;i++){ var yi=y; for(j=0;j<i;j++) yi+=h*T.A[i][j]*k[j]; k[i]=f(t+T.c[i]*h,yi); nf.n++; }
+      var yn=y,ev=0; for(i=0;i<s;i++){ yn+=h*T.b[i]*k[i]; ev+=T.e[i]*k[i]; }
+      return {ynew:yn, err:Math.abs(h*ev)}; };
+  }
+  var y=P.y0, t=t0, h=(tEnd-t0)/100, acc=0, rej=0, nf={n:0}, ts=[t0], ys=[P.y0], ok=true, lastRej=false;
+  var hmin=(tEnd-t0)*1e-12;
+  function fin(v){ return isFinite(v) && Math.abs(v)<1e12; }
+  while (t < tEnd-1e-13){
+    if (acc+rej>ADAPT_CAP){ ok=false; break; }
+    if (h<hmin){ ok=false; break; }
+    if (t+h>tEnd) h=tEnd-t;
+    var r=est(t,y,h,nf);
+    if (!fin(r.ynew)){ rej++; h*=0.2; lastRej=true; continue; }
+    var sc=tol+tol*Math.max(Math.abs(y),Math.abs(r.ynew));
+    var en=r.err/sc; if(!isFinite(en)) en=1e30;
+    if (en<=1){ t+=h; y=r.ynew; acc++; ts.push(t); ys.push(y);
+      var fac=0.9*Math.pow(Math.max(en,1e-30),-0.2); fac=Math.min(lastRej?1:5, Math.max(0.2,fac)); h*=fac; lastRej=false; }
+    else { rej++; h*=Math.min(1, Math.max(0.2, 0.9*Math.pow(en,-0.2))); lastRej=true; }
+  }
+  return {id:id, ts:ts, ys:ys, N:acc, acc:acc, rej:rej, nfev:nf.n, ok:ok, stable:ok, h:(tEnd-t0)/Math.max(acc,1)};
+}
+/* Reflect the adaptive toggle across the controls, method buttons and panels. */
+function updateAdaptiveUI(){
+  adaptiveMode=document.getElementById('adaptChk').checked;
+  var tolRow=document.getElementById('tolRow'), stepBlock=document.getElementById('stepBlock');
+  if (adaptiveMode){ tolRow.removeAttribute('hidden'); stepBlock.setAttribute('hidden',''); }
+  else { tolRow.setAttribute('hidden',''); stepBlock.removeAttribute('hidden'); }
+  /* hide the stability panel (a fixed-step concept) while adaptive */
+  var stabBtn=document.getElementById('stabSecBtn'), stabWrap=stabBtn?stabBtn.closest('.pwrap'):null;
+  if (stabWrap) stabWrap.style.display = adaptiveMode ? 'none' : '';
+  /* ensure at least the adaptive methods are active when entering the mode */
+  if (adaptiveMode && !selectedIds().some(adaptiveSupported)) ADAPT_IDS.forEach(function(id){ selected[id]=true; });
+  buildMethodButtons();
+  refreshStabSelect();
+}
+function updateTolLabel(){
+  var k=parseInt(document.getElementById('tolSlider').value,10);
+  document.getElementById('tolVal').innerHTML='tol = 10⁻'+String(k).replace(/[0-9]/g,function(d){return '⁰¹²³⁴⁵⁶⁷⁸⁹'[+d];});
+}
 
 /* ----- examples dropdown ----- */
 function buildExCombo(){
@@ -1873,7 +1967,40 @@ function plotError(P,results){
   errInited=true;
 }
 
+/* Work–precision diagram for adaptive mode: run each method over a range of
+   tolerances and plot achieved error against the number of accepted steps.
+   Lower / further-right is more efficient (less error for the same work). */
+function plotWorkPrecision(P){
+  var tols=[1e-2,1e-3,1e-4,1e-5,1e-6,1e-7,1e-8,1e-9,1e-10,1e-11];
+  var traces=[], allX=[], allY=[];
+  selectedIds().filter(adaptiveSupported).forEach(function(id){
+    var m=METBY[id], xx=[], yy=[];
+    tols.forEach(function(tol){
+      var R=integrateAdaptive(id,P,tol); if(!R.ok) return;
+      var e=methodError(R,P); if(!(isFinite(e)&&e>0)) return;
+      xx.push(R.acc); yy.push(e);
+    });
+    if (!xx.length) return;
+    allX.push(xx); allY.push(yy);
+    traces.push({x:xx, y:yy, mode:'lines+markers', name:m.label,
+      line:{color:m.color, width:1.8}, marker:{color:m.color, size:6},
+      hovertemplate:'steps=%{x}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'});
+  });
+  var xr=dataRange(allX), yr=dataRange(allY);
+  var xTicks=xr?logTicks(xr.lo,xr.hi,'decimal'):{};
+  var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
+  var layout={ height:340, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
+    xaxis:Object.assign({title:{text:'accepted steps'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
+    yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
+    legend:{orientation:'h', y:1.16, x:0, font:{size:11}},
+    annotations:[{ xref:'paper', yref:'paper', x:0.99, y:0.98, xanchor:'right', yanchor:'top',
+      text:'work–precision: lower-right = more accurate per step', showarrow:false, font:{size:10, color:'#9ca3af'} }],
+    paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
+  Plotly.react('convPlot', traces, layout, PCONFIG);
+  convInited=true;
+}
 function plotConvergence(P){
+  if (adaptiveMode){ plotWorkPrecision(P); return; }
   var ids=selectedIds();
   var hFloor=spanT()/200000;
   /* Start the refinement sweep at spanT/4 by default, but honor a per-example
@@ -2070,27 +2197,47 @@ function methodError(R,P){
 /* ----- results table ----- */
 function buildResultTable(P,results){
   var host=document.getElementById('resWrap');
-  if (!results.length){ host.innerHTML='<div class="res-empty">No methods selected.</div>'; return; }
-  var rows='<table class="res-tbl"><thead><tr>'+
-    '<th>Method</th><th>p</th><th>N</th><th>h</th><th>'+NORM_LABEL[selectedNorm()]+'</th></tr></thead><tbody>';
-  results.forEach(function(R){
-    var m;
-    if (!R){ return; }
-    m=METBY[R.id];
-    var err=methodError(R,P);
-    var bad=!R.stable || !isFinite(err);
-    rows+='<tr>'+
-      '<td class="mname"><span class="mdot" style="background:'+m.color+'"></span>'+m.label+'</td>'+
-      '<td>'+m.order+'</td>'+
-      '<td>'+R.N+'</td>'+
-      '<td>'+fmt(R.h)+'</td>'+
-      '<td class="'+(bad?'bad':'')+'">'+(bad?'unstable':fmtErr(err))+'</td>'+
-      '</tr>';
-  });
-  rows+='</tbody></table>';
-  /* note for skipped taylor */
-  var skipped=selectedIds().filter(function(id){ return METBY[id].kind==='taylor' && !P.taylorOK; });
-  if (skipped.length) rows+='<p class="note" style="margin:.4rem .25rem 0;color:#92400e;">Taylor methods need symbolic derivatives of f; this f could not be differentiated, so they were skipped.</p>';
+  if (!results.length){ host.innerHTML='<div class="res-empty">'+(adaptiveMode?'Select RK4, Tsitouras or Dormand–Prince.':'No methods selected.')+'</div>'; return; }
+  var rows;
+  if (adaptiveMode){
+    rows='<table class="res-tbl"><thead><tr>'+
+      '<th>Method</th><th>p</th><th>steps</th><th>rej.</th><th>f-evals</th><th>'+NORM_LABEL[selectedNorm()]+'</th></tr></thead><tbody>';
+    results.forEach(function(R){
+      if (!R) return; var m=METBY[R.id];
+      var err=methodError(R,P);
+      var bad=!R.ok || !isFinite(err);
+      rows+='<tr>'+
+        '<td class="mname"><span class="mdot" style="background:'+m.color+'"></span>'+m.label+'</td>'+
+        '<td>'+m.order+'</td>'+
+        '<td>'+R.acc+'</td>'+
+        '<td>'+R.rej+'</td>'+
+        '<td>'+R.nfev+'</td>'+
+        '<td class="'+(bad?'bad':'')+'">'+(R.ok?fmtErr(err):'did not converge')+'</td>'+
+        '</tr>';
+    });
+    rows+='</tbody></table>';
+  } else {
+    rows='<table class="res-tbl"><thead><tr>'+
+      '<th>Method</th><th>p</th><th>N</th><th>h</th><th>'+NORM_LABEL[selectedNorm()]+'</th></tr></thead><tbody>';
+    results.forEach(function(R){
+      var m;
+      if (!R){ return; }
+      m=METBY[R.id];
+      var err=methodError(R,P);
+      var bad=!R.stable || !isFinite(err);
+      rows+='<tr>'+
+        '<td class="mname"><span class="mdot" style="background:'+m.color+'"></span>'+m.label+'</td>'+
+        '<td>'+m.order+'</td>'+
+        '<td>'+R.N+'</td>'+
+        '<td>'+fmt(R.h)+'</td>'+
+        '<td class="'+(bad?'bad':'')+'">'+(bad?'unstable':fmtErr(err))+'</td>'+
+        '</tr>';
+    });
+    rows+='</tbody></table>';
+    /* note for skipped taylor */
+    var skipped=selectedIds().filter(function(id){ return METBY[id].kind==='taylor' && !P.taylorOK; });
+    if (skipped.length) rows+='<p class="note" style="margin:.4rem .25rem 0;color:#92400e;">Taylor methods need symbolic derivatives of f; this f could not be differentiated, so they were skipped.</p>';
+  }
   host.innerHTML=rows;
 }
 
@@ -2105,19 +2252,28 @@ function solve(){
   try{ P=readProblem(); showErr(''); }
   catch(e){ showErr('Could not read the problem: '+(e.message||e)); return; }
   lastP=P;
-  /* current h from numeric field (authoritative) */
-  var Nfield=parseInt(document.getElementById('nInput').value,10);
-  if (isFinite(Nfield) && Nfield>=1){ lastN=Nfield; lastH=spanT()/Nfield; }
   var results=[];
-  selectedIds().forEach(function(id){ results.push(integrate(id,P,lastH)); });
+  if (adaptiveMode){
+    var tol=currentTol();
+    selectedIds().filter(adaptiveSupported).forEach(function(id){ results.push(integrateAdaptive(id,P,tol)); });
+  } else {
+    /* current h from numeric field (authoritative) */
+    var Nfield=parseInt(document.getElementById('nInput').value,10);
+    if (isFinite(Nfield) && Nfield>=1){ lastN=Nfield; lastH=spanT()/Nfield; }
+    selectedIds().forEach(function(id){ results.push(integrate(id,P,lastH)); });
+  }
   results=results.filter(function(r){return r;});
   lastResults=results;
   plotSolution(P,results);
   buildResultTable(P,results);
   if (isOpen('errSecBody')) plotError(P,results);
   if (isOpen('convSecBody')) plotConvergence(P);
-  if (isOpen('stabSecBody')) plotStability(P);
-  announce('Solved '+results.length+' method'+(results.length===1?'':'s')+' with N = '+lastN+' steps (h = '+fmt(lastH)+').');
+  if (!adaptiveMode && isOpen('stabSecBody')) plotStability(P);
+  if (adaptiveMode){
+    announce('Solved '+results.length+' adaptive method'+(results.length===1?'':'s')+' to tolerance '+currentTol().toExponential(0)+'.');
+  } else {
+    announce('Solved '+results.length+' method'+(results.length===1?'':'s')+' with N = '+lastN+' steps (h = '+fmt(lastH)+').');
+  }
 }
 
 /* debounce for live updates */
@@ -2153,6 +2309,10 @@ function init(){
   lamSlider.addEventListener('input', function(){ lamInput.value=lamSlider.value; updateLamLabel(); scheduleSolve(); });
   lamInput.addEventListener('input', function(){ var v=parseFloat(lamInput.value); if(isFinite(v)) lamSlider.value=v; updateLamLabel(); scheduleSolve(); });
 
+  /* adaptive toggle + tolerance */
+  document.getElementById('adaptChk').addEventListener('change', function(){ updateAdaptiveUI(); solve(); });
+  document.getElementById('tolSlider').addEventListener('input', function(){ updateTolLabel(); scheduleSolve(); });
+
   /* steps slider <-> exact number */
   var nSlider=document.getElementById('nSlider'), nInput=document.getElementById('nInput');
   nSlider.addEventListener('input', function(){ setN(parseInt(nSlider.value,10)); scheduleSolve(); });
@@ -2185,6 +2345,7 @@ function init(){
   document.getElementById('solveBtn').addEventListener('click', solve);
   document.getElementById('resetBtn').addEventListener('click', function(){
     selected={}; ['euler','rk4'].forEach(function(id){selected[id]=true;});
+    document.getElementById('adaptChk').checked=false; updateAdaptiveUI();
     buildMethodButtons(); refreshStabSelect();
     loadExample(EXAMPLES[0].id);
   });
@@ -2216,6 +2377,8 @@ function init(){
 
   /* initial load */
   updateLamLabel();
+  updateTolLabel();
+  updateAdaptiveUI();
   loadExample(EXAMPLES[0].id);
 }
 
