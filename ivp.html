@@ -1261,6 +1261,7 @@ function readProblem(){
   if (!isFinite(f(t0,y0))) throw new Error('f(t,y) does not evaluate to a number at the start.');
 
   var P = {f:f, fy:fy, t0:t0, y0:y0, tEnd:tEnd, lambda:lambda, fExpr:fExpr};
+  P.hasLambda = /\blambda\b/.test(fExpr);
 
   /* Trusted exact solution: taken only from a built-in example whose equation
      and initial data are unedited. It is never typed by the user — a wrong
@@ -1714,16 +1715,15 @@ function loadExample(id){
   document.getElementById('t0Input').value=e.t0;
   document.getElementById('y0Input').value=e.y0;
   document.getElementById('tEndInput').value=e.tEnd;
-  /* lambda */
-  var lamBlock=document.getElementById('lamBlock'), lamSlider=document.getElementById('lamSlider');
+  /* lambda: configure the slider range/default from the example when provided,
+     but the control is only shown when the equation actually contains λ. */
+  var lamSlider=document.getElementById('lamSlider');
   if (e.lam){
-    lamBlock.style.display='';
     lamSlider.min=e.lam.min; lamSlider.max=e.lam.max; lamSlider.value=e.lam.val;
     document.getElementById('lamInput').value=e.lam.val;
     updateLamLabel();
-  } else {
-    lamBlock.style.display='none';
   }
+  updateLamVisibility();
   document.getElementById('lamNote').textContent=e.note||'';
   /* optional per-example method selection */
   if (e.methods){
@@ -1748,6 +1748,10 @@ function updateLamLabel(){
   var v=currentLambda();
   document.getElementById('lamVal').textContent=(v<0?'−':'')+Math.abs(v).toFixed(1);
 }
+/* The λ slider is a parameter of the ODE, so it is only meaningful — and only
+   shown — when the right-hand side actually contains the symbol lambda. */
+function eqHasLambda(){ return /\blambda\b/.test(document.getElementById('fnInput').value); }
+function updateLamVisibility(){ document.getElementById('lamBlock').style.display = eqHasLambda() ? '' : 'none'; }
 
 /* ----- step-size slider (log scale) ----- */
 function spanT(){
@@ -2033,7 +2037,7 @@ function plotStability(P){
   }
   /* current z = h*lambda, clamped into the frame so it stays visible */
   var lamEff;
-  if (currentEx.lam) lamEff=P.lambda; else lamEff=P.fy(P.t0,P.y0);
+  if (P.hasLambda) lamEff=P.lambda; else lamEff=P.fy(P.t0,P.y0);
   var zr=lastH*lamEff, zi=0;
   var mxp=Math.max(W.x0+0.03*2*W.hw, Math.min(W.x1-0.03*2*W.hw, zr));
   var myp=Math.max(W.y0+0.03*2*W.hw, Math.min(W.y1-0.03*2*W.hw, zi));
@@ -2183,6 +2187,8 @@ function init(){
     });
     el.addEventListener('keydown', function(e){ if(e.key==='Enter') solve(); });
   });
+  /* show/hide the λ control live as the equation is typed */
+  document.getElementById('fnInput').addEventListener('input', updateLamVisibility);
 
   /* buttons */
   document.getElementById('solveBtn').addEventListener('click', solve);
