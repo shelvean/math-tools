@@ -13,7 +13,7 @@ HUB_PAGES = [
     ('dynamical.html', 'Dynamical Systems'),
     ('linear.html', 'Linear Algebra'),
     ('numerical.html', 'Numerical Methods'),
-    ('optim.html', 'Linear Programming'),
+    ('optim.html', 'Optimization'),
     ('pdftools.html', 'PDF Tools'),
 ]
 
