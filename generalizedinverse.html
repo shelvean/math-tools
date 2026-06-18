@@ -1437,22 +1437,72 @@ document.getElementById('contrastToggle').addEventListener('click', function() {
 <!-- feedback-mark:end -->
 <!-- dim-clamp:start -->
 <script>
-/* Cap matrix-dimension inputs (.dim-input) at an upper bound. The capture-phase
-   listeners run before each tool's own input/change handlers, so the tool never
-   reads a dimension larger than MAX_DIM — this covers typing, pasting, the
-   spinner, and the randomize/generate paths that read the field directly. */
+/* Bound matrix-dimension inputs (.dim-input). Capture-phase listeners run before
+   each tool's own input/change handlers, so the tool never reads an out-of-range
+   dimension (covers typing, pasting, spinner, and read-on-generate paths).
+     - value > 10           -> clamp to 10 and warn that the maximum dimension is 10
+     - not a natural 1..10  -> warn and revert to the tool's loaded example (#exampleBtn) */
 (function () {
   var MAX_DIM = 10;
-  function clampDim(el) {
-    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
-    var v = parseInt(el.value, 10);
-    if (isFinite(v) && v > MAX_DIM) el.value = MAX_DIM;
+
+  function warn(msg, el) {
+    var t = document.getElementById('dimClampWarn');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'dimClampWarn';
+      t.setAttribute('role', 'alert');
+      t.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);' +
+        'z-index:99999;background:#dc2626;color:#fff;padding:.6rem 1rem;border-radius:.5rem;' +
+        'font:600 .95rem -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;' +
+        'box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:90vw;text-align:center;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.style.display = 'none'; }, 3500);
+    if (el) {
+      var prev = el.style.outline;
+      el.style.outline = '2px solid #dc2626';
+      setTimeout(function () { el.style.outline = prev; }, 1500);
+    }
   }
-  document.addEventListener('input',  function (e) { clampDim(e.target); }, true);
-  document.addEventListener('change', function (e) { clampDim(e.target); }, true);
+
+  function loadExample() {
+    var btn = document.getElementById('exampleBtn');
+    if (btn) btn.click();
+  }
+
+  // Live: never let an out-of-range value be read (> MAX_DIM -> MAX_DIM).
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
+    var n = Number(el.value);
+    if (isFinite(n) && n > MAX_DIM) { el.value = MAX_DIM; warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+  }, true);
+
+  // Commit (blur / Enter / spinner): full validation.
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
+    var raw = (el.value || '').trim();
+    if (/^\d+$/.test(raw)) {
+      var num = parseInt(raw, 10);
+      if (num > MAX_DIM) { el.value = MAX_DIM; warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+      else if (num < 1)  { warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el); loadExample(); }
+    } else {
+      warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el);
+      loadExample();
+    }
+  }, true);
+
   function init() {
     var els = document.querySelectorAll('input.dim-input');
-    for (var i = 0; i < els.length; i++) { els[i].max = MAX_DIM; clampDim(els[i]); }
+    for (var i = 0; i < els.length; i++) {
+      els[i].max = MAX_DIM; els[i].min = 1; els[i].step = 1;
+      var n = Number(els[i].value);
+      if (isFinite(n) && n > MAX_DIM) els[i].value = MAX_DIM;
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
