@@ -2171,14 +2171,28 @@ function stabWindow(id){
     var bb=boundaryLocusBBox(id);
     if (bb.ok){ xmin=bb.xmin; xmax=bb.xmax; ymin=bb.ymin; ymax=bb.ymax; found=true; }
   } else {
-    var X0=-12, X1=4, Y0=-8, Y1=8, gx=130, gy=130;
-    for (var j=0;j<gy;j++){
-      var y=Y0+(Y1-Y0)*j/(gy-1);
-      for (var i=0;i<gx;i++){
-        var x=X0+(X1-X0)*i/(gx-1);
-        if (ampMax(id, cx(x,y))<=1.0000001){
-          found=true;
-          if(x<xmin)xmin=x; if(x>xmax)xmax=x; if(y<ymin)ymin=y; if(y>ymax)ymax=y;
+    /* Frame to the stability BOUNDARY (where |amp| crosses 1), not the stable
+       area. For bounded explicit regions the boundary is the region's outline,
+       so framing is unchanged; for A-/L-stable one-step methods (trapezoidal,
+       Gauss–Legendre, SDIRK2) the stable set is unbounded, so framing to its
+       extent would clip the only finite feature — the unstable lobe. Tracking
+       the boundary captures that lobe symmetrically instead. */
+    var X0=-16, X1=14, Y0=-12, Y1=12, gx=200, gy=200, i, j;
+    var amp=new Array(gy);
+    for (j=0;j<gy;j++){
+      var yy=Y0+(Y1-Y0)*j/(gy-1), row=new Array(gx);
+      for (i=0;i<gx;i++){ var a=ampMax(id, cx(X0+(X1-X0)*i/(gx-1), yy)); row[i]=isFinite(a)?a:2; }
+      amp[j]=row;
+    }
+    function inStab(v){ return v<=1.0000001; }
+    for (j=1;j<gy-1;j++){
+      var yv=Y0+(Y1-Y0)*j/(gy-1);
+      for (i=1;i<gx-1;i++){
+        var c=inStab(amp[j][i]);
+        if (inStab(amp[j][i-1])!==c || inStab(amp[j][i+1])!==c ||
+            inStab(amp[j-1][i])!==c || inStab(amp[j+1][i])!==c){
+          var xv=X0+(X1-X0)*i/(gx-1); found=true;
+          if(xv<xmin)xmin=xv; if(xv>xmax)xmax=xv; if(yv<ymin)ymin=yv; if(yv>ymax)ymax=yv;
         }
       }
     }
@@ -2195,7 +2209,16 @@ function plotStability(P){
   var id=document.getElementById('stabSelect').value;
   if (!id){ Plotly.purge('stabPlot'); return; }
   var W=stabWindow(id);
-  var nx=141, ny=141;
+  /* Match the data window to the plot's pixel aspect ratio so the equal-aspect
+     (scaleanchor) constraint is already satisfied — otherwise Plotly overrides
+     the set range and renders the y-axis asymmetrically, clipping the region. */
+  var box=document.getElementById('stabPlot');
+  var innerW=Math.max(160,(box&&box.clientWidth?box.clientWidth:640)-62), innerH=376;
+  var aspect=innerW/innerH;
+  var yhw=W.hw, xhw=W.hw*Math.max(1,aspect);
+  if (aspect<1) { yhw=W.hw/aspect; xhw=W.hw; }
+  W.x0=W.cx-xhw; W.x1=W.cx+xhw; W.y0=W.cy-yhw; W.y1=W.cy+yhw;
+  var nx=151, ny=Math.max(60,Math.round(151/Math.max(1,aspect)));
   var xs=linspace(W.x0,W.x1,nx), ys=linspace(W.y0,W.y1,ny);
   var zval=new Array(ny);
   for (var jy=0;jy<ny;jy++){
