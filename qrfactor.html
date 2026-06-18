@@ -1307,7 +1307,9 @@ document.getElementById('contrastToggle').addEventListener('click', function() {
    each tool's own input/change handlers, so the tool never reads an out-of-range
    dimension (covers typing, pasting, spinner, and read-on-generate paths).
      - value > 10           -> clamp to 10 and warn that the maximum dimension is 10
-     - not a natural 1..10  -> warn and revert to the tool's loaded example (#exampleBtn) */
+     - not a natural 1..10  -> warn and revert to the tool's loaded example
+   Revert order: click #exampleBtn -> call window.loadExample() -> restore the last
+   valid value (and re-generate) for tools that have no example. */
 (function () {
   var MAX_DIM = 10;
 
@@ -1334,9 +1336,19 @@ document.getElementById('contrastToggle').addEventListener('click', function() {
     }
   }
 
-  function loadExample() {
+  function revert(el) {
     var btn = document.getElementById('exampleBtn');
-    if (btn) btn.click();
+    if (btn) { btn.click(); return; }
+    if (typeof window.loadExample === 'function') { try { window.loadExample(); return; } catch (e) {} }
+    // Fallback for tools with no example: restore last valid value (or a small default).
+    var lv = el.getAttribute('data-last-valid');
+    el.value = (lv !== null && lv !== '') ? lv : String(Math.min(3, MAX_DIM));
+    if (typeof window.generateMatrix === 'function') { try { window.generateMatrix(); } catch (e) {} }
+  }
+
+  function remember(el) {
+    var raw = (el.value || '').trim();
+    if (/^\d+$/.test(raw) && +raw >= 1 && +raw <= MAX_DIM) el.setAttribute('data-last-valid', raw);
   }
 
   // Live: never let an out-of-range value be read (> MAX_DIM -> MAX_DIM).
@@ -1345,6 +1357,7 @@ document.getElementById('contrastToggle').addEventListener('click', function() {
     if (!el || !el.classList || !el.classList.contains('dim-input')) return;
     var n = Number(el.value);
     if (isFinite(n) && n > MAX_DIM) { el.value = MAX_DIM; warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+    remember(el);
   }, true);
 
   // Commit (blur / Enter / spinner): full validation.
@@ -1354,11 +1367,12 @@ document.getElementById('contrastToggle').addEventListener('click', function() {
     var raw = (el.value || '').trim();
     if (/^\d+$/.test(raw)) {
       var num = parseInt(raw, 10);
-      if (num > MAX_DIM) { el.value = MAX_DIM; warn('Maximum dimension is ' + MAX_DIM + '.', el); }
-      else if (num < 1)  { warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el); loadExample(); }
+      if (num > MAX_DIM) { el.value = MAX_DIM; el.setAttribute('data-last-valid', String(MAX_DIM)); warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+      else if (num < 1)  { warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el); revert(el); }
+      else { el.setAttribute('data-last-valid', raw); }
     } else {
       warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el);
-      loadExample();
+      revert(el);
     }
   }, true);
 
@@ -1368,6 +1382,7 @@ document.getElementById('contrastToggle').addEventListener('click', function() {
       els[i].max = MAX_DIM; els[i].min = 1; els[i].step = 1;
       var n = Number(els[i].value);
       if (isFinite(n) && n > MAX_DIM) els[i].value = MAX_DIM;
+      remember(els[i]);
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
