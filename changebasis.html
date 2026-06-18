@@ -393,7 +393,7 @@ body { background: var(--bg-page); color: var(--text-primary); }
     <fieldset id="inputSection" class="p-4 rounded-lg flex justify-center items-center space-x-4" style="background: var(--bg-section); border:1px solid var(--border-color);">
       <legend class="sr-only">Step 1: Set the matrix dimension</legend>
       <label for="size" style="color: var(--text-primary);">Matrix size \(n\):</label>
-      <input type="number" id="size" min="1" max="10" required style="width:4rem;padding:.5rem;border:1px solid var(--border-color);border-radius:.375rem;background: var(--bg-card);color: var(--text-primary);min-height:44px;text-align:center;" aria-label="Matrix size n">
+      <input type="number" id="size" class="dim-input" min="1" max="10" required style="width:4rem;padding:.5rem;border:1px solid var(--border-color);border-radius:.375rem;background: var(--bg-card);color: var(--text-primary);min-height:44px;text-align:center;" aria-label="Matrix size n">
       <button type="button" id="genBtn" class="btn btn-success" aria-label="Generate empty V and U matrices">Generate Matrices</button>
       <button type="button" id="exampleBtn" class="btn btn-accent" aria-label="Load a 2 by 2 sample example">Load Example</button>
     </fieldset>
@@ -1272,7 +1272,96 @@ body { background: var(--bg-page); color: var(--text-primary); }
 })();
 </script>
 <!-- feedback-mark:end -->
-<!-- usage-tracking:start -->
+<!-- dim-clamp:start -->
+<script>
+/* Bound matrix-dimension inputs (.dim-input). Capture-phase listeners run before
+   each tool's own input/change handlers, so the tool never reads an out-of-range
+   dimension (covers typing, pasting, spinner, and read-on-generate paths).
+     - value > 10           -> clamp to 10 and warn that the maximum dimension is 10
+     - not a natural 1..10  -> warn and revert to the tool's loaded example
+   Revert order: click #exampleBtn -> call window.loadExample() -> restore the last
+   valid value (and re-generate) for tools that have no example. */
+(function () {
+  var MAX_DIM = 10;
+
+  function warn(msg, el) {
+    var t = document.getElementById('dimClampWarn');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'dimClampWarn';
+      t.setAttribute('role', 'alert');
+      t.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);' +
+        'z-index:99999;background:#dc2626;color:#fff;padding:.6rem 1rem;border-radius:.5rem;' +
+        'font:600 .95rem -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;' +
+        'box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:90vw;text-align:center;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.style.display = 'none'; }, 3500);
+    if (el) {
+      var prev = el.style.outline;
+      el.style.outline = '2px solid #dc2626';
+      setTimeout(function () { el.style.outline = prev; }, 1500);
+    }
+  }
+
+  function revert(el) {
+    var btn = document.getElementById('exampleBtn');
+    if (btn) { btn.click(); return; }
+    if (typeof window.loadExample === 'function') { try { window.loadExample(); return; } catch (e) {} }
+    // Fallback for tools with no example: restore last valid value (or a small default).
+    var lv = el.getAttribute('data-last-valid');
+    el.value = (lv !== null && lv !== '') ? lv : String(Math.min(3, MAX_DIM));
+    if (typeof window.generateMatrix === 'function') { try { window.generateMatrix(); } catch (e) {} }
+  }
+
+  function remember(el) {
+    var raw = (el.value || '').trim();
+    if (/^\d+$/.test(raw) && +raw >= 1 && +raw <= MAX_DIM) el.setAttribute('data-last-valid', raw);
+  }
+
+  // Live: never let an out-of-range value be read (> MAX_DIM -> MAX_DIM).
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
+    var n = Number(el.value);
+    if (isFinite(n) && n > MAX_DIM) { el.value = MAX_DIM; warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+    remember(el);
+  }, true);
+
+  // Commit (blur / Enter / spinner): full validation.
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
+    var raw = (el.value || '').trim();
+    if (/^\d+$/.test(raw)) {
+      var num = parseInt(raw, 10);
+      if (num > MAX_DIM) { el.value = MAX_DIM; el.setAttribute('data-last-valid', String(MAX_DIM)); warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+      else if (num < 1)  { warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el); revert(el); }
+      else { el.setAttribute('data-last-valid', raw); }
+    } else {
+      warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el);
+      revert(el);
+    }
+  }, true);
+
+  function init() {
+    var els = document.querySelectorAll('input.dim-input');
+    for (var i = 0; i < els.length; i++) {
+      els[i].max = MAX_DIM; els[i].min = 1; els[i].step = 1;
+      var n = Number(els[i].value);
+      if (isFinite(n) && n > MAX_DIM) els[i].value = MAX_DIM;
+      remember(els[i]);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+<!-- dim-clamp:end -->
+  <!-- usage-tracking:start -->
 <script>
 /* Lightweight usage tracking: auto-instruments common interactions and sends
    custom events to Google Analytics. Guarded so a missing/blocked gtag never
