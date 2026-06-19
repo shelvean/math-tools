@@ -107,6 +107,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .pw-span{grid-column:1 / -1;}
 @media(max-width:1100px){.col-plot{grid-template-columns:1fr;}.pw-span{grid-column:auto;}}
 @media(max-width:860px){.two-col{flex-direction:column;}.col-ctrl,.col-plot{width:100%;flex:none;}}
+/* Wide desktop: shift the page left to use the extra width, put the big
+   Solution plot on the left and stack Error growth + Stability region on the
+   top right, with Convergence full width below. */
+@media(min-width:1500px){
+  .card{max-width:1720px;margin-left:2rem;margin-right:auto;}
+  .col-plot{grid-template-columns:minmax(0,1.9fr) minmax(0,1fr);
+    grid-template-areas:"soln err" "soln stab" "conv conv";align-items:start;}
+  .pw-soln{grid-area:soln;}
+  .pw-err{grid-area:err;}
+  .pw-stab{grid-area:stab;}
+  .pw-conv{grid-area:conv;}
+}
 /* Controls */
 .cbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;margin-bottom:.6rem;
   background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);padding:.5rem .7rem;}
@@ -825,7 +837,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
 
     <!-- Plots -->
     <div class="col-plot">
-      <div class="pwrap pw-span">
+      <div class="pwrap pw-span pw-soln">
         <div class="phdr"><span class="pdot" style="background:var(--vio);" aria-hidden="true"></span><span>Solution &amp; approximations</span></div>
         <div id="solnEqn" class="soln-eqn" aria-live="polite"></div>
         <div id="solnPlot"></div>
@@ -848,7 +860,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       </div>
 
       <!-- Error vs t -->
-      <div class="pwrap">
+      <div class="pwrap pw-err">
         <button type="button" id="errSecBtn" class="sec-btn" aria-expanded="true" aria-controls="errSecBody">
           <span>Error growth &mdash; \(|y_n - y(t_n)|\) vs. \(t\)</span>
           <span class="sec-icon" id="errSecIcon" aria-hidden="true">−</span>
@@ -864,7 +876,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       </div>
 
       <!-- Stability (beside Error) -->
-      <div class="pwrap">
+      <div class="pwrap pw-stab">
         <button type="button" id="stabSecBtn" class="sec-btn" aria-expanded="true" aria-controls="stabSecBody">
           <span>Stability &mdash; region of absolute stability</span>
           <span class="sec-icon" id="stabSecIcon" aria-hidden="true">−</span>
@@ -884,7 +896,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       </div>
 
       <!-- Convergence (full width) -->
-      <div class="pwrap pw-span">
+      <div class="pwrap pw-span pw-conv">
         <button type="button" id="convSecBtn" class="sec-btn" aria-expanded="true" aria-controls="convSecBody">
           <span>Convergence &mdash; error vs. step size \(h\)</span>
           <span class="sec-icon" id="convSecIcon" aria-hidden="true">−</span>
@@ -2509,6 +2521,34 @@ function showErr(msg){
   if (msg){ el.textContent=msg; el.classList.add('show'); }
   else el.classList.remove('show');
 }
+/* On the wide-desktop layout the Solution sits left of a stacked Error +
+   Stability column; grow the Solution plot to match that column's height so the
+   left side fills cleanly. On narrower layouts the graph-height slider rules. */
+var WIDE_MIN=1500;
+/* The plots are responsive (autosize to their container), so height is driven
+   by the container's CSS height — set it, then ask Plotly to resize. */
+function setSolnHeight(px){
+  var solnDiv=document.getElementById('solnPlot');
+  solnDiv.style.height=Math.round(px)+'px';
+  if(solnInited && window.Plotly) Plotly.Plots.resize(solnDiv);
+}
+function syncSolnHeight(){
+  var solnDiv=document.getElementById('solnPlot');
+  if(!solnDiv) return;
+  if(window.innerWidth>=WIDE_MIN){
+    var errPanel=document.getElementById('errSecBtn').closest('.pwrap');
+    var stabPanel=document.getElementById('stabSecBtn').closest('.pwrap');
+    var solnPanel=solnDiv.closest('.pwrap');
+    if(errPanel && stabPanel && solnPanel && stabPanel.offsetParent!==null){
+      var colH=stabPanel.getBoundingClientRect().bottom - errPanel.getBoundingClientRect().top;
+      var chrome=solnPanel.getBoundingClientRect().height - solnDiv.getBoundingClientRect().height;
+      setSolnHeight(Math.max(360, colH - chrome));
+      return;
+    }
+  }
+  var h=parseInt(document.getElementById('sizeSlider').value,10);
+  if(isFinite(h)) setSolnHeight(h);
+}
 function solve(){
   var P;
   try{ P=readProblem(); showErr(''); }
@@ -2535,6 +2575,7 @@ function solve(){
   if (isOpen('errSecBody')) plotError(P,results);
   if (isOpen('convSecBody')) plotConvergence(P);
   if (!adaptiveMode && isOpen('stabSecBody')) plotStability(P);
+  syncSolnHeight();
   if (adaptiveMode){
     announce('Solved '+results.length+' adaptive method'+(results.length===1?'':'s')+' to tolerance '+currentTol().toExponential(0)+'.');
   } else {
@@ -2589,8 +2630,14 @@ function init(){
   var sizeSlider=document.getElementById('sizeSlider');
   sizeSlider.addEventListener('input', function(){
     document.getElementById('sizeVal').textContent=sizeSlider.value+'px';
-    if (solnInited) Plotly.relayout('solnPlot', {height:parseInt(sizeSlider.value,10)});
+    if (window.innerWidth>=WIDE_MIN){ syncSolnHeight(); }
+    else { setSolnHeight(parseInt(sizeSlider.value,10)); }
   });
+
+  /* keep the Solution plot fitted to the stacked Error+Stability column when
+     the window is resized across the wide-desktop breakpoint */
+  var rzTimer=null;
+  window.addEventListener('resize', function(){ clearTimeout(rzTimer); rzTimer=setTimeout(syncSolnHeight, 150); });
 
   /* live checkbox */
   document.getElementById('liveChk').addEventListener('change', function(e){ live=e.target.checked; });
