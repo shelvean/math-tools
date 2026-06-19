@@ -1749,6 +1749,7 @@ function ampMax(id,z){
 var lastP=null, lastResults=[], lastH=0.25, lastN=8;
 var live=true;
 var solnInited=false, errInited=false, convInited=false, stabInited=false;
+var stabCache=null;   /* cached stability-region traces (heat+contour) keyed by method+window */
 
 function announce(msg){ var lr=document.getElementById('liveRegion'); if(lr) lr.textContent=msg; }
 
@@ -2014,7 +2015,8 @@ function loadExample(id){
   updateAdaptiveUI();
   /* number of steps (explicit N override, else derived from the example h) */
   setN(e.N || Math.round(spanT()/e.h));
-  solve();
+  /* show the solution immediately; let the heavy panels fill in a beat later */
+  solve({deferHeavy:true});
 }
 
 /* ----- lambda ----- */
@@ -2368,16 +2370,32 @@ function plotStability(P){
   if (aspect<1) { yhw=W.hw/aspect; xhw=W.hw; }
   W.x0=W.cx-xhw; W.x1=W.cx+xhw; W.y0=W.cy-yhw; W.y1=W.cy+yhw;
   var nx=220, ny=Math.max(80,Math.round(220/Math.max(1,aspect)));
-  var xs=linspace(W.x0,W.x1,nx), ys=linspace(W.y0,W.y1,ny);
-  var zval=new Array(ny);
-  for (var jy=0;jy<ny;jy++){
-    var row=new Array(nx);
-    for (var ix=0;ix<nx;ix++){
-      var a=ampMax(id, cx(xs[ix], ys[jy]));
-      if (!isFinite(a)) a=2;
-      row[ix]=Math.min(a, 1.95);
+  /* The amplification grid depends only on the method and the framing window —
+     not on λ or N — so cache it and recompute only when those change. During
+     live λ/N dragging only the red current-step marker moves. */
+  var stabKey=id+'|'+W.x0.toFixed(4)+'|'+W.x1.toFixed(4)+'|'+W.y0.toFixed(4)+'|'+W.y1.toFixed(4)+'|'+nx+'|'+ny;
+  var heat, bound;
+  if (stabCache && stabCache.key===stabKey){
+    heat=stabCache.heat; bound=stabCache.bound;
+  } else {
+    var xs=linspace(W.x0,W.x1,nx), ys=linspace(W.y0,W.y1,ny);
+    var zval=new Array(ny);
+    for (var jy=0;jy<ny;jy++){
+      var row=new Array(nx);
+      for (var ix=0;ix<nx;ix++){
+        var a=ampMax(id, cx(xs[ix], ys[jy]));
+        if (!isFinite(a)) a=2;
+        row[ix]=Math.min(a, 1.95);
+      }
+      zval[jy]=row;
     }
-    zval[jy]=row;
+    heat={ type:'heatmap', x:xs, y:ys, z:zval, zmin:0, zmax:2, showscale:false, zsmooth:'best',
+      colorscale:[[0,'#1d4ed8'],[0.42,'#60a5fa'],[0.499,'#bfdbfe'],[0.5,'#ffffff'],[0.75,'#fde2e2'],[1,'#fca5a5']],
+      hovertemplate:'Re=%{x:.2f}, Im=%{y:.2f}<br>|amp|=%{z:.2f}<extra></extra>' };
+    bound={ type:'contour', x:xs, y:ys, z:zval, showscale:false,
+      contours:{start:1, end:2, size:1, coloring:'lines'}, line:{color:'#0b3b8f', width:2.5},
+      hoverinfo:'skip' };
+    stabCache={ key:stabKey, heat:heat, bound:bound };
   }
   /* current z = h*lambda, clamped into the frame so it stays visible */
   var lamEff;
@@ -2386,12 +2404,6 @@ function plotStability(P){
   var mxp=Math.max(W.x0+0.03*2*W.hw, Math.min(W.x1-0.03*2*W.hw, zr));
   var myp=Math.max(W.y0+0.03*2*W.hw, Math.min(W.y1-0.03*2*W.hw, zi));
   var offFrame=(Math.abs(mxp-zr)>1e-9);
-  var heat={ type:'heatmap', x:xs, y:ys, z:zval, zmin:0, zmax:2, showscale:false, zsmooth:'best',
-    colorscale:[[0,'#1d4ed8'],[0.42,'#60a5fa'],[0.499,'#bfdbfe'],[0.5,'#ffffff'],[0.75,'#fde2e2'],[1,'#fca5a5']],
-    hovertemplate:'Re=%{x:.2f}, Im=%{y:.2f}<br>|amp|=%{z:.2f}<extra></extra>' };
-  var bound={ type:'contour', x:xs, y:ys, z:zval, showscale:false,
-    contours:{start:1, end:2, size:1, coloring:'lines'}, line:{color:'#0b3b8f', width:2.5},
-    hoverinfo:'skip' };
   var pt={ type:'scatter', x:[mxp], y:[myp], mode:'markers',
     marker:{color:'#dc2626', size:12, symbol:'x', line:{width:3}},
     hovertemplate:'h·λ = '+zr.toFixed(3)+(offFrame?' (off-frame)':'')+'<extra>current step</extra>' };
@@ -2572,7 +2584,8 @@ function showErr(msg){
   if (msg){ el.textContent=msg; el.classList.add('show'); }
   else el.classList.remove('show');
 }
-function solve(){
+function solve(opts){
+  opts=opts||{};
   var P;
   try{ P=readProblem(); showErr(''); }
   catch(e){ showErr('Could not read the problem: '+(e.message||e)); return; }
@@ -2593,21 +2606,30 @@ function solve(){
   results.forEach(function(R,i){ METBY[R.id].dash = LINE_DASHES[i % LINE_DASHES.length]; });
   lastResults=results;
   populateExport(results);
+  /* Cheap panels render immediately so the view tracks λ/N smoothly. */
   plotSolution(P,results);
   buildResultTable(P,results);
   if (isOpen('errSecBody')) plotError(P,results);
-  if (isOpen('convSecBody')) plotConvergence(P);
-  if (!adaptiveMode && isOpen('stabSecBody')) plotStability(P);
+  /* The heavy panels (convergence sweep, stability grid) are deferred to a
+     trailing debounce during live dragging, so each slider tick stays snappy;
+     they catch up shortly after the user pauses. */
+  clearTimeout(heavyTimer);
+  if (opts.deferHeavy){ heavyTimer=setTimeout(function(){ renderHeavy(P); }, 160); }
+  else { renderHeavy(P); }
   if (adaptiveMode){
     announce('Solved '+results.length+' adaptive method'+(results.length===1?'':'s')+' to tolerance '+currentTol().toExponential(0)+'.');
   } else {
     announce('Solved '+results.length+' method'+(results.length===1?'':'s')+' with N = '+lastN+' steps (h = '+fmt(lastH)+').');
   }
 }
+function renderHeavy(P){
+  if (isOpen('convSecBody')) plotConvergence(P);
+  if (!adaptiveMode && isOpen('stabSecBody')) plotStability(P);
+}
 
 /* debounce for live updates */
-var solveTimer=null;
-function scheduleSolve(){ if(!live){ return; } clearTimeout(solveTimer); solveTimer=setTimeout(solve, 50); }
+var solveTimer=null, heavyTimer=null;
+function scheduleSolve(){ if(!live){ return; } clearTimeout(solveTimer); solveTimer=setTimeout(function(){ solve({deferHeavy:true}); }, 50); }
 
 /* ============================================================
    Init
@@ -2719,7 +2741,7 @@ function init(){
   /* MathJax loads async, so the first plot render can happen before it is ready
      and the LaTeX axis/legend labels would not typeset. Re-render once MathJax
      has finished starting up. */
-  whenMathJaxReady(function(){ if (lastP) solve(); });
+  whenMathJaxReady(function(){ if (lastP) solve({deferHeavy:true}); });
 }
 /* Resolve cb after MathJax v3 startup completes (polls until the library has
    replaced the config object with its real startup.promise). */
