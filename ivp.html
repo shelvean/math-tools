@@ -71,30 +71,39 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .info-body h3{font-size:.9375rem;font-weight:700;color:var(--bl2);margin:.6rem 0 .2rem;}
 .defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
   border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);overflow-x:auto;}
-/* Method selector */
-.mfam{margin-bottom:.4rem;}
-.mfam-lbl{display:flex;align-items:center;gap:.4rem;width:100%;font-size:.8rem;font-weight:800;
-  text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:.1rem 0 .3rem;
-  background:transparent;border:0;padding:.3rem .15rem;cursor:pointer;text-align:left;border-radius:.3rem;}
-.mfam-lbl:hover{color:var(--blue);}
-.mfam-lbl:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
-.mfam-chev{display:inline-block;font-size:.8rem;transition:transform .15s;flex-shrink:0;}
-.mfam.open .mfam-chev{transform:rotate(90deg);}
-.mfam-name{flex:1;}
-.mfam-count{font-size:.8rem;font-weight:800;color:#fff;background:var(--blue);
-  border-radius:999px;padding:.02rem .4rem;letter-spacing:0;}
-.mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;}
-.mbtn{padding:.5rem .35rem;min-height:42px;border:2px solid var(--bdr2);border-radius:.4rem;
-  background:var(--card);color:var(--txt2);font-size:.8125rem;font-weight:600;cursor:pointer;
-  text-align:center;transition:background .12s,color .12s,border-color .12s;}
-.mbtn:hover{border-color:var(--blue);color:var(--blue);background:rgba(29,78,216,.07);}
-.mbtn.active{color:#fff;border-color:transparent;}
-.mbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
-.mbtn .mdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:.25rem;vertical-align:baseline;}
-.mbtn.active .mdot{background:#fff!important;}
-.mbtn-dis{opacity:.38;cursor:not-allowed;}
-.mbtn-dis:hover{border-color:var(--bdr2);color:var(--txt2);background:var(--card);}
-@media(max-width:640px){.mgrid{grid-template-columns:repeat(2,1fr);}}
+/* Method selector — families as compact dropdowns, laid out 3 per row. */
+.mgroups{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;}
+@media(max-width:900px){.mgroups{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:560px){.mgroups{grid-template-columns:1fr;}}
+.mgroup{position:relative;min-width:0;}
+.mgroup-trigger{display:flex;align-items:center;gap:.4rem;width:100%;min-height:34px;
+  padding:.35rem .55rem;border:2px solid var(--bdr2);border-radius:.45rem;background:var(--card);
+  color:var(--txt2);font-size:.78rem;font-weight:700;cursor:pointer;text-align:left;
+  transition:border-color .12s,color .12s;}
+.mgroup-trigger:hover{border-color:var(--blue);color:var(--blue);}
+.mgroup-trigger:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.mgroup-trigger .mg-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mgroup-trigger .mg-chev{font-size:.7rem;transition:transform .15s;flex-shrink:0;}
+.mgroup.open .mgroup-trigger{border-color:var(--blue);color:var(--blue);}
+.mgroup.open .mg-chev{transform:rotate(90deg);}
+.mg-count{font-size:.7rem;font-weight:800;color:#fff;background:var(--blue);
+  border-radius:999px;padding:.02rem .4rem;flex-shrink:0;}
+.mgroup-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;background:var(--card);
+  border:2px solid var(--bdr);border-radius:.5rem;box-shadow:var(--sh2);padding:.25rem;
+  max-height:55vh;overflow-y:auto;}
+.mgroup-menu[hidden]{display:none;}
+.mopt{display:flex;align-items:center;gap:.45rem;width:100%;padding:.4rem .5rem;border:0;
+  background:transparent;border-radius:.35rem;cursor:pointer;font-size:.8rem;font-weight:600;
+  color:var(--txt2);text-align:left;}
+.mopt:hover{background:rgba(29,78,216,.08);color:var(--blue);}
+.mopt:focus-visible{outline:2px solid var(--focus);outline-offset:-2px;}
+.mopt .mdot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:1px solid rgba(0,0,0,.12);}
+.mopt .mopt-lbl{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mopt .mchk{font-weight:800;color:var(--blue);opacity:0;flex-shrink:0;}
+.mopt[aria-pressed=true]{color:var(--txt);background:rgba(29,78,216,.07);}
+.mopt[aria-pressed=true] .mchk{opacity:1;}
+.mopt[aria-disabled=true]{opacity:.4;cursor:not-allowed;}
+.mopt[aria-disabled=true]:hover{background:transparent;color:var(--txt2);}
 /* Two-col */
 .two-col{display:flex;gap:1.25rem;align-items:flex-start;margin-bottom:.875rem;}
 .col-ctrl{flex:0 0 340px;min-width:0;}
@@ -1718,58 +1727,69 @@ var solnInited=false, errInited=false, convInited=false, stabInited=false;
 function announce(msg){ var lr=document.getElementById('liveRegion'); if(lr) lr.textContent=msg; }
 
 /* ----- method buttons ----- */
-var famOpen = {};   /* fam.key -> expanded? (persisted across rebuilds) */
+/* Render the method families as compact multi-select dropdowns laid out three
+   per row. Each group is a trigger button (name + selected count) that opens a
+   floating menu of toggleable methods; selecting keeps the menu open so several
+   can be picked at once. */
+function closeMethodMenus(){
+  var host=document.getElementById('methodGrid');
+  if (!host) return;
+  host.querySelectorAll('.mgroup').forEach(function(g){
+    var menu=g.querySelector('.mgroup-menu'), trig=g.querySelector('.mgroup-trigger');
+    if (menu) menu.hidden=true;
+    g.classList.remove('open');
+    if (trig) trig.setAttribute('aria-expanded','false');
+  });
+}
 function buildMethodButtons(){
   var host=document.getElementById('methodGrid');
   host.innerHTML='';
+  var wrap=document.createElement('div'); wrap.className='mgroups';
   FAMS.forEach(function(fam){
-    var hasSel=fam.ids.some(function(id){return selected[id];});
-    if (famOpen[fam.key]===undefined) famOpen[fam.key]=hasSel;  /* default: open if it has a selection */
-    if (hasSel) famOpen[fam.key]=true;                          /* always reveal selected methods */
-    var open=famOpen[fam.key];
-
-    var wrap=document.createElement('div'); wrap.className='mfam'+(open?' open':'');
-    wrap.dataset.fam=fam.key;
-
-    var lbl=document.createElement('button');
-    lbl.type='button'; lbl.className='mfam-lbl';
-    lbl.setAttribute('aria-expanded', open?'true':'false');
     var nSel=fam.ids.filter(function(id){return selected[id];}).length;
-    lbl.innerHTML='<span class="mfam-chev">▸</span><span class="mfam-name">'+fam.name+'</span>'+
-      '<span class="mfam-count" data-fam-count="'+fam.key+'"'+(nSel?'':' hidden')+'>'+nSel+'</span>';
+    var group=document.createElement('div'); group.className='mgroup'; group.dataset.fam=fam.key;
 
-    var grid=document.createElement('div'); grid.className='mgrid';
-    if (!open) grid.style.display='none';
+    var trig=document.createElement('button');
+    trig.type='button'; trig.className='mgroup-trigger';
+    trig.setAttribute('aria-haspopup','true'); trig.setAttribute('aria-expanded','false');
+    trig.innerHTML='<span class="mg-name">'+fam.name+'</span>'+
+      '<span class="mg-count" data-fam-count="'+fam.key+'"'+(nSel?'':' hidden')+'>'+nSel+'</span>'+
+      '<span class="mg-chev" aria-hidden="true">▸</span>';
+
+    var menu=document.createElement('div'); menu.className='mgroup-menu'; menu.hidden=true;
+    menu.setAttribute('role','group'); menu.setAttribute('aria-label',fam.name);
+    menu.addEventListener('click', function(e){ e.stopPropagation(); });
     fam.ids.forEach(function(id){
       var m=METBY[id];
-      var b=document.createElement('button');
-      b.type='button'; b.className='mbtn'; b.dataset.method=id;
-      b.setAttribute('aria-pressed', selected[id]?'true':'false');
-      b.innerHTML='<span class="mdot" style="background:'+m.color+'"></span>'+m.label;
-      if (selected[id]){ b.classList.add('active'); b.style.background=m.color; }
+      var o=document.createElement('button');
+      o.type='button'; o.className='mopt'; o.dataset.method=id;
+      o.setAttribute('aria-pressed', selected[id]?'true':'false');
+      o.innerHTML='<span class="mdot" style="background:'+m.color+'"></span>'+
+        '<span class="mopt-lbl">'+m.label+'</span><span class="mchk" aria-hidden="true">✓</span>';
       var disabled = adaptiveMode && !adaptiveSupported(id);
-      if (disabled){ b.disabled=true; b.classList.add('mbtn-dis'); b.title='Not available in adaptive mode'; b.setAttribute('aria-disabled','true'); }
-      b.addEventListener('click', function(){
-        if (b.disabled) return;
+      if (disabled){ o.disabled=true; o.setAttribute('aria-disabled','true'); o.title='Not available in adaptive mode'; }
+      o.addEventListener('click', function(e){
+        e.stopPropagation();
+        if (o.disabled) return;
         selected[id]=!selected[id];
-        if (selected[id]){ b.classList.add('active'); b.style.background=m.color; b.setAttribute('aria-pressed','true'); }
-        else { b.classList.remove('active'); b.style.background=''; b.setAttribute('aria-pressed','false'); }
+        o.setAttribute('aria-pressed', selected[id]?'true':'false');
         updateFamCount(fam);
         refreshStabSelect();
         solve();
       });
-      grid.appendChild(b);
+      menu.appendChild(o);
     });
 
-    lbl.addEventListener('click', function(){
-      famOpen[fam.key]=!famOpen[fam.key];
-      var nowOpen=famOpen[fam.key];
-      grid.style.display=nowOpen?'':'none';
-      lbl.setAttribute('aria-expanded', nowOpen?'true':'false');
-      wrap.classList.toggle('open', nowOpen);
+    trig.addEventListener('click', function(e){
+      e.stopPropagation();
+      var willOpen=menu.hidden;
+      closeMethodMenus();
+      if (willOpen){ menu.hidden=false; group.classList.add('open'); trig.setAttribute('aria-expanded','true'); }
     });
-    wrap.appendChild(lbl); wrap.appendChild(grid); host.appendChild(wrap);
+
+    group.appendChild(trig); group.appendChild(menu); wrap.appendChild(group);
   });
+  host.appendChild(wrap);
 }
 /* keep a family's selected-count badge in sync when its buttons are toggled */
 function updateFamCount(fam){
@@ -2553,6 +2573,8 @@ function init(){
   buildMethodButtons();
   buildExCombo();
   refreshStabSelect();
+  /* close any open method dropdown when clicking elsewhere */
+  document.addEventListener('click', closeMethodMenus);
 
   /* info panels */
   function wireInfo(btnId, bodyId, iconId){
