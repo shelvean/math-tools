@@ -1586,9 +1586,15 @@ function integrate(id,P,hReq){
     }
   } else if (m.kind==='bdf'){
     var bspec=BDF[id], bk=bspec.steps, ii;
-    /* BDF target stiff problems, where an explicit starter would itself blow
-       up; take the k-1 starting values from the reference solution instead. */
-    for (ii=1;ii<bk && ii<=N;ii++){ ts[ii]=t0+ii*h; ys[ii]=P.ref(ts[ii]); if(!ok(ys[ii])) stable=false; }
+    /* Generate the k-1 starting values with a matching-order explicit RK
+       starter, so they carry realistic error and the error curve begins at the
+       initial point (a fixed number of starter steps keeps the starting error
+       O(h^{order+1}), which preserves the method's order). BDF is meant for
+       stiff problems, where an explicit starter can blow up — if it does, fall
+       back to the exact reference for the starting values. */
+    var bstarter=makeOneStep(STARTER[m.order]||'rk4', P), useRef=false, tmpY=[ys[0]];
+    for (ii=1;ii<bk && ii<=N;ii++){ var yv=bstarter(t0+(ii-1)*h, tmpY[ii-1], h); if(!ok(yv)){ useRef=true; break; } tmpY[ii]=yv; }
+    for (ii=1;ii<bk && ii<=N;ii++){ ts[ii]=t0+ii*h; ys[ii]= useRef ? P.ref(ts[ii]) : tmpY[ii]; if(!ok(ys[ii])) stable=false; }
     for (ii=bk;ii<=N;ii++){
       ts[ii]=t0+ii*h;
       var Cb=0; for (var mm=0;mm<bspec.a.length;mm++) Cb += bspec.a[mm]*ys[ii-1-mm];
