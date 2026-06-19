@@ -167,6 +167,11 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .view-btn{font-size:.8125rem;font-weight:700;color:var(--bl2);background:transparent;
   border:2px solid var(--bdr);border-radius:.375rem;padding:.4rem .75rem;cursor:pointer;min-height:36px;}
 .view-btn:hover,.view-btn:focus-visible{background:rgba(29,78,216,.08);border-color:var(--blue);}
+.export-grp{display:inline-flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+.export-lbl{font-size:.8rem;font-weight:700;color:var(--txt2);}
+.export-sel{font-size:.8125rem;padding:.35rem .5rem;border:2px solid var(--bdr);border-radius:.375rem;
+  background:#fff;color:var(--txt);min-height:36px;max-width:14rem;cursor:pointer;}
+.export-sel:focus-visible{border-color:var(--blue);outline:none;}
 .note{font-size:.8rem;color:var(--muted);margin:.3rem .75rem .5rem;line-height:1.5;}
 /* Collapsible sections */
 .sec-btn{width:100%;padding:.55rem .875rem;display:flex;align-items:center;justify-content:space-between;
@@ -813,6 +818,11 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <div id="solnPlot"></div>
         <div class="plot-foot">
           <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
+          <span class="export-grp">
+            <label for="exportSel" class="export-lbl">Export solution</label>
+            <select id="exportSel" class="export-sel" aria-label="Select a method to export"><option value="">— solve to populate —</option></select>
+            <button class="view-btn" id="exportBtn" type="button">Download .txt</button>
+          </span>
           <button class="view-btn" id="resetViewBtn" type="button" aria-label="Reset view">Reset view</button>
         </div>
         <p class="note">The equation and reference shown above the plot identify what is being solved. The black curve is the exact solution (for built-in examples) or a fine numerical reference (dense RK4, or an A-stable implicit solver when the problem is stiff). Colored curves with markers are the selected methods sampled at their step nodes. The view is auto-scaled to the reference so it fills the frame; divergent (unstable) runs simply shoot off the top or bottom &mdash; scroll to zoom or drag to pan to follow them.</p>
@@ -2339,6 +2349,47 @@ function buildResultTable(P,results){
   host.innerHTML=rows;
 }
 
+/* ----- export a single solution as a two-column text file ----- */
+function populateExport(results){
+  var sel=document.getElementById('exportSel');
+  if(!sel) return;
+  var prev=sel.value;
+  sel.innerHTML='';
+  if(!results || !results.length){
+    sel.innerHTML='<option value="">— solve to populate —</option>';
+    return;
+  }
+  results.forEach(function(R){
+    var m=METBY[R.id];
+    var o=document.createElement('option');
+    o.value=R.id; o.textContent=m.label;
+    sel.appendChild(o);
+  });
+  /* keep the previous choice if it is still available */
+  if(prev && METBY[prev] && results.some(function(R){return R.id===prev;})) sel.value=prev;
+}
+function exportSolution(){
+  var sel=document.getElementById('exportSel');
+  var id=sel && sel.value;
+  if(!id || !lastResults || !lastResults.length){ announce('Nothing to export — solve first.'); return; }
+  var R=null;
+  for(var i=0;i<lastResults.length;i++){ if(lastResults[i].id===id){ R=lastResults[i]; break; } }
+  if(!R){ announce('That method is no longer plotted — re-solve.'); return; }
+  var lines=['# '+METBY[R.id].label, '# t\ty'];
+  for(var k=0;k<=R.N;k++){
+    if(!isFinite(R.ts[k])) continue;
+    lines.push(R.ts[k].toPrecision(12)+'\t'+R.ys[k].toPrecision(12));
+  }
+  var stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  var fname=R.id+'_'+stamp+'.txt';
+  var blob=new Blob([lines.join('\n')+'\n'],{type:'text/plain'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download=fname; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  announce('Exported '+METBY[R.id].label+' as '+fname+'.');
+}
+
 /* ----- master solve ----- */
 function showErr(msg){
   var el=document.getElementById('errMsg');
@@ -2365,6 +2416,7 @@ function solve(){
      curves always differ; a style repeats only when more than four are shown. */
   results.forEach(function(R,i){ METBY[R.id].dash = LINE_DASHES[i % LINE_DASHES.length]; });
   lastResults=results;
+  populateExport(results);
   plotSolution(P,results);
   buildResultTable(P,results);
   if (isOpen('errSecBody')) plotError(P,results);
@@ -2444,6 +2496,7 @@ function init(){
 
   /* buttons */
   document.getElementById('solveBtn').addEventListener('click', solve);
+  document.getElementById('exportBtn').addEventListener('click', exportSolution);
   document.getElementById('resetBtn').addEventListener('click', function(){
     selected={}; ['euler','rk4'].forEach(function(id){selected[id]=true;});
     document.getElementById('adaptChk').checked=false; updateAdaptiveUI();
