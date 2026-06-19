@@ -822,6 +822,10 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <label for="exportSel" class="export-lbl">Export solution</label>
             <select id="exportSel" class="export-sel" aria-label="Select a method to export"><option value="">— solve to populate —</option></select>
             <button class="view-btn" id="exportBtn" type="button">Download .txt</button>
+            <span class="export-lbl" aria-hidden="true">Copy:</span>
+            <button class="view-btn" id="copyMatlabBtn" type="button" aria-label="Copy selected solution as MATLAB arrays">MATLAB</button>
+            <button class="view-btn" id="copyJuliaBtn" type="button" aria-label="Copy selected solution as Julia arrays">Julia</button>
+            <button class="view-btn" id="copyNumpyBtn" type="button" aria-label="Copy selected solution as NumPy arrays">NumPy</button>
           </span>
           <button class="view-btn" id="resetViewBtn" type="button" aria-label="Reset view">Reset view</button>
         </div>
@@ -2404,13 +2408,60 @@ function populateExport(results){
   /* keep the previous choice if it is still available */
   if(prev && METBY[prev] && results.some(function(R){return R.id===prev;})) sel.value=prev;
 }
-function exportSolution(){
+/* Resolve the method currently chosen in the export dropdown to its result. */
+function selectedExportR(){
   var sel=document.getElementById('exportSel');
   var id=sel && sel.value;
-  if(!id || !lastResults || !lastResults.length){ announce('Nothing to export — solve first.'); return; }
-  var R=null;
-  for(var i=0;i<lastResults.length;i++){ if(lastResults[i].id===id){ R=lastResults[i]; break; } }
-  if(!R){ announce('That method is no longer plotted — re-solve.'); return; }
+  if(!id || !lastResults || !lastResults.length) return null;
+  for(var i=0;i<lastResults.length;i++){ if(lastResults[i].id===id) return lastResults[i]; }
+  return null;
+}
+/* Finite (t,y) pairs of a run, as numbers. */
+function exportArrays(R){
+  var t=[], y=[];
+  for(var k=0;k<=R.N;k++){ if(!isFinite(R.ts[k])) continue; t.push(R.ts[k]); y.push(R.ys[k]); }
+  return {t:t, y:y};
+}
+/* Round-trippable literal that always reads as a float (so the pasted arrays
+   are floating-point in MATLAB/Julia/NumPy). */
+function numLit(v){ var s=''+v; if(/^-?\d+$/.test(s)) s+='.0'; return s; }
+function copySolution(lang){
+  var R=selectedExportR();
+  if(!R){ announce('Nothing to copy — solve first.'); return; }
+  var a=exportArrays(R), name=METBY[R.id].label;
+  var ts=a.t.map(numLit).join(', '), ys=a.y.map(numLit).join(', ');
+  var code, pretty;
+  if(lang==='matlab'){
+    pretty='MATLAB';
+    code='% '+name+'\nt = ['+ts+'];\ny = ['+ys+'];';
+  } else if(lang==='julia'){
+    pretty='Julia';
+    code='# '+name+'\nt = ['+ts+']\ny = ['+ys+']';
+  } else {
+    pretty='NumPy';
+    code='# '+name+'\nimport numpy as np\nt = np.array(['+ts+'])\ny = np.array(['+ys+'])';
+  }
+  copyText(code, function(ok){
+    announce(ok ? ('Copied '+name+' as '+pretty+' arrays to the clipboard.')
+               : 'Could not access the clipboard — try the Download .txt button.');
+  });
+}
+/* Clipboard write with a legacy execCommand fallback for older browsers. */
+function copyText(text, cb){
+  function legacy(){
+    try{ var ta=document.createElement('textarea'); ta.value=text;
+      ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.left='-9999px';
+      document.body.appendChild(ta); ta.select();
+      var ok=document.execCommand('copy'); document.body.removeChild(ta); return ok; }
+    catch(e){ return false; }
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){ cb(true); }, function(){ cb(legacy()); });
+  } else { cb(legacy()); }
+}
+function exportSolution(){
+  var R=selectedExportR();
+  if(!R){ announce('Nothing to export — solve first.'); return; }
   /* Build fixed-width columns so the t,y labels line up over their data. */
   var tcol=[], ycol=[];
   for(var k=0;k<=R.N;k++){
@@ -2540,6 +2591,9 @@ function init(){
   /* buttons */
   document.getElementById('solveBtn').addEventListener('click', solve);
   document.getElementById('exportBtn').addEventListener('click', exportSolution);
+  document.getElementById('copyMatlabBtn').addEventListener('click', function(){ copySolution('matlab'); });
+  document.getElementById('copyJuliaBtn').addEventListener('click', function(){ copySolution('julia'); });
+  document.getElementById('copyNumpyBtn').addEventListener('click', function(){ copySolution('numpy'); });
   document.getElementById('resetBtn').addEventListener('click', function(){
     selected={}; ['euler','rk4'].forEach(function(id){selected[id]=true;});
     document.getElementById('adaptChk').checked=false; updateAdaptiveUI();
