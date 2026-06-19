@@ -856,7 +856,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewConvBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). The fitted empirical order \(p\) &mdash; the slope of the line &mdash; appears in the legend; a straight line of slope \(p\) confirms \(O(h^p)\) convergence. Step sizes where a method is unstable (large \(h\), error far beyond the solution scale) or round-off-dominated (very small \(h\), error stuck near machine precision) are dropped automatically, so the axis and the fitted order use only the clean convergent range.</p>
+          <p class="note">Log&ndash;log plot of the global error (in the norm chosen by the <em>norm</em> selector) against \(h\) (each \(h\) halved). The fitted empirical order \(p\) &mdash; the slope of the line &mdash; appears in the legend; a straight line of slope \(p\) confirms \(O(h^p)\) convergence. Step sizes where a method is unstable (large \(h\), error far beyond the solution scale) or round-off-dominated (very small \(h\), error stuck near machine precision) are dropped automatically, so the axis and the fitted order use only the clean convergent range. In <em>adaptive</em> mode this becomes a work&ndash;precision diagram: the error is plotted against the number of accepted steps \(N\) over a sweep of tolerances, and since error \(\approx C\,N^{-p}\) the slope of \(\log|\text{Error}|\) vs. \(\log N\) gives \(-p\); the fitted \(p\) shown in the legend is measured on the most-refined (tightest-tolerance) points.</p>
         </div>
       </div>
 
@@ -2066,8 +2066,19 @@ function plotWorkPrecision(P){
       xx.push(R.acc); yy.push(e);
     });
     if (!xx.length) return;
+    /* Fit error ≈ C·N^(−p): on a log–log plot log(error) = log C − p·log(N),
+       so the least-squares slope of log(error) vs log(N) is −p. Use only the
+       most-refined points (largest N / tightest tolerances) for the asymptotic
+       rate; coarse tolerances add pre-asymptotic curvature that biases p high. */
+    var p=NaN;
+    if (xx.length>=2){
+      var start=Math.max(0, xx.length-6), n=0, sx=0,sy=0,sxx=0,sxy=0;
+      for (var i=start;i<xx.length;i++){ var lx=Math.log(xx[i]), ly=Math.log(yy[i]); sx+=lx; sy+=ly; sxx+=lx*lx; sxy+=lx*ly; n++; }
+      p=-(n*sxy-sx*sy)/(n*sxx-sx*sx);
+    }
+    var nm=m.label + (isFinite(p)?('  (p≈'+p.toFixed(2)+')'):'');
     allX.push(xx); allY.push(yy);
-    traces.push({x:xx, y:yy, mode:'lines', name:m.label,
+    traces.push({x:xx, y:yy, mode:'lines', name:nm,
       line:{color:m.color, width:2, dash:m.dash},
       hovertemplate:'steps=%{x}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'});
   });
@@ -2079,7 +2090,7 @@ function plotWorkPrecision(P){
     yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:-0.22, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'}, showlegend:true,
     annotations:[{ xref:'paper', yref:'paper', x:0.99, y:0.98, xanchor:'right', yanchor:'top',
-      text:'work–precision: lower-right = more accurate per step', showarrow:false, font:{size:10, color:'#9ca3af'} }],
+      text:'error ≈ C·N^(−p); slope of log|Error| vs log N gives −p', showarrow:false, font:{size:10, color:'#9ca3af'} }],
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   Plotly.react('convPlot', traces, layout, PCONFIG);
   convInited=true;
