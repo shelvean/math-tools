@@ -2042,6 +2042,12 @@ var PCONFIG={responsive:true, scrollZoom:true, displaylogo:false,
 
 /* LaTeX for an expression, falling back to the raw text if it can't be parsed. */
 function safeTex(expr){ try{ return math.parse(expr).toTex(); }catch(e){ return expr; } }
+/* LaTeX legend labels: method name as upright text (ASCII so MathJax text mode
+   is happy), optionally with the fitted order p. */
+function texName(label){ return '$\\text{'+asciiLabel(label)+'}$'; }
+function texNameP(label,p){
+  return isFinite(p) ? ('$\\text{'+asciiLabel(label)+'}\\ (p\\approx'+p.toFixed(2)+')$') : texName(label);
+}
 /* Caption above the solution plot: the ODE, plus the exact solution for a
    built-in example, or a note that a numerical reference is being used. */
 function updateSolnEqn(P){
@@ -2059,7 +2065,7 @@ function plotSolution(P,results){
   updateSolnEqn(P);
   var h=parseInt(document.getElementById('sizeSlider').value,10);
   var xr=linspace(P.t0,P.tEnd,600), yr=xr.map(function(t){return P.ref(t);});
-  var traces=[{x:xr, y:yr, mode:'lines', name:P.refName,
+  var traces=[{x:xr, y:yr, mode:'lines', name:texName(P.refName),
     line:{color:'#111827', width:2.6}, hovertemplate:'t=%{x:.3f}<br>y=%{y:.5f}<extra>'+P.refName+'</extra>'}];
   /* y-range: scale to the exact/reference solution so it fills most of the
      frame. Approximation points are included only if they stay within a
@@ -2081,14 +2087,14 @@ function plotSolution(P,results){
     if(!R) return;
     var m=METBY[R.id];
     traces.push({x:Array.prototype.slice.call(R.ts), y:Array.prototype.slice.call(R.ys),
-      mode:'lines', name:m.label,
+      mode:'lines', name:texName(m.label),
       line:{color:m.color, width:2, dash:m.dash},
       hovertemplate:'t=%{x:.3f}<br>y=%{y:.5f}<extra>'+m.label+'</extra>'});
   });
   var layout={
     height:h, margin:{l:55,r:12,t:10,b:42}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'t',font:{size:13}}, range:[P.t0,P.tEnd], zeroline:false, gridcolor:'#e5e7eb', tickfont:{size:12}}, linTicks(P.t0,P.tEnd,6)),
-    yaxis:Object.assign({title:{text:'y',font:{size:13}}, range:[ylo,yhi], gridcolor:'#e5e7eb', zeroline:true, zerolinecolor:'#cbd5e1', tickfont:{size:12}}, linTicks(ylo,yhi,5)),
+    xaxis:Object.assign({title:{text:'$t$',font:{size:13}}, range:[P.t0,P.tEnd], zeroline:false, gridcolor:'#e5e7eb', tickfont:{size:12}}, linTicks(P.t0,P.tEnd,6)),
+    yaxis:Object.assign({title:{text:'$y$',font:{size:13}}, range:[ylo,yhi], gridcolor:'#e5e7eb', zeroline:true, zerolinecolor:'#cbd5e1', tickfont:{size:12}}, linTicks(ylo,yhi,5)),
     legend:{orientation:'h', y:-0.18, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'},
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'
   };
@@ -2107,14 +2113,14 @@ function plotError(P,results){
       if (isFinite(e) && e>0){ x.push(R.ts[i]); y.push(e); }
     }
     allY.push(y);
-    traces.push({x:x, y:y, mode:'lines', name:m.label,
+    traces.push({x:x, y:y, mode:'lines', name:texName(m.label),
       line:{color:m.color, width:2, dash:m.dash}});
   });
   var yr=dataRange(allY);
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
   var layout={ height:340, margin:{l:62,r:12,t:10,b:42}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'t'}, range:[P.t0,P.tEnd], gridcolor:'#e5e7eb', tickfont:{size:12}}, linTicks(P.t0,P.tEnd,6)),
-    yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
+    xaxis:Object.assign({title:{text:'$t$'}, range:[P.t0,P.tEnd], gridcolor:'#e5e7eb', tickfont:{size:12}}, linTicks(P.t0,P.tEnd,6)),
+    yaxis:Object.assign({title:{text:'$|y_n-y(t_n)|$',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:-0.22, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'}, showlegend:true,
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   Plotly.react('errPlot', traces, layout, PCONFIG);
@@ -2145,7 +2151,7 @@ function plotWorkPrecision(P){
       for (var i=start;i<xx.length;i++){ var lx=Math.log(xx[i]), ly=Math.log(yy[i]); sx+=lx; sy+=ly; sxx+=lx*lx; sxy+=lx*ly; n++; }
       p=-(n*sxy-sx*sy)/(n*sxx-sx*sx);
     }
-    var nm=m.label + (isFinite(p)?('  (p≈'+p.toFixed(2)+')'):'');
+    var nm=texNameP(m.label, p);
     allX.push(xx); allY.push(yy);
     traces.push({x:xx, y:yy, mode:'lines', name:nm,
       line:{color:m.color, width:2, dash:m.dash},
@@ -2155,8 +2161,8 @@ function plotWorkPrecision(P){
   var xTicks=xr?logTicks(xr.lo,xr.hi,'decimal'):{};
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
   var layout={ height:300, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'accepted steps'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
-    yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
+    xaxis:Object.assign({title:{text:'$\\text{accepted steps } N$'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
+    yaxis:Object.assign({title:{text:'$|y_n-y(t_n)|$',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:-0.22, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'}, showlegend:true,
     annotations:[{ xref:'paper', yref:'paper', x:0.99, y:0.98, xanchor:'right', yanchor:'top',
       text:'error ≈ C·N^(−p); slope of log|Error| vs log N gives −p', showarrow:false, font:{size:10, color:'#9ca3af'} }],
@@ -2219,7 +2225,7 @@ function plotConvergence(P){
       for (var i=start;i<xx.length;i++){ var lx=Math.log(xx[i]), ly=Math.log(yy[i]); sx+=lx; sy+=ly; sxx+=lx*lx; sxy+=lx*ly; n++; }
       p=(n*sxy-sx*sy)/(n*sxx-sx*sx);
     }
-    var nm=m.label + (isFinite(p)?('  (p≈'+p.toFixed(2)+')'):'');
+    var nm=texNameP(m.label, p);
     allX.push(xx); allY.push(yy);
     traces.push({x:xx, y:yy, mode:'lines', name:nm,
       line:{color:m.color, width:2, dash:m.dash}});
@@ -2228,8 +2234,8 @@ function plotConvergence(P){
   var xTicks=xr?logTicks(xr.lo,xr.hi,'decimal'):{};
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
   var layout={ height:300, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'step size h'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
-    yaxis:Object.assign({title:{text:'|Error|',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
+    xaxis:Object.assign({title:{text:'$\\text{step size } h$'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
+    yaxis:Object.assign({title:{text:'$|y_n-y(t_n)|$',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
     legend:{orientation:'h', y:-0.22, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'}, showlegend:true,
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   if (droppedHi || droppedLo){
@@ -2358,8 +2364,8 @@ function plotStability(P){
     marker:{color:'#dc2626', size:12, symbol:'x', line:{width:3}},
     hovertemplate:'h·λ = '+zr.toFixed(3)+(offFrame?' (off-frame)':'')+'<extra>current step</extra>' };
   var layout={ height:340, margin:{l:50,r:12,t:10,b:44}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'Re(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[W.x0,W.x1], tickfont:{size:12}}, linTicks(W.x0,W.x1,7)),
-    yaxis:Object.assign({title:{text:'Im(hλ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb',
+    xaxis:Object.assign({title:{text:'$\\operatorname{Re}(h\\lambda)$'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[W.x0,W.x1], tickfont:{size:12}}, linTicks(W.x0,W.x1,7)),
+    yaxis:Object.assign({title:{text:'$\\operatorname{Im}(h\\lambda)$'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb',
       range:[W.y0,W.y1], scaleanchor:'x', scaleratio:1, tickfont:{size:12}}, linTicks(W.y0,W.y1,7)),
     showlegend:false, paper_bgcolor:'#fff', plot_bgcolor:'#fff' };
   Plotly.react('stabPlot', [heat, bound, pt], layout, PCONFIG);
