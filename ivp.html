@@ -426,7 +426,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <li><strong>Order 4</strong> methods (AB4, AM4, ABM4, Milne&ndash;Simpson, Hamming) start with classical RK4.</li>
       </ul>
       <p>The starter is chosen to <em>match the multistep method&rsquo;s order</em>: to keep the global error \(O(h^p)\), the starting values must themselves be accurate to \(O(h^{p})\). A lower-order starter (say improved Euler used for AB4) would pollute those first points and visibly drop the measured convergence rate in the <em>Convergence</em> panel.</p>
-      <p>The <strong>BDF</strong> methods are meant for stiff problems, where an explicit starter would itself blow up. Their starting values are therefore taken from the reference solution (the exact solution, or the fine stable reference for custom problems), so the startup is both accurate and stable.</p>
+      <p>The <strong>BDF</strong> methods are meant for stiff problems, where an explicit starter would itself blow up. Their starting values are therefore generated with <strong>Radau IIA</strong> (a three-stage implicit Runge&ndash;Kutta method of order 5 that is L-stable), so the startup stays stable on stiff problems while its high order keeps the starting error well below the BDF order.</p>
 
       <h2>Order of accuracy</h2>
       <p>A method has <strong>order \(p\)</strong> if its local truncation error per step is \(O(h^{p+1})\), giving a global error \(O(h^p)\) over a fixed interval. Halving \(h\) then cuts the error by a factor \(2^p\). The <em>Convergence</em> panel measures this slope directly on a log&ndash;log plot.</p>
@@ -579,6 +579,14 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
           </div>
         </details>
 
+        <details class="mdesc"><summary><span class="mdot" style="background:#b45309;"></span>Radau IIA (3-stage) <span class="badge imp">implicit</span><span class="badge">order 5</span></summary>
+          <div class="mbody">
+            <p>A <strong>fully implicit</strong> three-stage Runge&ndash;Kutta method whose nodes are the Radau quadrature points (with \(c_3=1\)). With three stages it attains <strong>order 5</strong> &mdash; the maximum possible &mdash; and is <strong>L-stable</strong>. This is the order-5 core of Hairer &amp; Wanner&rsquo;s <code>RADAU5</code>, the standard high-order integrator for stiff problems.</p>
+            <div class="defn-box">\[ \begin{array}{c|ccc} \frac{4-\sqrt6}{10} & \frac{88-7\sqrt6}{360} & \frac{296-169\sqrt6}{1800} & \frac{-2+3\sqrt6}{225}\\[4pt] \frac{4+\sqrt6}{10} & \frac{296+169\sqrt6}{1800} & \frac{88+7\sqrt6}{360} & \frac{-2-3\sqrt6}{225}\\[4pt] 1 & \frac{16-\sqrt6}{36} & \frac{16+\sqrt6}{36} & \frac19\\[4pt] \hline & \frac{16-\sqrt6}{36} & \frac{16+\sqrt6}{36} & \frac19 \end{array} \]</div>
+            <p>All three stages are coupled, so each step solves a \(3\times3\) nonlinear system for the stage slopes by Newton iteration. The bottom row of \(A\) equals the weights \(b\), so the method is <strong>stiffly accurate</strong> and L-stable (\(R(\infty)=0\)): unlike Gauss&ndash;Legendre it damps very stiff transients strongly, combining high order with strong stiff decay. It is used here to generate the starting values for every BDF method.</p>
+          </div>
+        </details>
+
         <h3 class="mdesc-grp">Taylor series methods</h3>
         <details class="mdesc"><summary><span class="mdot" style="background:#db2777;"></span>Taylor method, order 2<span class="badge exp">explicit</span><span class="badge">order 2</span></summary>
           <div class="mbody">
@@ -653,7 +661,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
           <div class="mbody">
             <p>Backward differentiation formulas fit a polynomial through the new and past <em>solution</em> values and match its derivative to \(f\) at the new point &mdash; so only \(f(t_{n+1},y_{n+1})\) appears. They are the standard methods for stiff problems.</p>
             <div class="defn-box">\[ y_{n+2}=\dfrac{4}{3}y_{n+1}-\dfrac{1}{3}y_n+\dfrac{2}{3}h\,f(t_{n+2},y_{n+2}) \]</div>
-            <p>Order 2 and <strong>A-stable</strong> &mdash; the only BDF that is. Solved by Newton each step. Its single starting value \(y_1\) is generated with <strong>SDIRK2</strong>, an order-2 L-stable implicit starter that stays stable on stiff problems (matching BDF2's own intent).</p>
+            <p>Order 2 and <strong>A-stable</strong> &mdash; the only BDF that is. Solved by Newton each step. Its single starting value \(y_1\) is generated with <strong>Radau IIA</strong> (order 5, L-stable), an implicit starter that stays stable on stiff problems &mdash; matching BDF2's own intent.</p>
           </div>
         </details>
 
@@ -674,7 +682,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <details class="mdesc"><summary><span class="mdot" style="background:#a21caf;"></span>BDF 5 <span class="badge imp">implicit</span><span class="badge">order 5</span></summary>
           <div class="mbody">
             <div class="defn-box">\[ y_{n+5}=\dfrac{300}{137}y_{n+4}-\dfrac{300}{137}y_{n+3}+\dfrac{200}{137}y_{n+2}-\dfrac{75}{137}y_{n+1}+\dfrac{12}{137}y_n+\dfrac{60}{137}h\,f(t_{n+5},y_{n+5}) \]</div>
-            <p>Order 5, A(\(\alpha\))-stable with \(\alpha\approx 51^\circ\) &mdash; the highest-order BDF still usable (BDF 6 is unstable, BDF \(\ge 7\) are not zero-stable). Starting values come from the reference solution.</p>
+            <p>Order 5, A(\(\alpha\))-stable with \(\alpha\approx 51^\circ\) &mdash; the highest-order BDF still usable (BDF 6 is unstable, BDF \(\ge 7\) are not zero-stable). Its four starting values are generated with <strong>Radau IIA</strong> (order 5, L-stable), whose order matches BDF5 exactly and stays stable on stiff problems.</p>
           </div>
         </details>
 
@@ -1140,6 +1148,7 @@ var MET = [
   {id:'dop853', label:'Dormand–Prince 8(5,3)', fam:'rk', color:'#be185d', order:8, kind:'explicit'},
   {id:'gauss4', label:'Gauss–Legendre (2-stage)', fam:'rk', color:'#65a30d', order:4, kind:'irk'},
   {id:'sdirk2', label:'SDIRK 2 (L-stable)', fam:'rk', color:'#7c2d12', order:2, kind:'irk'},
+  {id:'radau5', label:'Radau IIA (3-stage)', fam:'rk', color:'#b45309', order:5, kind:'irk'},
   {id:'taylor2',label:'Taylor 2',          fam:'taylor',color:'#db2777', order:2, kind:'taylor'},
   {id:'taylor3',label:'Taylor 3',          fam:'taylor',color:'#c026d3', order:3, kind:'taylor'},
   {id:'taylor4',label:'Taylor 4',          fam:'taylor',color:'#7c3aed', order:4, kind:'taylor'},
@@ -1167,7 +1176,7 @@ var LINE_DASHES = ['solid','dash','dot','dashdot'];
 MET.forEach(function(m,i){ m.dash = LINE_DASHES[i % LINE_DASHES.length]; });
 var FAMS = [
   {key:'euler',  name:'Euler & one-step', ids:['euler','heun','beuler','trap']},
-  {key:'rk',     name:'Runge–Kutta',      ids:['rk2','rk3','rk4','dopri5','tsit5','rkf45','dop853','gauss4','sdirk2']},
+  {key:'rk',     name:'Runge–Kutta',      ids:['rk2','rk3','rk4','dopri5','tsit5','rkf45','dop853','gauss4','sdirk2','radau5']},
   {key:'taylor', name:'Taylor series',    ids:['taylor2','taylor3','taylor4']},
   {key:'ab',     name:'Adams–Bashforth',  ids:['ab2','ab3','ab4']},
   {key:'am',     name:'Adams–Moulton',    ids:['am3','am4','am5']},
@@ -1544,10 +1553,11 @@ function rkTableauR(T,z){
   var R=cx(1,0); for (i=0;i<s;i++) R=cadd(R, cmul(cx(T.b[i],0), ka[i]));
   return R;
 }
-/* Fully implicit Runge–Kutta tableaus. The two-stage Gauss–Legendre method is
-   order 4, A-stable and symplectic — the highest order possible with 2 stages.
-   Its two stages are coupled, so each step solves a 2×2 nonlinear system for
-   the stage slopes (k1,k2) by Newton iteration (scalar ODE → 2×2 Jacobian). */
+/* Fully implicit Runge–Kutta tableaus. The stages are coupled, so each step
+   solves an s×s nonlinear system for the stage slopes by Newton iteration
+   (scalar ODE → s×s Jacobian). Gauss–Legendre (2-stage) is order 4, A-stable
+   and symplectic — the highest order possible with 2 stages. Radau IIA
+   (3-stage) is order 5, L-stable and stiffly accurate. */
 var IRK = {
   gauss4:{ c:[0.5 - Math.sqrt(3)/6, 0.5 + Math.sqrt(3)/6],
     A:[[0.25, 0.25 - Math.sqrt(3)/6],[0.25 + Math.sqrt(3)/6, 0.25]],
@@ -1556,36 +1566,81 @@ var IRK = {
      stiffly accurate. Lower-triangular A, so the 2-stage Newton solve decouples. */
   sdirk2:{ c:[1 - Math.SQRT1_2, 1],
     A:[[1 - Math.SQRT1_2, 0],[Math.SQRT1_2, 1 - Math.SQRT1_2]],
-    b:[Math.SQRT1_2, 1 - Math.SQRT1_2] }
+    b:[Math.SQRT1_2, 1 - Math.SQRT1_2] },
+  /* Three-stage Radau IIA (order 5): nodes are the Radau quadrature points with
+     c₃=1, the bottom row of A equals b (stiffly accurate), and it is L-stable.
+     This is the order-5 core of Hairer & Wanner's RADAU5 — the standard
+     high-order implicit method for stiff problems. */
+  radau5:(function(){ var r6=Math.sqrt(6);
+    return { c:[(4-r6)/10, (4+r6)/10, 1],
+      A:[[ (88-7*r6)/360,     (296-169*r6)/1800, (-2+3*r6)/225 ],
+         [ (296+169*r6)/1800, (88+7*r6)/360,     (-2-3*r6)/225 ],
+         [ (16-r6)/36,        (16+r6)/36,        1/9 ]],
+      b:[ (16-r6)/36, (16+r6)/36, 1/9 ] };
+  })()
 };
+/* Solve the real n×n system M·x = r (Gaussian elimination, partial pivoting).
+   M and r are overwritten; n is small (2 or 3 stages). */
+function solveDense(M,r,n){
+  var i,j,k;
+  for (k=0;k<n;k++){
+    var p=k, mx=Math.abs(M[k][k]);
+    for (i=k+1;i<n;i++){ var v=Math.abs(M[i][k]); if(v>mx){mx=v;p=i;} }
+    if (p!==k){ var tr=M[p]; M[p]=M[k]; M[k]=tr; var rr=r[p]; r[p]=r[k]; r[k]=rr; }
+    var d=M[k][k]; if (Math.abs(d)<1e-14) d=(d<0?-1:1)*1e-14;
+    for (i=k+1;i<n;i++){ var fct=M[i][k]/d; for(j=k;j<n;j++) M[i][j]-=fct*M[k][j]; r[i]-=fct*r[k]; }
+  }
+  var x=new Array(n);
+  for (i=n-1;i>=0;i--){ var s=r[i]; for(j=i+1;j<n;j++) s-=M[i][j]*x[j]; var di=M[i][i]; if(Math.abs(di)<1e-14) di=(di<0?-1:1)*1e-14; x[i]=s/di; }
+  return x;
+}
+/* Complex analogue of solveDense, used for the stability function. */
+function solveDenseC(M,r,n){
+  var i,j,k;
+  for (k=0;k<n;k++){
+    var p=k, mx=cabs(M[k][k]);
+    for (i=k+1;i<n;i++){ var v=cabs(M[i][k]); if(v>mx){mx=v;p=i;} }
+    if (p!==k){ var tr=M[p]; M[p]=M[k]; M[k]=tr; var rr=r[p]; r[p]=r[k]; r[k]=rr; }
+    for (i=k+1;i<n;i++){ var fct=cdiv(M[i][k],M[k][k]); for(j=k;j<n;j++) M[i][j]=csub(M[i][j],cmul(fct,M[k][j])); r[i]=csub(r[i],cmul(fct,r[k])); }
+  }
+  var x=new Array(n);
+  for (i=n-1;i>=0;i--){ var s=r[i]; for(j=i+1;j<n;j++) s=csub(s,cmul(M[i][j],x[j])); x[i]=cdiv(s,M[i][i]); }
+  return x;
+}
 function makeIRKStep(T,P){
-  var f=P.f, fy=P.fy, A=T.A, c=T.c, b=T.b;
+  var f=P.f, fy=P.fy, A=T.A, c=T.c, b=T.b, s=c.length;
   return function(t,y,h){
-    var k1=f(t,y), k2=k1;
+    var k=new Array(s), i, j, l, f0=f(t,y);
+    for (i=0;i<s;i++) k[i]=f0;
     for (var it=0; it<60; it++){
-      var Y1=y+h*(A[0][0]*k1+A[0][1]*k2), Y2=y+h*(A[1][0]*k1+A[1][1]*k2);
-      var t1=t+c[0]*h, t2=t+c[1]*h;
-      var G1=k1-f(t1,Y1), G2=k2-f(t2,Y2);
-      var j1=fy(t1,Y1), j2=fy(t2,Y2);
-      /* Jacobian of (G1,G2) w.r.t. (k1,k2) */
-      var J11=1-h*A[0][0]*j1, J12=-h*A[0][1]*j1, J21=-h*A[1][0]*j2, J22=1-h*A[1][1]*j2;
-      var det=J11*J22-J12*J21; if (Math.abs(det)<1e-14) det=(det<0?-1:1)*1e-14;
-      var d1=(G1*J22-G2*J12)/det, d2=(J11*G2-J21*G1)/det;
-      k1-=d1; k2-=d2;
-      if (Math.abs(d1)+Math.abs(d2) <= 1e-13*(1+Math.abs(k1)+Math.abs(k2))) break;
+      var G=new Array(s), jv=new Array(s);
+      for (i=0;i<s;i++){
+        var Yi=y; for (j=0;j<s;j++) Yi += h*A[i][j]*k[j];
+        var ti=t+c[i]*h;
+        G[i]=k[i]-f(ti,Yi); jv[i]=fy(ti,Yi);
+      }
+      /* Jacobian of the residual G_i = k_i − f(t_i,Y_i) w.r.t. the slopes k_l:
+         J_il = δ_il − h·A_il·f_y(t_i,Y_i). */
+      var J=new Array(s);
+      for (i=0;i<s;i++){ J[i]=new Array(s); for (l=0;l<s;l++) J[i][l]=(i===l?1:0) - h*A[i][l]*jv[i]; }
+      var d=solveDense(J,G,s), nrm=0, kn=0;
+      for (i=0;i<s;i++){ k[i]-=d[i]; nrm+=Math.abs(d[i]); kn+=Math.abs(k[i]); }
+      if (nrm <= 1e-13*(1+kn)) break;
     }
-    return y + h*(b[0]*k1 + b[1]*k2);
+    var inc=0; for (i=0;i<s;i++) inc += b[i]*k[i];
+    return y + h*inc;
   };
 }
-/* Stability function R(z)=1+z·bᵀ(I−zA)⁻¹𝟙 for a 2-stage implicit tableau. */
+/* Stability function R(z)=1+z·bᵀ(I−zA)⁻¹𝟙 for an s-stage implicit tableau,
+   obtained by solving the complex system (I−zA)x=𝟙. */
 function irkR(T,z){
-  var A=T.A, b=T.b;
-  var M11=csub(cx(1,0),cmul(z,cx(A[0][0],0))), M12=csub(cx(0,0),cmul(z,cx(A[0][1],0)));
-  var M21=csub(cx(0,0),cmul(z,cx(A[1][0],0))), M22=csub(cx(1,0),cmul(z,cx(A[1][1],0)));
-  var det=csub(cmul(M11,M22),cmul(M12,M21));
-  var x1=cdiv(csub(M22,M12),det), x2=cdiv(csub(M11,M21),det);
-  var bx=cadd(cmul(cx(b[0],0),x1),cmul(cx(b[1],0),x2));
-  return cadd(cx(1,0),cmul(z,bx));
+  var A=T.A, b=T.b, s=b.length, i, j;
+  var M=new Array(s), r=new Array(s);
+  for (i=0;i<s;i++){ M[i]=new Array(s); r[i]=cx(1,0);
+    for (j=0;j<s;j++) M[i][j]=csub(cx(i===j?1:0,0), cmul(z,cx(A[i][j],0))); }
+  var x=solveDenseC(M,r,s);
+  var bx=cx(0,0); for (i=0;i<s;i++) bx=cadd(bx, cmul(cx(b[i],0), x[i]));
+  return cadd(cx(1,0), cmul(z,bx));
 }
 function makeOneStep(id,P){
   var f=P.f;
@@ -1656,15 +1711,13 @@ function integrate(id,P,hReq){
     }
   } else if (m.kind==='bdf'){
     var bspec=BDF[id], bk=bspec.steps, ii, mm, Cb;
-    /* Generate the k-1 starting values with a one-step starter. BDF2 uses
-       SDIRK2 (order 2, L-stable): being implicit and L-stable it stays stable
-       on stiff problems, matches BDF2's order exactly, and needs no reference
-       fallback. The higher-order BDFs use the high-order DOP853 (order 8): its
-       startup error sits far below the BDF order, so it never limits the method.
-       DOP853 is explicit, so on a stiff problem it can diverge — if a starting
-       value grows wildly off the reference solution, fall back to the reference
-       for the starting values (keeping BDF stable on stiff problems). */
-    var bstarter=makeOneStep(id==='bdf2' ? 'sdirk2' : 'dop853', P), useRef=false, tmpY=[ys[0]];
+    /* Generate the k-1 starting values with Radau IIA (order 5, L-stable). As an
+       implicit L-stable method it stays stable on stiff problems — exactly the
+       regime BDF is built for — so unlike an explicit starter it never diverges,
+       and its order 5 keeps the startup error far below the BDF order (5 matches
+       BDF5 exactly, and exceeds BDF2–4). A reference-solution fallback is kept as
+       a guard, but the L-stable starter means it should never be needed. */
+    var bstarter=makeOneStep('radau5', P), useRef=false, tmpY=[ys[0]];
     var bRefScale=0; for (var bs=0;bs<=40;bs++){ var brv=Math.abs(P.ref(t0+(P.tEnd-t0)*bs/40)); if(isFinite(brv)&&brv>bRefScale) bRefScale=brv; }
     if(!(bRefScale>0)) bRefScale=Math.abs(P.y0)||1;
     for (ii=1;ii<bk && ii<=N;ii++){
