@@ -393,7 +393,7 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
       <div class="phdr"><span class="pdot" style="background:var(--vio);" aria-hidden="true"></span> Derivation</div>
       <div style="padding:.6rem .75rem;">
         <details class="deriv-toggle">
-          <summary>Show step-by-step derivation (Taylor expansion &amp; Vandermonde system)</summary>
+          <summary>Show step-by-step derivation (Taylor expansion)</summary>
           <div id="derivation-body" class="deriv-body math-container"></div>
         </details>
       </div>
@@ -1162,55 +1162,15 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
         }
         H += `\\end{aligned}\\]`;
 
-        // ── Step 2: Linear combination ──
-        H += `<h4>Step 2 &mdash; Linear combination</h4>`;
-        H += `<p>Seek coefficients \\(c_0, c_1, \\ldots, c_{${n-1}}\\) so that</p>`;
-        H += `\\[ \\sum_{i=0}^{${n-1}} c_i\\,f(x + p_i h) \\;\\approx\\; ${derivSym(d)}. \\]`;
-        H += `<p>Substituting the Taylor expansions and grouping by derivative order:</p>`;
-        H += `\\[ \\sum_{i=0}^{${n-1}} c_i\\,f(x + p_i h) \\;=\\; \\sum_{k=0}^{${n-1}} \\left(\\sum_{i=0}^{${n-1}} c_i\\,p_i^{\\,k}\\right) \\dfrac{h^k}{k!}\\,f^{(k)}(x) \\;+\\; R_n. \\]`;
-
-        // ── Step 3: Cancellation conditions ──
-        H += `<h4>Step 3 &mdash; Cancellation conditions &amp; the Vandermonde system</h4>`;
-        H += `<p>For the right-hand side to collapse to \\(${derivSym(d)}\\), the coefficient of \\(f^{(k)}(x)\\) must vanish for every \\(k \\neq ${d}\\) and equal \\(1\\) for \\(k = ${d}\\):</p>`;
+        // ── Step 2: Combine and cancel ──
         const dFact = factorialBig(d);
-        H += `\\[\\begin{aligned}\n`;
-        for (let k = 0; k < n; k++) {
-          // Build explicit ∑ c_i p_i^k with substituted p_i
-          const exp = [];
-          for (let i = 0; i < n; i++) {
-            const pk = pointsBig[i] ** BigInt(k);
-            if (pk === 0n) continue;
-            const sg = pk < 0n ? '-' : '+';
-            const ap = pk < 0n ? -pk : pk;
-            exp.push({ sign: sg, body: (ap === 1n ? '' : ap.toString()) + `c_{${i}}` });
-          }
-          const lhsExpl = joinTerms(exp);
-          const rhs = (k === d)
-            ? `\\dfrac{${dFact.toString()}}{${hPow(d)}}`
-            : '0';
-          H += `\\sum_{i} c_i\\,p_i^{\\,${k}} \\;=\\; ${lhsExpl} &= ${rhs}`;
-          H += (k < n - 1) ? ` \\\\[2pt]\n` : `\n`;
-        }
-        H += `\\end{aligned}\\]`;
-        H += `<p>The \\(h\\)-dependence factors out cleanly with the substitution \\(c_i = \\beta_i / h^{${d}}\\), giving a rational linear system on the \\(\\beta_i\\):</p>`;
-        H += `\\[ \\sum_{i=0}^{${n-1}} \\beta_i\\,p_i^{\\,k} \\;=\\; ${dFact.toString()}\\,\\delta_{k,${d}}, \\qquad k = 0, 1, \\ldots, ${n-1}. \\]`;
-        H += `<p>where \\(\\delta_{k,${d}} = 1\\) if \\(k = ${d}\\), and \\(0\\) otherwise (the Kronecker delta).</p>`;
-        H += `<p>In matrix form \\(V\\boldsymbol\\beta = \\mathbf{b}\\) with the \\(${n}\\times${n}\\) Vandermonde matrix \\(V_{ki} = p_i^{\\,k}\\):</p>`;
-        H += `\\[ \\underbrace{\\begin{pmatrix}`;
-        for (let k = 0; k < n; k++) {
-          const row = [];
-          for (let i = 0; i < n; i++) row.push((pointsBig[i] ** BigInt(k)).toString());
-          H += row.join(' & ');
-          if (k < n - 1) H += ` \\\\ `;
-        }
-        H += `\\end{pmatrix}}_{V}\\;`;
-        H += `\\underbrace{\\begin{pmatrix} ${Array.from({length: n}, (_, i) => `\\beta_{${i}}`).join(' \\\\ ')} \\end{pmatrix}}_{\\boldsymbol\\beta}\\;=\\;`;
-        const bVec = Array.from({length: n}, (_, k) => k === d ? dFact.toString() : '0');
-        H += `\\underbrace{\\begin{pmatrix} ${bVec.join(' \\\\ ')} \\end{pmatrix}}_{\\mathbf{b}}. \\]`;
+        H += `<h4>Step 2 &mdash; Combine and cancel</h4>`;
+        H += `<p>Take a combination \\(\\sum_i c_i\\,f(x + p_i h)\\) with \\(c_i = \\beta_i / h^{${d}}\\). Matching the coefficient of each \\(f^{(k)}(x)\\) so that only \\(${derivSym(d)}\\) survives requires</p>`;
+        H += `\\[ \\sum_{i=0}^{${n-1}} \\beta_i\\,p_i^{\\,k} \\;=\\; ${dFact.toString()}\\,\\delta_{k,${d}}, \\qquad k = 0, 1, \\ldots, ${n-1}, \\]`;
+        H += `<p>where \\(\\delta_{k,${d}} = 1\\) if \\(k = ${d}\\) and \\(0\\) otherwise.</p>`;
 
-        // ── Step 4: Solution ──
-        H += `<h4>Step 4 &mdash; Solve for the coefficients</h4>`;
-        H += `<p>Solving the Vandermonde system yields</p>`;
+        // ── Step 3: Solve ──
+        H += `<h4>Step 3 &mdash; Solve for the weights</h4>`;
         H += `\\[\\begin{aligned}\n`;
         for (let i = 0; i < n; i++) {
           H += `\\beta_{${i}} &= ${fmtRational(rationalCoefficients[i])}`;
@@ -1218,48 +1178,14 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
         }
         H += `\\end{aligned}\\]`;
 
-        // ── Step 5: Verify cancellation ──
-        H += `<h4>Step 5 &mdash; Substitute back and verify cancellation</h4>`;
-        H += `<p>Computing \\(\\sum_i \\beta_i\\,p_i^{\\,k}\\) for each \\(k\\) confirms the design conditions and exposes the first non-zero residual:</p>`;
-        H += `<div class="deriv-table-wrap"><table class="deriv-table"><thead>`;
-        H += `<tr><th>\\(k\\)</th><th>\\(\\sum_i \\beta_i\\,p_i^{\\,k}\\)</th><th>required</th></tr>`;
-        H += `</thead><tbody>`;
-        const kMax = Math.max(errorDerivativeOrder, n);
-        for (let k = 0; k <= kMax; k++) {
-          let sum = new Rational(0n);
-          for (let i = 0; i < n; i++) {
-            const pow = new Rational(pointsBig[i] ** BigInt(k));
-            sum = sum.add(rationalCoefficients[i].mul(pow));
-          }
-          const sumStr = fmtRational(sum);
-          let req;
-          if (k < n) req = (k === d) ? dFact.toString() : '0';
-          else req = '\\text{free}';
-          let cls = '';
-          if (k < n) cls = 'deriv-ok';
-          else if (k === errorDerivativeOrder && !sum.isZero()) cls = 'deriv-err';
-          H += `<tr class="${cls}"><td>\\(${k}\\)</td><td>\\(${sumStr}\\)</td><td>\\(${req}\\)</td></tr>`;
-        }
-        H += `</tbody></table></div>`;
-        H += `<p class="deriv-note">Green rows are forced by the linear system. The amber row is the first \\(k \\geq ${n}\\) where the combination is non-zero — this controls the leading error.</p>`;
-
-        // ── Step 6: Leading error term ──
-        H += `<h4>Step 6 &mdash; Leading error term</h4>`;
-        H += `<p>The remainder from each Taylor expansion contributes \\(\\dfrac{(p_i h)^{k}}{k!}\\,f^{(k)}(\\xi_i)\\). Combining and using \\(c_i = \\beta_i / h^{${d}}\\), the leading-order residual is</p>`;
-        H += `\\[ \\frac{1}{h^{${d}}}\\sum_{i=0}^{${n-1}} \\beta_i\\,\\frac{(p_i h)^{${errorDerivativeOrder}}}{${errorDerivativeOrder}!}\\,f^{(${errorDerivativeOrder})}(\\xi_i) \\;=\\; \\frac{h^{${errorOrder}}}{${errorDerivativeOrder}!}\\left(\\sum_{i=0}^{${n-1}} \\beta_i\\,p_i^{\\,${errorDerivativeOrder}}\\right) f^{(${errorDerivativeOrder})}(\\xi), \\]`;
-        H += `<p>by the <em>weighted mean value theorem</em> (intermediate value theorem applied to the continuous function \\(f^{(${errorDerivativeOrder})}\\)), which collapses the individual \\(\\xi_i\\) to a single \\(\\xi\\) in the stencil's hull. From Step 5,</p>`;
-        let lead = new Rational(0n);
-        for (let i = 0; i < n; i++) {
-          const pow = new Rational(pointsBig[i] ** BigInt(errorDerivativeOrder));
-          lead = lead.add(rationalCoefficients[i].mul(pow));
-        }
-        H += `\\[ \\sum_{i=0}^{${n-1}} \\beta_i\\,p_i^{\\,${errorDerivativeOrder}} \\;=\\; ${fmtRational(lead)}, \\]`;
+        // ── Step 4: Leading error (boxed result) ──
         const errAbsStr = formatErrorConstantRational(errorConstant.abs());
         const errSign = errorConstant.num > 0n ? '-' : '+';
         const errH = hPow(errorOrder);
-        H += `<p>so the leading-error term — equal to the residual moved to the right-hand side of the formula above — is</p>`;
-        H += `\\[ \\text{error} \\;=\\; ${errSign === '-' ? '-' : '+'}\\,${errAbsStr}\\,${errH}\\,${derivSym(errorDerivativeOrder, '\\xi')}. \\]`;
-        H += `<p class="deriv-note">This matches the error term in the formula at the top of this page. The method is \\(O(${errH})\\), which the convergence demonstration below verifies numerically on \\(f(x) = e^x\\).</p>`;
+        H += `<h4>Step 4 &mdash; Leading error</h4>`;
+        H += `<p>The Taylor remainders combine, and the generalized intermediate value theorem replaces the individual \\(\\xi_i\\) by a single \\(\\xi\\) in the stencil's range, giving</p>`;
+        H += `\\[\\boxed{\\, ${derivSym(d)} \\;=\\; \\dfrac{1}{${hPow(d)}}\\sum_{i=0}^{${n-1}} \\beta_i\\,f(x + p_i h) \\;${errSign}\\; ${errAbsStr}\\,${errH}\\,${derivSym(errorDerivativeOrder, '\\xi')} \\,}\\]`;
+        H += `<p class="deriv-note">The method is \\(O(${errH})\\), verified numerically below on \\(f(x) = e^x\\).</p>`;
 
         body.innerHTML = H;
       }
