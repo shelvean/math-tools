@@ -2070,9 +2070,30 @@ function wireSection(btnId, bodyId, iconId, onOpen){
 function isOpen(bodyId){ return !document.getElementById(bodyId).hasAttribute('hidden'); }
 
 /* ----- plotting ----- */
+function pngFilename(gd){
+  var map={solnPlot:'solution', errPlot:'error', convPlot:'convergence', stabPlot:'stability'};
+  var base=(gd&&map[gd.id])||'plot';
+  return 'ivp-'+base+'_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+}
+/* Download the plot as PNG with the legend moved outside to the right, so it
+   never overlaps the axis titles. Only the exported image is affected — the
+   on-screen layout is restored immediately afterwards. */
+function downloadPNG(gd){
+  var lay=gd.layout||{}, fname=pngFilename(gd);
+  var w=gd.clientWidth||720, h=lay.height||360;
+  if (lay.showlegend===false){ Plotly.downloadImage(gd,{format:'png',filename:fname,width:w,height:h}); return; }
+  var snapLegend=JSON.parse(JSON.stringify(lay.legend||{}));
+  var snapMarginR=(lay.margin&&lay.margin.r!=null)?lay.margin.r:12;
+  var snapDomain=(lay.xaxis&&lay.xaxis.domain)?lay.xaxis.domain.slice():[0,1];
+  Plotly.relayout(gd,{ 'xaxis.domain':[0,1], 'margin.r':160,
+    'legend.orientation':'v','legend.x':1.02,'legend.xanchor':'left','legend.y':1,'legend.yanchor':'top'})
+  .then(function(){ return Plotly.downloadImage(gd,{format:'png',filename:fname,width:w+230,height:h}); })
+  .then(function(){ return Plotly.relayout(gd,{legend:snapLegend,'margin.r':snapMarginR,'xaxis.domain':snapDomain}); });
+}
 var PCONFIG={responsive:true, scrollZoom:true, displaylogo:false,
-  modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d'],
-  toImageButtonOptions:{filename:'ivp-methods_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}};
+  modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d','toImage'],
+  modeBarButtonsToAdd:[{ name:'Download PNG', title:'Download as PNG (legend at right)',
+    icon:Plotly.Icons.camera, click:function(gd){ downloadPNG(gd); } }]};
 
 /* LaTeX for an expression, falling back to the raw text if it can't be parsed. */
 function safeTex(expr){ try{ return math.parse(expr).toTex(); }catch(e){ return expr; } }
@@ -2194,12 +2215,12 @@ function plotWorkPrecision(P){
   var xr=dataRange(allX), yr=dataRange(allY);
   var xTicks=xr?logTicks(xr.lo,xr.hi,'decimal'):{};
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
-  var layout={ height:300, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'$\\text{accepted steps } N$'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
+  var layout={ height:340, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
+    xaxis:Object.assign({title:{text:'$\\text{accepted steps } N$'}, type:'log', domain:[0,0.48], gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
     yaxis:Object.assign({title:{text:'$|y_n-y(t_n)|$',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
-    legend:{orientation:'h', y:-0.22, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'}, showlegend:true,
-    annotations:[{ xref:'paper', yref:'paper', x:0.99, y:0.98, xanchor:'right', yanchor:'top',
-      text:'error ≈ C·N^(−p); slope of log|Error| vs log N gives −p', showarrow:false, font:{size:10, color:'#9ca3af'} }],
+    legend:{orientation:'v', x:0.52, xanchor:'left', y:1, yanchor:'top', font:{size:11}, itemsizing:'constant'}, showlegend:true,
+    annotations:[{ xref:'paper', yref:'paper', x:0.46, y:0.98, xanchor:'right', yanchor:'top',
+      text:'error ≈ C·N^(−p)', showarrow:false, font:{size:10, color:'#9ca3af'} }],
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   Plotly.react('convPlot', traces, layout, PCONFIG);
   convInited=true;
@@ -2267,16 +2288,16 @@ function plotConvergence(P){
   var xr=dataRange(allX), yr=dataRange(allY);
   var xTicks=xr?logTicks(xr.lo,xr.hi,'decimal'):{};
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
-  var layout={ height:300, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
-    xaxis:Object.assign({title:{text:'$\\text{step size } h$'}, type:'log', gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
+  var layout={ height:340, margin:{l:62,r:12,t:10,b:46}, dragmode:'pan',
+    xaxis:Object.assign({title:{text:'$\\text{step size } h$'}, type:'log', domain:[0,0.48], gridcolor:'#e5e7eb', tickfont:{size:12}}, xTicks),
     yaxis:Object.assign({title:{text:'$|y_n-y(t_n)|$',font:{size:14}}, type:'log', showgrid:true, gridcolor:'#e5e7eb', tickfont:{size:12}}, yTicks),
-    legend:{orientation:'h', y:-0.22, yanchor:'top', x:0, font:{size:11}, itemsizing:'constant'}, showlegend:true,
+    legend:{orientation:'v', x:0.52, xanchor:'left', y:1, yanchor:'top', font:{size:11}, itemsizing:'constant'}, showlegend:true,
     paper_bgcolor:'#fff', plot_bgcolor:'#fafafa', hovermode:'closest'};
   if (droppedHi || droppedLo){
     var omitMsg = droppedHi && droppedLo ? 'unstable (large h) & round-off (small h) points omitted'
                 : droppedHi ? 'unstable large-h points omitted'
                 : 'round-off-dominated small-h points omitted';
-    layout.annotations=[{ xref:'paper', yref:'paper', x:0.99, y:0.02, xanchor:'right', yanchor:'bottom',
+    layout.annotations=[{ xref:'paper', yref:'paper', x:0.46, y:0.02, xanchor:'right', yanchor:'bottom',
       text:omitMsg, showarrow:false, font:{size:10, color:'#9ca3af'} }];
   }
   Plotly.react('convPlot', traces, layout, PCONFIG);
