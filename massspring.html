@@ -66,6 +66,17 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   color:var(--link);text-decoration:none;font-size:.875rem;font-weight:700;
   background:var(--card);min-height:44px;}
 .rel-link:hover,.rel-link:focus-visible{background:rgba(29,78,216,.07);border-color:var(--blue);}
+/* ── exact-solution toggle + analytic panel ── */
+.exact-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:.35rem;
+  font-size:.75rem;font-weight:600;color:var(--txt2);cursor:pointer;white-space:nowrap;}
+.exact-toggle input{cursor:pointer;width:15px;height:15px;accent-color:#dc2626;}
+.exact-swatch{display:inline-block;width:18px;height:0;border-top:2px dashed #dc2626;
+  vertical-align:middle;margin-right:.1rem;}
+.analytic-sol{margin-top:.6rem;padding:.55rem .75rem;background:var(--sect,#f8f9fb);
+  border:1px solid var(--bdr2);border-left:3px solid #dc2626;border-radius:.4rem;
+  font-size:.875rem;color:var(--txt2);overflow-x:auto;}
+.analytic-sol .as-regime{font-weight:700;color:var(--txt);margin-bottom:.15rem;}
+.analytic-sol mjx-container{margin:.15rem 0 !important;}
 .info-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);
   margin-bottom:1.25rem;overflow:hidden;}
 .info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
@@ -472,10 +483,15 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
         <div class="phdr">
           <span class="pdot" style="background:var(--vio);" aria-hidden="true"></span>
           Displacement \(y(t)\) vs time
+          <label for="showExact" class="exact-toggle">
+            <input type="checkbox" id="showExact" checked>
+            <span><span class="exact-swatch" aria-hidden="true"></span> Exact solution</span>
+          </label>
         </div>
         <div role="img" aria-label="Displacement graph updating in real time">
           <canvas id="graphCanvas" width="370" height="220" aria-hidden="true"></canvas>
         </div>
+        <div id="analyticSolution" class="analytic-sol" role="region" aria-label="Analytic solution" aria-live="polite"></div>
       </div>
     </div>
 
@@ -911,6 +927,27 @@ function drawGraph(){
     i===0?graphCtx.moveTo(gx,gy):graphCtx.lineTo(gx,gy);
   }
   graphCtx.stroke();
+  /* Exact analytic solution overlay (dashed), evaluated from the current
+     parameters m, c, k, y0, v0 over the elapsed time span. */
+  var showExact=document.getElementById('showExact');
+  if(showExact&&showExact.checked&&graphData.length>1){
+    var lastT=graphData[graphData.length-1].t;
+    graphCtx.save();
+    graphCtx.beginPath();
+    graphCtx.rect(50,20,graphCanvas.width-70,graphCanvas.height-60);
+    graphCtx.clip();
+    graphCtx.beginPath();graphCtx.strokeStyle='#dc2626';graphCtx.lineWidth=1.5;
+    graphCtx.setLineDash([5,4]);
+    var NSEG=320;
+    for(var s=0;s<=NSEG;s++){
+      var tt=lastT*s/NSEG, ya=analyticY(tt);
+      var ax=50+(tt/graphMaxTime)*(graphCanvas.width-70);
+      var ayp=graphCanvas.height-40-(ya-minY)*scaleY;
+      s===0?graphCtx.moveTo(ax,ayp):graphCtx.lineTo(ax,ayp);
+    }
+    graphCtx.stroke();graphCtx.setLineDash([]);
+    graphCtx.restore();
+  }
   graphCtx.font='10px -apple-system,Arial,sans-serif';graphCtx.textAlign='right';graphCtx.textBaseline='middle';
   graphCtx.fillStyle='#333';graphCtx.strokeStyle='#333';graphCtx.lineWidth=1;
   for(var i=0;i<=5;i++){
@@ -940,6 +977,82 @@ function drawGraph(){
     graphCtx.fillStyle='rgba(17,24,39,0.92)';graphCtx.fillRect(tx,ty,tw,th);
     graphCtx.fillStyle='#fff';graphCtx.textAlign='left';graphCtx.textBaseline='middle';
     graphCtx.fillText(lbl,tx+5,ty+th/2);
+  }
+}
+
+/* ── Exact analytic solution of m y'' + c y' + k y = 0 ──
+   y is displacement from static equilibrium, with y(0)=y0, y'(0)=v0.
+   The regime is set by the discriminant Δ = c² − 4mk. */
+function analyticRegime(){
+  var disc=c*c-4*m*k;
+  var eps=1e-6*(c*c+4*m*k);
+  if(disc<-eps) return 'under';
+  if(disc>eps)  return 'over';
+  return 'critical';
+}
+function analyticY(tt){
+  var alpha=c/(2*m), reg=analyticRegime();
+  if(reg==='under'){
+    var wd=Math.sqrt(Math.max(0,k/m-alpha*alpha));
+    var A=y0, B=wd>0?(v0+alpha*y0)/wd:0;
+    return Math.exp(-alpha*tt)*(A*Math.cos(wd*tt)+B*Math.sin(wd*tt));
+  }
+  if(reg==='critical'){
+    return (y0+(v0+alpha*y0)*tt)*Math.exp(-alpha*tt);
+  }
+  var beta=Math.sqrt(Math.max(0,alpha*alpha-k/m));
+  var l1=-alpha+beta, l2=-alpha-beta, dl=(l1-l2)||1e-12;
+  var C1=(v0-l2*y0)/dl, C2=(l1*y0-v0)/dl;
+  return C1*Math.exp(l1*tt)+C2*Math.exp(l2*tt);
+}
+
+/* Tidy number formatter for the LaTeX display. */
+function nf(x){
+  if(!isFinite(x)) return '0';
+  if(Math.abs(x)<5e-4) return '0';
+  var a=Math.abs(x);
+  var s=(a>=1000||a<0.01)?x.toPrecision(4):x.toFixed(3);
+  return parseFloat(s).toString();
+}
+/* Build a "+ a expr" / "− |a| expr" term, sign-aware. */
+function sterm(coef,expr){
+  if(Math.abs(coef)<5e-4) return '';
+  return (coef<0?' - ':' + ')+nf(Math.abs(coef))+expr;
+}
+
+var analyticTypesetTimer=null;
+function updateAnalyticDisplay(){
+  var el=document.getElementById('analyticSolution'); if(!el) return;
+  var vn=oscillatorMode==='horizontal'?'x':'y';
+  var alpha=c/(2*m), w0=Math.sqrt(k/m), zeta=c/(2*Math.sqrt(m*k));
+  var reg=analyticRegime(), regimeLine='', symb='', numr='';
+  if(reg==='under'){
+    var wd=Math.sqrt(Math.max(0,k/m-alpha*alpha));
+    var A=y0, B=wd>0?(v0+alpha*y0)/wd:0;
+    regimeLine='Underdamped — \\(\\zeta='+nf(zeta)+'<1\\), \\(\\omega_0='+nf(w0)+'\\), \\(\\omega_d='+nf(wd)+'\\,\\mathrm{rad/s}\\)';
+    symb='\\['+vn+'(t)=e^{-\\alpha t}\\left(A\\cos\\omega_d t+B\\sin\\omega_d t\\right)\\]';
+    var cosT='\\cos '+nf(wd)+'t', sinT='\\sin '+nf(wd)+'t';
+    var body=nf(A)+cosT+sterm(B,sinT);
+    numr='\\['+vn+'(t)=e^{-'+nf(alpha)+'t}\\left('+body+'\\right)\\]';
+  } else if(reg==='critical'){
+    var Bc=v0+alpha*y0;
+    regimeLine='Critically damped — \\(\\zeta=1\\), \\(\\omega_0='+nf(w0)+'\\,\\mathrm{rad/s}\\)';
+    symb='\\['+vn+'(t)=(A+Bt)\\,e^{-\\alpha t}\\]';
+    var poly=nf(y0)+sterm(Bc,'t');
+    numr='\\['+vn+'(t)=\\left('+poly+'\\right)e^{-'+nf(alpha)+'t}\\]';
+  } else {
+    var beta=Math.sqrt(Math.max(0,alpha*alpha-k/m));
+    var l1=-alpha+beta, l2=-alpha-beta, dl=(l1-l2)||1e-12;
+    var C1=(v0-l2*y0)/dl, C2=(l1*y0-v0)/dl;
+    regimeLine='Overdamped — \\(\\zeta='+nf(zeta)+'>1\\), roots \\(\\lambda_{1,2}='+nf(l1)+',\\,'+nf(l2)+'\\)';
+    symb='\\['+vn+'(t)=C_1 e^{\\lambda_1 t}+C_2 e^{\\lambda_2 t}\\]';
+    var t1=nf(C1)+'e^{'+nf(l1)+'t}', t2=sterm(C2,'e^{'+nf(l2)+'t}');
+    numr='\\['+vn+'(t)='+t1+t2+'\\]';
+  }
+  el.innerHTML='<div class="as-regime">'+regimeLine+'</div>'+symb+numr;
+  if(window.MathJax&&MathJax.typesetPromise){
+    if(analyticTypesetTimer) clearTimeout(analyticTypesetTimer);
+    analyticTypesetTimer=setTimeout(function(){MathJax.typesetPromise([el]).catch(function(){});},120);
   }
 }
 
@@ -985,6 +1098,7 @@ function readParams(){
   T =parseFloat(document.getElementById('endTime').value)||60;
   graphMaxTime=T;
   computeScale();
+  updateAnalyticDisplay();
 }
 
 /* ── Reset ── */
@@ -1034,6 +1148,11 @@ document.addEventListener('DOMContentLoaded',function(){
     applyOscillatorMode();
     resetSimulation();
     say('Oscillator: '+this.value);
+  });
+
+  document.getElementById('showExact').addEventListener('change',function(){
+    drawGraph();
+    say('Exact analytic overlay '+(this.checked?'shown':'hidden')+'.');
   });
 
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
