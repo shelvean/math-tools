@@ -649,14 +649,19 @@ var graphData=[];
 var clickedPoint=null;
 var STIFF=5, firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
-var oscillatorMode='vertical', H_WALL_W=28, H_SPRING_COILS=8;
+var oscillatorMode='vertical', H_WALL_W=28;
 
 /* ── Visual geometry (all in pixels) ── */
 var SUP_BOT=60;           /* y-pixel of support bottom (fixed) */
 var GROUND_Y=545;         /* y-pixel of ground (fixed)         */
 var pxPerM=80;            /* pixels per metre — recomputed at reset */
 var springRadius=15, ballRadius=20;
-/* springCoils is computed dynamically in drawSpring() from L0 */
+/* Spring geometry is fixed: a constant number of coils drawn over a constant
+   on-screen length. The coil block never stretches or changes with the mass,
+   L0, k or m — displacement is taken up by a straight lead wire to the mass. */
+var SPRING_COILS=8;       /* invariant coil count (both orientations) */
+var SPRING_LEN_V=120;     /* coil-block length, vertical   (px) */
+var SPRING_LEN_H=90;      /* coil-block length, horizontal (px) */
 var cxCanvas=canvas.width/2;
 var simBG=null, graphBG=null, alertBox=null;
 
@@ -666,7 +671,6 @@ function computeScale(){
     var availW=canvas.width-H_WALL_W-ballRadius-20;
     pxPerM=(availW*0.45)/Math.max(L0,0.5);
     pxPerM=Math.min(Math.max(pxPerM,20),200);
-    H_SPRING_COILS=Math.max(4,Math.min(12,Math.round(L0*pxPerM/25)));
   }else{
     var staticExt=(k>0)?m*g/k:0;
     var midY=canvas.height/2;
@@ -817,24 +821,19 @@ function createSimBG_H(){
   bg.fillText('eq',eqX,3);
 }
 function drawSpring(startY,endY){
-  /* The number of coils is a physical property of the spring, so it must NOT
-     change with the mass — a heavier/lighter bob stretches the same turns
-     farther apart, it doesn't add or remove turns. Pin the count to the
-     reference mass m=2.8 (the live pxPerM shrinks as m grows to keep the
-     static extension on-screen, which would otherwise drop the coil count).
-     Still adapts to L0, the spring's natural length. */
-  var M_REF=2.8;
-  var staticExtRef=(k>0)?M_REF*g/k:0;
-  var pxPerMRef=Math.min(Math.max((canvas.height/2-SUP_BOT)/(L0+staticExtRef),20),200);
-  var springPx=L0*pxPerMRef;
-  var coils=Math.max(4,Math.min(20,Math.round(springPx/25)));
-  var total=endY-startY,radius=springRadius,segs=20,pts=[];
+  /* Fixed-geometry spring: SPRING_COILS turns over a constant length
+     SPRING_LEN_V. The coil block never stretches or changes with the mass,
+     L0, k or m; a straight lead wire carries the displacement to the mass. */
+  var coils=SPRING_COILS,coilLen=SPRING_LEN_V,radius=springRadius,segs=20,pts=[];
+  var coilEndY=startY+coilLen;
   for(var i=0;i<=coils*segs;i++){
-    var prog=i/(coils*segs),yp=startY+prog*total,ang=prog*Math.PI*2*coils;
+    var prog=i/(coils*segs),yp=startY+prog*coilLen,ang=prog*Math.PI*2*coils;
     pts.push({x:cxCanvas+radius*Math.cos(ang),y:yp});
   }
   ctx.beginPath();ctx.strokeStyle='#181b59';ctx.lineWidth=3;ctx.lineCap='round';
   for(var i=0;i<pts.length;i++){i===0?ctx.moveTo(pts[i].x,pts[i].y):ctx.lineTo(pts[i].x,pts[i].y);}
+  ctx.lineTo(cxCanvas,coilEndY);   /* recenter at the coil end */
+  ctx.lineTo(cxCanvas,endY);       /* straight lead wire to the mass */
   ctx.stroke();
 }
 
@@ -879,12 +878,15 @@ function drawSim_H(){
 }
 
 function drawHSpring(startX,endX,cy){
-  if(endX<=startX)endX=startX+1;
-  var len=endX-startX;
-  var coils=H_SPRING_COILS,r=11,segs=20,total=coils*segs,pts=[];
-  for(var i=0;i<=total;i++){var p=i/total;pts.push({x:startX+p*len,y:cy+r*Math.sin(p*Math.PI*2*coils)});}
+  /* Fixed-geometry spring (see drawSpring): SPRING_COILS turns over a constant
+     length SPRING_LEN_H, with a straight lead wire to the mass. */
+  var coils=SPRING_COILS,coilLen=SPRING_LEN_H,r=11,segs=20,pts=[];
+  var coilEndX=startX+coilLen;
+  for(var i=0;i<=coils*segs;i++){var p=i/(coils*segs);pts.push({x:startX+p*coilLen,y:cy+r*Math.sin(p*Math.PI*2*coils)});}
   ctx.beginPath();ctx.strokeStyle='#181b59';ctx.lineWidth=3;ctx.lineCap='round';
   for(var i=0;i<pts.length;i++){i===0?ctx.moveTo(pts[i].x,pts[i].y):ctx.lineTo(pts[i].x,pts[i].y);}
+  ctx.lineTo(coilEndX,cy);   /* recenter at the coil end */
+  ctx.lineTo(endX,cy);       /* straight lead wire to the mass */
   ctx.stroke();
 }
 
@@ -1019,10 +1021,10 @@ function sterm(coef,expr){
   if(Math.abs(coef)<5e-4) return '';
   return (coef<0?' - ':' + ')+nf(Math.abs(coef))+expr;
 }
-/* Trig expression with frequency w: "\cos t" when w≈1 (coefficient dropped),
-   otherwise "\cos(<w>t)" with parentheses. */
+/* Trig expression with frequency w, always parenthesized: "\cos(t)" when
+   w≈1 (coefficient dropped), otherwise "\cos(<w>t)". */
 function trigExpr(fn,w){
-  return (Math.abs(w-1)<5e-4) ? '\\'+fn+' t' : '\\'+fn+'('+nf(w)+'t)';
+  return (Math.abs(w-1)<5e-4) ? '\\'+fn+'(t)' : '\\'+fn+'('+nf(w)+'t)';
 }
 
 var analyticTypesetTimer=null;
