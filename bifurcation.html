@@ -581,7 +581,7 @@ if(document.referrer.includes('dynamical.html')){
 
     <div class="cbar-range cfield">
       <label for="pMinNum">Param min (x-axis)</label>
-      <input type="text" inputmode="decimal" id="pMinNum" value="2.5" aria-label="Parameter minimum, horizontal axis lower bound (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
+      <input type="text" inputmode="decimal" id="pMinNum" value="3.4" aria-label="Parameter minimum, horizontal axis lower bound (accepts expressions like pi/2)" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)">
     </div>
     <div class="cbar-range cfield">
       <label for="pMaxNum">Param max (x-axis)</label>
@@ -642,6 +642,9 @@ if(document.referrer.includes('dynamical.html')){
     </button>
     <button class="abtn abtn-zoom" id="btnRefine" type="button" aria-label="Refine: recompute bifurcation diagram at current zoom to reveal self-similarity" style="background:#5b21b6;">
       <span aria-hidden="true">&#128300;</span> Refine
+    </button>
+    <button class="abtn abtn-zoom" id="btnSelfSimilar" type="button" aria-label="Self-similar zoom: jump to the period-3 window [3.847, 3.857] by [0.13, 0.17] at ultra quality to reveal a miniature copy of the full diagram">
+      <span aria-hidden="true">&#10070;</span> Self-similar
     </button>
     <button class="abtn abtn-reset" id="btnBack" type="button" aria-label="Undo last refine/zoom" disabled style="opacity:.5;">
       <span aria-hidden="true">&#8592;</span> Back
@@ -945,10 +948,10 @@ var MAPS = {
     f:  function(x,r){ return r*x*(1-x); },
     df: function(x,r){ return r*(1-2*x); },
     x0: 0.5, xMin:0, xMax:1,
-    pMin:2.5, pMax:4,
+    pMin:3.4, pMax:4,
     pMinFull:0, pMaxFull:4,
     pLabel:'r',
-    viewPMin:2.5, viewPMax:4,
+    viewPMin:3.4, viewPMax:4,
     feigenbaum: true,
     bifPts:[
       {r:3,        label:'r\u2081=3',       period:2,   color:'rgba(29,78,216,.85)'},
@@ -3254,6 +3257,21 @@ document.getElementById('btnRefine').addEventListener('click',function(){
   refineView();
   say('Refining: recomputing at current zoom window.');
 });
+document.getElementById('btnSelfSimilar').addEventListener('click',function(){
+  if(autoRefineTimer){clearTimeout(autoRefineTimer);autoRefineTimer=null;}
+  /* Force ultra so the miniature copy of the diagram resolves crisply. */
+  var q=document.getElementById('qualSel');
+  if(q) q.value='ultra';
+  /* Preserve the current view so Back returns here. */
+  pushZoomHistory();
+  VBIF.pMin=3.847; VBIF.pMax=3.857; VBIF.xMin=0.13; VBIF.xMax=0.17;
+  VLYA.pMin=VBIF.pMin; VLYA.pMax=VBIF.pMax;
+  ST.pMin=VBIF.pMin; ST.pMax=VBIF.pMax;
+  syncParamInputs();
+  renderAll();
+  runCompute(null);
+  say('Self-similar zoom: period-3 window [3.847, 3.857] × [0.13, 0.17] at ultra quality.');
+});
 document.getElementById('deepZoomChk').addEventListener('change',function(){
   updateDeepBadge();
   if(this.checked && !isDeepZoomActive()){
@@ -3360,7 +3378,15 @@ addCanvasEvents(lyaCanvas, true);
 document.addEventListener('DOMContentLoaded',function(){
   /* Run after switchMap so the user lands on a populated diagram
      instead of an empty canvas waiting on the Compute button. */
-  function bootCompute(){ runCompute(null); }
+  /* First paint runs at Normal quality for a fast initial diagram, then
+     bumps the selector to Ultra so every subsequent compute/zoom/refine
+     resolves at full detail. */
+  function bootCompute(){
+    runCompute(function(){
+      var q=document.getElementById('qualSel');
+      if(q) q.value='ultra';
+    });
+  }
   function init(){
     if(window.MathJax&&MathJax.typesetPromise){
       MathJax.startup.promise.then(function(){
