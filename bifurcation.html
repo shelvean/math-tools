@@ -643,9 +643,6 @@ if(document.referrer.includes('dynamical.html')){
     <button class="abtn abtn-zoom" id="btnRefine" type="button" aria-label="Refine: recompute bifurcation diagram at current zoom to reveal self-similarity" style="background:#5b21b6;">
       <span aria-hidden="true">&#128300;</span> Refine
     </button>
-    <button class="abtn abtn-zoom" id="btnSelfSimilar" type="button" aria-label="Self-similar zoom: jump to the period-3 window [3.847, 3.857] by [0.13, 0.17] at ultra quality to reveal a miniature copy of the full diagram">
-      <span aria-hidden="true">&#10070;</span> Self-similar
-    </button>
     <button class="abtn abtn-reset" id="btnBack" type="button" aria-label="Undo last refine/zoom" disabled style="opacity:.5;">
       <span aria-hidden="true">&#8592;</span> Back
     </button>
@@ -2242,87 +2239,6 @@ function scheduleAutoRefine(){
   }, AUTO_REFINE_MS);
 }
 
-/* Smoothly drive the visible window from its current rect to `target`,
-   rescaling the already-computed data each frame (the same picture the
-   wheel/box zoom shows before a refine recomputes). Calls `done` once
-   the window has fully settled on the target. */
-var viewAnimRAF = null;
-function animateViewTo(target, ms, done){
-  if(viewAnimRAF){ cancelAnimationFrame(viewAnimRAF); viewAnimRAF=null; }
-  var start={pMin:VBIF.pMin,pMax:VBIF.pMax,xMin:VBIF.xMin,xMax:VBIF.xMax};
-  var t0=null;
-  function frame(ts){
-    if(t0===null)t0=ts;
-    var k=ms>0?Math.min(1,(ts-t0)/ms):1;
-    var e=k<0.5?2*k*k:1-Math.pow(-2*k+2,2)/2; /* easeInOutQuad */
-    VBIF.pMin=start.pMin+(target.pMin-start.pMin)*e;
-    VBIF.pMax=start.pMax+(target.pMax-start.pMax)*e;
-    VBIF.xMin=start.xMin+(target.xMin-start.xMin)*e;
-    VBIF.xMax=start.xMax+(target.xMax-start.xMax)*e;
-    VLYA.pMin=VBIF.pMin; VLYA.pMax=VBIF.pMax;
-    renderAll();
-    if(k<1){ viewAnimRAF=requestAnimationFrame(frame); }
-    else { viewAnimRAF=null; if(done)done(); }
-  }
-  viewAnimRAF=requestAnimationFrame(frame);
-}
-
-/* Self-similar shortcut: frame the period-3 window inside the full
-   default view, flash a selection box around it, then zoom in naturally
-   and recompute at ultra — exposing a miniature copy of the diagram. */
-function selfSimilarSelectAndZoom(){
-  var target={pMin:3.847,pMax:3.857,xMin:0.13,xMax:0.17};
-  var q=document.getElementById('qualSel'); if(q) q.value='ultra';
-  if(autoRefineTimer){clearTimeout(autoRefineTimer);autoRefineTimer=null;}
-  stopAll();
-  /* Preserve the current view so Back returns here. */
-  pushZoomHistory();
-
-  function showSelectionThenZoom(){
-    /* Frame the full default view so the region is shown in context. */
-    if(VBIF.dflt){
-      VBIF.pMin=VBIF.dflt.pMin; VBIF.pMax=VBIF.dflt.pMax;
-      VBIF.xMin=VBIF.dflt.xMin; VBIF.xMax=VBIF.dflt.xMax;
-    }
-    VLYA.pMin=VBIF.pMin; VLYA.pMax=VBIF.pMax;
-    /* Draw the selection rectangle around the target region. */
-    RUBBER={ x0:p2bx(target.pMin), y0:x2by(target.xMax),
-             x1:p2bx(target.pMax), y1:x2by(target.xMin), active:true };
-    renderAll();
-    say('Selecting self-similar region [3.847, 3.857] × [0.13, 0.17]…');
-    setTimeout(function(){
-      RUBBER=null;
-      animateViewTo(target, 750, function(){
-        ST.pMin=target.pMin; ST.pMax=target.pMax;
-        VBIF.xMin=target.xMin; VBIF.xMax=target.xMax;
-        syncParamInputs();
-        runCompute(null);
-        say('Zoomed into the period-3 window — a miniature copy of the full diagram at ultra quality.');
-      });
-    }, 650);
-  }
-
-  /* The context frame needs data spanning the default range. If the last
-     compute covered a different window, recompute the default first. */
-  var dflt = VBIF.dflt || {pMin:ST.pMin,pMax:ST.pMax};
-  var covered = BDATA.N_done>0 &&
-                Math.abs(ST.pMin-dflt.pMin)<1e-9 &&
-                Math.abs(ST.pMax-dflt.pMax)<1e-9;
-  if(covered){
-    showSelectionThenZoom();
-  } else {
-    ST.pMin=dflt.pMin; ST.pMax=dflt.pMax;
-    if(VBIF.dflt){
-      VBIF.pMin=VBIF.dflt.pMin; VBIF.pMax=VBIF.dflt.pMax;
-      VBIF.xMin=VBIF.dflt.xMin; VBIF.xMax=VBIF.dflt.xMax;
-    }
-    VLYA.pMin=VBIF.pMin; VLYA.pMax=VBIF.pMax;
-    syncParamInputs();
-    say('Computing the full diagram before the self-similar zoom…');
-    runCompute(function(){ showSelectionThenZoom(); });
-  }
-}
-
 /* =====================================================
    Rendering
 ===================================================== */
@@ -3337,9 +3253,6 @@ document.getElementById('btnRefine').addEventListener('click',function(){
   if(autoRefineTimer){clearTimeout(autoRefineTimer);autoRefineTimer=null;}
   refineView();
   say('Refining: recomputing at current zoom window.');
-});
-document.getElementById('btnSelfSimilar').addEventListener('click',function(){
-  selfSimilarSelectAndZoom();
 });
 document.getElementById('deepZoomChk').addEventListener('change',function(){
   updateDeepBadge();
