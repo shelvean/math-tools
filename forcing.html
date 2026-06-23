@@ -712,6 +712,8 @@ var stepsPerFrame=10;
 /* Frame-rate-independent stepping (see mass-spring): advance physics by real
    elapsed time at fixed h; SIM_RATE=6 sim-s/s matches the old 1x feel. */
 var SIM_RATE=6, speedMul=1, simAccum=0, lastTs=null;
+/* Sub-step render interpolation (see mass-spring). */
+var yPrev=0, yDraw=0;
 var METHOD='auto';   /* 'auto' = Velocity Verlet + BDF2; 'gl2' = Gauss–Legendre 2-stage */
 var oscillatorMode='vertical', H_WALL_W=28, H_SPRING_COILS=8, V_SPRING_COILS=8;
 /* Running min/max of the trace + persistent layer for incremental graph
@@ -1012,7 +1014,7 @@ function drawSim_V(){
   ctx.drawImage(simBG,0,0);
   var staticExt=(k>0)?m*9.81/k:0;
   var eqY=SUP_BOT+(L0+staticExt)*pxPerM;
-  var massY=eqY+y*pxPerM;
+  var massY=eqY+yDraw*pxPerM;
   ctx.save();
   ctx.strokeStyle='rgba(0,0,0,.35)';ctx.setLineDash([6,5]);ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(46,eqY);ctx.lineTo(canvas.width-46,eqY);ctx.stroke();
@@ -1025,7 +1027,7 @@ function drawSim_H(){
   ctx.drawImage(simBG,0,0);
   var CY=canvas.height/2;
   var eqX=H_WALL_W+L0*pxPerM;
-  var massX=eqX+y*pxPerM;
+  var massX=eqX+yDraw*pxPerM;
   /* force arrow (horizontal) */
   var F=evaluateForcingFunction(y,t);
   var arrowLen=Math.min(Math.abs(F)*15,55);
@@ -1212,7 +1214,7 @@ function readParams(){
 function resetSimulation(){
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});
-  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
+  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;yPrev=yDraw=y0;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;
   prevState=[y,v];currentState=[y,v];
@@ -1231,6 +1233,7 @@ function animate(ts){
   simAccum+=dtw*SIM_RATE*speedMul;
   var plotW=graphCanvas.width-70, ended=false, guard=0;
   while(simAccum>=dt && guard<5000){
+    yPrev=y;
     updatePhysics();
     var ext=false;
     if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
@@ -1239,9 +1242,10 @@ function animate(ts){
     simAccum-=dt; guard++;
     if(t>graphMaxTime){isRunning=false;ended=true;simAccum=0;break;}
   }
+  var alpha=ended?1:simAccum/dt;
+  yDraw=yPrev+(y-yPrev)*alpha;
   drawSim();
-  graphTick^=1;
-  if(graphTick===0||ended)drawGraph();
+  drawGraph();
 }
 
 /* ── Slider ↔ number sync ── */
@@ -1337,7 +1341,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.push({t:0,y:y0});prevState=[y,v];currentState=[y,v];
-  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
+  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;yPrev=yDraw=y0;
   drawSim();drawGraph();
   requestAnimationFrame(animate);
 });

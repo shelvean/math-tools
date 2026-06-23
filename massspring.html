@@ -669,6 +669,10 @@ var stepsPerFrame=10;
    survives dropped frames. SIM_RATE=6 sim-seconds/second matches the old
    1x feel; the Speed control scales speedMul. */
 var SIM_RATE=6, speedMul=1, simAccum=0, lastTs=null;
+/* Sub-step render interpolation: yPrev is the state before the last physics
+   step; the mass is drawn at yDraw = lerp(yPrev, y, simAccum/dt) so motion is
+   perfectly smooth regardless of how step boundaries fall within a frame. */
+var yPrev=0, yDraw=0;
 /* Running min/max of the displacement trace, maintained on each step so the
    graph never rescans the whole array. */
 var gMinY=0, gMaxY=0;
@@ -916,7 +920,7 @@ function drawSim_V(){
   ctx.drawImage(simBG,0,0);
   var staticExt=(k>0)?m*g/k:0;
   var eqY=SUP_BOT+(L0+staticExt)*pxPerM;
-  var massY=eqY+y*pxPerM;
+  var massY=eqY+yDraw*pxPerM;
   ctx.save();
   ctx.strokeStyle='rgba(0,0,0,.35)';ctx.setLineDash([6,5]);ctx.lineWidth=1.5;
   ctx.beginPath();ctx.moveTo(46,eqY);ctx.lineTo(canvas.width-46,eqY);ctx.stroke();
@@ -929,7 +933,7 @@ function drawSim_H(){
   ctx.drawImage(simBG,0,0);
   var CY=canvas.height/2;
   var eqX=H_WALL_W+L0*pxPerM;
-  var massX=eqX+y*pxPerM;
+  var massX=eqX+yDraw*pxPerM;
   drawHSpring(H_WALL_W,massX-ballRadius,CY);
   drawMass_H(massX,CY);
 }
@@ -1216,7 +1220,7 @@ function readParams(){
 function resetSimulation(){
   readParams();updateEq();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
-  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
+  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;yPrev=yDraw=y0;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;prevState=[y,v];currentState=[y,v];
   document.getElementById('pauseButton').textContent='\u23EF Pause';
@@ -1235,6 +1239,7 @@ function animate(ts){
   simAccum+=dtw*SIM_RATE*speedMul;
   var plotW=graphCanvas.width-70, ended=false, guard=0;
   while(simAccum>=dt && guard<5000){
+    yPrev=y;                                   /* state before this step */
     updatePhysics();
     var ext=false;
     if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
@@ -1243,9 +1248,10 @@ function animate(ts){
     simAccum-=dt; guard++;
     if(t>graphMaxTime){isRunning=false;ended=true;simAccum=0;break;}
   }
-  drawSim();                                  /* animation at the display rate */
-  graphTick^=1;
-  if(graphTick===0||ended)drawGraph();         /* graph composites at ~half rate */
+  var alpha=ended?1:simAccum/dt;
+  yDraw=yPrev+(y-yPrev)*alpha;                  /* interpolated render position */
+  drawSim();                                    /* both at the display rate */
+  drawGraph();
 }
 
 /* ── Slider ↔ number sync ── */
@@ -1313,7 +1319,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
   readParams();updateEq();
   y=y0;v=v0;prevState=[y,v];currentState=[y,v];graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
-  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
+  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;yPrev=yDraw=y0;
   drawSim();drawGraph();requestAnimationFrame(animate);
 });
 </script>
