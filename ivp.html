@@ -1385,11 +1385,23 @@ var exById = {}; EXAMPLES.forEach(function(e){ exById[e.id]=e; });
 var currentEx = EXAMPLES[0];
 
 /* ---------- problem assembly ---------- */
+var _probCache={sig:null, P:null};
 function readProblem(){
   var fExpr   = document.getElementById('fnInput').value.trim();
   var lambda  = currentLambda();
   var sc = {lambda:lambda};
   var es = {lambda:lambda};
+  /* Problem cache: building P is expensive — it compiles the expression, and
+     for a custom equation it integrates an 8000-step RK4 reference and forms
+     symbolic Taylor derivatives. None of that depends on N or the plot size,
+     so when only those change (the common slider drag) we reuse the cached P
+     instead of rebuilding the reference every tick. */
+  var _sig=fExpr+''+lambda+''
+    +document.getElementById('t0Input').value+''
+    +document.getElementById('y0Input').value+''
+    +document.getElementById('tEndInput').value+''
+    +(currentEx?currentEx.id:'');
+  if(_sig===_probCache.sig && _probCache.P) return _probCache.P;
 
   var fNode = math.parse(fExpr);
   var fComp = fNode.compile();
@@ -1478,6 +1490,7 @@ function readProblem(){
     if (isFinite(P.g[1](t0,y0))) P.taylorOK=true;
   }catch(e){ P.taylorOK=false; }
 
+  _probCache.sig=_sig; _probCache.P=P;
   return P;
 }
 
