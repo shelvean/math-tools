@@ -99,6 +99,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   background:var(--card);text-align:center;}
 .sl-num:focus-visible{outline:3px solid var(--focus);outline-offset:2px;
   box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.method-sel{min-height:32px;max-width:62%;padding:.15rem .35rem;border:2px solid var(--bdr);
+  border-radius:.35rem;font-size:.8125rem;font-weight:600;color:var(--txt);
+  background:var(--card);cursor:pointer;}
+.method-sel:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
 input[type=range]{-webkit-appearance:none;width:100%;background:transparent;
   margin:.15rem 0;min-height:36px;cursor:pointer;flex:1;}
 input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--bdr2);border-radius:2px;}
@@ -385,6 +389,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
         <li><strong>Velocity Verlet (Störmer):</strong> Symplectic integrator used for non-stiff systems (\(\Delta\le5\)). Preserves the symplectic structure and provides excellent long-time energy conservation in undamped or lightly damped cases. Fixed step \(\Delta t=0.01\,\text{s}\), 10 steps per frame.</li>
         <li><strong>Backward Euler:</strong> A-stable implicit method used for the first step when the system is stiff. Avoids the exponential blow-up that explicit methods suffer for large damping.</li>
         <li><strong>BDF-2 (Backward Differentiation Formula, order 2):</strong> Second-order A-stable implicit method used for subsequent steps in the stiff regime. Provides better accuracy than backward Euler while retaining unconditional stability.</li>
+        <li><strong>Gauss–Legendre (2-stage):</strong> A 4th-order, symplectic, A-stable implicit Runge–Kutta method, selectable from the <em>Numerical method</em> menu. Because the free system is linear, each step reduces to one fixed \(2\times2\) matrix product (the \((2,2)\)-Padé propagator \(M=(I+\tfrac{X}{2}+\tfrac{X^2}{12})(I-\tfrac{X}{2}+\tfrac{X^2}{12})^{-1}\), \(X=\Delta t\,A\)), so it is as fast as Verlet yet essentially exact.</li>
       </ul>
 
       <h2>How to Use</h2>
@@ -460,6 +465,15 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
             <div class="sl-row">
               <label class="sl-lbl" for="endTime">End time \(T\) [s]</label>
               <input type="number" id="endTime" class="sl-num" value="60" step="10" min="10" aria-label="End time value">
+            </div>
+          </div>
+          <div class="sl-block">
+            <div class="sl-row">
+              <label class="sl-lbl" for="methodSel">Numerical method</label>
+              <select id="methodSel" class="method-sel" aria-label="Numerical integration method">
+                <option value="auto">Velocity Verlet + BDF2</option>
+                <option value="gl2">Gauss–Legendre (2-stage)</option>
+              </select>
             </div>
           </div>
         </div>
@@ -650,6 +664,7 @@ var graphData=[];
 var clickedPoint=null;
 var STIFF=5, firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
+var METHOD='auto';   /* 'auto' = Velocity Verlet + BDF2; 'gl2' = Gauss–Legendre 2-stage */
 var oscillatorMode='vertical', H_WALL_W=28;
 
 /* ── Visual geometry (all in pixels) ── */
@@ -720,14 +735,46 @@ function verlet(c_v){
   y=isNaN(ny)?y:ny; v=isNaN(nv)?v:nv;
 }
 
+/* ── Gauss–Legendre 2-stage (4th-order, symplectic, A-stable) ──
+   The free system is linear: z' = A z, with z = [y, v] and
+   A = [[0, 1], [-k/m, -c/m]]. For a linear system every Runge–Kutta
+   method reduces to z_{n+1} = M z_n, where for the 2-stage Gauss method
+   M is the (2,2)-Padé stability function
+       M = (I + X/2 + X²/12)(I − X/2 + X²/12)⁻¹,   X = dt·A.
+   M is exact for this ODE and is rebuilt only when m, c, k (or dt)
+   change, so each step is a single 2×2 matrix–vector product — as cheap
+   as Velocity Verlet, keeping the simulation speed comparable. */
+var GL2_M=[1,0,0,1];
+function mul2(A,B){return[A[0]*B[0]+A[1]*B[2],A[0]*B[1]+A[1]*B[3],
+                          A[2]*B[0]+A[3]*B[2],A[2]*B[1]+A[3]*B[3]];}
+function buildGL2(){
+  var c_v=c===0?1e-7:c;
+  var X=[0, dt, -dt*k/m, -dt*c_v/m];           /* X = dt·A */
+  var X2=mul2(X,X);
+  var P=[1+X[0]/2+X2[0]/12, X[1]/2+X2[1]/12, X[2]/2+X2[2]/12, 1+X[3]/2+X2[3]/12];
+  var Q=[1-X[0]/2+X2[0]/12, -X[1]/2+X2[1]/12, -X[2]/2+X2[2]/12, 1-X[3]/2+X2[3]/12];
+  var det=Q[0]*Q[3]-Q[1]*Q[2]||1e-12;
+  var Qi=[Q[3]/det,-Q[1]/det,-Q[2]/det,Q[0]/det];
+  GL2_M=mul2(P,Qi);
+}
+function gl2Step(){
+  var ny=GL2_M[0]*y+GL2_M[1]*v;
+  var nv=GL2_M[2]*y+GL2_M[3]*v;
+  y=isNaN(ny)?y:ny; v=isNaN(nv)?v:nv;
+}
+
 function updatePhysics(){
   if(!isRunning||isPaused)return;
-  var c_v=c===0?1e-7:c;
-  if(isStiff(c_v)){
-    if(firstStep){var ns=backwardEuler(currentState,dt,m,c_v,k);prevState=currentState;currentState=ns;firstStep=false;}
-    else{var ns2=bdf2(prevState,currentState,dt,m,c_v,k);prevState=currentState;currentState=ns2;}
-    y=currentState[0]; v=currentState[1];
-  }else{verlet(c_v);}
+  if(METHOD==='gl2'){
+    gl2Step();
+  }else{
+    var c_v=c===0?1e-7:c;
+    if(isStiff(c_v)){
+      if(firstStep){var ns=backwardEuler(currentState,dt,m,c_v,k);prevState=currentState;currentState=ns;firstStep=false;}
+      else{var ns2=bdf2(prevState,currentState,dt,m,c_v,k);prevState=currentState;currentState=ns2;}
+      y=currentState[0]; v=currentState[1];
+    }else{verlet(c_v);}
+  }
   t+=dt;
 
   /* bounds check in pixel space so it scales with L0 */
@@ -1109,6 +1156,7 @@ function readParams(){
   T =parseFloat(document.getElementById('endTime').value)||60;
   graphMaxTime=T;
   computeScale();
+  buildGL2();
   updateAnalyticDisplay();
 }
 
@@ -1159,6 +1207,14 @@ document.addEventListener('DOMContentLoaded',function(){
     applyOscillatorMode();
     resetSimulation();
     say('Oscillator: '+this.value);
+  });
+
+  document.getElementById('methodSel').addEventListener('change',function(){
+    METHOD=this.value;
+    buildGL2();
+    /* Re-prime the BDF2 history so switching back to 'auto' mid-run is clean. */
+    currentState=[y,v]; prevState=[y,v]; firstStep=true;
+    say(METHOD==='gl2'?'Method: Gauss–Legendre 2-stage.':'Method: Velocity Verlet + BDF2.');
   });
 
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
