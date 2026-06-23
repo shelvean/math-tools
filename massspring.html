@@ -664,6 +664,10 @@ var graphData=[];
 var clickedPoint=null;
 var STIFF=5, firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
+/* Running min/max of the displacement trace (maintained on each push) so the
+   graph never rescans the whole array per frame; cached gradient avoids
+   reallocating it every frame. */
+var gMinY=0, gMaxY=0, GRAPH_GRAD=null;
 var METHOD='auto';   /* 'auto' = Velocity Verlet + BDF2; 'gl2' = Gauss–Legendre 2-stage */
 var oscillatorMode='vertical', H_WALL_W=28;
 
@@ -706,7 +710,7 @@ function applyOscillatorMode(){
     if(gravRow)gravRow.style.display='';
   }
   cxCanvas=canvas.width/2;
-  simBG=null;graphBG=null;
+  simBG=null;graphBG=null;GRAPH_GRAD=null;
   computeScale();
 }
 
@@ -957,12 +961,13 @@ function drawGraph(){
   if(!graphBG)createGraphBG();
   graphCtx.drawImage(graphBG,0,0);
   if(!graphData.length)return;
-  var maxY=Math.max.apply(null,graphData.map(function(d){return d.y;}));
-  var minY=Math.min.apply(null,graphData.map(function(d){return d.y;}));
+  var minY=gMinY, maxY=gMaxY;
   var yR=maxY-minY||0.1,scaleY=(graphCanvas.height-60)/yR;
-  var lg=graphCtx.createLinearGradient(0,0,graphCanvas.width,0);
-  lg.addColorStop(0,'#6d28d9');lg.addColorStop(1,'#0891b2');
-  graphCtx.beginPath();graphCtx.strokeStyle=lg;graphCtx.lineWidth=2;
+  if(!GRAPH_GRAD){
+    GRAPH_GRAD=graphCtx.createLinearGradient(0,0,graphCanvas.width,0);
+    GRAPH_GRAD.addColorStop(0,'#6d28d9');GRAPH_GRAD.addColorStop(1,'#0891b2');
+  }
+  graphCtx.beginPath();graphCtx.strokeStyle=GRAPH_GRAD;graphCtx.lineWidth=2;
   for(var i=0;i<graphData.length;i++){
     var p=graphData[i],gx=50+(p.t/graphMaxTime)*(graphCanvas.width-70),gy=graphCanvas.height-40-(p.y-minY)*scaleY;
     i===0?graphCtx.moveTo(gx,gy):graphCtx.lineTo(gx,gy);
@@ -1163,7 +1168,7 @@ function readParams(){
 /* ── Reset ── */
 function resetSimulation(){
   readParams();updateEq();
-  y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});
+  y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;prevState=[y,v];currentState=[y,v];
   document.getElementById('pauseButton').textContent='\u23EF Pause';
@@ -1177,6 +1182,7 @@ function animate(){
   if(isRunning&&!isPaused){
     for(var i=0;i<stepsPerFrame;i++){
       updatePhysics();graphData.push({t:t,y:y});
+      if(y<gMinY)gMinY=y; else if(y>gMaxY)gMaxY=y;
       if(t>graphMaxTime){isRunning=false;break;}
     }
     drawSim();drawGraph();
@@ -1248,7 +1254,7 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 
   readParams();updateEq();
-  y=y0;v=v0;prevState=[y,v];currentState=[y,v];graphData.push({t:0,y:y0});
+  y=y0;v=v0;prevState=[y,v];currentState=[y,v];graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
   drawSim();drawGraph();animate();
 });
 </script>
