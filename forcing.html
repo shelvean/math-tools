@@ -422,7 +422,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 
       <h2>Numerical Integration</h2>
       <ul>
-        <li><strong>Velocity Verlet (Störmer method):</strong> Symplectic integrator used for non-stiff systems (\(c^2-4mk\le5\)). Fixed step \(\Delta t=0.01\,\text{s}\).</li>
+        <li><strong>Velocity Verlet (Störmer method):</strong> Symplectic integrator used for non-stiff systems (\(c^2-4mk\le5\)). Fixed step \(\Delta t=0.005\,\text{s}\), advanced by real elapsed time so playback is frame-rate independent.</li>
         <li><strong>Backward Euler / BDF-2:</strong> A-stable implicit methods for stiff (heavily overdamped) systems.</li>
         <li><strong>Gauss–Legendre (2-stage):</strong> A 4th-order, symplectic, A-stable implicit Runge–Kutta method, selectable from the <em>Numerical method</em> menu. The system is linear in the state, so the 2-stage equations are a fixed \(4\times4\) solve (precomputed when \(m,c,k\) change); each step is then one \(4\times4\) matrix product plus two evaluations of \(F(t)\) — as cheap as BDF-2 but far more accurate for smooth forcing.</li>
         <li><strong>Impulse handling:</strong> The delta function impulse is applied as a direct velocity jump.</li>
@@ -701,7 +701,7 @@ var graphCtx=graphCanvas.getContext('2d');
 /* ── Physics state ── */
 var m=1, k=4, c=0.2, y0=0, v0=0, L0=2.5;
 var y=0, v=0, t=0;
-var dt=0.01;
+var dt=0.005;
 var isRunning=true, isPaused=false;
 var graphData=[];
 var clickedPoint=null;
@@ -709,6 +709,9 @@ var graphMaxTime=60;
 var STIFF_THRESH=5;
 var firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
+/* Frame-rate-independent stepping (see mass-spring): advance physics by real
+   elapsed time at fixed h; SIM_RATE=6 sim-s/s matches the old 1x feel. */
+var SIM_RATE=6, speedMul=1, simAccum=0, lastTs=null;
 var METHOD='auto';   /* 'auto' = Velocity Verlet + BDF2; 'gl2' = Gauss–Legendre 2-stage */
 var oscillatorMode='vertical', H_WALL_W=28, H_SPRING_COILS=8, V_SPRING_COILS=8;
 /* Running min/max of the trace + persistent layer for incremental graph
@@ -1198,7 +1201,7 @@ function readParams(){
 function resetSimulation(){
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});
-  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
+  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;
   prevState=[y,v];currentState=[y,v];
@@ -1208,22 +1211,26 @@ function resetSimulation(){
 }
 
 /* ── Animation loop ── */
-function animate(){
-  if(isRunning&&!isPaused){
-    var ended=false, plotW=graphCanvas.width-70;
-    for(var i=0;i<stepsPerFrame;i++){
-      updatePhysics();
-      var ext=false;
-      if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
-      var px=(t/graphMaxTime)*plotW;
-      if(px-lastPushPx>=0.5||ext){graphData.push({t:t,y:y});lastPushPx=px;}
-      if(t>graphMaxTime){isRunning=false;ended=true;break;}
-    }
-    drawSim();
-    graphTick^=1;
-    if(graphTick===0||ended)drawGraph();
-  }
+function animate(ts){
   requestAnimationFrame(animate);
+  if(!(isRunning&&!isPaused)){ lastTs=ts; return; }
+  if(lastTs===null) lastTs=ts;
+  var dtw=(ts-lastTs)/1000; lastTs=ts;
+  if(dtw>0.1) dtw=0.1;                 /* clamp big gaps (tab switch / stalls) */
+  simAccum+=dtw*SIM_RATE*speedMul;
+  var plotW=graphCanvas.width-70, ended=false, guard=0;
+  while(simAccum>=dt && guard<5000){
+    updatePhysics();
+    var ext=false;
+    if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
+    var px=(t/graphMaxTime)*plotW;
+    if(px-lastPushPx>=0.5||ext){graphData.push({t:t,y:y});lastPushPx=px;}
+    simAccum-=dt; guard++;
+    if(t>graphMaxTime){isRunning=false;ended=true;simAccum=0;break;}
+  }
+  drawSim();
+  graphTick^=1;
+  if(graphTick===0||ended)drawGraph();
 }
 
 /* ── Slider ↔ number sync ── */
@@ -1291,7 +1298,7 @@ document.addEventListener('DOMContentLoaded',function(){
       document.querySelectorAll('.sbtn').forEach(function(b){ b.setAttribute('aria-checked','false'); });
       this.setAttribute('aria-checked','true');
       var spd=parseFloat(this.dataset.speed)||1;
-      stepsPerFrame = spd<=0.25?3:spd<=0.5?5:spd<=1?10:20;
+      speedMul = spd;
       say('Speed set to '+this.getAttribute('aria-label')+'.');
     });
   });
@@ -1319,9 +1326,9 @@ document.addEventListener('DOMContentLoaded',function(){
 
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.push({t:0,y:y0});prevState=[y,v];currentState=[y,v];
-  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
+  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
   drawSim();drawGraph();
-  animate();
+  requestAnimationFrame(animate);
 });
 </script>
 <!-- feedback-mark:start -->

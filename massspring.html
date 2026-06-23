@@ -386,7 +386,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 
       <h2>Numerical Integration</h2>
       <ul>
-        <li><strong>Velocity Verlet (Störmer):</strong> Symplectic integrator used for non-stiff systems (\(\Delta\le5\)). Preserves the symplectic structure and provides excellent long-time energy conservation in undamped or lightly damped cases. Fixed step \(\Delta t=0.01\,\text{s}\), 10 steps per frame.</li>
+        <li><strong>Velocity Verlet (Störmer):</strong> Symplectic integrator used for non-stiff systems (\(\Delta\le5\)). Preserves the symplectic structure and provides excellent long-time energy conservation in undamped or lightly damped cases. Fixed step \(\Delta t=0.005\,\text{s}\), advanced by real elapsed time so playback is frame-rate independent.</li>
         <li><strong>Backward Euler:</strong> A-stable implicit method used for the first step when the system is stiff. Avoids the exponential blow-up that explicit methods suffer for large damping.</li>
         <li><strong>BDF-2 (Backward Differentiation Formula, order 2):</strong> Second-order A-stable implicit method used for subsequent steps in the stiff regime. Provides better accuracy than backward Euler while retaining unconditional stability.</li>
         <li><strong>Gauss–Legendre (2-stage):</strong> A 4th-order, symplectic, A-stable implicit Runge–Kutta method, selectable from the <em>Numerical method</em> menu. Because the free system is linear, each step reduces to one fixed \(2\times2\) matrix product (the \((2,2)\)-Padé propagator \(M=(I+\tfrac{X}{2}+\tfrac{X^2}{12})(I-\tfrac{X}{2}+\tfrac{X^2}{12})^{-1}\), \(X=\Delta t\,A\)), so it is as fast as Verlet yet essentially exact.</li>
@@ -658,12 +658,17 @@ var graphCtx=graphCanvas.getContext('2d');
 /* ── Physics state ── */
 var m=2, k=16, c=0.1, y0=2.0, v0=0, g=9.81, L0=2.5;
 var y=y0, v=v0, t=0;
-var dt=0.01, graphMaxTime=60, T=60;
+var dt=0.005, graphMaxTime=60, T=60;
 var isRunning=true, isPaused=false;
 var graphData=[];
 var clickedPoint=null;
 var STIFF=5, firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
+/* Frame-rate-independent stepping: advance physics by real elapsed time at a
+   fixed h, so playback is smooth and consistent across refresh rates and
+   survives dropped frames. SIM_RATE=6 sim-seconds/second matches the old
+   1x feel; the Speed control scales speedMul. */
+var SIM_RATE=6, speedMul=1, simAccum=0, lastTs=null;
 /* Running min/max of the displacement trace, maintained on each step so the
    graph never rescans the whole array. */
 var gMinY=0, gMaxY=0;
@@ -1200,7 +1205,7 @@ function readParams(){
 function resetSimulation(){
   readParams();updateEq();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
-  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
+  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;prevState=[y,v];currentState=[y,v];
   document.getElementById('pauseButton').textContent='\u23EF Pause';
@@ -1210,24 +1215,26 @@ function resetSimulation(){
 }
 
 /* ── Animation loop ── */
-function animate(){
-  if(isRunning&&!isPaused){
-    var ended=false, plotW=graphCanvas.width-70;
-    for(var i=0;i<stepsPerFrame;i++){
-      updatePhysics();
-      /* update the scale from every step, but store only ~2 points per pixel
-         (always keeping points that set a new min/max so peaks survive). */
-      var ext=false;
-      if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
-      var px=(t/graphMaxTime)*plotW;
-      if(px-lastPushPx>=0.5||ext){graphData.push({t:t,y:y});lastPushPx=px;}
-      if(t>graphMaxTime){isRunning=false;ended=true;break;}
-    }
-    drawSim();                                  /* animation stays at 60 fps */
-    graphTick^=1;
-    if(graphTick===0||ended)drawGraph();         /* graph composites at ~30 fps */
-  }
+function animate(ts){
   requestAnimationFrame(animate);
+  if(!(isRunning&&!isPaused)){ lastTs=ts; return; }
+  if(lastTs===null) lastTs=ts;
+  var dtw=(ts-lastTs)/1000; lastTs=ts;
+  if(dtw>0.1) dtw=0.1;                 /* clamp big gaps (tab switch / stalls) */
+  simAccum+=dtw*SIM_RATE*speedMul;
+  var plotW=graphCanvas.width-70, ended=false, guard=0;
+  while(simAccum>=dt && guard<5000){
+    updatePhysics();
+    var ext=false;
+    if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
+    var px=(t/graphMaxTime)*plotW;
+    if(px-lastPushPx>=0.5||ext){graphData.push({t:t,y:y});lastPushPx=px;}
+    simAccum-=dt; guard++;
+    if(t>graphMaxTime){isRunning=false;ended=true;simAccum=0;break;}
+  }
+  drawSim();                                  /* animation at the display rate */
+  graphTick^=1;
+  if(graphTick===0||ended)drawGraph();         /* graph composites at ~half rate */
 }
 
 /* ── Slider ↔ number sync ── */
@@ -1269,7 +1276,7 @@ document.addEventListener('DOMContentLoaded',function(){
       document.querySelectorAll('.sbtn').forEach(function(b){ b.setAttribute('aria-checked','false'); });
       this.setAttribute('aria-checked','true');
       var spd=parseFloat(this.dataset.speed)||1;
-      stepsPerFrame = spd<=0.25?3:spd<=0.5?5:spd<=1?10:20;
+      speedMul = spd;
       say('Speed set to '+this.getAttribute('aria-label')+'.');
     });
   });
@@ -1295,8 +1302,8 @@ document.addEventListener('DOMContentLoaded',function(){
 
   readParams();updateEq();
   y=y0;v=v0;prevState=[y,v];currentState=[y,v];graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
-  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
-  drawSim();drawGraph();animate();
+  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;simAccum=0;lastTs=null;
+  drawSim();drawGraph();requestAnimationFrame(animate);
 });
 </script>
 <!-- feedback-mark:start -->
