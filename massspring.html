@@ -664,10 +664,17 @@ var graphData=[];
 var clickedPoint=null;
 var STIFF=5, firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
-/* Running min/max of the displacement trace (maintained on each push) so the
-   graph never rescans the whole array per frame; cached gradient avoids
-   reallocating it every frame. */
-var gMinY=0, gMaxY=0, GRAPH_GRAD=null;
+/* Running min/max of the displacement trace, maintained on each step so the
+   graph never rescans the whole array. */
+var gMinY=0, gMaxY=0;
+/* Persistent trace layer: the polyline is drawn once onto an offscreen canvas
+   and only extended each frame (incremental draw); a full redraw happens only
+   when the y-scale changes — which, for a decaying free oscillation, is just
+   the first swing. Points are decimated to ~2 per x-pixel, and the composite
+   is throttled to ~30 fps. */
+var graphLayer=null, glCtx=null, GL_GRAD=null;
+var glMinY=NaN, glMaxY=NaN, glDrawnIdx=0;
+var lastPushPx=-1e9, graphTick=0;
 var METHOD='auto';   /* 'auto' = Velocity Verlet + BDF2; 'gl2' = Gauss–Legendre 2-stage */
 var oscillatorMode='vertical', H_WALL_W=28;
 
@@ -710,7 +717,7 @@ function applyOscillatorMode(){
     if(gravRow)gravRow.style.display='';
   }
   cxCanvas=canvas.width/2;
-  simBG=null;graphBG=null;GRAPH_GRAD=null;
+  simBG=null;graphBG=null;graphLayer=null;
   computeScale();
 }
 
@@ -957,22 +964,46 @@ function createGraphBG(){
   bg.strokeStyle='#333';bg.lineWidth=2;bg.stroke();
 }
 
+function ensureGraphLayer(){
+  if(graphLayer&&graphLayer.width===graphCanvas.width&&graphLayer.height===graphCanvas.height)return;
+  graphLayer=document.createElement('canvas');
+  graphLayer.width=graphCanvas.width;graphLayer.height=graphCanvas.height;
+  glCtx=graphLayer.getContext('2d');
+  GL_GRAD=glCtx.createLinearGradient(0,0,graphCanvas.width,0);
+  GL_GRAD.addColorStop(0,'#6d28d9');GL_GRAD.addColorStop(1,'#0891b2');
+  glMinY=NaN;glMaxY=NaN;glDrawnIdx=0;   /* force a full redraw */
+}
+/* Stroke graphData[fromIdx-1 .. end] onto the persistent trace layer. */
+function strokeTrace(minY,scaleY,fromIdx){
+  var W=graphCanvas.width-70,H=graphCanvas.height,start=fromIdx>0?fromIdx-1:0;
+  glCtx.beginPath();glCtx.strokeStyle=GL_GRAD;glCtx.lineWidth=2;glCtx.lineJoin='round';
+  for(var i=start;i<graphData.length;i++){
+    var p=graphData[i],gx=50+(p.t/graphMaxTime)*W,gy=H-40-(p.y-minY)*scaleY;
+    (i===start)?glCtx.moveTo(gx,gy):glCtx.lineTo(gx,gy);
+  }
+  glCtx.stroke();
+}
+
 function drawGraph(){
   if(!graphBG)createGraphBG();
-  graphCtx.drawImage(graphBG,0,0);
-  if(!graphData.length)return;
+  ensureGraphLayer();
   var minY=gMinY, maxY=gMaxY;
   var yR=maxY-minY||0.1,scaleY=(graphCanvas.height-60)/yR;
-  if(!GRAPH_GRAD){
-    GRAPH_GRAD=graphCtx.createLinearGradient(0,0,graphCanvas.width,0);
-    GRAPH_GRAD.addColorStop(0,'#6d28d9');GRAPH_GRAD.addColorStop(1,'#0891b2');
+  if(graphData.length){
+    if(minY!==glMinY||maxY!==glMaxY||glDrawnIdx>graphData.length){
+      /* y-scale changed (or trace was reset) → redraw the whole trace once */
+      glCtx.clearRect(0,0,graphLayer.width,graphLayer.height);
+      strokeTrace(minY,scaleY,0);
+      glMinY=minY;glMaxY=maxY;glDrawnIdx=graphData.length;
+    }else if(glDrawnIdx<graphData.length){
+      /* same scale → only extend the trace with the new points */
+      strokeTrace(minY,scaleY,glDrawnIdx);
+      glDrawnIdx=graphData.length;
+    }
   }
-  graphCtx.beginPath();graphCtx.strokeStyle=GRAPH_GRAD;graphCtx.lineWidth=2;
-  for(var i=0;i<graphData.length;i++){
-    var p=graphData[i],gx=50+(p.t/graphMaxTime)*(graphCanvas.width-70),gy=graphCanvas.height-40-(p.y-minY)*scaleY;
-    i===0?graphCtx.moveTo(gx,gy):graphCtx.lineTo(gx,gy);
-  }
-  graphCtx.stroke();
+  graphCtx.drawImage(graphBG,0,0);
+  graphCtx.drawImage(graphLayer,0,0);
+  if(!graphData.length)return;
   graphCtx.font='13px -apple-system,Arial,sans-serif';graphCtx.textAlign='right';graphCtx.textBaseline='middle';
   graphCtx.fillStyle='#333';graphCtx.strokeStyle='#333';graphCtx.lineWidth=1;
   for(var i=0;i<=5;i++){
@@ -1169,6 +1200,7 @@ function readParams(){
 function resetSimulation(){
   readParams();updateEq();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
+  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;prevState=[y,v];currentState=[y,v];
   document.getElementById('pauseButton').textContent='\u23EF Pause';
@@ -1180,12 +1212,20 @@ function resetSimulation(){
 /* ── Animation loop ── */
 function animate(){
   if(isRunning&&!isPaused){
+    var ended=false, plotW=graphCanvas.width-70;
     for(var i=0;i<stepsPerFrame;i++){
-      updatePhysics();graphData.push({t:t,y:y});
-      if(y<gMinY)gMinY=y; else if(y>gMaxY)gMaxY=y;
-      if(t>graphMaxTime){isRunning=false;break;}
+      updatePhysics();
+      /* update the scale from every step, but store only ~2 points per pixel
+         (always keeping points that set a new min/max so peaks survive). */
+      var ext=false;
+      if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
+      var px=(t/graphMaxTime)*plotW;
+      if(px-lastPushPx>=0.5||ext){graphData.push({t:t,y:y});lastPushPx=px;}
+      if(t>graphMaxTime){isRunning=false;ended=true;break;}
     }
-    drawSim();drawGraph();
+    drawSim();                                  /* animation stays at 60 fps */
+    graphTick^=1;
+    if(graphTick===0||ended)drawGraph();         /* graph composites at ~30 fps */
   }
   requestAnimationFrame(animate);
 }
@@ -1255,6 +1295,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
   readParams();updateEq();
   y=y0;v=v0;prevState=[y,v];currentState=[y,v];graphData.push({t:0,y:y0});gMinY=gMaxY=y0;
+  glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
   drawSim();drawGraph();animate();
 });
 </script>
