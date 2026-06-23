@@ -115,6 +115,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   background:var(--card);text-align:center;}
 .sl-num:focus-visible{outline:3px solid var(--focus);outline-offset:2px;
   box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.method-sel{min-height:32px;max-width:62%;padding:.15rem .35rem;border:2px solid var(--bdr);
+  border-radius:.35rem;font-size:.8125rem;font-weight:600;color:var(--txt);
+  background:var(--card);cursor:pointer;}
+.method-sel:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
 input[type=range]{-webkit-appearance:none;width:100%;background:transparent;
   margin:.15rem 0;min-height:36px;cursor:pointer;flex:1;}
 input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--bdr2);border-radius:2px;}
@@ -420,6 +424,7 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
       <ul>
         <li><strong>Velocity Verlet (Störmer method):</strong> Symplectic integrator used for non-stiff systems (\(c^2-4mk\le5\)). Fixed step \(\Delta t=0.01\,\text{s}\).</li>
         <li><strong>Backward Euler / BDF-2:</strong> A-stable implicit methods for stiff (heavily overdamped) systems.</li>
+        <li><strong>Gauss–Legendre (2-stage):</strong> A 4th-order, symplectic, A-stable implicit Runge–Kutta method, selectable from the <em>Numerical method</em> menu. The system is linear in the state, so the 2-stage equations are a fixed \(4\times4\) solve (precomputed when \(m,c,k\) change); each step is then one \(4\times4\) matrix product plus two evaluations of \(F(t)\) — as cheap as BDF-2 but far more accurate for smooth forcing.</li>
         <li><strong>Impulse handling:</strong> The delta function impulse is applied as a direct velocity jump.</li>
       </ul>
 
@@ -479,6 +484,13 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
           <div class="sl-row">
             <label class="sl-lbl" for="endTime">End time \(T\) [s]</label>
             <input type="number" id="endTime" class="sl-num" value="60" step="10" min="10" aria-label="End time value">
+          </div>
+          <div class="sl-row">
+            <label class="sl-lbl" for="methodSel">Numerical method</label>
+            <select id="methodSel" class="method-sel" aria-label="Numerical integration method">
+              <option value="auto">Velocity Verlet + BDF2</option>
+              <option value="gl2">Gauss–Legendre (2-stage)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -697,7 +709,13 @@ var graphMaxTime=60;
 var STIFF_THRESH=5;
 var firstStep=true, prevState=null, currentState=null;
 var stepsPerFrame=10;
+var METHOD='auto';   /* 'auto' = Velocity Verlet + BDF2; 'gl2' = Gauss–Legendre 2-stage */
 var oscillatorMode='vertical', H_WALL_W=28, H_SPRING_COILS=8, V_SPRING_COILS=8;
+/* Running min/max of the trace + persistent layer for incremental graph
+   drawing; points decimated to ~2/pixel and the composite throttled to 30fps. */
+var gMinY=0, gMaxY=0;
+var graphLayer=null, glCtx=null, GL_GRAD=null;
+var glMinY=NaN, glMaxY=NaN, glDrawnIdx=0, lastPushPx=-1e9, graphTick=0;
 
 /* ── Visual geometry (pixels) ── */
 var SUP_BOT=60;        /* y-pixel of support bottom — fixed */
@@ -733,7 +751,7 @@ function applyOscillatorMode(){
     GROUND_Y=canvas.height-70;
   }
   canvasCenterX=canvas.width/2;
-  simBG=null;graphBG=null;
+  simBG=null;graphBG=null;graphLayer=null;
   computeScale();
 }
 
@@ -792,6 +810,48 @@ function verletStep(c_v){
   v=isNaN(nv)?v:nv;
 }
 
+/* ── Gauss–Legendre 2-stage (4th-order, symplectic, A-stable) ──
+   For the forced linear system z' = A z + g(t), z=[y,v],
+   A=[[0,1],[-k/m,-c/m]], g(t)=[0, F(t)/m], the 2-stage Gauss method solves
+       (I₄ − Δt·(a⊗A)) K = [A z_n + g(c₁); A z_n + g(c₂)]
+   for the stage slopes K, then z_{n+1} = z_n + Δt·½(k₁+k₂). The 4×4 system
+   matrix depends only on A and Δt, so its inverse is precomputed when m,c,k
+   change; each step is then a 4×4 matvec plus two F evaluations — O(1), as
+   cheap as the implicit BDF2 solve. (For F=0 this reduces exactly to the
+   homogeneous (2,2)-Padé propagator.) */
+var GL2_S3=Math.sqrt(3);
+var GL2_A=[[0.25,0.25-GL2_S3/6],[0.25+GL2_S3/6,0.25]];
+var GL2_C=[0.5-GL2_S3/6,0.5+GL2_S3/6];
+var GL2_MINV=null;
+function inv4(M){
+  var a=M.slice(),I=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
+  for(var col=0;col<4;col++){
+    var piv=col;for(var r=col+1;r<4;r++)if(Math.abs(a[r*4+col])>Math.abs(a[piv*4+col]))piv=r;
+    if(piv!==col){for(var cc=0;cc<4;cc++){var tp=a[col*4+cc];a[col*4+cc]=a[piv*4+cc];a[piv*4+cc]=tp;tp=I[col*4+cc];I[col*4+cc]=I[piv*4+cc];I[piv*4+cc]=tp;}}
+    var d=a[col*4+col]||1e-12;
+    for(var cc=0;cc<4;cc++){a[col*4+cc]/=d;I[col*4+cc]/=d;}
+    for(var r=0;r<4;r++){if(r===col)continue;var f=a[r*4+col];for(var cc=0;cc<4;cc++){a[r*4+cc]-=f*a[col*4+cc];I[r*4+cc]-=f*I[col*4+cc];}}
+  }
+  return I;
+}
+function buildGL2(){
+  var c_v=c===0?1e-7:c, A=[0,1,-k/m,-c_v/m], Mt=[];
+  for(var i=0;i<16;i++)Mt[i]=0;
+  for(var I=0;I<2;I++)for(var J=0;J<2;J++){var aij=GL2_A[I][J];
+    for(var r=0;r<2;r++)for(var cl=0;cl<2;cl++)Mt[(I*2+r)*4+(J*2+cl)]=-dt*aij*A[r*2+cl];}
+  for(var d=0;d<4;d++)Mt[d*4+d]+=1;
+  GL2_MINV=inv4(Mt);
+}
+function gl2Step(c_v){
+  var A=[0,1,-k/m,-c_v/m], yn=y, vn=v;
+  var Az0=A[0]*yn+A[1]*vn, Az1=A[2]*yn+A[3]*vn;
+  var F1=evaluateForcingFunction(yn,t+GL2_C[0]*dt), F2=evaluateForcingFunction(yn,t+GL2_C[1]*dt);
+  var rhs=[Az0,Az1+F1/m,Az0,Az1+F2/m], K=[0,0,0,0];
+  for(var r=0;r<4;r++){var s=0;for(var cc=0;cc<4;cc++)s+=GL2_MINV[r*4+cc]*rhs[cc];K[r]=s;}
+  var ny=yn+dt*0.5*(K[0]+K[2]), nv=vn+dt*0.5*(K[1]+K[3]);
+  y=isNaN(ny)?y:ny; v=isNaN(nv)?v:nv;
+}
+
 /* ── Delta impulse ── */
 function applyDelta(){
   var func=document.getElementById('forcingFunction').value;
@@ -809,7 +869,9 @@ function updatePhysics(){
   var c_v=c===0?1e-7:c;
   var impulse=applyDelta();
   if(!impulse){
-    if(isStiff(c_v)){
+    if(METHOD==='gl2'){
+      gl2Step(c_v);
+    }else if(isStiff(c_v)){
       if(firstStep){var ns=backwardEuler(currentState,dt,m,c_v,k);prevState=currentState;currentState=ns;firstStep=false;}
       else{var ns2=bdf2(prevState,currentState,dt,m,c_v,k);prevState=currentState;currentState=ns2;}
       y=currentState[0];v=currentState[1];
@@ -1016,23 +1078,43 @@ function createGraphBG(){
   bg.strokeStyle='#333';bg.lineWidth=2;bg.stroke();
 }
 
+function ensureGraphLayer(){
+  if(graphLayer&&graphLayer.width===graphCanvas.width&&graphLayer.height===graphCanvas.height)return;
+  graphLayer=document.createElement('canvas');
+  graphLayer.width=graphCanvas.width;graphLayer.height=graphCanvas.height;
+  glCtx=graphLayer.getContext('2d');
+  GL_GRAD=glCtx.createLinearGradient(0,0,graphCanvas.width,0);
+  GL_GRAD.addColorStop(0,'#6d28d9');GL_GRAD.addColorStop(1,'#0891b2');
+  glMinY=NaN;glMaxY=NaN;glDrawnIdx=0;
+}
+function strokeTrace(minY,scaleY,fromIdx){
+  var W=graphCanvas.width-70,H=graphCanvas.height,start=fromIdx>0?fromIdx-1:0;
+  glCtx.beginPath();glCtx.strokeStyle=GL_GRAD;glCtx.lineWidth=2;glCtx.lineJoin='round';
+  for(var i=start;i<graphData.length;i++){
+    var p=graphData[i],gx=50+(p.t/graphMaxTime)*W,gy=H-40-(p.y-minY)*scaleY;
+    (i===start)?glCtx.moveTo(gx,gy):glCtx.lineTo(gx,gy);
+  }
+  glCtx.stroke();
+}
+
 function drawGraph(){
   if(!graphBG)createGraphBG();
-  graphCtx.drawImage(graphBG,0,0);
-  if(!graphData.length)return;
-  var maxY=Math.max.apply(null,graphData.map(function(d){return d.y;}));
-  var minY=Math.min.apply(null,graphData.map(function(d){return d.y;}));
+  ensureGraphLayer();
+  var minY=gMinY, maxY=gMaxY;
   var yR=maxY-minY||0.1,scaleY=(graphCanvas.height-60)/yR;
-  var lg=graphCtx.createLinearGradient(0,0,graphCanvas.width,0);
-  lg.addColorStop(0,'#6d28d9');lg.addColorStop(1,'#0891b2');
-  graphCtx.beginPath();graphCtx.strokeStyle=lg;graphCtx.lineWidth=2;
-  for(var i=0;i<graphData.length;i++){
-    var p=graphData[i];
-    var gx=50+(p.t/graphMaxTime)*(graphCanvas.width-70);
-    var gy=graphCanvas.height-40-(p.y-minY)*scaleY;
-    i===0?graphCtx.moveTo(gx,gy):graphCtx.lineTo(gx,gy);
+  if(graphData.length){
+    if(minY!==glMinY||maxY!==glMaxY||glDrawnIdx>graphData.length){
+      glCtx.clearRect(0,0,graphLayer.width,graphLayer.height);
+      strokeTrace(minY,scaleY,0);
+      glMinY=minY;glMaxY=maxY;glDrawnIdx=graphData.length;
+    }else if(glDrawnIdx<graphData.length){
+      strokeTrace(minY,scaleY,glDrawnIdx);
+      glDrawnIdx=graphData.length;
+    }
   }
-  graphCtx.stroke();
+  graphCtx.drawImage(graphBG,0,0);
+  graphCtx.drawImage(graphLayer,0,0);
+  if(!graphData.length)return;
   graphCtx.font='13px -apple-system,Arial,sans-serif';graphCtx.textAlign='right';graphCtx.textBaseline='middle';
   graphCtx.fillStyle='#333';graphCtx.strokeStyle='#333';graphCtx.lineWidth=1;
   for(var i=0;i<=5;i++){
@@ -1109,12 +1191,14 @@ function readParams(){
   v0 =parseFloat(document.getElementById('initialVelocity').value)||0;
   graphMaxTime=parseFloat(document.getElementById('endTime').value)||60;
   computeScale();
+  buildGL2();
 }
 
 /* ── Reset ── */
 function resetSimulation(){
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.length=0;graphData.push({t:0,y:y0});
+  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
   clickedPoint=null;
   isRunning=true;isPaused=false;firstStep=true;
   prevState=[y,v];currentState=[y,v];
@@ -1126,12 +1210,18 @@ function resetSimulation(){
 /* ── Animation loop ── */
 function animate(){
   if(isRunning&&!isPaused){
+    var ended=false, plotW=graphCanvas.width-70;
     for(var i=0;i<stepsPerFrame;i++){
       updatePhysics();
-      graphData.push({t:t,y:y});
-      if(t>graphMaxTime){isRunning=false;break;}
+      var ext=false;
+      if(y<gMinY){gMinY=y;ext=true;} else if(y>gMaxY){gMaxY=y;ext=true;}
+      var px=(t/graphMaxTime)*plotW;
+      if(px-lastPushPx>=0.5||ext){graphData.push({t:t,y:y});lastPushPx=px;}
+      if(t>graphMaxTime){isRunning=false;ended=true;break;}
     }
-    drawSim();drawGraph();
+    drawSim();
+    graphTick^=1;
+    if(graphTick===0||ended)drawGraph();
   }
   requestAnimationFrame(animate);
 }
@@ -1188,6 +1278,13 @@ document.addEventListener('DOMContentLoaded',function(){
     say('Oscillator: '+this.value);
   });
 
+  document.getElementById('methodSel').addEventListener('change',function(){
+    METHOD=this.value;
+    buildGL2();
+    currentState=[y,v];prevState=[y,v];firstStep=true;
+    say(METHOD==='gl2'?'Method: Gauss–Legendre 2-stage.':'Method: Velocity Verlet + BDF2.');
+  });
+
   document.getElementById('resetBtn').addEventListener('click',resetSimulation);
   document.querySelectorAll('.sbtn').forEach(function(btn){
     btn.addEventListener('click',function(){
@@ -1222,6 +1319,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
   readParams();updateEqDisplay();
   y=y0;v=v0;t=0;graphData.push({t:0,y:y0});prevState=[y,v];currentState=[y,v];
+  gMinY=gMaxY=y0;glMinY=glMaxY=NaN;glDrawnIdx=0;lastPushPx=-1e9;graphTick=0;
   drawSim();drawGraph();
   animate();
 });
