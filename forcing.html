@@ -1090,13 +1090,24 @@ function ensureGraphLayer(){
   GL_GRAD.addColorStop(0,'#6d28d9');GL_GRAD.addColorStop(1,'#0891b2');
   glMinY=NaN;glMaxY=NaN;glDrawnIdx=0;
 }
+/* Quadratic-curve smoothing so the plotted trace reads as a smooth curve
+   rather than line segments; appends re-draw two samples back so the
+   smoothed join stays seamless on the incremental layer. */
 function strokeTrace(minY,scaleY,fromIdx){
-  var W=graphCanvas.width-70,H=graphCanvas.height,start=fromIdx>0?fromIdx-1:0;
-  glCtx.beginPath();glCtx.strokeStyle=GL_GRAD;glCtx.lineWidth=2;glCtx.lineJoin='round';
-  for(var i=start;i<graphData.length;i++){
-    var p=graphData[i],gx=50+(p.t/graphMaxTime)*W,gy=H-40-(p.y-minY)*scaleY;
-    (i===start)?glCtx.moveTo(gx,gy):glCtx.lineTo(gx,gy);
+  var W=graphCanvas.width-70,H=graphCanvas.height,n=graphData.length;
+  if(n<2)return;
+  var start=fromIdx>0?(fromIdx>2?fromIdx-2:0):0;
+  glCtx.beginPath();glCtx.strokeStyle=GL_GRAD;glCtx.lineWidth=2;glCtx.lineJoin='round';glCtx.lineCap='round';
+  var p=graphData[start];
+  glCtx.moveTo(50+(p.t/graphMaxTime)*W, H-40-(p.y-minY)*scaleY);
+  for(var i=start+1;i<n-1;i++){
+    var a=graphData[i], b=graphData[i+1];
+    var ax=50+(a.t/graphMaxTime)*W, ay=H-40-(a.y-minY)*scaleY;
+    var bx=50+(b.t/graphMaxTime)*W, by=H-40-(b.y-minY)*scaleY;
+    glCtx.quadraticCurveTo(ax,ay,(ax+bx)/2,(ay+by)/2);
   }
+  var q=graphData[n-1], qx=50+(q.t/graphMaxTime)*W, qy=H-40-(q.y-minY)*scaleY;
+  glCtx.quadraticCurveTo(qx,qy,qx,qy);
   glCtx.stroke();
 }
 
