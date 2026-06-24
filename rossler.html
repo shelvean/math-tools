@@ -931,22 +931,26 @@ function make3DLayout(title){
 }
 
 /* ── Display decimation ───────────────────────────────────────────────────────
-   The integrator runs at dt=0.01 (tens of thousands of points), but the line is
-   visually indistinguishable beyond a few thousand vertices. Cap the points sent
-   to Plotly's WebGL line at MAX_DISPLAY_PTS with a uniform stride (so the Jet
+   Cap the points sent to Plotly's WebGL line with a uniform stride (so the Jet
    time-colour stays evenly mapped), always keeping the final sample so the line
    reaches the current marker. Full-resolution arrays are still used for the
-   marker, colourbar time labels and the time-series, so this cuts per-react cost
-   ~6-8x on dense renders and the animations with no visible change. `to`
-   (inclusive) limits to a growing prefix for animation. */
-var MAX_DISPLAY_PTS=4000;
-function decimate(tr,to){
+   marker, colourbar time labels and the time-series. `to` (inclusive) limits to
+   a growing prefix for animation; `cap` overrides the point budget.
+
+   Rössler's default run is t_end=300 (≈30,000 pts) — twice Lorenz's span — and
+   its tight circular spiral shows polygon facets if sparsened too far, so the
+   per-frame animation budget (ANIM_DISPLAY_PTS) is generous, and the *static*
+   attractor is drawn at full resolution (STATIC_DISPLAY_PTS only bounds
+   pathologically long runs). */
+var ANIM_DISPLAY_PTS=9000, STATIC_DISPLAY_PTS=40000;
+function decimate(tr,to,cap){
+  cap=cap||ANIM_DISPLAY_PTS;
   var n=(to===undefined)?tr.x.length:to+1;
-  if(n<=MAX_DISPLAY_PTS){
+  if(n<=cap){
     if(to===undefined)return tr;
     return{x:tr.x.slice(0,n),y:tr.y.slice(0,n),z:tr.z.slice(0,n),t:tr.t.slice(0,n)};
   }
-  var stride=Math.ceil(n/MAX_DISPLAY_PTS);
+  var stride=Math.ceil(n/cap);
   var xs=[],ys=[],zs=[],ts=[];
   for(var i=0;i<n;i+=stride){xs.push(tr.x[i]);ys.push(tr.y[i]);zs.push(tr.z[i]);ts.push(tr.t[i]);}
   var last=n-1;
@@ -1066,7 +1070,7 @@ var updatePlot=debounce(function(cOverride){
   var N = currentStaticN();
   var tr=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,N,v.method);
   Plotly.react('plot',
-    [makeJetTrace(decimate(tr), 2, N)],
+    [makeJetTrace(decimate(tr, undefined, STATIC_DISPLAY_PTS), 2, N)],
     make3DLayout('Rössler Attractor  (a='+fmtSig(v.a)+', b='+fmtSig(v.b)+', c='+fmtSig(v.c)+')')
   );
   renderTimeSeries(tr);
@@ -1388,7 +1392,7 @@ document.addEventListener('DOMContentLoaded', function(){
     var N0=currentStaticN();
     var tr0=solveRossler(v0.a,v0.b,v0.c,v0.x0,v0.y0,v0.z0,N0,v0.method);
     Plotly.react('plot',
-      [makeJetTrace(decimate(tr0), 2, N0)],
+      [makeJetTrace(decimate(tr0, undefined, STATIC_DISPLAY_PTS), 2, N0)],
       make3DLayout('Rössler Attractor  (a='+fmtSig(v0.a)+', b='+fmtSig(v0.b)+', c='+fmtSig(v0.c)+')')
     );
     renderTimeSeries(tr0);
