@@ -1041,6 +1041,46 @@ function quadSimpson(f,a,b,n){
   pts.sort(function(a,b){return a.x-b.x;});
   return{value:s*h/3,h:h,pts:pts,nActual:n};
 }
+/* ── Higher-order Newton–Cotes rules (closed & open) ──
+   Composite forms: [a,b] is split into N=n equal subintervals (rounded down to a
+   multiple of the panel size P); each panel of P subintervals applies the rule
+   with weights w and prefactor (facN/facD)·h. Closed rules use all P+1 panel
+   nodes (endpoints included); open rules use only the P−1 interior nodes.
+   Coefficients from the Closed/Open Newton–Cotes tables. */
+var NC_PARAMS={
+  simpson38:{closed:true,  P:3, w:[1,3,3,1],           facN:3, facD:8},
+  boole:    {closed:true,  P:4, w:[7,32,12,32,7],      facN:2, facD:45},
+  closed6:  {closed:true,  P:5, w:[19,75,50,50,75,19], facN:5, facD:288},
+  open2:    {closed:false, P:3, w:[1,1],               facN:3, facD:2},
+  open3:    {closed:false, P:4, w:[2,-1,2],            facN:4, facD:3},
+  open4:    {closed:false, P:5, w:[11,1,1,11],         facN:5, facD:24}
+};
+function ncRoundN(n,id){var P=NC_PARAMS[id].P; var N=n-(n%P); if(N<P)N=P; return N;}
+function quadNewtonCotes(f,a,b,n,id){
+  var P=NC_PARAMS[id], Psz=P.P, N=ncRoundN(n,id), h=(b-a)/N, total=0, pts=[], seen={};
+  for(var p=0;p<N/Psz;p++){
+    var x0=a+p*Psz*h, ps=0;
+    if(P.closed){
+      for(var j=0;j<=Psz;j++){ var xj=x0+j*h, fj=f(xj); ps+=P.w[j]*fj;
+        var key=xj.toFixed(12); if(!seen[key]){seen[key]=1; pts.push({x:xj,y:fj,type:id,panel:p});} }
+    } else {
+      for(var j=1;j<Psz;j++){ var xj=x0+j*h, fj=f(xj); ps+=P.w[j-1]*fj; pts.push({x:xj,y:fj,type:id,panel:p}); }
+    }
+    total += P.facN*h/P.facD*ps;
+  }
+  pts.sort(function(u,v){return u.x-v.x;});
+  return{value:total,h:h,pts:pts,nActual:N,panelSize:Psz,ncId:id};
+}
+function quadNCValue(f,a,b,n,id){
+  var P=NC_PARAMS[id], Psz=P.P, N=ncRoundN(n,id), h=(b-a)/N, total=0;
+  for(var p=0;p<N/Psz;p++){
+    var x0=a+p*Psz*h, ps=0;
+    if(P.closed){ for(var j=0;j<=Psz;j++) ps+=P.w[j]*f(x0+j*h); }
+    else { for(var j=1;j<Psz;j++) ps+=P.w[j-1]*f(x0+j*h); }
+    total += P.facN*h/P.facD*ps;
+  }
+  return total;
+}
 function quadGauss(f,a,b,n,m){
   var gl=GL[m];
   if(!gl)return{value:NaN,h:(b-a)/n,pts:[]};
@@ -1136,6 +1176,7 @@ function quadRomberg(f,a,b,n){
 }
 
 function computeQuad(method,f,a,b,n){
+  if(NC_PARAMS[method]) return quadNewtonCotes(f,a,b,n,method);
   switch(method){
     case 'left':      return quadLeft(f,a,b,n);
     case 'right':     return quadRight(f,a,b,n);
@@ -1155,6 +1196,7 @@ function computeQuad(method,f,a,b,n){
    Used by convergence sweep, tolerance search, and reference computation.
    Returns just the numerical integral value. */
 function quadValFast(method,f,a,b,n){
+  if(NC_PARAMS[method]) return quadNCValue(f,a,b,n,method);
   var h=(b-a)/n,s,i,xi;
   switch(method){
     case 'left':
@@ -1302,9 +1344,16 @@ function drawCurve(){
 /* ── Per-method color palettes ──
    Each method gets two alternating fill colors, a stroke, and a dot color.
    High-contrast (hc) variants use stronger, fully opaque tones. */
+function ncPalette(rgb){return {f1:'rgba('+rgb+',.22)',f2:'rgba('+rgb+',.11)',s:'rgba('+rgb+',.5)',dot:'rgb('+rgb+')',dot2:'#fff'};}
 function getMethodColors(method){
   var hc=document.documentElement.classList.contains('hc');
   switch(method){
+    case 'simpson38': return ncPalette('234,88,12');
+    case 'boole':     return ncPalette('180,83,9');
+    case 'closed6':   return ncPalette('146,64,14');
+    case 'open2':     return ncPalette('147,51,234');
+    case 'open3':     return ncPalette('219,39,119');
+    case 'open4':     return ncPalette('13,148,136');
     case 'left': return hc
       ? {f1:'rgba(0,0,180,.22)',f2:'rgba(0,0,180,.14)',s:'rgba(0,0,160,.7)',dot:'#0000aa',dot2:'#fff'}
       : {f1:'rgba(37,99,235,.20)',f2:'rgba(37,99,235,.10)',s:'rgba(37,99,235,.50)',dot:'#2563eb',dot2:'#fff'};
@@ -1362,6 +1411,12 @@ function sgnColors(idx, fv){
     : {f1:'rgba(220,38,38,0.20)', f2:'rgba(220,38,38,0.07)'};
 }
 
+/* Lagrange interpolant value at x through nodes (xs,ys). */
+function lagrangeEval(xs,ys,x){
+  var n=xs.length,y=0;
+  for(var i=0;i<n;i++){ var t=ys[i]; for(var j=0;j<n;j++){ if(j!==i) t*=(x-xs[j])/(xs[i]-xs[j]); } y+=t; }
+  return y;
+}
 function drawQuadratureShapes(){
   if(!ST.fn||!ST.result)return;
   var m=ST.method,f=ST.fn,a=ST.a,b=ST.b,n=ST.n;
@@ -1492,6 +1547,35 @@ function drawQuadratureShapes(){
       ctx.beginPath();ctx.arc(px,py,dr,0,2*Math.PI);
       ctx.fillStyle=isEnd?'#b45309':isW4?C.dot:'#d97706';
       ctx.fill();
+      ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
+    });
+  }
+  else if(NC_PARAMS[m]){
+    /* Higher-order Newton–Cotes: fill each panel with its interpolating
+       polynomial (the degree the rule integrates exactly), to the axis. */
+    var ncP=NC_PARAMS[m], Psz=ncP.P, Nn=ST.result.nActual||ncRoundN(n,m), hh=(b-a)/Nn;
+    var pyBase=w2cy(0), nPan=Nn/Psz;
+    for(var pi=0;pi<nPan;pi++){
+      var px0=a+pi*Psz*hh, pxN=px0+Psz*hh, nx=[], ny=[];
+      if(ncP.closed){ for(var j=0;j<=Psz;j++){var xj=px0+j*hh,yj;try{yj=f(xj);}catch(e){yj=0;} if(!isFinite(yj))yj=0; nx.push(xj);ny.push(yj);} }
+      else { for(var j=1;j<Psz;j++){var xj=px0+j*hh,yj;try{yj=f(xj);}catch(e){yj=0;} if(!isFinite(yj))yj=0; nx.push(xj);ny.push(yj);} }
+      var gx0=w2cx(px0),gxN=w2cx(pxN);
+      var grad=ctx.createLinearGradient(gx0,0,gxN,0);
+      var mid;try{mid=f((px0+pxN)/2);}catch(e){mid=0;} if(!isFinite(mid))mid=0;
+      var sc=sgnColors(pi,mid)||C;
+      grad.addColorStop(0,pi%2===0?sc.f1:sc.f2);
+      grad.addColorStop(1,pi%2===0?sc.f2:sc.f1);
+      ctx.fillStyle=grad;
+      ctx.beginPath();ctx.moveTo(gx0,pyBase);
+      var steps=50;
+      for(var s=0;s<=steps;s++){ var xx=px0+(pxN-px0)*s/steps; ctx.lineTo(w2cx(xx),w2cy(lagrangeEval(nx,ny,xx))); }
+      ctx.lineTo(gxN,pyBase);ctx.closePath();ctx.fill();
+      ctx.strokeStyle=C.s;ctx.lineWidth=1.2;ctx.stroke();
+    }
+    if(dotR>0) ST.result.pts.forEach(function(p){
+      var px=w2cx(p.x),py=w2cy(p.y);
+      ctx.beginPath();ctx.arc(px,py,dotR,0,2*Math.PI);
+      ctx.fillStyle=C.dot;ctx.fill();
       ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
     });
   }
@@ -1843,6 +1927,18 @@ function formulaLatex(method,a,b,n,latex){
   var bStr=numToPiLatex(b,4);
   var hStr=numToPiLatex((b-a)/n,6);
   var integralStr='\\int_{'+aStr+'}^{'+bStr+'}'+latex+'\\,dx';
+  var NC_CAPTIONS={
+    simpson38:'\\dfrac{3h}{8}\\left[f_0+3f_1+3f_2+f_3\\right]',
+    boole:'\\dfrac{2h}{45}\\left[7f_0+32f_1+12f_2+32f_3+7f_4\\right]',
+    closed6:'\\dfrac{5h}{288}\\left[19f_0+75f_1+50f_2+50f_3+75f_4+19f_5\\right]',
+    open2:'\\dfrac{3h}{2}\\left[f_1+f_2\\right]',
+    open3:'\\dfrac{4h}{3}\\left[2f_1-f_2+2f_3\\right]',
+    open4:'\\dfrac{5h}{24}\\left[11f_1+f_2+f_3+11f_4\\right]'
+  };
+  if(NC_CAPTIONS[method]){
+    var hh=numToPiLatex((b-a)/ncRoundN(n,method),6);
+    return integralStr+'\\;\\approx\\;\\sum_{\\text{panels}}'+NC_CAPTIONS[method]+',\\quad h='+hh;
+  }
   switch(method){
     case 'left':
       return integralStr+'\\;\\approx\\; h\\sum_{i=0}^{n-1}f(x_i),\\quad h=\\dfrac{b-a}{n}='+hStr;
@@ -1885,6 +1981,7 @@ function doCompute(){
   var n=parseInt(document.getElementById('nInput').value)||6;
   if(n<1)n=1;if(n>1000)n=1000;
   if(ST.method==='simpson'&&n%2!==0)n++;
+  if(NC_PARAMS[ST.method]){var ncP=NC_PARAMS[ST.method].P; if(n%ncP!==0)n=Math.ceil(n/ncP)*ncP; if(n<ncP)n=ncP;}
   if(ST.method==='romberg'){if(n<2)n=2;if(n>14)n=14;}
   document.getElementById('nInput').value=n;
 
@@ -2352,6 +2449,12 @@ var QMETHODS=[
   {id:'midpoint', label:'Midpoint',             color:'#7c3aed', badge:'degree 1'},
   {id:'trapezoid',label:'Trapezoidal',          color:'#059669', badge:'degree 1'},
   {id:'simpson',  label:'Simpson’s 1/3',   color:'#d97706', badge:'degree 3'},
+  {id:'simpson38',label:'Simpson’s 3/8',   color:'#ea580c', badge:'degree 3'},
+  {id:'boole',    label:'Boole’s rule',         color:'#b45309', badge:'degree 5'},
+  {id:'closed6',  label:'Closed 6-point',       color:'#92400e', badge:'degree 5'},
+  {id:'open2',    label:'Open 2-point',         color:'#9333ea', badge:'degree 1'},
+  {id:'open3',    label:'Milne (open 3-pt)',    color:'#db2777', badge:'degree 3'},
+  {id:'open4',    label:'Open 4-point',         color:'#0d9488', badge:'degree 3'},
   {id:'gauss2',   label:'Gauss–Legendre 2-pt', color:'#7c3aed', badge:'degree 3'},
   {id:'gauss3',   label:'Gauss–Legendre 3-pt', color:'#c026d3', badge:'degree 5'},
   {id:'gauss5',   label:'Gauss–Legendre 5-pt', color:'#0e7490', badge:'degree 9'},
@@ -2361,8 +2464,8 @@ var QMETHODS=[
 var QMETBY={}; QMETHODS.forEach(function(m){QMETBY[m.id]=m;});
 var QFAMS=[
   {key:'riemann', name:'Riemann sums',        ids:['left','right']},
-  {key:'closed',  name:'Closed Newton–Cotes', ids:['trapezoid','simpson']},
-  {key:'open',    name:'Open Newton–Cotes',   ids:['midpoint']},
+  {key:'closed',  name:'Closed Newton–Cotes', ids:['trapezoid','simpson','simpson38','boole','closed6']},
+  {key:'open',    name:'Open Newton–Cotes',   ids:['midpoint','open2','open3','open4']},
   {key:'gauss',   name:'Gaussian quadrature', ids:['gauss2','gauss3','gauss5']},
   {key:'adapt',   name:'Adaptive & extrapolation', ids:['adaptive','romberg']}
 ];
