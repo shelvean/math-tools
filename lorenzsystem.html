@@ -938,6 +938,31 @@ function solveLorenz(sigma,rho,beta,x0,y0,z0,N,method){
   return{x:xa,y:ya,z:za,t:ta};
 }
 
+/* ── Display decimation ───────────────────────────────────────────────────────
+   The integrator runs at dt=0.005 (up to 30,000 points), but the Lorenz line
+   is visually indistinguishable beyond a few thousand vertices. Cap the points
+   sent to Plotly's WebGL line at MAX_DISPLAY_PTS with a uniform stride (so the
+   Jet time-colour stays evenly mapped), always keeping the final sample so the
+   line reaches the current marker. The full-resolution arrays are still used
+   for the marker position, the colourbar time labels, and the time-series, so
+   this cuts per-react cost ~6-8x on dense renders and the animations with no
+   visible change. `to` (inclusive) limits to a growing prefix for animation.
+   ──────────────────────────────────────────────────────────────────────────── */
+var MAX_DISPLAY_PTS=4000;
+function decimate(tr,to){
+  var n=(to===undefined)?tr.x.length:to+1;
+  if(n<=MAX_DISPLAY_PTS){
+    if(to===undefined)return tr;
+    return{x:tr.x.slice(0,n),y:tr.y.slice(0,n),z:tr.z.slice(0,n),t:tr.t.slice(0,n)};
+  }
+  var stride=Math.ceil(n/MAX_DISPLAY_PTS);
+  var xs=[],ys=[],zs=[],ts=[];
+  for(var i=0;i<n;i+=stride){xs.push(tr.x[i]);ys.push(tr.y[i]);zs.push(tr.z[i]);ts.push(tr.t[i]);}
+  var last=n-1;
+  if(last%stride!==0){xs.push(tr.x[last]);ys.push(tr.y[last]);zs.push(tr.z[last]);ts.push(tr.t[last]);}
+  return{x:xs,y:ys,z:zs,t:ts};
+}
+
 /* ── Colorbar helper ──────────────────────────────────────────────────────────
    Shows actual simulation time on the Jet colorbar (t=0, t=mid, t=end),
    preventing the "Start/Mid/End" labels from being ambiguous across different N.
@@ -1014,6 +1039,30 @@ function make3DLayout(title){
     font:{color:hc?'#000':'#333'},
     hovermode:false,
     uirevision:'camera'   // preserves camera angle between react() calls
+  };
+}
+
+/* Per-frame layout memo for the animation loops: make3DLayout rebuilds the
+   nested scene object (three axes via Object.assign) on every call. Build that
+   once and reuse it, while returning a *fresh* top-level layout each frame so
+   Plotly.react (which diffs layout by reference) still picks up the changing
+   title. The cached scene keeps the same reference, so react skips re-diffing
+   it and the camera is untouched. Rebuilds when high-contrast or the mobile
+   breakpoint changes. */
+var _animBase=null,_animBaseKey='';
+function animLayout(title){
+  var hc=document.documentElement.classList.contains('hc');
+  var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
+  var key=hc+'|'+mobile;
+  if(_animBase===null||_animBaseKey!==key){ _animBase=make3DLayout(title); _animBaseKey=key; }
+  return{
+    title:mobile?{text:''}:{text:title,font:{size:13,color:hc?'#000':'#374151'}},
+    scene:_animBase.scene,
+    margin:_animBase.margin,
+    paper_bgcolor:_animBase.paper_bgcolor,
+    font:_animBase.font,
+    hovermode:false,
+    uirevision:'camera'
   };
 }
 
@@ -1120,7 +1169,7 @@ var updatePlot=debounce(function(rhoOverride){
   var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
   var ic='('+fmtSig(v.x0)+', '+fmtSig(v.y0)+', '+fmtSig(v.z0)+')';
   Plotly.react('plot',
-    [makeJetTrace(tr,2.5,N)],
+    [makeJetTrace(decimate(tr),2.5,N)],
     make3DLayout('Lorenz Attractor \u2014 \u03C1\u2009=\u2009'+fmtSig(v.rho)+', IC '+ic+', T = '+fmtSig(v.tend))
   );
   renderTimeSeries(tr);
@@ -1190,11 +1239,12 @@ function renderParticleFrame(idx){
   var t1=PA.t1,t2=PA.t2;
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
+  var d1=decimate(t1,idx),d2=decimate(t2,idx);
   Plotly.react('plot',[
-    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
+    {x:d1.x,y:d1.y,z:d1.z,
      type:'scatter3d',mode:'lines',name:'Traj 1',
      line:{color:'#2196F3',width:3},showlegend:true},
-    {x:t2.x.slice(0,idx+1),y:t2.y.slice(0,idx+1),z:t2.z.slice(0,idx+1),
+    {x:d2.x,y:d2.y,z:d2.z,
      type:'scatter3d',mode:'lines',name:'Traj 2',
      line:{color:'#F44336',width:3},showlegend:true},
     {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
@@ -1214,15 +1264,16 @@ function renderIncrementalFrame(idx, titlePrefix){
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
   var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-  var line={color:t1.t.slice(0,idx+1),colorscale:'Jet',width:3,
+  var d=decimate(t1,idx);
+  var line={color:d.t,colorscale:'Jet',width:3,
             cauto:false,cmin:0,cmax:1,showscale:!mobile};
   if(!mobile)line.colorbar=makeColorbar(t1.x.length);
   Plotly.react('plot',[
-    {x:t1.x.slice(0,idx+1),y:t1.y.slice(0,idx+1),z:t1.z.slice(0,idx+1),
+    {x:d.x,y:d.y,z:d.z,
      type:'scatter3d',mode:'lines',line:line,showlegend:false},
     {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
-  ],make3DLayout(titlePrefix+' (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
+  ],animLayout(titlePrefix+' (\u03C1\u2009=\u2009'+fmtSig(rho)+', t\u2009=\u2009'+t+')'));
   renderTimeSeries(t1, idx);
 }
 function renderAttractorFrame(idx){ renderIncrementalFrame(idx, 'Lorenz Attractor'); }
@@ -1399,8 +1450,8 @@ document.addEventListener('DOMContentLoaded',function(){
           var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
           if(rs)rs.value=cur;if(ri)ri.value=fmtSig(cur);
           Plotly.react('plot',
-            [makeJetTrace(frame.tr,3,ANIM_N)],
-            make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(cur)+')')
+            [makeJetTrace(decimate(frame.tr),3,ANIM_N)],
+            animLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(cur)+')')
           );
           renderTimeSeries(frame.tr);
           RhoAnim.timerId=setTimeout(tick,delay);
@@ -1494,7 +1545,7 @@ document.addEventListener('DOMContentLoaded',function(){
     var N0=staticN(v0);
     var tr0=solveLorenz(v0.sigma,v0.rho,v0.beta,v0.x0,v0.y0,v0.z0,N0,v0.method);
     Plotly.react('plot',
-      [makeJetTrace(tr0,2,N0)],
+      [makeJetTrace(decimate(tr0),2,N0)],
       make3DLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(v0.rho)+')')
     );
     renderTimeSeries(tr0);
