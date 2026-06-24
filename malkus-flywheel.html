@@ -537,6 +537,16 @@ if(document.referrer.includes('projects.html')){
              style="width:80px;padding:.15rem .35rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);background:var(--card);text-align:center;"
              aria-label="End time of simulation">
     </div>
+    <div class="toggle-row" style="display:flex;align-items:center;gap:.4rem;">
+      <label for="method" style="font-weight:700;color:var(--txt2);font-size:.8125rem;">Method:</label>
+      <select id="method" aria-label="Numerical integration method"
+              style="flex:1;min-width:0;padding:.2rem .4rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.8125rem;font-weight:600;color:var(--txt);background:var(--card);cursor:pointer;">
+        <option value="rk4" selected>RK4 (4th order)</option>
+        <option value="dp5">Dormand-Prince 5(4)</option>
+        <option value="tsit5">Tsit5 (5th order)</option>
+        <option value="dop853">DOP853 (8th order)</option>
+      </select>
+    </div>
     <div class="toggle-row">
       <input type="checkbox" id="showPhase" checked>
       <label for="showPhase">Show 3D phase space</label>
@@ -825,6 +835,7 @@ var ST = {
   t: 0,
   reversals: 0,
   lastOmegaSign: 1,
+  method: 'rk4',      // selectable integrator: rk4 | dp5 | tsit5 | dop853
   /* physics state — trajectory 2 (sensitivity-mode twin) */
   phi2: 0,
   omega2: 0.5,
@@ -995,9 +1006,86 @@ function rk4Step(baseAngle, phi, omega, m, p, dt) {
   return { phi: newPhi, omega: newOmega, m: newM };
 }
 
+/* =====================================================
+   Selectable integrators (RK4 default, plus DP5 / Tsit5 / DOP853)
+   The Malkus state is composite (phi, omega, m[0..N-1]) and the system is
+   autonomous, so a single generic explicit Runge-Kutta stepper drives every
+   method from its Butcher tableau. NOTE: the inflow cos(theta)+ has corners at
+   theta = +-pi/2, so the right-hand side is only piecewise-smooth; the higher
+   orders therefore give little asymptotic accuracy gain over RK4 here, but the
+   selector still lets users confirm a feature is intrinsic to the dynamics and
+   not an artifact of one solver.
+===================================================== */
+var DOP853_A=[
+  {},
+  {0:0.05260015195876773},
+  {0:0.0197250569845379, 1:0.0591751709536137},
+  {0:0.02958758547680685, 2:0.08876275643042054},
+  {0:0.2413651341592667, 2:-0.8845494793282861, 3:0.924834003261792},
+  {0:0.037037037037037035, 3:0.17082860872947386, 4:0.12546768756682242},
+  {0:0.037109375, 3:0.17025221101954405, 4:0.06021653898045596, 5:-0.017578125},
+  {0:0.03709200011850479, 3:0.17038392571223998, 4:0.10726203044637328, 5:-0.015319437748624402, 6:0.008273789163814023},
+  {0:0.6241109587160757, 3:-3.3608926294469414, 4:-0.868219346841726, 5:27.59209969944671, 6:20.154067550477894, 7:-43.48988418106996},
+  {0:0.47766253643826434, 3:-2.4881146199716677, 4:-0.590290826836843, 5:21.230051448181193, 6:15.279233632882423, 7:-33.28821096898486, 8:-0.020331201708508627},
+  {0:-0.9371424300859873, 3:5.186372428844064, 4:1.0914373489967295, 5:-8.149787010746927, 6:-18.52006565999696, 7:22.739487099350505, 8:2.4936055526796523, 9:-3.0467644718982196},
+  {0:2.273310147516538, 3:-10.53449546673725, 4:-2.0008720582248625, 5:-17.9589318631188, 6:27.94888452941996, 7:-2.8589982771350235, 8:-8.87285693353063, 9:12.360567175794303, 10:0.6433927460157636}
+];
+var DOP853_B=[0.054293734116568765, 0.0, 0.0, 0.0, 0.0, 4.450312892752409, 1.8915178993145003, -5.801203960010585, 0.3111643669578199, -0.1521609496625161, 0.20136540080403034, 0.04471061572777259];
+/* Butcher tableaux (explicit). A-rows are sparse {col: coeff}; the system is
+   autonomous so the c nodes are unused. DOP853 reuses the arrays above. */
+var MALKUS_TAB = {
+  rk4:  { A:[{},{0:0.5},{1:0.5},{2:1}], b:[1/6,1/3,1/3,1/6] },
+  dp5:  { A:[{},{0:1/5},{0:3/40,1:9/40},{0:44/45,1:-56/15,2:32/9},
+            {0:19372/6561,1:-25360/2187,2:64448/6561,3:-212/729},
+            {0:9017/3168,1:-355/33,2:46732/5247,3:49/176,4:-5103/18656}],
+          b:[35/384,0,500/1113,125/192,-2187/6784,11/84] },
+  tsit5:{ A:[{},{0:0.161},{0:-0.008480655492356989,1:0.335480655492357},
+            {0:2.8971530571054935,1:-6.359448489975075,2:4.362295432869581},
+            {0:5.325864828439257,1:-11.748883564062828,2:7.4955393428898365,3:-0.09249506636175525},
+            {0:5.86145544294642,1:-12.92096931784711,2:8.159367898576159,3:-0.071584973281401,4:-0.028269050394068383}],
+          b:[0.09646076681806523,0.01,0.4798896504144996,1.379008574103742,-3.290069515436081,2.324710524099774] },
+  dop853:{ A:DOP853_A, b:DOP853_B }
+};
+
+/* Generic explicit RK step over the composite state, returning new
+   (phi, omega, m[]). Mirrors rk4Step's interface and its m >= 0 clamp. */
+function rkStepTableau(T, baseAngle, phi, omega, m, p, dt) {
+  var s = T.b.length, N = m.length, i, q;
+  var kPhi = new Array(s), kOmega = new Array(s), kM = new Array(s);
+  for (i = 0; i < s; i++) {
+    var aPhi = phi, aOmega = omega, aM = m.slice(), row = T.A[i];
+    for (var key in row) {
+      var j = +key, aij = row[key], kmj = kM[j];
+      aPhi += dt*aij*kPhi[j]; aOmega += dt*aij*kOmega[j];
+      for (q = 0; q < N; q++) aM[q] += dt*aij*kmj[q];
+    }
+    var d = derivG(baseAngle, aPhi, aOmega, aM, p);
+    kPhi[i] = d.dPhi; kOmega[i] = d.dOmega; kM[i] = d.dm;
+  }
+  var newPhi = phi, newOmega = omega, newM = m.slice();
+  for (i = 0; i < s; i++) {
+    var bi = T.b[i]; if (!bi) continue;
+    var kmi = kM[i];
+    newPhi += dt*bi*kPhi[i]; newOmega += dt*bi*kOmega[i];
+    for (q = 0; q < N; q++) newM[q] += dt*bi*kmi[q];
+  }
+  for (q = 0; q < N; q++) if (newM[q] < 0) newM[q] = 0;
+  return { phi:newPhi, omega:newOmega, m:newM };
+}
+
+/* method id -> stepper with the rk4Step signature. RK4 keeps the existing,
+   verified rk4Step so default runs are byte-for-byte unchanged. */
+var MALKUS_STEP = {
+  rk4:    rk4Step,
+  dp5:    function(ba,ph,om,m,p,dt){ return rkStepTableau(MALKUS_TAB.dp5,    ba,ph,om,m,p,dt); },
+  tsit5:  function(ba,ph,om,m,p,dt){ return rkStepTableau(MALKUS_TAB.tsit5,  ba,ph,om,m,p,dt); },
+  dop853: function(ba,ph,om,m,p,dt){ return rkStepTableau(MALKUS_TAB.dop853, ba,ph,om,m,p,dt); }
+};
+
 function stepRK4(dt) {
   var p = getParams();
-  var r1 = rk4Step(ST.baseAngle, ST.phi, ST.omega, ST.m, p, dt);
+  var stepFn = MALKUS_STEP[ST.method] || rk4Step;
+  var r1 = stepFn(ST.baseAngle, ST.phi, ST.omega, ST.m, p, dt);
   ST.phi = r1.phi;
   ST.omega = r1.omega;
   ST.m = r1.m;
@@ -1012,7 +1100,7 @@ function stepRK4(dt) {
 
   /* Advance twin trajectory in lockstep, sharing all params. */
   if (ST.sensitivityMode) {
-    var r2 = rk4Step(ST.baseAngle, ST.phi2, ST.omega2, ST.m2, p, dt);
+    var r2 = stepFn(ST.baseAngle, ST.phi2, ST.omega2, ST.m2, p, dt);
     ST.phi2 = r2.phi;
     ST.omega2 = r2.omega;
     ST.m2 = r2.m;
@@ -1328,6 +1416,23 @@ function crInterp1D(p0, p1, p2, p3, t) {
                 (2*p0 - 5*p1 + 4*p2 - p3) * t2 +
                 (-p0 + 3*p1 - 3*p2 + p3) * t3);
 }
+
+/* ── Plot decimation ──────────────────────────────────────────────────────────
+   History grows to ~20,000 samples; the ω time-series and the 3D phase plot
+   (which additionally Catmull-Rom upsamples ×4 → ~80,000 points) re-render the
+   whole thing every animation frame. Stride-decimate the parallel arrays to
+   <= MAX_PLOT_PTS, always keeping the final sample, so per-frame plot cost stays
+   flat as the run grows. Visually identical — the curves are far over-sampled at
+   full resolution. Use a single shared stride so all arrays stay index-aligned. */
+var MAX_PLOT_PTS = 3000;
+function plotStride(n){ return Math.max(1, Math.ceil(n / MAX_PLOT_PTS)); }
+function decArr(arr, stride){
+  if(stride <= 1) return arr;
+  var out = [], n = arr.length;
+  for(var i = 0; i < n; i += stride) out.push(arr[i]);
+  if((n-1) % stride !== 0) out.push(arr[n-1]);
+  return out;
+}
 function catmullRom3D(xs, ys, zs, ts, factor) {
   var n = xs.length;
   if (n < 4 || factor <= 1) return { x: xs, y: ys, z: zs, t: ts };
@@ -1373,16 +1478,18 @@ function drawOmegaPlot() {
   var grid = hc ? 'rgba(0,0,0,.2)' : '#e5e7eb';
   var nH = ST.tHist.length;
   var lastT = nH ? [ST.tHist[nH-1]] : [];
+  var st = plotStride(nH);
+  var tD = decArr(ST.tHist, st), oD = decArr(ST.omegaHist, st), o2D = decArr(ST.omegaHist2, st);
   var traces;
   if (ST.sensitivityMode) {
     traces = [{
-      x: ST.tHist, y: ST.omegaHist,
+      x: tD, y: oD,
       type:'scatter', mode:'lines',
       line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
       name:'ω₁(t)',
       hovertemplate:'t=%{x:.2f}<br>ω₁=%{y:.3f}<extra></extra>'
     }, {
-      x: ST.tHist, y: ST.omegaHist2,
+      x: tD, y: o2D,
       type:'scatter', mode:'lines',
       line:{color:'#dc2626', width:1.6, shape:'spline', smoothing:1.0, dash:'dot'},
       name:'ω₂(t)',
@@ -1402,7 +1509,7 @@ function drawOmegaPlot() {
     }];
   } else {
     traces = [{
-      x: ST.tHist, y: ST.omegaHist,
+      x: tD, y: oD,
       type:'scatter', mode:'lines',
       line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
       hovertemplate:'t=%{x:.2f}<br>ω=%{y:.3f}<extra></extra>',
@@ -1432,13 +1539,19 @@ function drawPhasePlot() {
   var hc = isHC();
   var bg = hc ? '#fff' : '#fafafa';
   var n = ST.tHist.length;
+  /* Decimate history (shared stride) before the ×4 Catmull-Rom upsample so the
+     3D trace stays a few thousand points instead of ~80,000 at full run. */
+  var st = plotStride(n);
+  var tH = decArr(ST.tHist, st),
+      oH = decArr(ST.omegaHist, st),  bH = decArr(ST.b1Hist, st),  aH = decArr(ST.a1Hist, st),
+      oH2 = decArr(ST.omegaHist2, st), bH2 = decArr(ST.b1Hist2, st), aH2 = decArr(ST.a1Hist2, st);
   var traces;
 
   if (ST.sensitivityMode) {
     /* Two solid-colour trajectories so divergence is visually obvious;
        drop the time-coloured colorscale (would only confuse the comparison). */
-    var sm1 = catmullRom3D(ST.omegaHist,  ST.b1Hist,  ST.a1Hist,  ST.tHist, 4);
-    var sm2 = catmullRom3D(ST.omegaHist2, ST.b1Hist2, ST.a1Hist2, ST.tHist, 4);
+    var sm1 = catmullRom3D(oH,  bH,  aH,  tH, 4);
+    var sm2 = catmullRom3D(oH2, bH2, aH2, tH, 4);
     traces = [{
       x: sm1.x, y: sm1.y, z: sm1.z,
       type:'scatter3d', mode:'lines',
@@ -1469,7 +1582,7 @@ function drawPhasePlot() {
   } else {
     /* Catmull-Rom smoothing: 4× densification eliminates the
        angular "coarseness" between consecutive RK4 samples. */
-    var sm = catmullRom3D(ST.omegaHist, ST.b1Hist, ST.a1Hist, ST.tHist, 4);
+    var sm = catmullRom3D(oH, bH, aH, tH, 4);
     /* Colour by raw simulation time, clamped to [0, endTime]. t=0 → blue,
        t=endTime → red. Using the absolute endTime (not a per-frame min/max)
        means colour stays stable as the trajectory grows: a trajectory
@@ -2007,6 +2120,15 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('phaseWrap').style.display = this.checked ? '' : 'none';
     if (this.checked) drawPhasePlot();
   });
+
+  /* Integration-method selector — switches the solver for subsequent steps. */
+  (function(){
+    var ms = document.getElementById('method');
+    if (!ms) return;
+    ms.addEventListener('change', function(){
+      ST.method = MALKUS_STEP[this.value] ? this.value : 'rk4';
+    });
+  })();
 
   /* Sensitivity mode toggle: swap the left-column panel between wheel and
      separation plot, reset both trajectories with the current epsilon kick,
