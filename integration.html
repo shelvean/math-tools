@@ -650,6 +650,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
             <label><input type="checkbox" data-cmp="gauss2">GL-2</label>
             <label><input type="checkbox" data-cmp="gauss3">GL-3</label>
             <label><input type="checkbox" data-cmp="gauss5">GL-5</label>
+            <label><input type="checkbox" data-cmp="lobatto3">Lob-3</label>
+            <label><input type="checkbox" data-cmp="lobatto4">Lob-4</label>
+            <label><input type="checkbox" data-cmp="lobatto5">Lob-5</label>
+            <label><input type="checkbox" data-cmp="radau2">Rad-2</label>
+            <label><input type="checkbox" data-cmp="radau3">Rad-3</label>
+            <label><input type="checkbox" data-cmp="clenshaw">CC</label>
+            <label><input type="checkbox" data-cmp="tanhsinh">Tanh-sinh</label>
             <label><input type="checkbox" data-cmp="romberg">Romberg</label>
           </fieldset>
           <div id="convergencePlot"></div>
@@ -1105,6 +1112,114 @@ function quadGauss(f,a,b,n,m){
   return{value:total,h:h,pts:pts};
 }
 
+/* ── Gauss–Lobatto & Gauss–Radau (composite) ──
+   Like Gauss–Legendre but with constrained nodes: Lobatto fixes BOTH
+   endpoints ±1 (degree of precision 2m−3); Radau fixes the left
+   endpoint −1 only (degree 2m−2).  Same composite scheme as quadGauss:
+   an m-point rule applied on each of n equal subintervals. */
+var LOB={
+  3:{x:[-1,0,1],                              w:[1/3,4/3,1/3]},
+  4:{x:[-1,-1/Math.sqrt(5),1/Math.sqrt(5),1], w:[1/6,5/6,5/6,1/6]},
+  5:{x:[-1,-Math.sqrt(3/7),0,Math.sqrt(3/7),1],w:[1/10,49/90,32/45,49/90,1/10]}
+};
+var RAD={
+  2:{x:[-1,1/3],                                w:[1/2,3/2]},
+  3:{x:[-1,(1-Math.sqrt(6))/5,(1+Math.sqrt(6))/5],w:[2/9,(16+Math.sqrt(6))/18,(16-Math.sqrt(6))/18]}
+};
+var NODE_RULE={
+  lobatto3:{tbl:LOB[3],type:'lobatto'}, lobatto4:{tbl:LOB[4],type:'lobatto'}, lobatto5:{tbl:LOB[5],type:'lobatto'},
+  radau2:{tbl:RAD[2],type:'radau'},     radau3:{tbl:RAD[3],type:'radau'}
+};
+function quadNodeRule(f,a,b,n,id){
+  var nr=NODE_RULE[id],tbl=nr.tbl,m=tbl.x.length,h=(b-a)/n,total=0,pts=[];
+  for(var i=0;i<n;i++){
+    var ai=a+i*h,mid=ai+h/2,half=h/2;
+    for(var j=0;j<m;j++){
+      var xj=mid+half*tbl.x[j],fj=f(xj);
+      total+=tbl.w[j]*fj*half;
+      pts.push({x:xj,y:fj,type:nr.type});
+    }
+  }
+  pts.sort(function(p,q){return p.x-q.x;});
+  return{value:total,h:h,pts:pts,nActual:n};
+}
+function nodeRuleValFast(f,a,b,n,id){
+  var tbl=NODE_RULE[id].tbl,m=tbl.x.length,h=(b-a)/n,total=0;
+  for(var i=0;i<n;i++){
+    var ai=a+i*h,mid=ai+h/2,half=h/2;
+    for(var j=0;j<m;j++)total+=tbl.w[j]*f(mid+half*tbl.x[j])*half;
+  }
+  return total;
+}
+
+/* ── Clenshaw–Curtis ──
+   Quadrature at the Chebyshev extreme points x_k = cos(kπ/N), which
+   are the projections of equispaced points on the unit circle.  A
+   single global rule (not composite): n subintervals → N=n, giving
+   N+1 nodes.  Weights come from the exact integral of the cosine
+   interpolant (Trefethen's clencurt construction).  Converges
+   spectrally for smooth integrands — far faster than any fixed
+   algebraic order. */
+function ccWeightsNodes(N){
+  var x=[],w=[],theta=[],k,j;
+  for(k=0;k<=N;k++){theta[k]=Math.PI*k/N;x[k]=Math.cos(theta[k]);}
+  var even=(N%2===0);
+  for(k=0;k<=N;k++){
+    if(k===0||k===N){w[k]=even?1/(N*N-1):1/(N*N);continue;}
+    var v=1,K=even?N/2-1:(N-1)/2;
+    for(j=1;j<=K;j++)v-=2*Math.cos(2*j*theta[k])/(4*j*j-1);
+    if(even)v-=Math.cos(N*theta[k])/(N*N-1);
+    w[k]=2*v/N;
+  }
+  return{x:x,w:w};
+}
+function quadClenshaw(f,a,b,n){
+  var N=Math.max(2,n),cw=ccWeightsNodes(N),mid=(a+b)/2,half=(b-a)/2,total=0,pts=[];
+  for(var k=0;k<=N;k++){
+    var xj=mid+half*cw.x[k],fj=f(xj);
+    total+=cw.w[k]*fj*half;
+    pts.push({x:xj,y:fj,type:'clenshaw'});
+  }
+  pts.sort(function(p,q){return p.x-q.x;});
+  return{value:total,h:(b-a)/N,pts:pts,nActual:N};
+}
+function clenshawValFast(f,a,b,n){
+  var N=Math.max(2,n),cw=ccWeightsNodes(N),mid=(a+b)/2,half=(b-a)/2,total=0;
+  for(var k=0;k<=N;k++)total+=cw.w[k]*f(mid+half*cw.x[k])*half;
+  return total;
+}
+
+/* ── Tanh–sinh (double-exponential) ──
+   The substitution x = tanh(½π·sinh t) maps t∈(−∞,∞) onto x∈(−1,1)
+   and squashes the endpoints double-exponentially, so a plain
+   trapezoidal rule in t converges at a near-exponential rate and
+   tolerates integrable endpoint singularities.  n controls the number
+   of trapezoidal steps over a fixed truncation range. */
+function tsNodes(n){
+  var tMax=3.0,N=Math.max(2,n),h=2*tMax/N,nodes=[];
+  for(var k=0;k<=N;k++){
+    var t=-tMax+k*h,u=(Math.PI/2)*Math.sinh(t),x=Math.tanh(u),ch=Math.cosh(u);
+    if(Math.abs(x)>=1)continue;  /* saturated: weight is negligible */
+    nodes.push({x:x,w:(Math.PI/2)*Math.cosh(t)/(ch*ch)*h});
+  }
+  return nodes;
+}
+function quadTanhSinh(f,a,b,n){
+  var nd=tsNodes(n),mid=(a+b)/2,half=(b-a)/2,total=0,pts=[];
+  for(var i=0;i<nd.length;i++){
+    var xj=mid+half*nd[i].x,fj=f(xj);
+    total+=nd[i].w*fj*half;
+    pts.push({x:xj,y:fj,type:'tanhsinh'});
+  }
+  pts.sort(function(p,q){return p.x-q.x;});
+  return{value:total,h:nd.length>1?(nd[1].x-nd[0].x)*half:half,pts:pts,nActual:nd.length};
+}
+function tanhSinhValFast(f,a,b,n){
+  var nd=tsNodes(n),mid=(a+b)/2,half=(b-a)/2,total=0;
+  for(var i=0;i<nd.length;i++)total+=nd[i].w*f(mid+half*nd[i].x)*half;
+  return total;
+}
+
 /* ── Adaptive Simpson ──
    Recursively halves each subinterval until the per-panel Richardson
    error estimate (S_split - S_whole)/15 is below the local tolerance.
@@ -1183,6 +1298,9 @@ function quadRomberg(f,a,b,n){
 
 function computeQuad(method,f,a,b,n){
   if(NC_PARAMS[method]) return quadNewtonCotes(f,a,b,n,method);
+  if(NODE_RULE[method]) return quadNodeRule(f,a,b,n,method);
+  if(method==='clenshaw') return quadClenshaw(f,a,b,n);
+  if(method==='tanhsinh') return quadTanhSinh(f,a,b,n);
   switch(method){
     case 'left':      return quadLeft(f,a,b,n);
     case 'right':     return quadRight(f,a,b,n);
@@ -1203,6 +1321,9 @@ function computeQuad(method,f,a,b,n){
    Returns just the numerical integral value. */
 function quadValFast(method,f,a,b,n){
   if(NC_PARAMS[method]) return quadNCValue(f,a,b,n,method);
+  if(NODE_RULE[method]) return nodeRuleValFast(f,a,b,n,method);
+  if(method==='clenshaw') return clenshawValFast(f,a,b,n);
+  if(method==='tanhsinh') return tanhSinhValFast(f,a,b,n);
   var h=(b-a)/n,s,i,xi;
   switch(method){
     case 'left':
@@ -1351,6 +1472,9 @@ function drawCurve(){
    Each method gets two alternating fill colors, a stroke, and a dot color.
    High-contrast (hc) variants use stronger, fully opaque tones. */
 function ncPalette(rgb){return {f1:'rgba('+rgb+',.22)',f2:'rgba('+rgb+',.11)',s:'rgba('+rgb+',.5)',dot:'rgb('+rgb+')',dot2:'#fff'};}
+/* Node-based palette (Gauss/Lobatto/Radau/spectral): includes the
+   g1/g2 gradient stops the shading branch expects. */
+function gaussPalette(rgb){return {f1:'rgba('+rgb+',.18)',f2:'rgba('+rgb+',.09)',s:'rgba('+rgb+',.45)',dot:'rgb('+rgb+')',dot2:'#fff',g1:'rgba('+rgb+',.22)',g2:'rgba('+rgb+',.09)'};}
 function getMethodColors(method){
   var hc=document.documentElement.classList.contains('hc');
   switch(method){
@@ -1360,6 +1484,13 @@ function getMethodColors(method){
     case 'open2':     return ncPalette('147,51,234');
     case 'open3':     return ncPalette('219,39,119');
     case 'open4':     return ncPalette('13,148,136');
+    case 'lobatto3':  return gaussPalette('79,70,229');
+    case 'lobatto4':  return gaussPalette('67,56,202');
+    case 'lobatto5':  return gaussPalette('55,48,163');
+    case 'radau2':    return gaussPalette('225,29,72');
+    case 'radau3':    return gaussPalette('159,18,57');
+    case 'clenshaw':  return gaussPalette('2,132,199');
+    case 'tanhsinh':  return gaussPalette('101,163,13');
     case 'left': return hc
       ? {f1:'rgba(0,0,180,.22)',f2:'rgba(0,0,180,.14)',s:'rgba(0,0,160,.7)',dot:'#0000aa',dot2:'#fff'}
       : {f1:'rgba(37,99,235,.20)',f2:'rgba(37,99,235,.10)',s:'rgba(37,99,235,.50)',dot:'#2563eb',dot2:'#fff'};
@@ -1585,8 +1716,9 @@ function drawQuadratureShapes(){
       ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
     });
   }
-  else if(m.startsWith('gauss')){
-    /* For Gauss, shade each subinterval with alternating tints */
+  else if(m.startsWith('gauss')||NODE_RULE[m]){
+    /* Gauss / Lobatto / Radau: shade each subinterval with alternating
+       tints and mark the rule's nodes with stems. */
     var gn=ST.n,gh=(b-a)/gn;
     for(var i=0;i<gn;i++){
       var si=a+i*gh,ei=si+gh;
@@ -1623,6 +1755,35 @@ function drawQuadratureShapes(){
       if(dotR>=2){
         ctx.strokeStyle=C.s;ctx.lineWidth=dotR>=3?1:0.6;ctx.setLineDash([2,2]);
         ctx.beginPath();ctx.moveTo(px,pyBase);ctx.lineTo(px,py);ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.beginPath();ctx.arc(px,py,dotR,0,2*Math.PI);
+      ctx.fillStyle=C.dot;ctx.fill();
+      ctx.strokeStyle=C.dot2;ctx.lineWidth=dotLW;ctx.stroke();
+    });
+  }
+
+  else if(m==='clenshaw'||m==='tanhsinh'){
+    /* Global spectral rules: one fill of the exact area under f across
+       [a,b], with the (non-uniform) nodes marked.  Clenshaw–Curtis
+       clusters nodes toward the endpoints; tanh–sinh clusters them
+       toward the centre. */
+    var pyBase=w2cy(0),pxs=w2cx(a),pxe=w2cx(b);
+    var sc0=sgnColors(0,1);
+    ctx.fillStyle=sc0?sc0.f1:C.f1;
+    ctx.beginPath();ctx.moveTo(pxs,pyBase);
+    var sps=240;
+    for(var j=0;j<=sps;j++){
+      var xx=a+(b-a)*j/sps,yy;try{yy=f(xx);}catch(e){yy=0;}
+      if(!isFinite(yy))yy=0;
+      ctx.lineTo(w2cx(xx),w2cy(yy));
+    }
+    ctx.lineTo(pxe,pyBase);ctx.closePath();ctx.fill();
+    if(dotR>0) ST.result.pts.forEach(function(p){
+      var px=w2cx(p.x),py=w2cy(p.y),pb=w2cy(0);
+      if(dotR>=2){
+        ctx.strokeStyle=C.s;ctx.lineWidth=dotR>=3?1:0.6;ctx.setLineDash([2,2]);
+        ctx.beginPath();ctx.moveTo(px,pb);ctx.lineTo(px,py);ctx.stroke();
         ctx.setLineDash([]);
       }
       ctx.beginPath();ctx.arc(px,py,dotR,0,2*Math.PI);
@@ -1898,12 +2059,17 @@ var METHOD_NAMES={
   trapezoid:'Trapezoidal Rule',simpson:"Simpson's 1/3 Rule",
   simpson38:"Simpson's 3/8 Rule",boole:"Boole's Rule",closed6:'Closed 6-point Rule',
   open2:'Open 2-point Rule',open3:'Milne’s Rule (open 3-point)',open4:'Open 4-point Rule',
+  lobatto3:'Gauss–Lobatto (3-point)',lobatto4:'Gauss–Lobatto (4-point)',lobatto5:'Gauss–Lobatto (5-point)',
+  radau2:'Gauss–Radau (2-point)',radau3:'Gauss–Radau (3-point)',
+  clenshaw:'Clenshaw–Curtis',tanhsinh:'Tanh–sinh (double exponential)',
   gauss2:'Gauss-Legendre (2-point)',gauss3:'Gauss-Legendre (3-point)',gauss5:'Gauss-Legendre (5-point)',
   adaptive:'Adaptive Simpson',romberg:'Romberg'
 };
 
 var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss3:6,gauss5:10,
   simpson38:4,boole:6,closed6:6,open2:2,open3:4,open4:4,
+  lobatto3:4,lobatto4:6,lobatto5:8,radau2:3,radau3:5,
+  clenshaw:8,tanhsinh:8,
   adaptive:4,romberg:14};
 
 /* Format a numeric value as a LaTeX rational multiple of pi when it
@@ -1966,6 +2132,16 @@ function formulaLatex(method,a,b,n,latex){
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{3}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
     case 'gauss5':
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{5}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
+    case 'lobatto3': case 'lobatto4': case 'lobatto5':
+      var mLob=NODE_RULE[method].tbl.x.length;
+      return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{'+mLob+'}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right),\\quad \\xi_1=-1,\\ \\xi_{'+mLob+'}=1';
+    case 'radau2': case 'radau3':
+      var mRad=NODE_RULE[method].tbl.x.length;
+      return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{'+mRad+'}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right),\\quad \\xi_1=-1';
+    case 'clenshaw':
+      return integralStr+'\\;\\approx\\; \\dfrac{b-a}{2}\\sum_{k=0}^{N}w_k\\,f(x_k),\\quad x_k=\\dfrac{a+b}{2}+\\dfrac{b-a}{2}\\cos\\dfrac{k\\pi}{N}';
+    case 'tanhsinh':
+      return integralStr+'\\;\\approx\\; \\dfrac{b-a}{2}\\sum_{k}w_k\\,f(x_k),\\quad x_k=\\tanh\\!\\left(\\tfrac{\\pi}{2}\\sinh t_k\\right),\\ t_k=kh';
     case 'adaptive':
       return integralStr+'\\;\\approx\\; \\sum_{\\text{leaves }[a_k,b_k]}\\!\\!\\dfrac{b_k-a_k}{6}\\!\\left[f(a_k)+4f\\!\\left(\\dfrac{a_k+b_k}{2}\\right)+f(b_k)\\right]'+
         ',\\quad \\bigl|S_{\\text{split}}-S\\bigr|/15<\\varepsilon';
@@ -1992,6 +2168,7 @@ function doCompute(){
   if(ST.method==='simpson'&&n%2!==0)n++;
   if(NC_PARAMS[ST.method]){var ncP=NC_PARAMS[ST.method].P; if(n%ncP!==0)n=Math.ceil(n/ncP)*ncP; if(n<ncP)n=ncP;}
   if(ST.method==='romberg'){if(n<2)n=2;if(n>14)n=14;}
+  if((ST.method==='clenshaw'||ST.method==='tanhsinh')&&n<2)n=2;
   document.getElementById('nInput').value=n;
 
   var fn;
@@ -2058,6 +2235,11 @@ function doCompute(){
   var METHOD_ACCENT={
     left:'#2563eb',right:'#0891b2',midpoint:'#7c3aed',
     trapezoid:'#059669',simpson:'#d97706',
+    simpson38:'#ea580c',boole:'#b45309',closed6:'#92400e',
+    open2:'#9333ea',open3:'#db2777',open4:'#0d9488',
+    lobatto3:'#4f46e5',lobatto4:'#4338ca',lobatto5:'#3730a3',
+    radau2:'#e11d48',radau3:'#9f1239',
+    clenshaw:'#0284c7',tanhsinh:'#65a30d',
     gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',
     adaptive:'#be185d',romberg:'#1e40af'
   };
@@ -2075,6 +2257,12 @@ function doCompute(){
     var lv=(ST.result.romberg||[]).length-1;
     nLbl='Levels'; nVal=String(lv);
     hLbl='Finest \\(h\\)'; hVal=fmtN(h,8);
+  }else if(ST.method==='clenshaw'){
+    nLbl='Chebyshev nodes'; nVal=String((ST.result.nActual||n)+1);
+    hLbl='Degree \\(N\\)'; hVal=String(ST.result.nActual||n);
+  }else if(ST.method==='tanhsinh'){
+    nLbl='Quadrature points'; nVal=String(ST.result.nActual||n);
+    hLbl='Step \\(h\\) in \\(t\\)'; hVal=fmtN(h,6);
   }
 
   rc.innerHTML=
@@ -2200,6 +2388,13 @@ var CONV_NGRID={
   gauss2:[1,2,4,6,10,20,40],
   gauss3:[1,2,3,5,8,14,20],
   gauss5:[1,2,3,5,8,12],
+  lobatto3:[1,2,4,6,10,20,40],
+  lobatto4:[1,2,3,5,8,14,20],
+  lobatto5:[1,2,3,5,8,12],
+  radau2:[1,2,4,6,10,20,40],
+  radau3:[1,2,3,5,8,14,20],
+  clenshaw:[2,4,6,8,12,16,24,32],
+  tanhsinh:[4,8,12,16,24,32,48,64],
   romberg:[3,4,5,6,7,8,9,10,11,12]
 };
 var METHOD_COLORS_CONV={
@@ -2207,8 +2402,13 @@ var METHOD_COLORS_CONV={
   simpson:'#d97706',simpson38:'#ea580c',boole:'#b45309',closed6:'#92400e',
   open2:'#9333ea',open3:'#db2777',open4:'#0d9488',
   gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',
+  lobatto3:'#4f46e5',lobatto4:'#4338ca',lobatto5:'#3730a3',
+  radau2:'#e11d48',radau3:'#9f1239',clenshaw:'#0284c7',tanhsinh:'#65a30d',
   romberg:'#1e40af'
 };
+/* Spectral rules converge faster than any fixed O(h^p), so the
+   power-law reference line and "expected order" caption don't apply. */
+var SPECTRAL={clenshaw:1,tanhsinh:1};
 
 /* Legend symbols rendered with real LaTeX via MathJax. Requires the
    SVG build of MathJax (tex-svg.js) so Plotly can embed the rendered
@@ -2225,6 +2425,13 @@ var METHOD_LATEX={
   open2:'$O_n^{2}$',
   open3:'$O_n^{3}$',
   open4:'$O_n^{4}$',
+  lobatto3:'$\\mathrm{Lob}_3$',
+  lobatto4:'$\\mathrm{Lob}_4$',
+  lobatto5:'$\\mathrm{Lob}_5$',
+  radau2:'$\\mathrm{Rad}_2$',
+  radau3:'$\\mathrm{Rad}_3$',
+  clenshaw:'$\\mathrm{CC}_N$',
+  tanhsinh:'$\\mathrm{TS}$',
   gauss2:'$\\mathrm{GL}_2$',
   gauss3:'$\\mathrm{GL}_3$',
   gauss5:'$\\mathrm{GL}_5$',
@@ -2331,7 +2538,8 @@ function _renderConvergenceNow(){
 
   var ref=first||{method:method,ns:[],errs:[]};
   var order=METHOD_ORDER[ref.method]||2;
-  if(ref.ns.length>=2){
+  var isSpectral=SPECTRAL[ref.method];
+  if(ref.ns.length>=2 && !isSpectral){
     var ri=Math.min(2,ref.ns.length-1);
     var refErrors=ref.ns.map(function(ni){return ref.errs[ri]*Math.pow(ref.ns[ri]/ni,order);});
     traces.push({x:ref.ns,y:refErrors,type:'scatter',mode:'lines',
@@ -2365,7 +2573,9 @@ function _renderConvergenceNow(){
   var cc=document.getElementById('convCaption');
   cc.innerHTML='Log-log convergence \u2014 solid: '+METHOD_NAMES[method]+
     (traces.length>2?', dotted: comparison methods':'')+
-    '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\).';
+    (isSpectral
+      ? '. Spectral / double-exponential convergence \u2014 faster than any fixed \\(\\mathcal{O}(h^{p})\\).'
+      : '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\).');
   mj([cc]);
 }
 
@@ -2481,6 +2691,13 @@ var QMETHODS=[
   {id:'gauss2',   label:'Gauss–Legendre 2-pt', color:'#7c3aed', badge:'degree 3'},
   {id:'gauss3',   label:'Gauss–Legendre 3-pt', color:'#c026d3', badge:'degree 5'},
   {id:'gauss5',   label:'Gauss–Legendre 5-pt', color:'#0e7490', badge:'degree 9'},
+  {id:'lobatto3', label:'Gauss–Lobatto 3-pt',  color:'#4f46e5', badge:'degree 3'},
+  {id:'lobatto4', label:'Gauss–Lobatto 4-pt',  color:'#4338ca', badge:'degree 5'},
+  {id:'lobatto5', label:'Gauss–Lobatto 5-pt',  color:'#3730a3', badge:'degree 7'},
+  {id:'radau2',   label:'Gauss–Radau 2-pt',    color:'#e11d48', badge:'degree 2'},
+  {id:'radau3',   label:'Gauss–Radau 3-pt',    color:'#9f1239', badge:'degree 4'},
+  {id:'clenshaw', label:'Clenshaw–Curtis',     color:'#0284c7', badge:'spectral'},
+  {id:'tanhsinh', label:'Tanh–sinh',           color:'#65a30d', badge:'double-exp'},
   {id:'adaptive', label:'Adaptive Simpson',     color:'#be185d', badge:'adaptive'},
   {id:'romberg',  label:'Romberg',              color:'#1e40af', badge:'extrapolation'}
 ];
@@ -2490,6 +2707,9 @@ var QFAMS=[
   {key:'closed',  name:'Closed Newton–Cotes', ids:['trapezoid','simpson','simpson38','boole','closed6']},
   {key:'open',    name:'Open Newton–Cotes',   ids:['midpoint','open2','open3','open4']},
   {key:'gauss',   name:'Gaussian quadrature', ids:['gauss2','gauss3','gauss5']},
+  {key:'lobatto', name:'Gauss–Lobatto',       ids:['lobatto3','lobatto4','lobatto5']},
+  {key:'radau',   name:'Gauss–Radau',         ids:['radau2','radau3']},
+  {key:'spectral',name:'Spectral & double-exp', ids:['clenshaw','tanhsinh']},
   {key:'adapt',   name:'Adaptive & extrapolation', ids:['adaptive','romberg']}
 ];
 function closeMethodMenus(){
