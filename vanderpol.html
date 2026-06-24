@@ -1499,19 +1499,31 @@ function drawGraph(solObj, idx, gbg, iPt){
   var W=graphCanvas.width, H=graphCanvas.height;
   var pad=gbg.pad;
   var pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
-  var lg=graphCtx.createLinearGradient(pad.l,0,W-pad.r,0);
-  lg.addColorStop(0,'#6366f1'); lg.addColorStop(1,'#4f46e5');
-  graphCtx.strokeStyle=lg; graphCtx.lineWidth=2; graphCtx.lineJoin='round';
-  graphCtx.beginPath();
-  for(var i=0;i<=idx;i++){
-    var px2=pad.l+pts[i].t/T*pw;
-    var py2=H-pad.b-(pts[i].x-gbg.xMin)/(gbg.xMax-gbg.xMin)*ph;
-    i===0?graphCtx.moveTo(px2,py2):graphCtx.lineTo(px2,py2);
+  function gx(t){return pad.l+t/T*pw;}
+  function gy(x){return H-pad.b-(x-gbg.xMin)/(gbg.xMax-gbg.xMin)*ph;}
+  /* (re)create the persistent trail layer on first use / size change */
+  if(!vpTrailG || vpTrailG.width!==W || vpTrailG.height!==H){
+    vpTrailG=document.createElement('canvas'); vpTrailG.width=W; vpTrailG.height=H;
+    vpTrailGctx=vpTrailG.getContext('2d'); vpLastGIdx=-1;
   }
+  if(idx<vpLastGIdx){ vpTrailGctx.clearRect(0,0,W,H); vpLastGIdx=-1; }  /* looped/restarted */
+  if(idx>vpLastGIdx){
+    var lg=vpTrailGctx.createLinearGradient(pad.l,0,W-pad.r,0);
+    lg.addColorStop(0,'#6366f1'); lg.addColorStop(1,'#4f46e5');
+    vpTrailGctx.strokeStyle=lg; vpTrailGctx.lineWidth=2; vpTrailGctx.lineJoin='round'; vpTrailGctx.lineCap='round';
+    var s0=Math.max(0,vpLastGIdx);
+    vpTrailGctx.beginPath();
+    vpTrailGctx.moveTo(gx(pts[s0].t),gy(pts[s0].x));
+    for(var i=s0+1;i<=idx;i++) vpTrailGctx.lineTo(gx(pts[i].t),gy(pts[i].x));
+    vpTrailGctx.stroke();
+    vpLastGIdx=idx;
+  }
+  graphCtx.drawImage(vpTrailG,0,0);
+  /* head segment (idx → interpolated point) + dashed time cursor, drawn live */
   var cp = iPt || pts[idx];
-  var cpx=pad.l+cp.t/T*pw, cpy=H-pad.b-(cp.x-gbg.xMin)/(gbg.xMax-gbg.xMin)*ph;
-  graphCtx.lineTo(cpx, cpy);
-  graphCtx.stroke();
+  var cpx=gx(cp.t), cpy=gy(cp.x);
+  graphCtx.strokeStyle='#4f46e5'; graphCtx.lineWidth=2; graphCtx.lineJoin='round';
+  graphCtx.beginPath(); graphCtx.moveTo(gx(pts[idx].t),gy(pts[idx].x)); graphCtx.lineTo(cpx,cpy); graphCtx.stroke();
   graphCtx.strokeStyle='rgba(220,38,38,.7)'; graphCtx.lineWidth=1.5;
   graphCtx.setLineDash([3,3]);
   graphCtx.beginPath(); graphCtx.moveTo(cpx,pad.t); graphCtx.lineTo(cpx,H-pad.b); graphCtx.stroke();
@@ -1584,26 +1596,35 @@ function drawPhase(solObj, idx, pbg, iPt){
   var pts=solObj.pts;
   var W=phaseCanvas.width, H=phaseCanvas.height;
   var pad=pbg.pad;
-  function toCanvas(x,v){
-    return [pad.l+(x-pbg.xMin)/(pbg.xMax-pbg.xMin)*(W-pad.l-pad.r),
-            H-pad.b-(v-pbg.vMin)/(pbg.vMax-pbg.vMin)*(H-pad.t-pad.b)];
+  function tcx(x){return pad.l+(x-pbg.xMin)/(pbg.xMax-pbg.xMin)*(W-pad.l-pad.r);}
+  function tcy(v){return H-pad.b-(v-pbg.vMin)/(pbg.vMax-pbg.vMin)*(H-pad.t-pad.b);}
+  /* (re)create the persistent trail layer on first use / size change */
+  if(!vpTrailP || vpTrailP.width!==W || vpTrailP.height!==H){
+    vpTrailP=document.createElement('canvas'); vpTrailP.width=W; vpTrailP.height=H;
+    vpTrailPctx=vpTrailP.getContext('2d'); vpLastPIdx=-1;
   }
-  var lg=phaseCtx.createLinearGradient(0,0,W,0);
-  lg.addColorStop(0,'#8b5cf6'); lg.addColorStop(1,'#6d28d9');
-  phaseCtx.strokeStyle=lg; phaseCtx.lineWidth=1.8; phaseCtx.lineJoin='round';
-  phaseCtx.beginPath();
-  for(var i=0;i<=idx;i++){
-    var c=toCanvas(pts[i].x,pts[i].v);
-    i===0?phaseCtx.moveTo(c[0],c[1]):phaseCtx.lineTo(c[0],c[1]);
+  if(idx<vpLastPIdx){ vpTrailPctx.clearRect(0,0,W,H); vpLastPIdx=-1; }  /* looped/restarted */
+  if(idx>vpLastPIdx){
+    var lg=vpTrailPctx.createLinearGradient(0,0,W,0);
+    lg.addColorStop(0,'#8b5cf6'); lg.addColorStop(1,'#6d28d9');
+    vpTrailPctx.strokeStyle=lg; vpTrailPctx.lineWidth=1.8; vpTrailPctx.lineJoin='round'; vpTrailPctx.lineCap='round';
+    var s0=Math.max(0,vpLastPIdx);
+    vpTrailPctx.beginPath();
+    vpTrailPctx.moveTo(tcx(pts[s0].x),tcy(pts[s0].v));
+    for(var i=s0+1;i<=idx;i++) vpTrailPctx.lineTo(tcx(pts[i].x),tcy(pts[i].v));
+    vpTrailPctx.stroke();
+    vpLastPIdx=idx;
   }
+  phaseCtx.drawImage(vpTrailP,0,0);
+  /* head segment + moving marker, drawn live */
   var cp0 = iPt || pts[idx];
-  var cc=toCanvas(cp0.x, cp0.v);
-  phaseCtx.lineTo(cc[0], cc[1]);
-  phaseCtx.stroke();
-  phaseCtx.beginPath(); phaseCtx.arc(cc[0],cc[1],6,0,2*Math.PI);
+  var ccx=tcx(cp0.x), ccy=tcy(cp0.v);
+  phaseCtx.strokeStyle='#6d28d9'; phaseCtx.lineWidth=1.8; phaseCtx.lineJoin='round';
+  phaseCtx.beginPath(); phaseCtx.moveTo(tcx(pts[idx].x),tcy(pts[idx].v)); phaseCtx.lineTo(ccx,ccy); phaseCtx.stroke();
+  phaseCtx.beginPath(); phaseCtx.arc(ccx,ccy,6,0,2*Math.PI);
   phaseCtx.fillStyle=massColor(cp0.x); phaseCtx.fill();
   phaseCtx.strokeStyle='#fff'; phaseCtx.lineWidth=2;
-  phaseCtx.beginPath(); phaseCtx.arc(cc[0],cc[1],6,0,2*Math.PI); phaseCtx.stroke();
+  phaseCtx.beginPath(); phaseCtx.arc(ccx,ccy,6,0,2*Math.PI); phaseCtx.stroke();
 }
 
 /* ════════════════════════════════════════════════════
@@ -1688,6 +1709,17 @@ function readParams(){
    RESET
 ════════════════════════════════════════════════════ */
 var gbg=null, pbg=null;
+/* Persistent offscreen "trail" layers for the x(t) graph and phase portrait.
+   Each frame only the NEW polyline segments since vpLast*Idx are stroked onto
+   the layer (then composited), instead of redrawing the whole 0..idx trajectory
+   — O(N) per run instead of O(N²). Mirrors the approach used on duffing.html. */
+var vpTrailG=null, vpTrailGctx=null, vpLastGIdx=-1;
+var vpTrailP=null, vpTrailPctx=null, vpLastPIdx=-1;
+function vpClearTrails(){
+  if(vpTrailGctx) vpTrailGctx.clearRect(0,0,vpTrailG.width,vpTrailG.height);
+  if(vpTrailPctx) vpTrailPctx.clearRect(0,0,vpTrailP.width,vpTrailP.height);
+  vpLastGIdx=-1; vpLastPIdx=-1;
+}
 
 function resetSimulation(){
   var p=readParams();
@@ -1728,6 +1760,7 @@ function resetSimulation(){
       var elapsed=((performance.now()-t0)/1000).toFixed(2);
       gbg=buildGraphBG(sol);
       pbg=buildPhaseBG(sol);
+      vpClearTrails();   /* new trajectory/scale → start the incremental trail layers fresh */
       dtPerFrame=computeDtPerFrame(sol, p.speed);
       animIdx=0; animTime=0; trail=[]; isRunning=true; srFrameCount=0;
 
