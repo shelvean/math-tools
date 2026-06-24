@@ -928,7 +928,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewStabBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Shaded blue: \(z=h\lambda\) values for which the method is absolutely stable (\(|\)amplification\(|\le1\)); the dark curve is the stability boundary. The red <strong>&times;</strong> marks the current \(z=h\lambda\) for this problem (using \(\lambda=\partial f/\partial y\) at the start when no explicit \(\lambda\) is set). If the &times; lies outside the shaded region, expect the method to grow.</details>
+          <details class="pnote"><summary>About this plot</summary>Shaded blue: \(z=h\lambda\) values for which the method is absolutely stable (\(|\)amplification\(|\le1\)); the dark curve is the stability boundary. The red <strong>&times;</strong> marks \(z=h\lambda\) for this problem. When no explicit \(\lambda\) is set, \(\lambda=\partial f/\partial y\) is sampled along the solution and the \(\times\) is placed at its <em>most negative</em> value &mdash; the worst case for absolute stability (hover to see at which \(t\)). If the &times; lies outside the shaded region, expect the method to grow there.</details>
         </div>
       </div>
 
@@ -2526,16 +2526,32 @@ function plotStability(P){
       hoverinfo:'skip' };
     stabCache={ key:stabKey, heat:heat, bound:bound };
   }
-  /* current z = h*lambda, clamped into the frame so it stays visible */
-  var lamEff;
-  if (P.hasLambda) lamEff=P.lambda; else lamEff=P.fy(P.t0,P.y0);
+  /* current z = h*lambda, clamped into the frame so it stays visible.
+     When ∂f/∂y is constant (an explicit λ, or an RHS linear in y) there is a
+     single value. When it varies along the trajectory we mark the WORST case
+     for absolute stability — the most negative real part, i.e. the leftmost
+     z=hλ, the value most likely to fall outside the region — found by scanning
+     ∂f/∂y along the reference solution rather than freezing it at t₀. */
+  var lamEff, worstT=P.t0;
+  if (P.hasLambda) { lamEff=P.lambda; }
+  else {
+    lamEff=P.fy(P.t0,P.y0);
+    var NL=240;
+    for (var li=0; li<=NL; li++){
+      var tL=P.t0+(P.tEnd-P.t0)*li/NL, yL=P.ref(tL);
+      if(!isFinite(yL)) continue;
+      var lv=P.fy(tL,yL);
+      if(isFinite(lv) && lv<lamEff){ lamEff=lv; worstT=tL; }
+    }
+  }
   var zr=lastH*lamEff, zi=0;
   var mxp=Math.max(W.x0+0.03*2*W.hw, Math.min(W.x1-0.03*2*W.hw, zr));
   var myp=Math.max(W.y0+0.03*2*W.hw, Math.min(W.y1-0.03*2*W.hw, zi));
   var offFrame=(Math.abs(mxp-zr)>1e-9);
+  var worstNote=(!P.hasLambda && Math.abs(worstT-P.t0)>1e-9)?(' at t='+worstT.toFixed(2)):'';
   var pt={ type:'scatter', x:[mxp], y:[myp], mode:'markers',
     marker:{color:'#dc2626', size:12, symbol:'x', line:{width:3}},
-    hovertemplate:'h·λ = '+zr.toFixed(3)+(offFrame?' (off-frame)':'')+'<extra>current step</extra>' };
+    hovertemplate:'h·λ = '+zr.toFixed(3)+worstNote+(offFrame?' (off-frame)':'')+'<extra>'+(worstNote?'worst-case λ':'current step')+'</extra>' };
   var layout={ height:340, margin:{l:50,r:12,t:10,b:44}, dragmode:'pan',
     xaxis:Object.assign({title:{text:'Re(<i>h</i>λ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb', range:[W.x0,W.x1], tickfont:{size:12}}, linTicks(W.x0,W.x1,7)),
     yaxis:Object.assign({title:{text:'Im(<i>h</i>λ)'}, zeroline:true, zerolinecolor:'#475569', gridcolor:'#e5e7eb',
