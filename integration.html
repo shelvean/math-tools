@@ -2268,7 +2268,7 @@ function doCompute(){
   var h=ST.result.h;
 
   var exactStr=ST.exact!==null?fmtN(ST.exact,12):'unknown';
-  var exactLabel=ST.exactIsRef?'Reference (GL\u20111k)':'Exact Value';
+  var exactLabel=ST.exactIsRef?'Reference (tanh\u2013sinh)':'Exact Value';
   var errorStr=error!==null?fmtErr(error):'—';
   var errorClass=error!==null?(error<1e-10?'res-val-green':error<1e-4?'res-val-blue':'res-val-red'):'';
 
@@ -2953,10 +2953,45 @@ function clearResults(){
 /* Reference value cache — avoids recomputing the expensive GL-1k
    reference when only the method or n changes */
 var refCache={key:'',value:null};
+/* High-accuracy reference quadrature via level-doubling tanh–sinh.
+   The double-exponential transform x=tanh(½π·sinh t) never samples the
+   endpoints and tames integrable endpoint singularities, so this is a
+   far more reliable "exact" target than composite Gauss–Legendre when
+   f blows up at a or b (e.g. 1/√x, ln x).  Halving the step until two
+   successive estimates agree avoids the roundoff growth that fixed-step
+   tanh–sinh suffers near a singularity. */
+function tanhSinhRef(f,a,b){
+  var mid=(a+b)/2, half=(b-a)/2;
+  function safe(v){return isFinite(v)?v:0;}
+  var prev=null, best=null, bestDiff=Infinity;
+  for(var level=0; level<=10; level++){
+    var h=1/Math.pow(2,level);
+    var sum=(Math.PI/2)*safe(f(mid));   /* t=0 → x=0 (centre node) */
+    for(var k=1;;k++){
+      var t=k*h, u=(Math.PI/2)*Math.sinh(t), x=Math.tanh(u);
+      if(x>=1) break;                    /* saturated: stop before the endpoint */
+      var ch=Math.cosh(u), w=(Math.PI/2)*Math.cosh(t)/(ch*ch);
+      var xr=half*x, contrib=w*(safe(f(mid+xr))+safe(f(mid-xr)));
+      sum+=contrib;
+      if(t>1 && Math.abs(contrib) < 1e-18*Math.abs(sum)) break;  /* tail negligible */
+    }
+    var val=sum*h*half;
+    if(prev!==null){
+      var diff=Math.abs(val-prev);
+      if(diff<bestDiff){bestDiff=diff;best=val;}
+      if(diff < 1e-14*Math.max(1,Math.abs(val))) return val;
+    }
+    prev=val;
+  }
+  return best!==null?best:prev;
+}
 function getCachedRef(fn,expr,a,b){
   var key=expr+'|'+a+'|'+b;
   if(refCache.key===key&&refCache.value!==null)return refCache.value;
-  var val=gaussValFast(fn,a,b,200,5);  /* 1000 evals, ~1e-20 accuracy for smooth f */
+  var val=tanhSinhRef(fn,a,b);
+  /* Fall back to composite Gauss–Legendre if the DE rule misbehaves
+     (e.g. a non-finite result on a pathological integrand). */
+  if(!isFinite(val)) val=gaussValFast(fn,a,b,200,5);
   if(isFinite(val)){refCache.key=key;refCache.value=val;return val;}
   return null;
 }
