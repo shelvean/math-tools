@@ -958,6 +958,42 @@ function decimate(tr,to,cap){
   return{x:xs,y:ys,z:zs,t:ts};
 }
 
+/* ── Catmull-Rom spline smoothing ─────────────────────────────────────────────
+   Plotly's scatter3d line has no spline mode, so the polyline shows straight
+   facets where the trajectory moves fast and samples are spaced far apart — most
+   visibly at the apex of each z-fold. Resample the curve through its own samples
+   with a centripetal-style Catmull-Rom spline (interpolating x, y, z and the
+   colour-time t) so the fast sections render as smooth curves. The spline passes
+   through every control point, so geometry is preserved — only the gaps are
+   filled. */
+function crInterp1D(p0,p1,p2,p3,t){
+  var t2=t*t, t3=t2*t;
+  return 0.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3);
+}
+function catmullRom3D(xs,ys,zs,ts,factor){
+  var n=xs.length;
+  if(n<4||factor<=1) return {x:xs,y:ys,z:zs,t:ts};
+  var xo=[xs[0]], yo=[ys[0]], zo=[zs[0]], to=[ts[0]];
+  for(var i=0;i<n-1;i++){
+    var i0=i===0?0:i-1, i1=i, i2=i+1, i3=i+2<n?i+2:n-1;
+    for(var j=1;j<=factor;j++){
+      var u=j/factor;
+      xo.push(crInterp1D(xs[i0],xs[i1],xs[i2],xs[i3],u));
+      yo.push(crInterp1D(ys[i0],ys[i1],ys[i2],ys[i3],u));
+      zo.push(crInterp1D(zs[i0],zs[i1],zs[i2],zs[i3],u));
+      to.push(ts[i1]+(ts[i2]-ts[i1])*u);
+    }
+  }
+  return {x:xo,y:yo,z:zo,t:to};
+}
+/* Decimate to a base budget, then ×SMOOTH_FACTOR Catmull-Rom upsample → a smooth
+   curve at a controlled point count. */
+var SMOOTH_FACTOR=4;
+function smoothTrace(tr,to,baseCap){
+  var b=decimate(tr,to,baseCap);
+  return catmullRom3D(b.x,b.y,b.z,b.t,SMOOTH_FACTOR);
+}
+
 /* Per-frame layout memo for the animation loops: make3DLayout rebuilds the
    nested scene object on every call. Build it once and reuse it, returning a
    fresh top-level layout each frame so Plotly.react (which diffs layout by
@@ -1070,7 +1106,7 @@ var updatePlot=debounce(function(cOverride){
   var N = currentStaticN();
   var tr=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,N,v.method);
   Plotly.react('plot',
-    [makeJetTrace(decimate(tr, undefined, STATIC_DISPLAY_PTS), 2, N)],
+    [makeJetTrace(smoothTrace(tr, undefined, 12000), 2, N)],
     make3DLayout('Rössler Attractor  (a='+fmtSig(v.a)+', b='+fmtSig(v.b)+', c='+fmtSig(v.c)+')')
   );
   renderTimeSeries(tr);
@@ -1155,7 +1191,7 @@ function renderAttractorFrame(idx){
   var c=parseFloat(document.getElementById('c').value);
   var t=(idx*DT).toFixed(1);
   var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-  var d=decimate(t1,idx);
+  var d=smoothTrace(t1,idx,6000);
   var line={color:d.t,colorscale:'Jet',width:3,
             cauto:false,cmin:0,cmax:1,showscale:!mobile};
   if(!mobile)line.colorbar=makeColorbar(t1.x.length);
@@ -1327,7 +1363,7 @@ document.addEventListener('DOMContentLoaded', function(){
           var cs=document.getElementById('c'), ci=document.getElementById('cVal');
           if(cs)cs.value=cur; if(ci)ci.value=fmtSig(cur);
           Plotly.react('plot',
-            [makeJetTrace(decimate(frame.tr), 3, animN)],
+            [makeJetTrace(smoothTrace(frame.tr, undefined, 8000), 3, animN)],
             animLayout('Rössler Attractor (c='+fmtSig(cur)+')')
           );
           renderTimeSeries(frame.tr);
@@ -1392,7 +1428,7 @@ document.addEventListener('DOMContentLoaded', function(){
     var N0=currentStaticN();
     var tr0=solveRossler(v0.a,v0.b,v0.c,v0.x0,v0.y0,v0.z0,N0,v0.method);
     Plotly.react('plot',
-      [makeJetTrace(decimate(tr0, undefined, STATIC_DISPLAY_PTS), 2, N0)],
+      [makeJetTrace(smoothTrace(tr0, undefined, 12000), 2, N0)],
       make3DLayout('Rössler Attractor  (a='+fmtSig(v0.a)+', b='+fmtSig(v0.b)+', c='+fmtSig(v0.c)+')')
     );
     renderTimeSeries(tr0);
