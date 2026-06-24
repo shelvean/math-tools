@@ -1619,29 +1619,23 @@ function drawPhase(solObj, idx, pbg, iPt){
   var pad=pbg.pad;
   function tcx(x){return pad.l+(x-pbg.xMin)/(pbg.xMax-pbg.xMin)*(W-pad.l-pad.r);}
   function tcy(v){return H-pad.b-(v-pbg.vMin)/(pbg.vMax-pbg.vMin)*(H-pad.t-pad.b);}
-  /* (re)create the persistent trail layer on first use / size change */
-  if(!vpTrailP || vpTrailP.width!==W || vpTrailP.height!==H){
-    vpTrailP=document.createElement('canvas'); vpTrailP.width=W; vpTrailP.height=H;
-    vpTrailPctx=vpTrailP.getContext('2d'); vpLastPIdx=-1;
-  }
-  if(idx<vpLastPIdx){ vpTrailPctx.clearRect(0,0,W,H); vpLastPIdx=-1; }  /* looped/restarted */
-  if(idx>vpLastPIdx){
-    var lg=vpTrailPctx.createLinearGradient(0,0,W,0);
-    lg.addColorStop(0,'#8b5cf6'); lg.addColorStop(1,'#6d28d9');
-    vpTrailPctx.strokeStyle=lg; vpTrailPctx.lineWidth=1.8; vpTrailPctx.lineJoin='round'; vpTrailPctx.lineCap='round';
-    var s0=Math.max(0,vpLastPIdx);
-    vpTrailPctx.beginPath();
-    vpTrailPctx.moveTo(tcx(pts[s0].x),tcy(pts[s0].v));
-    for(var i=s0+1;i<=idx;i++) vpTrailPctx.lineTo(tcx(pts[i].x),tcy(pts[i].v));
-    vpTrailPctx.stroke();
-    vpLastPIdx=idx;
-  }
-  phaseCtx.drawImage(vpTrailP,0,0);
-  /* head segment + moving marker, drawn live */
+  /* Redraw the whole trajectory fresh each frame as a SINGLE stroke. The
+     phase orbit retraces the same limit cycle many times per run, so an
+     incremental persistent trail would stroke each pass on top of the last,
+     accumulating anti-aliased edges into a grainy band. A single stroke per
+     frame paints self-overlaps once, at full opacity, so the curve stays clean.
+     (≤9000 points → cheap.) */
+  phaseCtx.strokeStyle=(function(){var lg=phaseCtx.createLinearGradient(0,0,W,0);
+    lg.addColorStop(0,'#8b5cf6'); lg.addColorStop(1,'#6d28d9'); return lg;})();
+  phaseCtx.lineWidth=1.8; phaseCtx.lineJoin='round'; phaseCtx.lineCap='round';
+  phaseCtx.beginPath();
+  phaseCtx.moveTo(tcx(pts[0].x),tcy(pts[0].v));
+  for(var i=1;i<=idx;i++) phaseCtx.lineTo(tcx(pts[i].x),tcy(pts[i].v));
   var cp0 = iPt || pts[idx];
   var ccx=tcx(cp0.x), ccy=tcy(cp0.v);
-  phaseCtx.strokeStyle='#6d28d9'; phaseCtx.lineWidth=1.8; phaseCtx.lineJoin='round';
-  phaseCtx.beginPath(); phaseCtx.moveTo(tcx(pts[idx].x),tcy(pts[idx].v)); phaseCtx.lineTo(ccx,ccy); phaseCtx.stroke();
+  phaseCtx.lineTo(ccx,ccy);
+  phaseCtx.stroke();
+  /* moving marker */
   phaseCtx.beginPath(); phaseCtx.arc(ccx,ccy,6,0,2*Math.PI);
   phaseCtx.fillStyle=massColor(cp0.x); phaseCtx.fill();
   phaseCtx.strokeStyle='#fff'; phaseCtx.lineWidth=2;
@@ -1730,16 +1724,16 @@ function readParams(){
    RESET
 ════════════════════════════════════════════════════ */
 var gbg=null, pbg=null;
-/* Persistent offscreen "trail" layers for the x(t) graph and phase portrait.
-   Each frame only the NEW polyline segments since vpLast*Idx are stroked onto
-   the layer (then composited), instead of redrawing the whole 0..idx trajectory
-   — O(N) per run instead of O(N²). Mirrors the approach used on duffing.html. */
+/* Persistent offscreen "trail" layer for the x(t) graph: each frame only the new
+   polyline segments since vpLastGIdx are stroked onto the layer (then
+   composited), instead of redrawing the whole 0..idx curve — O(N) per run. The
+   x(t) trace is monotonic in t so it never overlaps itself; the phase portrait,
+   which retraces the same orbit, is drawn fresh each frame instead (see
+   drawPhase) to avoid grainy anti-aliasing buildup. */
 var vpTrailG=null, vpTrailGctx=null, vpLastGIdx=-1;
-var vpTrailP=null, vpTrailPctx=null, vpLastPIdx=-1;
 function vpClearTrails(){
   if(vpTrailGctx) vpTrailGctx.clearRect(0,0,vpTrailG.width,vpTrailG.height);
-  if(vpTrailPctx) vpTrailPctx.clearRect(0,0,vpTrailP.width,vpTrailP.height);
-  vpLastGIdx=-1; vpLastPIdx=-1;
+  vpLastGIdx=-1;
 }
 
 function resetSimulation(){
