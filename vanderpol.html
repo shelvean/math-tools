@@ -1013,15 +1013,36 @@ function masterSolve(mu, x0, v0, T, method){
     raw = solveSDIRK2(mu, x0, v0, T);
     solverLabel = 'SDIRK2 (implicit, A-stable), ' + raw.length.toLocaleString() + ' adaptive steps';
   }
-  var MAX_PTS = 9000;
-  var pts = raw;
-  if(raw.length > MAX_PTS){
-    pts = [];
-    var step = raw.length / MAX_PTS;
-    for(var i=0; i<raw.length; i+=step) pts.push(raw[Math.floor(i)]);
-    if(pts[pts.length-1] !== raw[raw.length-1]) pts.push(raw[raw.length-1]);
-  }
+  var pts = downsampleByArc(raw, 9000);
   return {pts:pts, raw:raw, rawSteps:raw.length, solver:solverLabel, T:T, mu:mu, x0:x0, v0:v0};
+}
+
+/* Feature-preserving downsample to ~MAX points. Uniform-in-time downsampling
+   destroys the brief spikes of stiff relaxation oscillations: each spike gets
+   sampled at a different phase, so successive spikes render at inconsistent
+   heights and the phase portrait looks like a mess. (Most visible with the
+   fixed-step GL2/Tsit5 solvers at large mu; the adaptive SDIRK2 dodges it by
+   placing its own steps densely in the spikes and is rarely downsampled.)
+   Distribute the kept points by a blend of (x,v) phase arc length and elapsed
+   time, so fast spikes keep consistent detail while the slow branches stay
+   sampled enough for the x(t) graph. */
+function downsampleByArc(raw, MAX){
+  var n=raw.length;
+  if(n<=MAX) return raw;
+  var xn=Infinity,xx=-Infinity,vn=Infinity,vx=-Infinity;
+  for(var i=0;i<n;i++){var p=raw[i];if(p.x<xn)xn=p.x;if(p.x>xx)xx=p.x;if(p.v<vn)vn=p.v;if(p.v>vx)vx=p.v;}
+  var sx=1/((xx-xn)||1), sv=1/((vx-vn)||1), st=1.5/((raw[n-1].t-raw[0].t)||1);
+  var cum=new Float64Array(n);
+  for(var i=1;i<n;i++){
+    var dx=(raw[i].x-raw[i-1].x)*sx, dv=(raw[i].v-raw[i-1].v)*sv, dtt=(raw[i].t-raw[i-1].t)*st;
+    cum[i]=cum[i-1]+Math.sqrt(dx*dx+dv*dv+dtt*dtt);
+  }
+  var L=cum[n-1];
+  if(!(L>0)){ var u=[],step=n/MAX; for(var i=0;i<n;i+=step) u.push(raw[Math.floor(i)]); return u; }
+  var out=[raw[0]], target=L/(MAX-1), next=target;
+  for(var i=1;i<n-1;i++){ if(cum[i]>=next){ out.push(raw[i]); next+=target; } }
+  out.push(raw[n-1]);
+  return out;
 }
 
 /* ════════════════════════════════════════════════════
