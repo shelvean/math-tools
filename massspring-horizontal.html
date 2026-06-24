@@ -1583,7 +1583,18 @@ function drawSingleGraph(gCanvas, gCtx, data, color, idx) {
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   /* Running min/max (maintained per step) — never rescans the sample array. */
-  const minY = gMinY[idx], maxY = gMaxY[idx];
+  let minY = gMinY[idx], maxY = gMaxY[idx];
+  /* Floor the y-span relative to the largest amplitude across all masses, so a
+     mass that is physically stationary at a node renders as a flat line rather
+     than having numerical noise autoscaled to fill the plot. The classic case
+     is the antisymmetric 3-mass mode: the middle mass must stay at the node.
+     Verlet keeps it at exactly 0 (flat), but GL2 goes through a matrix solve
+     and leaves ~1e-15 m of roundoff; without this floor the per-graph autoscale
+     would blow that roundoff up into a full-amplitude wiggle. */
+  let gAmp = 0;
+  for (let gi = 0; gi < numMasses; gi++) gAmp = Math.max(gAmp, Math.abs(gMaxY[gi]), Math.abs(gMinY[gi]));
+  const minSpan = gAmp * 1e-6;
+  if (maxY - minY < minSpan) { const mid = (maxY + minY) / 2; minY = mid - minSpan / 2; maxY = mid + minSpan / 2; }
   const yRange = maxY - minY || 0.1;
   const scaleY = plotH / yRange;
   /* Clean full redraw of the (decimated) trace each frame. Appending
