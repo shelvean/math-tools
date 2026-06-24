@@ -127,6 +127,10 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 .sl-num{width:60px;min-height:34px;padding:.1rem .3rem;border:2px solid var(--bdr);
   border-radius:.35rem;font-size:.8125rem;font-weight:600;color:var(--txt);
   background:var(--card);text-align:center;}
+.sl-select{flex:1;min-width:0;min-height:34px;padding:.1rem .35rem;border:2px solid var(--bdr);
+  border-radius:.35rem;font-size:.8rem;font-weight:600;color:var(--txt);
+  background:var(--card);cursor:pointer;}
+.sl-select:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
 input[type=range]{-webkit-appearance:none;width:100%;background:transparent;
   margin:.1rem 0;min-height:34px;cursor:pointer;flex:1;min-width:0;}
 input[type=range]::-webkit-slider-runnable-track{height:5px;background:var(--bdr2);border-radius:3px;border:1px solid var(--bdr);}
@@ -472,6 +476,18 @@ if(document.referrer.includes('dynamical.html')){
                      title="Accepts numbers or expressions, e.g. 2*pi">
             </div>
             <p id="desc-mu" class="sr-only">Slider range 0 to 20; type any value 0–1000 in the number field. At mu equals 0, period equals 2 pi. For large mu, period is approximately 1.614 times mu.</p>
+          </div>
+
+          <div class="sl-block" role="group" aria-labelledby="lbl-method">
+            <div class="sl-row">
+              <span id="lbl-method" class="sl-lbl">Method</span>
+              <select id="methodSel" class="sl-select" aria-labelledby="lbl-method">
+                <option value="auto" selected>Auto (Tsit5 / SDIRK2)</option>
+                <option value="gl2">Gauss–Legendre 2-stage</option>
+                <option value="tsit5">Tsit5 (5th order)</option>
+                <option value="sdirk2">SDIRK2 (implicit)</option>
+              </select>
+            </div>
           </div>
 
           <div class="sl-block" role="group" aria-labelledby="lbl-x0">
@@ -915,6 +931,58 @@ function solveTsit5(mu, x0, v0, T, N){
   return pts;
 }
 
+/* 4×4 linear solve M·z = b (Gauss elimination with partial pivoting). */
+function solve4(M, b){
+  var a=[]; for(var i=0;i<4;i++){ a.push(M[i].slice()); a[i].push(b[i]); }
+  for(var c=0;c<4;c++){
+    var piv=c; for(var r=c+1;r<4;r++) if(Math.abs(a[r][c])>Math.abs(a[piv][c])) piv=r;
+    var tmp=a[c]; a[c]=a[piv]; a[piv]=tmp;
+    var d=a[c][c]||1e-300;
+    for(var k=c;k<5;k++) a[c][k]/=d;
+    for(var r2=0;r2<4;r2++){ if(r2===c) continue; var f=a[r2][c]; for(var k2=c;k2<5;k2++) a[r2][k2]-=f*a[c][k2]; }
+  }
+  return [a[0][4],a[1][4],a[2][4],a[3][4]];
+}
+
+/* Fixed-step Gauss–Legendre 2-stage (4th-order, symplectic, A-stable). Van der
+   Pol is nonlinear, so the two stage slopes K=[K1;K2] solve the 4-dim system
+   R(K)=K−f(z+Δt·(a⊗K))=0 by Newton iteration, using the analytic Jacobian
+   J=[[0,1],[−2μxv−1, μ(1−x²)]]. Being A-stable, it stays stable across the
+   non-stiff and relaxation regimes alike; verified 4th-order (error ∝ h⁴). */
+var GL2_S3 = Math.sqrt(3);
+var GL2_A11 = 0.25, GL2_A12 = 0.25 - GL2_S3/6, GL2_A21 = 0.25 + GL2_S3/6, GL2_A22 = 0.25;
+function solveGL2(mu, x0, v0, T, N){
+  var dt=T/N, x=x0, v=v0;
+  var a11=GL2_A11, a12=GL2_A12, a21=GL2_A21, a22=GL2_A22;
+  var pts=[{t:0,x:x0,v:v0}];
+  for(var i=0;i<N;i++){
+    var f0=F(x,v,mu);
+    var k1x=f0[0], k1v=f0[1], k2x=f0[0], k2v=f0[1];   /* initial guess = f(z) */
+    for(var it=0; it<20; it++){
+      var Y1x=x+dt*(a11*k1x+a12*k2x), Y1v=v+dt*(a11*k1v+a12*k2v);
+      var Y2x=x+dt*(a21*k1x+a22*k2x), Y2v=v+dt*(a21*k1v+a22*k2v);
+      var f1=F(Y1x,Y1v,mu), f2=F(Y2x,Y2v,mu);
+      var R0=k1x-f1[0], R1=k1v-f1[1], R2=k2x-f2[0], R3=k2v-f2[1];
+      if(Math.abs(R0)+Math.abs(R1)+Math.abs(R2)+Math.abs(R3) < 1e-12) break;
+      var J1c=-2*mu*Y1x*Y1v-1, J1d=mu*(1-Y1x*Y1x);
+      var J2c=-2*mu*Y2x*Y2v-1, J2d=mu*(1-Y2x*Y2x);
+      var M=[
+        [1,           -dt*a11,       0,           -dt*a12],
+        [-dt*a11*J1c, 1-dt*a11*J1d, -dt*a12*J1c, -dt*a12*J1d],
+        [0,           -dt*a21,       1,           -dt*a22],
+        [-dt*a21*J2c, -dt*a21*J2d,  -dt*a22*J2c, 1-dt*a22*J2d]
+      ];
+      var dK=solve4(M, [R0,R1,R2,R3]);
+      k1x-=dK[0]; k1v-=dK[1]; k2x-=dK[2]; k2v-=dK[3];
+    }
+    x+=dt*0.5*(k1x+k2x);
+    v+=dt*0.5*(k1v+k2v);
+    if(!isFinite(x)||!isFinite(v)) break;
+    pts.push({t:(i+1)*dt, x:x, v:v});
+  }
+  return pts;
+}
+
 function autoEndTime(mu){
   if(mu<0.05)  return 35;
   if(mu<0.5)   return 45;
@@ -923,12 +991,22 @@ function autoEndTime(mu){
   return Math.max(80, 4.5*1.614*mu);
 }
 
-function masterSolve(mu, x0, v0, T){
+function masterSolve(mu, x0, v0, T, method){
   if(!(T>0)) T = autoEndTime(mu);
+  method = method || 'auto';
   var raw, solverLabel;
-  if(mu <= STIFF_THRESHOLD){
-    var dtTarget = (mu > 0.5) ? Math.min(0.005, 2.0/mu) : 0.01;
-    var N = Math.min(500000, Math.max(3500, Math.ceil(T/dtTarget)));
+  function tsitN(){ var dtTarget=(mu>0.5)?Math.min(0.005,2.0/mu):0.01; return Math.min(500000,Math.max(3500,Math.ceil(T/dtTarget))); }
+  if(method==='gl2'){
+    var Ng=tsitN(); raw=solveGL2(mu,x0,v0,T,Ng);
+    solverLabel='Gauss–Legendre 2-stage (4th order, symplectic, A-stable), '+Ng.toLocaleString()+' steps';
+  } else if(method==='tsit5'){
+    var Nt=tsitN(); raw=solveTsit5(mu,x0,v0,T,Nt);
+    solverLabel='Tsit5 (Tsitouras 5(4)), '+Nt.toLocaleString()+' steps';
+  } else if(method==='sdirk2'){
+    raw=solveSDIRK2(mu,x0,v0,T);
+    solverLabel='SDIRK2 (implicit, A-stable), '+raw.length.toLocaleString()+' adaptive steps';
+  } else if(mu <= STIFF_THRESHOLD){
+    var N=tsitN();
     raw = solveTsit5(mu, x0, v0, T, N);
     solverLabel = 'Tsit5 (Tsitouras 5(4)), ' + N.toLocaleString() + ' steps';
   } else {
@@ -1701,7 +1779,8 @@ function readParams(){
     T:     Math.max(1, (function(){var v=parseMathInput(document.getElementById('tEndVal').value); return isFinite(v)?v:80;})()),
     multiIC: !!(document.getElementById('multiICChk')||{}).checked,
     nIC:   Math.max(1, Math.min(40, parseInt((document.getElementById('nICVal')||{}).value,10)||40)),
-    speed: parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1
+    speed: parseFloat((document.querySelector('.sbtn[aria-checked=true]')||{dataset:{}}).dataset.speed)||1,
+    method: (document.getElementById('methodSel')||{value:'auto'}).value
   };
 }
 
@@ -1756,7 +1835,7 @@ function resetSimulation(){
       say('Multiple initial conditions scatter ready. '+p.nIC+' trajectories. Mu equals '+p.mu+'. '+
           (isPaused?'Paused.':'Running.'));
     } else {
-      sol=masterSolve(p.mu, p.x0, p.v0, p.T);
+      sol=masterSolve(p.mu, p.x0, p.v0, p.T, p.method);
       var elapsed=((performance.now()-t0)/1000).toFixed(2);
       gbg=buildGraphBG(sol);
       pbg=buildPhaseBG(sol);
@@ -1856,6 +1935,14 @@ document.addEventListener('DOMContentLoaded',function(){
   linkSlider('v0Slider','v0Val');
   linkSlider('tEndSlider','tEndVal');
   linkSlider('nICSlider','nICVal');
+
+  (function(){
+    var ms=document.getElementById('methodSel');
+    if(ms) ms.addEventListener('change',function(){
+      say('Method: '+this.options[this.selectedIndex].text);
+      resetSimulation();
+    });
+  })();
 
   document.getElementById('multiICChk').addEventListener('change',function(){
     say('Multiple initial conditions scatter '+(this.checked?'enabled':'disabled')+'.');
