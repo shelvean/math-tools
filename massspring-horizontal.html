@@ -1584,16 +1584,13 @@ function drawSingleGraph(gCanvas, gCtx, data, color, idx) {
   const minY = gMinY[idx], maxY = gMaxY[idx];
   const yRange = maxY - minY || 0.1;
   const scaleY = plotH / yRange;
-  /* Incremental trace layer: full redraw only when this graph's y-scale grows;
-     otherwise just extend the polyline with the newly pushed samples. */
-  if (minY !== glMinY[idx] || maxY !== glMaxY[idx] || glDrawnIdx[idx] > data.length) {
-    glCtxs[idx].clearRect(0, 0, graphLayers[idx].width, graphLayers[idx].height);
-    strokeTrace(idx, data, color, minY, scaleY, 0);
-    glMinY[idx] = minY; glMaxY[idx] = maxY; glDrawnIdx[idx] = data.length;
-  } else if (glDrawnIdx[idx] < data.length) {
-    strokeTrace(idx, data, color, minY, scaleY, glDrawnIdx[idx]);
-    glDrawnIdx[idx] = data.length;
-  }
+  /* Clean full redraw of the (decimated) trace each frame. Appending
+     incrementally onto a persistent layer re-strokes the seam segments over
+     already-painted anti-aliased edge pixels, which accumulate into a grainy,
+     uneven line. Decimation caps the trace at ~1 sample per device-pixel of
+     width, so redrawing it from scratch is cheap even with four graphs. */
+  glCtxs[idx].clearRect(0, 0, graphLayers[idx].width, graphLayers[idx].height);
+  strokeTrace(idx, data, color, minY, scaleY, 0);
   gCtx.drawImage(graphLayers[idx], 0, 0);
   gCtx.fillStyle = '#000'; gCtx.font = (10 * dprL) + 'px Arial';
   gCtx.textAlign = 'right'; gCtx.textBaseline = 'middle';
