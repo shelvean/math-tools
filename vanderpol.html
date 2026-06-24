@@ -1062,29 +1062,31 @@ function drawMultiPhaseFrame(ms, at){
   /* Hold the transient visible for at least 3 periods so initial swings don't fade too fast. */
   var fadeT = Math.max(3 * estimatePeriod(ms.mu), 0.1);
   var atStart = fadeOn ? (at - fadeT) : -Infinity;
+  /* Draw each trajectory's trail as SINGLE strokes (not many semi-transparent
+     bands). A single stroke paints its self-overlaps once, so the retraced
+     limit cycle stays clean; stroking the fade as 16 overlapping bands made the
+     coincident loops accumulate anti-aliased edges into a grainy band. For the
+     fade we use two clean passes: an older dim window and a recent bright one. */
+  function strokeSeg(pts, a, b, alpha){
+    if(b<=a) return;
+    phaseCtx.globalAlpha=alpha;
+    phaseCtx.beginPath();
+    phaseCtx.moveTo(toCx(pts[a].x), toCy(pts[a].v));
+    for(var i=a+1;i<=b;i++) phaseCtx.lineTo(toCx(pts[i].x), toCy(pts[i].v));
+    phaseCtx.stroke();
+  }
+  function idxAt(pts, tt){ var lo=0,hi=pts.length-1; while(lo<hi){var m=(lo+hi+1)>>1; if(pts[m].t<=tt) lo=m; else hi=m-1;} return lo; }
+  var recentT = at - 1.2*Math.max(estimatePeriod(ms.mu),0.05);
   for(var k=0;k<ms.trajs.length;k++){
     var pts=ms.trajs[k].pts;
-    var lo=0, hi=pts.length-1;
-    while(lo<hi){var mid=(lo+hi+1)>>1; if(pts[mid].t<=at) lo=mid; else hi=mid-1;}
-    var idx=lo;
-    var s0=0, s1=idx;
-    while(s0<s1){var smid=(s0+s1+1)>>1; if(pts[smid].t<=atStart) s0=smid; else s1=smid-1;}
-    var startIdx=s0;
+    var idx=idxAt(pts, at);
     phaseCtx.strokeStyle=ms.trajs[k].color;
-    if(idx>startIdx){
-      /* Batch into a few equal-count bands so cost stays ~O(n*bands) even when the 3-period
-         window spans thousands of samples. Each band is a single polyline at one alpha. */
-      var segCount = idx - startIdx;
-      var NBANDS = 16;
-      var bandSize = Math.max(1, Math.ceil(segCount / NBANDS));
-      for(var b0 = startIdx; b0 < idx; b0 += bandSize){
-        var b1 = Math.min(idx, b0 + bandSize);
-        phaseCtx.globalAlpha = fadeOn ? Math.min(1, (b1 - startIdx) / segCount) : 1;
-        phaseCtx.beginPath();
-        phaseCtx.moveTo(toCx(pts[b0].x), toCy(pts[b0].v));
-        for(var i=b0+1;i<=b1;i++) phaseCtx.lineTo(toCx(pts[i].x), toCy(pts[i].v));
-        phaseCtx.stroke();
-      }
+    if(fadeOn){
+      var startIdx=idxAt(pts, atStart), recentIdx=idxAt(pts, recentT);
+      strokeSeg(pts, startIdx, recentIdx, 0.3);   /* older window: dim */
+      strokeSeg(pts, recentIdx, idx, 1.0);        /* recent: bright */
+    } else {
+      strokeSeg(pts, 0, idx, 1.0);
     }
     phaseCtx.globalAlpha=1;
     phaseCtx.fillStyle=ms.trajs[k].color;
