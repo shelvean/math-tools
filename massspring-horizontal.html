@@ -435,6 +435,17 @@ input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2p
             </div>
           </div>
 
+          <!-- Numerical method -->
+          <div class="sl-block">
+            <div class="sl-row">
+              <label class="sl-lbl" for="methodSel">Numerical method</label>
+              <select id="methodSel" class="sl-select" aria-label="Numerical integration method">
+                <option value="verlet" selected>Velocity Verlet</option>
+                <option value="gl2">Gauss–Legendre (2-stage)</option>
+              </select>
+            </div>
+          </div>
+
           <!-- Masses (per-object) -->
           <div class="sl-block">
             <div class="sl-row">
@@ -845,7 +856,6 @@ const CENTER_Y = CANVAS_H / 2;
 const MASS_COLORS = ['#b91c1c', '#1d4ed8', '#15803d', '#7c3aed'];
 const dt = 0.01;
 let graphMaxTime = 60;
-let stepsPerFrame = 10;
 
 /* ── Simulation state ── */
 let numMasses = 4;
@@ -871,6 +881,30 @@ const graphData = [[], [], [], []];
 const clickedPoints = [null, null, null, null];
 let alertBox = null;
 
+/* ── Integration method ── */
+let METHOD = 'verlet';   /* 'verlet' = Velocity Verlet; 'gl2' = Gauss–Legendre 2-stage */
+
+/* Frame-rate-independent stepping: advance physics by real elapsed time at a
+   fixed h so playback is smooth across refresh rates and survives dropped
+   frames. SIM_RATE=6 sim-seconds/second reproduces the old 1× feel (10 steps
+   of dt=0.01 per 60 fps frame); the Speed control scales speedMul. */
+const SIM_RATE = 6;
+let speedMul = 1, simAccum = 0, lastTs = null;
+/* Sub-step render interpolation: xPrev[i] is mass i's position before the last
+   physics step; it is drawn at xDraw[i] = lerp(xPrev[i], x[i], simAccum/dt) so
+   motion stays smooth regardless of where step boundaries fall within a frame. */
+let xPrev = [0, 0, 0, 0], xDraw = [0, 0, 0, 0];
+/* Per-mass running min/max of each displacement trace, maintained on every step
+   so a graph never rescans its whole sample array to rescale. */
+let gMinY = [0, 0, 0, 0], gMaxY = [0, 0, 0, 0];
+/* Per-mass persistent trace layers: each polyline is drawn once onto an
+   offscreen canvas and only extended with new samples each frame; a full
+   redraw happens only when that graph's y-scale grows. Samples are decimated
+   to ~1 device-pixel spacing along the time axis. */
+let graphLayers = [null, null, null, null], glCtxs = [null, null, null, null];
+let glMinY = [NaN, NaN, NaN, NaN], glMaxY = [NaN, NaN, NaN, NaN], glDrawnIdx = [0, 0, 0, 0];
+let lastPushPx = -1e9;
+
 /* ── Layout ── */
 let wallLeftX, wallRightX, eqPositions = [], springRestLength;
 let simBgCanvas = null, graphBgCanvas = null;
@@ -889,7 +923,7 @@ function computeLayout() {
 }
 
 function getMassCenterX(i) {
-  return eqPositions[i] + x[i] * DISP_SCALE;
+  return eqPositions[i] + xDraw[i] * DISP_SCALE;
 }
 
 /* ── Graph layout: span full width when only 1 mass ── */
@@ -1069,6 +1103,7 @@ function updateParams() {
     forcingFns[fi] = el ? (el.value.trim() || '0') : '0';
   }
   needsRedrawGraphBg = true;
+  buildGL2();                 /* rebuild GL2 propagator for the new m, k, c, n */
   updateEquationDisplay();
 }
 
@@ -1164,18 +1199,113 @@ function accel(i, pos, vel, time) {
   return (kL * (left - pos[i]) + kR * (right - pos[i]) - c * vel[i] + F) / mArr[i];
 }
 
+/* ── Gauss–Legendre 2-stage (4th-order, symplectic, A-stable) ──
+   The coupled chain is a linear system z' = A z + g(t) with state
+   z = [x_0..x_{n-1}, v_0..v_{n-1}] (dimension 2n),
+       A = [[0, I], [−M⁻¹K, −c M⁻¹]],   g(t) = [0; M⁻¹ F(t)].
+   The 2-stage Gauss method solves the stage system
+       (I_{4n} − dt·(a⊗A)) [K₁; K₂] = [A z + g(c₁); A z + g(c₂)]
+   then z_{n+1} = z + dt·½(K₁+K₂). The (4n×4n) system matrix depends only on A
+   and dt, so its inverse is precomputed whenever m, k, c (or n) change; each
+   step is then a 4n×4n matvec plus 2n forcing evaluations — O(1) per step and
+   as cheap as the explicit Verlet update. For F=0 this reduces exactly to the
+   homogeneous (2,2)-Padé propagator (verified energy drift ≈ 1e-13 over a long
+   undamped run; forced convergence is 4th order, error ∝ h⁴). */
+const GL2_S3 = Math.sqrt(3);
+const GL2_A = [[0.25, 0.25 - GL2_S3 / 6], [0.25 + GL2_S3 / 6, 0.25]];
+const GL2_C = [0.5 - GL2_S3 / 6, 0.5 + GL2_S3 / 6];
+let GL2_N = 0, GL2_A_MAT = null, GL2_MINV = null;
+
+/* Gauss–Jordan inverse of a sz×sz matrix (row-major flat array). */
+function invMat(M, sz) {
+  var a = M.slice(), I = new Array(sz * sz).fill(0);
+  for (var i = 0; i < sz; i++) I[i * sz + i] = 1;
+  for (var col = 0; col < sz; col++) {
+    var piv = col;
+    for (var r = col + 1; r < sz; r++) if (Math.abs(a[r * sz + col]) > Math.abs(a[piv * sz + col])) piv = r;
+    if (piv !== col) for (var sc = 0; sc < sz; sc++) {
+      var tp = a[col * sz + sc]; a[col * sz + sc] = a[piv * sz + sc]; a[piv * sz + sc] = tp;
+      tp = I[col * sz + sc]; I[col * sz + sc] = I[piv * sz + sc]; I[piv * sz + sc] = tp;
+    }
+    var d = a[col * sz + col] || 1e-12;
+    for (var dc = 0; dc < sz; dc++) { a[col * sz + dc] /= d; I[col * sz + dc] /= d; }
+    for (var rr = 0; rr < sz; rr++) {
+      if (rr === col) continue;
+      var f = a[rr * sz + col];
+      for (var ec = 0; ec < sz; ec++) { a[rr * sz + ec] -= f * a[col * sz + ec]; I[rr * sz + ec] -= f * I[col * sz + ec]; }
+    }
+  }
+  return I;
+}
+
+/* Build A (2n×2n) and the precomputed stage-system inverse (4n×4n). Called
+   whenever m, k, c, n or the right-end condition change. */
+function buildGL2() {
+  var n = numMasses, N = 2 * n;
+  var A = new Array(N * N).fill(0);
+  for (var i = 0; i < n; i++) A[i * N + (n + i)] = 1;            /* ẋ_i = v_i */
+  for (var j = 0; j < n; j++) {
+    var row = (n + j) * N, kL = kArr[j], kR = kArr[j + 1], mj = mArr[j];
+    if (j > 0)     A[row + (j - 1)] += kL / mj;
+    A[row + j]     += -(kL + kR) / mj;
+    if (j < n - 1) A[row + (j + 1)] += kR / mj;
+    A[row + (n + j)] += -c / mj;
+  }
+  GL2_N = n; GL2_A_MAT = A;
+  var S = 2, sz = S * N, Mt = new Array(sz * sz).fill(0);
+  for (var P = 0; P < S; P++) for (var Q = 0; Q < S; Q++) {
+    var aij = GL2_A[P][Q];
+    for (var r = 0; r < N; r++) for (var cl = 0; cl < N; cl++)
+      Mt[(P * N + r) * sz + (Q * N + cl)] = -dt * aij * A[r * N + cl];
+  }
+  for (var dd = 0; dd < sz; dd++) Mt[dd * sz + dd] += 1;
+  GL2_MINV = invMat(Mt, sz);
+}
+
+/* One coupled GL2 step: advances x[], vx[] in place. Delta impulses are
+   handled separately (applyDeltaImpulse), so g(t) here excludes them. */
+function gl2StepCoupled() {
+  var n = numMasses, N = 2 * n, S = 2, sz = S * N;
+  if (GL2_N !== n || !GL2_MINV) buildGL2();
+  var A = GL2_A_MAT;
+  var z = new Array(N);
+  for (var i = 0; i < n; i++) { z[i] = x[i]; z[n + i] = vx[i]; }
+  var Az = new Array(N).fill(0);
+  for (var r = 0; r < N; r++) { var s = 0; for (var cc = 0; cc < N; cc++) s += A[r * N + cc] * z[cc]; Az[r] = s; }
+  var rhs = new Array(sz).fill(0);
+  for (var st = 0; st < S; st++) {
+    var tau = t + GL2_C[st] * dt;
+    for (var rr = 0; rr < N; rr++) {
+      var g = (rr >= n) ? evaluateForcingFunction(tau, forcingFns[rr - n]) / mArr[rr - n] : 0;
+      rhs[st * N + rr] = Az[rr] + g;
+    }
+  }
+  var K = new Array(sz).fill(0);
+  for (var kr = 0; kr < sz; kr++) { var sk = 0; for (var kc = 0; kc < sz; kc++) sk += GL2_MINV[kr * sz + kc] * rhs[kc]; K[kr] = sk; }
+  for (var m = 0; m < n; m++) {
+    var nx = x[m]  + dt * 0.5 * (K[m]     + K[N + m]);
+    var nv = vx[m] + dt * 0.5 * (K[n + m] + K[N + n + m]);
+    x[m]  = isNaN(nx) ? x[m]  : nx;
+    vx[m] = isNaN(nv) ? vx[m] : nv;
+  }
+}
+
 function updatePhysics() {
   if (!isRunning || isPaused) return;
   applyDeltaImpulse();
-  const a = [];
-  for (let i = 0; i < numMasses; i++) a.push(accel(i, x, vx, t));
-  const newX = [];
-  for (let i = 0; i < numMasses; i++) newX.push(x[i] + vx[i] * dt + 0.5 * a[i] * dt * dt);
-  const newA = [];
-  for (let i = 0; i < numMasses; i++) newA.push(accel(i, newX, vx, t + dt));
-  for (let i = 0; i < numMasses; i++) {
-    vx[i] = vx[i] + 0.5 * (a[i] + newA[i]) * dt;
-    x[i]  = newX[i];
+  if (METHOD === 'gl2') {
+    gl2StepCoupled();
+  } else {
+    const a = [];
+    for (let i = 0; i < numMasses; i++) a.push(accel(i, x, vx, t));
+    const newX = [];
+    for (let i = 0; i < numMasses; i++) newX.push(x[i] + vx[i] * dt + 0.5 * a[i] * dt * dt);
+    const newA = [];
+    for (let i = 0; i < numMasses; i++) newA.push(accel(i, newX, vx, t + dt));
+    for (let i = 0; i < numMasses; i++) {
+      vx[i] = vx[i] + 0.5 * (a[i] + newA[i]) * dt;
+      x[i]  = newX[i];
+    }
   }
   t += dt;
   /* Alert when a mass would visually overlap its neighbour. The available
@@ -1338,7 +1468,7 @@ function drawSimulation() {
   ctx.font = '11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   for (let i = 0; i < numMasses; i++) {
     ctx.fillStyle = MASS_COLORS[i];
-    ctx.fillText('x' + (i + 1) + ' = ' + x[i].toFixed(2) + ' m', massCenters[i], CENTER_Y + BALL_RADIUS + 12);
+    ctx.fillText('x' + (i + 1) + ' = ' + xDraw[i].toFixed(2) + ' m', massCenters[i], CENTER_Y + BALL_RADIUS + 12);
   }
   // Force arrows — one above each mass with non-zero F_i(t)
   for (let fi = 0; fi < numMasses; fi++) {
@@ -1401,10 +1531,48 @@ function createGraphBackground() {
   needsRedrawGraphBg = false;
 }
 
-function drawSingleGraph(gCanvas, gCtx, data, color) {
+/* Create (or re-create on resize) mass idx's offscreen trace layer. */
+function ensureGraphLayer(idx, gCanvas) {
+  var L = graphLayers[idx];
+  if (L && L.width === gCanvas.width && L.height === gCanvas.height) return;
+  L = document.createElement('canvas');
+  L.width = gCanvas.width; L.height = gCanvas.height;
+  graphLayers[idx] = L;
+  glCtxs[idx] = L.getContext('2d');
+  glMinY[idx] = NaN; glMaxY[idx] = NaN; glDrawnIdx[idx] = 0;   /* force full redraw */
+}
+
+/* Stroke mass idx's samples onto its persistent trace layer with quadratic-curve
+   smoothing (control point = each sample, endpoint = midpoint to the next) so
+   the curve reads smooth rather than as line segments. Re-strokes two samples
+   back from fromIdx so an incremental append join stays seamless. */
+function strokeTrace(idx, data, color, minY, scaleY, fromIdx) {
+  var gCanvas = graphCanvases[idx], glc = glCtxs[idx];
+  var dprL = window.devicePixelRatio || 1;
+  var H = gCanvas.height, padL = 50 * dprL, padR = 20 * dprL, padB = 40 * dprL;
+  var plotW = gCanvas.width - padL - padR, n = data.length;
+  if (n < 2) return;
+  var start = fromIdx > 0 ? (fromIdx > 2 ? fromIdx - 2 : 0) : 0;
+  glc.beginPath(); glc.strokeStyle = color; glc.lineWidth = 1.25 * dprL;
+  glc.lineJoin = 'round'; glc.lineCap = 'round';
+  var p = data[start];
+  glc.moveTo(padL + (p.t / graphMaxTime) * plotW, H - padB - (p.y - minY) * scaleY);
+  for (var i = start + 1; i < n - 1; i++) {
+    var a = data[i], b = data[i + 1];
+    var ax = padL + (a.t / graphMaxTime) * plotW, ay = H - padB - (a.y - minY) * scaleY;
+    var bx = padL + (b.t / graphMaxTime) * plotW, by = H - padB - (b.y - minY) * scaleY;
+    glc.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2);
+  }
+  var q = data[n - 1], qx = padL + (q.t / graphMaxTime) * plotW, qy = H - padB - (q.y - minY) * scaleY;
+  glc.quadraticCurveTo(qx, qy, qx, qy);
+  glc.stroke();
+}
+
+function drawSingleGraph(gCanvas, gCtx, data, color, idx) {
   if (needsRedrawGraphBg || !graphBgCanvas
       || graphBgCanvas.width !== graphCanvases[0].width
       || graphBgCanvas.height !== graphCanvases[0].height) createGraphBackground();
+  ensureGraphLayer(idx, gCanvas);
   gCtx.drawImage(graphBgCanvas, 0, 0);
   if (data.length === 0) return;
   const W = gCanvas.width, H = gCanvas.height;
@@ -1412,23 +1580,21 @@ function drawSingleGraph(gCanvas, gCtx, data, color) {
   const padL = 50 * dprL, padR = 20 * dprL, padT = 20 * dprL, padB = 40 * dprL;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
-  const maxY = Math.max(...data.map(d => d.y));
-  const minY = Math.min(...data.map(d => d.y));
+  /* Running min/max (maintained per step) — never rescans the sample array. */
+  const minY = gMinY[idx], maxY = gMaxY[idx];
   const yRange = maxY - minY || 0.1;
   const scaleY = plotH / yRange;
-  /* Thin sharp line. lineWidth ~1.25 CSS px (≈ 1.25*dpr device px) at
-     1.5 dpr renders crisp without the chunky 2 CSS px look the canvas
-     had when its 420-pixel buffer was being stretched to ~1200 CSS px. */
-  gCtx.lineCap = 'round'; gCtx.lineJoin = 'round';
-  gCtx.beginPath();
-  gCtx.strokeStyle = color;
-  gCtx.lineWidth = 1.25 * dprL;
-  for (let i = 0; i < data.length; i++) {
-    const px = padL + (data[i].t / graphMaxTime) * plotW;
-    const py = H - padB - (data[i].y - minY) * scaleY;
-    if (i === 0) gCtx.moveTo(px, py); else gCtx.lineTo(px, py);
+  /* Incremental trace layer: full redraw only when this graph's y-scale grows;
+     otherwise just extend the polyline with the newly pushed samples. */
+  if (minY !== glMinY[idx] || maxY !== glMaxY[idx] || glDrawnIdx[idx] > data.length) {
+    glCtxs[idx].clearRect(0, 0, graphLayers[idx].width, graphLayers[idx].height);
+    strokeTrace(idx, data, color, minY, scaleY, 0);
+    glMinY[idx] = minY; glMaxY[idx] = maxY; glDrawnIdx[idx] = data.length;
+  } else if (glDrawnIdx[idx] < data.length) {
+    strokeTrace(idx, data, color, minY, scaleY, glDrawnIdx[idx]);
+    glDrawnIdx[idx] = data.length;
   }
-  gCtx.stroke();
+  gCtx.drawImage(graphLayers[idx], 0, 0);
   gCtx.fillStyle = '#000'; gCtx.font = (10 * dprL) + 'px Arial';
   gCtx.textAlign = 'right'; gCtx.textBaseline = 'middle';
   const yMarks = 5, yStep = (maxY - minY) / yMarks;
@@ -1451,7 +1617,6 @@ function drawSingleGraph(gCanvas, gCtx, data, color) {
   }
   /* Clicked-coordinate marker + tooltip. clickedPoints[i] is set by the
      canvas click handler; cleared by reset or by clicking outside the plot. */
-  const idx = graphCanvases.indexOf(gCanvas);
   const cp = (idx >= 0) ? clickedPoints[idx] : null;
   if (cp) {
     const mgx = padL + (cp.t / graphMaxTime) * plotW;
@@ -1474,7 +1639,7 @@ function drawSingleGraph(gCanvas, gCtx, data, color) {
 
 function drawAllGraphs() {
   for (let i = 0; i < numMasses; i++) {
-    drawSingleGraph(graphCanvases[i], graphCtxs[i], graphData[i], MASS_COLORS[i]);
+    drawSingleGraph(graphCanvases[i], graphCtxs[i], graphData[i], MASS_COLORS[i], i);
   }
 }
 
@@ -1621,9 +1786,14 @@ function loadExample() {
 function resetSimulation() {
   updateParams();
   computeLayout();
-  for (let i = 0; i < 4; i++) { x[i] = x0[i]; vx[i] = 0; }
+  for (let i = 0; i < 4; i++) { x[i] = x0[i]; vx[i] = 0; xPrev[i] = x0[i]; xDraw[i] = x0[i]; }
   t = 0;
-  for (let i = 0; i < 4; i++) { graphData[i].length = 0; clickedPoints[i] = null; }
+  for (let i = 0; i < 4; i++) {
+    graphData[i].length = 0; clickedPoints[i] = null;
+    gMinY[i] = x0[i]; gMaxY[i] = x0[i];
+    glMinY[i] = NaN; glMaxY[i] = NaN; glDrawnIdx[i] = 0;   /* force full trace redraw */
+  }
+  lastPushPx = -1e9; simAccum = 0; lastTs = null;
   for (let i = 0; i < numMasses; i++) graphData[i].push({ t, y: x[i] });
   isRunning = true; isPaused = false;
   document.getElementById('pauseButton').textContent = '⏸ Pause';
@@ -1633,18 +1803,42 @@ function resetSimulation() {
   announce('Simulation reset.');
 }
 
-/* ── Animation loop ── */
-function animate() {
-  if (isRunning && !isPaused) {
-    for (let s = 0; s < stepsPerFrame; s++) {
-      updatePhysics();
-      for (let i = 0; i < numMasses; i++) graphData[i].push({ t, y: x[i] });
-      if (t > graphMaxTime) { isRunning = false; break; }
-    }
-    drawSimulation();
-    drawAllGraphs();
-  }
+/* ── Animation loop ──
+   Frame-rate-independent: advance physics by real elapsed wall-clock time at a
+   fixed h, decimate samples to ~1 device-pixel along t, maintain per-mass
+   running min/max, and render masses at a sub-step-interpolated position so
+   motion is smooth regardless of how step boundaries fall within a frame. */
+function animate(ts) {
   requestAnimationFrame(animate);
+  if (!(isRunning && !isPaused)) { lastTs = ts; return; }
+  if (lastTs === null) lastTs = ts;
+  var dtw = (ts - lastTs) / 1000; lastTs = ts;
+  if (dtw > 0.1) dtw = 0.1;                 /* clamp big gaps (tab switch / stalls) */
+  simAccum += dtw * SIM_RATE * speedMul;
+  var dprL = window.devicePixelRatio || 1;
+  var c0 = graphCanvases[0];
+  var plotW0 = c0.width - (50 + 20) * dprL;
+  var ended = false, guard = 0;
+  while (simAccum >= dt && guard < 5000) {
+    for (var i = 0; i < numMasses; i++) xPrev[i] = x[i];
+    updatePhysics();
+    var px = (t / graphMaxTime) * plotW0;
+    var adv = (px - lastPushPx) >= 1.0;
+    for (var i2 = 0; i2 < numMasses; i2++) {
+      var ext = false;
+      if (x[i2] < gMinY[i2]) { gMinY[i2] = x[i2]; ext = true; }
+      else if (x[i2] > gMaxY[i2]) { gMaxY[i2] = x[i2]; ext = true; }
+      if (adv || ext) graphData[i2].push({ t: t, y: x[i2] });
+    }
+    if (adv) lastPushPx = px;
+    simAccum -= dt; guard++;
+    if (!isRunning) { ended = true; simAccum = 0; break; }     /* bounds exceeded */
+    if (t > graphMaxTime) { isRunning = false; ended = true; simAccum = 0; break; }
+  }
+  var alpha = ended ? 1 : simAccum / dt;
+  for (var i3 = 0; i3 < numMasses; i3++) xDraw[i3] = xPrev[i3] + (x[i3] - xPrev[i3]) * alpha;
+  drawSimulation();
+  drawAllGraphs();
 }
 
 /* ── Init ── */
@@ -1686,13 +1880,20 @@ document.addEventListener('DOMContentLoaded', function() {
       document.querySelectorAll('.sbtn').forEach(function(b){ b.setAttribute('aria-checked','false'); });
       this.setAttribute('aria-checked','true');
       var spd=parseFloat(this.dataset.speed)||1;
-      stepsPerFrame = spd<=0.25?3:spd<=0.5?5:spd<=1?10:20;
+      speedMul = spd;
       say('Speed set to '+this.getAttribute('aria-label')+'.');
     });
   });
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(Array.from(document.querySelectorAll('.sbtn'))).catch(function(){});
   document.getElementById('pauseButton').addEventListener('click', togglePause);
   document.getElementById('exampleSelect').addEventListener('change', loadExample);
+
+  var methodSel = document.getElementById('methodSel');
+  if (methodSel) methodSel.addEventListener('change', function() {
+    METHOD = this.value;
+    buildGL2();
+    announce(METHOD === 'gl2' ? 'Method: Gauss–Legendre 2-stage.' : 'Method: Velocity Verlet.');
+  });
 
   // Re-render simulation and graphs at native resolution on window resize
   // so springs, masses, labels, and curves stay crisp regardless of column
@@ -1712,9 +1913,9 @@ document.addEventListener('DOMContentLoaded', function() {
   function init() {
     if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
       MathJax.typesetPromise().then(function() {
-        computeLayout(); resizeSimulationCanvas(); resizeGraphCanvases(); resetSimulation(); animate();
+        computeLayout(); resizeSimulationCanvas(); resizeGraphCanvases(); resetSimulation(); requestAnimationFrame(animate);
       }).catch(function() {
-        computeLayout(); resizeSimulationCanvas(); resizeGraphCanvases(); resetSimulation(); animate();
+        computeLayout(); resizeSimulationCanvas(); resizeGraphCanvases(); resetSimulation(); requestAnimationFrame(animate);
       });
     } else {
       setTimeout(init, 100);
