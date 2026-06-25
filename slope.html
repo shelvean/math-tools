@@ -429,7 +429,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   <div class="cbar" role="group" aria-label="Equation and field color">
     <div class="cbar-eq cfield">
       <label for="equation">Differential Equation &mdash; \(y' =\)</label>
-      <input type="text" id="equation" value="y*(2-y)-sin(2*t)"
+      <input type="text" id="equation" value="sin(t)*(4-y^2)"
              aria-label="Enter differential equation in terms of t and y. Press Enter to update."
              autocomplete="off" spellcheck="false">
     </div>
@@ -482,7 +482,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     </div>
     <div class="cbar-sm cfield">
       <label for="yMin">y min</label>
-      <input type="number" id="yMin" value="-2" step="0.5" aria-label="Vertical axis minimum">
+      <input type="number" id="yMin" value="-4" step="0.5" aria-label="Vertical axis minimum">
     </div>
     <div class="cbar-sm cfield">
       <label for="yMax">y max</label>
@@ -543,7 +543,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <div class="check-wrap" style="justify-content:flex-end;">
       <span class="clbl" style="visibility:hidden;">Options</span>
       <div class="check-inner" title="Detect constant solutions y=c where f(t,c)=0 for all t and draw them as thick red lines (solid = stable, dashed = unstable)">
-        <input type="checkbox" id="showEquilibria">
+        <input type="checkbox" id="showEquilibria" checked>
         <label for="showEquilibria">Equilibria</label>
       </div>
     </div>
@@ -1117,14 +1117,20 @@ document.addEventListener('DOMContentLoaded',function(){
       return rs;
     }
     var rootSets=ts.map(rootsAt);
+    /* A column where f(t,·)≡0 (e.g. sin(t)·g(y) at t=0) yields a root at
+       essentially every grid point; mark it degenerate so it neither
+       seeds candidates nor skews the averaged equilibrium location, but
+       still counts as consistent. */
+    var degen=rootSets.map(function(rs){return rs.length>yN*0.3;});
     var span=yMax-yMin,tolY=span*0.02,mergeTol=span*0.012;
-    var cand=[];[0,(tN/2)|0,tN-1].forEach(function(ix){rootSets[ix].forEach(function(c){cand.push(c);});});
+    var cand=[];ts.forEach(function(_,ix){if(!degen[ix]&&(ix===0||ix===((tN/2)|0)||ix===tN-1||cand.length===0))rootSets[ix].forEach(function(c){cand.push(c);});});
     cand.sort(function(a,b){return a-b;});
     var merged=[];cand.forEach(function(c){if(!merged.length||Math.abs(c-merged[merged.length-1])>mergeTol)merged.push(c);});
     var d=span*0.01,out=[];
     merged.forEach(function(c0){
       var locs=[],ok=true;
       for(i=0;i<tN;i++){
+        if(degen[i])continue;  /* f≡0 here — consistent with any c */
         var best=null,bd=Infinity;
         rootSets[i].forEach(function(r){var dd=Math.abs(r-c0);if(dd<bd){bd=dd;best=r;}});
         if(best===null||bd>tolY){ok=false;break;}
