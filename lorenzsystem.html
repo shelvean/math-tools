@@ -982,6 +982,7 @@ var MAX_DISPLAY_PTS=40000;    /* static renders — near full resolution so the 
                                 stays smooth even at long T (T<=200 draws every point;
                                 a single WebGL react handles this fine) */
 var ANIM_DISPLAY_PTS=4000;    /* per-frame animation — keep playback light */
+var TRACE_PTS=8000;           /* attractor trace: fixed decimation resolution */
 function decimate(tr,to,maxPts){
   maxPts=maxPts||MAX_DISPLAY_PTS;
   var n=(to===undefined)?tr.x.length:to+1;
@@ -1231,8 +1232,8 @@ function stopParticles(){
 
 function speedSteps(){
   var s=document.querySelector('input[name="speed"]:checked');
-  if(!s)return 30;
-  return{slow:2,medium:5,fast:15}[s.value]||30;
+  if(!s)return 40;
+  return{slow:3,medium:12,fast:40}[s.value]||40;
 }
 
 function startAnimLoop(){
@@ -1275,6 +1276,10 @@ function launchAnimateAttractor(){
     PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
     LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);
   }
+  /* Decimate the full curve ONCE so the trace grows a stable prefix
+     (no per-frame re-decimation jitter, no O(idx) work per frame). */
+  PA.disp=decimate(PA.t1,undefined,TRACE_PTS);
+  PA.dispStride=(PA.t1.x.length>TRACE_PTS)?Math.ceil(PA.t1.x.length/TRACE_PTS):1;
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
   setProgress(0, 0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
@@ -1306,16 +1311,21 @@ function renderParticleFrame(idx){
 // Jet colorbar (cmin=0, cmax=1) over the full simulation length, sliced
 // per-frame so colors map to actual elapsed time.
 function renderIncrementalFrame(idx, titlePrefix){
-  var t1=PA.t1;
+  var t1=PA.t1,disp=PA.disp||t1,stride=PA.dispStride||1;
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
   var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-  var d=decimate(t1,idx,ANIM_DISPLAY_PTS);
-  var line={color:d.t,colorscale:'Jet',width:3,
+  /* Grow a prefix of the pre-decimated curve (stable vertices = no glitch,
+     no per-frame decimation), then append the exact current point so the
+     line meets the marker. */
+  var k=Math.min(disp.x.length-1,Math.floor(idx/stride));
+  var xs=disp.x.slice(0,k+1),ys=disp.y.slice(0,k+1),zs=disp.z.slice(0,k+1),ts=disp.t.slice(0,k+1);
+  if(k*stride!==idx){xs.push(t1.x[idx]);ys.push(t1.y[idx]);zs.push(t1.z[idx]);ts.push(t1.t[idx]);}
+  var line={color:ts,colorscale:'Jet',width:3,
             cauto:false,cmin:0,cmax:1,showscale:!mobile};
   if(!mobile)line.colorbar=makeColorbar(t1.x.length);
   Plotly.react('plot',[
-    {x:d.x,y:d.y,z:d.z,
+    {x:xs,y:ys,z:zs,
      type:'scatter3d',mode:'lines',line:line,showlegend:false},
     {x:[t1.x[idx]],y:[t1.y[idx]],z:[t1.z[idx]],
      type:'scatter3d',mode:'markers',marker:{size:6,color:'#000'},showlegend:false}
