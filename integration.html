@@ -3306,6 +3306,12 @@ function _renderConvergenceNow(){
   var traces=[];
   var legendItems=[];
   var first=null;  /* anchors the reference O(h^p) line */
+  /* Round-off floor (scaled by the integral magnitude). Very high-order
+     rules — GL-7, Gauss–Kronrod — reach machine precision across the whole
+     grid on smooth integrands, so their raw error is 0 at most/all n. Without
+     a floor those zero points are dropped and the trace vanishes ("not
+     showing"); clamping to the floor keeps a flat curve at round-off. */
+  var ROUNDOFF=2.220446049250313e-16*Math.max(1,Math.abs(ST.exact||0));
   methods.forEach(function(mk){
     var grid=CONV_NGRID[mk];
     if(!grid)return;
@@ -3313,7 +3319,9 @@ function _renderConvergenceNow(){
     for(var i=0;i<grid.length;i++){
       var val=quadValFast(mk,f,a,b,grid[i]);
       var err=Math.abs(val-ST.exact);
-      if(err>0&&isFinite(err)){ns.push(grid[i]);errs.push(err);}
+      if(!isFinite(err))continue;
+      if(err<ROUNDOFF)err=ROUNDOFF;
+      ns.push(grid[i]);errs.push(err);
     }
     if(ns.length<2)return;
     if(!first)first={method:mk,ns:ns,errs:errs};
