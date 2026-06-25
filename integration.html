@@ -1901,7 +1901,24 @@ function computeView(){
     try{var y=f(x);if(isFinite(y)&&Math.abs(y)<1e7)ys.push(y);}catch(e){}
   }
   if(ys.length===0)ys=[-1,1];
-  var yMin=Math.min.apply(null,ys),yMax=Math.max.apply(null,ys);
+  var yMin,yMax,nY=ys.length,e,peak=0;
+  for(e=0;e<nY;e++){var av=Math.abs(ys[e]);if(av>peak)peak=av;}
+  /* If the integrand tapers to zero at the window edges, keep an extreme
+     interior/padding spike (a pole, or a singular weight just outside the
+     domain) from hijacking the scale: clip to the 2nd/98th percentile when
+     the true extreme is a clear outlier.  Non-tapering or smooth-peaked
+     functions are scaled by plain min/max as before. */
+  var ek=Math.max(1,Math.round(nY*0.04)),edge=0;
+  for(e=0;e<ek;e++)edge=Math.max(edge,Math.abs(ys[e]),Math.abs(ys[nY-1-e]));
+  if(peak>0&&edge<0.12*peak){
+    var srt=ys.slice().sort(function(p,q){return p-q;});
+    var qf=function(fr){return srt[Math.min(nY-1,Math.max(0,Math.round(fr*(nY-1))))];};
+    var p98=qf(0.98),p02=qf(0.02),mx=srt[nY-1],mn=srt[0];
+    yMax=(mx>0&&p98>0&&mx>p98*4)?p98:mx;
+    yMin=(mn<0&&p02<0&&mn<p02*4)?p02:mn;
+  }else{
+    yMin=Math.min.apply(null,ys);yMax=Math.max.apply(null,ys);
+  }
   var yPad=Math.max(0.15,(yMax-yMin)*0.15);
   yMin=Math.min(yMin-yPad,-0.05);
   yMax=yMax+yPad;
