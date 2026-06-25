@@ -1116,8 +1116,33 @@ function exprToLatex(s){
     }
     return d+'*'+l;
   });
-  /* Replace function-call expressions with LaTeX equivalents.  Walks
-     matching parens so nested arguments work. */
+  /* Brace-wrap exponents so x^-0.9, x^(-0.9), x^(n+1), 2^x render as
+     x^{...}.  The exponent is a parenthesised group, or an optional sign
+     followed by a number or identifier (^ binds tighter than * and /).
+     Run before the function/constant passes so the braced contents are
+     converted too. */
+  function wrapPow(str){
+    var out='',i=0,n=str.length;
+    while(i<n){
+      if(str.charAt(i)==='^'){
+        i++;
+        var sign='';
+        if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+        var body='';
+        if(i<n&&str.charAt(i)==='('){
+          var depth=1,j=i+1;
+          while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+          body=str.slice(i+1,j); i=(j<n)?j+1:j;
+        }else{
+          var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));
+          if(mm){body=mm[0];i+=mm[0].length;}
+        }
+        out+='^{'+sign+body+'}';
+      }else{ out+=str.charAt(i); i++; }
+    }
+    return out;
+  }
+  t=wrapPow(t);
   function callMap(str,name,mapper){
     var i=0,nlen=name.length;
     while((i=str.indexOf(name+'(',i))!==-1){
