@@ -3509,11 +3509,19 @@ function _renderConvergenceNow(){
   var rateNote='';
 
   if(semilog){
-    /* Semi-log y: fit ln|E| = A \u2212 \u03b1\u00b7n by least squares over the points
-       above the round-off floor, to MEASURE the exponential rate \u03b1.  Draw
-       the fitted reference; data that lies on it \u21d2 exponential convergence. */
-    var fx=[],fy=[],i2;
-    for(i2=0;i2<ref.ns.length;i2++){ if(ref.errs[i2]>ROUNDOFF*1.5){ fx.push(ref.ns[i2]); fy.push(Math.log(ref.errs[i2])); } }
+    /* Semi-log y: fit ln|E| = A \u2212 \u03b1\u00b7n by least squares to MEASURE the
+       exponential rate \u03b1.  Fit only the DESCENDING part: walk from coarse n
+       and stop as soon as the error stops dropping meaningfully \u2014 that flat
+       tail is the machine-epsilon round-off floor (often well above true eps
+       for ill-conditioned integrands) and would otherwise flatten the rate. */
+    var fx=[],fy=[],i2,prevErr=Infinity;
+    for(i2=0;i2<ref.ns.length;i2++){
+      var ev=ref.errs[i2];
+      if(!(ev>0&&isFinite(ev)))continue;
+      if(ev<=ROUNDOFF*1.5) break;                 /* reached machine-epsilon floor */
+      if(fx.length>0 && ev>prevErr*0.85) break;   /* descent stalled \u2192 elevated floor */
+      fx.push(ref.ns[i2]); fy.push(Math.log(ev)); prevErr=ev;
+    }
     if(fx.length>=2){
       var nP=fx.length,sx=0,sy=0,sxx=0,sxy=0;
       for(i2=0;i2<nP;i2++){sx+=fx[i2];sy+=fy[i2];sxx+=fx[i2]*fx[i2];sxy+=fx[i2]*fy[i2];}
