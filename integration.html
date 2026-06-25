@@ -3192,8 +3192,30 @@ function _renderConvergenceNow(){
     yAxisTicks={dtick:(span>=3?1:span/3), range:[lo,lo+span]};  /* span/3 => 4 ticks */
   }
 
+  /* X axis (subdivisions n): one tick per decade can leave <4 ticks when n
+     spans only a decade or two.  Use nice 1–2–5 integer ticks; if that
+     yields fewer than 4, fall back to log-spaced integers. */
+  var xVals=[];
+  traces.forEach(function(tr){ if(tr.x) tr.x.forEach(function(v){ if(v>0&&isFinite(v)) xVals.push(v); }); });
+  var xTickVals=null;
+  if(xVals.length){
+    var xmin=Math.min.apply(null,xVals), xmax=Math.max.apply(null,xVals);
+    var tk=[],dd=Math.floor(Math.log10(xmin));
+    for(;Math.pow(10,dd)<=xmax*1.5;dd++){
+      [1,2,5].forEach(function(bse){var v=bse*Math.pow(10,dd); if(v>=Math.floor(xmin)&&v<=Math.ceil(xmax)) tk.push(v);});
+    }
+    tk=tk.filter(function(v,j){return tk.indexOf(v)===j;});
+    if(tk.length<4){
+      var l10=Math.log10(xmin), h10=Math.log10(xmax), g=[];
+      for(var gi=0;gi<5;gi++) g.push(Math.round(Math.pow(10,l10+(h10-l10)*gi/4)));
+      tk=g.filter(function(v,j){return g.indexOf(v)===j;});
+    }
+    xTickVals=tk;
+  }
+
   var layout={title:'',
-    xaxis:{title:{text:'n',font:{size:14}},type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}},
+    xaxis:xTickVals?{title:{text:'n',font:{size:14}},type:'log',tickmode:'array',tickvals:xTickVals,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}}
+                   :{title:{text:'n',font:{size:14}},type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}},
     yaxis:{title:{text:'|Error|',font:{size:14}},type:'log',dtick:yAxisTicks.dtick,range:yAxisTicks.range,showgrid:true,gridcolor:'#e5e7eb',exponentformat:'e',tickfont:{size:12}},
     /* Plotly's built-in legend is hidden \u2014 we draw our own HTML legend
        below the plot.  Avoids MathJax having to re-render legend labels
