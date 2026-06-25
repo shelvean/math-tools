@@ -224,6 +224,14 @@ details.mdesc .mbody p{margin:.4rem 0;}
 .conv-compare label{display:inline-flex;align-items:center;gap:.25rem;
   font-size:.78rem;font-weight:600;color:var(--txt2);cursor:pointer;}
 .conv-compare input[type=checkbox]{cursor:pointer;width:14px;height:14px;}
+/* Axis-scale toggle (log–log vs semi-log y) */
+.conv-scale{display:flex;align-items:center;gap:.4rem;margin:.5rem .75rem .1rem;flex-wrap:wrap;}
+.conv-scale-lbl{font-size:.78rem;font-weight:700;color:var(--txt2);}
+.cscale-btn{font-size:.78rem;font-weight:600;padding:.2rem .55rem;border:1.5px solid var(--bdr2);
+  border-radius:.3rem;background:var(--card);color:var(--txt);cursor:pointer;transition:background .15s,border-color .15s;}
+.cscale-btn:hover{background:var(--info);border-color:var(--blue);color:var(--blue);}
+.cscale-btn[aria-pressed=true]{background:var(--blue);color:#fff;border-color:var(--blue);}
+.cscale-btn:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
 
 /* Custom HTML legend for the convergence plot.  Replaces Plotly's
    built-in legend so MathJax doesn't have to re-render legend labels
@@ -954,6 +962,12 @@ details.mdesc .mbody p{margin:.4rem 0;}
           <span id="convIcon" aria-hidden="true">&minus;</span>
         </button>
         <div id="convBody">
+          <div class="conv-scale" id="convScale" role="radiogroup" aria-label="Convergence plot axis scale">
+            <span class="conv-scale-lbl">Axes:</span>
+            <button type="button" class="cscale-btn" data-scale="loglog"   role="radio" aria-checked="true"  aria-pressed="true">log&ndash;log</button>
+            <button type="button" class="cscale-btn" data-scale="semilogy" role="radio" aria-checked="false" aria-pressed="false">semi&ndash;log&nbsp;y</button>
+            <span class="conv-scale-lbl" style="font-weight:500;">— log&ndash;log: straight ⇒ \(O(n^{-p})\); semi&ndash;log&nbsp;y: straight ⇒ \(e^{-\alpha n}\)</span>
+          </div>
           <fieldset id="convCompare" class="conv-compare" aria-label="Compare methods on the convergence plot">
             <legend>Compare:</legend>
             <label><input type="checkbox" data-cmp="left">Left</label>
@@ -1402,6 +1416,7 @@ var ST={
   plotFn:null,        /* the curve actually drawn/shaded (w·f for weighted) */
   weightFn:null,      /* the weight w(x) for the active weighted method */
   jAlpha:0, jBeta:-0.5,  /* Gauss–Jacobi exponents (b−x)^α (x−a)^β */
+  convScale:'loglog',    /* convergence-plot axes: 'loglog' or 'semilogy' */
   gen:0  /* generation counter — incremented on each compute to cancel stale deferred work */
 };
 
@@ -3490,7 +3505,30 @@ function _renderConvergenceNow(){
   var ref=first||{method:method,ns:[],errs:[]};
   var order=METHOD_ORDER[ref.method]||2;
   var isSpectral=SPECTRAL[ref.method];
-  if(ref.ns.length>=2 && !isSpectral){
+  var semilog=(ST.convScale==='semilogy');
+  var rateNote='';
+
+  if(semilog){
+    /* Semi-log y: fit ln|E| = A \u2212 \u03b1\u00b7n by least squares over the points
+       above the round-off floor, to MEASURE the exponential rate \u03b1.  Draw
+       the fitted reference; data that lies on it \u21d2 exponential convergence. */
+    var fx=[],fy=[],i2;
+    for(i2=0;i2<ref.ns.length;i2++){ if(ref.errs[i2]>ROUNDOFF*1.5){ fx.push(ref.ns[i2]); fy.push(Math.log(ref.errs[i2])); } }
+    if(fx.length>=2){
+      var nP=fx.length,sx=0,sy=0,sxx=0,sxy=0;
+      for(i2=0;i2<nP;i2++){sx+=fx[i2];sy+=fy[i2];sxx+=fx[i2]*fx[i2];sxy+=fx[i2]*fy[i2];}
+      var den=nP*sxx-sx*sx, slope=den!==0?(nP*sxy-sx*sy)/den:0, icpt=(sy-slope*sx)/nP, alpha=-slope;
+      var fitErrs=ref.ns.map(function(ni){return Math.exp(icpt+slope*ni);});
+      traces.push({x:ref.ns,y:fitErrs,type:'scatter',mode:'lines',
+        line:{color:'#dc2626',dash:'dash',width:2},
+        hovertemplate:'fit \\(Ce^{-\\alpha n}\\)<br>n=%{x}, %{y:.2e}<extra></extra>',
+        name:'fit',showlegend:false});
+      legendItems.push({color:'#dc2626',style:'dashed',latex:'$Ce^{-\\alpha n}$',active:false});
+      rateNote=(alpha>0&&isFinite(alpha))
+        ? ' Dashed: fitted \\(Ce^{-\\alpha n}\\) for '+(METHOD_NAMES[ref.method]||ref.method)+', measured rate \\(\\alpha \\approx '+alpha.toFixed(3)+'\\).'
+        : ' (no clear exponential trend \u2014 try log\u2013log).';
+    }
+  } else if(ref.ns.length>=2 && !isSpectral){
     var ri=Math.min(2,ref.ns.length-1);
     var refErrors=ref.ns.map(function(ni){return ref.errs[ri]*Math.pow(ref.ns[ri]/ni,order);});
     traces.push({x:ref.ns,y:refErrors,type:'scatter',mode:'lines',
@@ -3509,7 +3547,12 @@ function _renderConvergenceNow(){
      decades that leaves too few; pin the axis to whole decades and shrink
      dtick so >=4 ticks fall across the range. */
   var yErr=[];
-  traces.forEach(function(tr){ if(tr.y) tr.y.forEach(function(v){ if(v>0&&isFinite(v)) yErr.push(v); }); });
+  traces.forEach(function(tr){
+    /* Exclude the dashed reference/fit line — it extrapolates far below the
+       data (e.g. e^{-αn} → 1e-57), which would blow up the y-range. */
+    if(tr.name==='fit'||(tr.name&&tr.name.indexOf('O(h^')===0)) return;
+    if(tr.y) tr.y.forEach(function(v){ if(v>0&&isFinite(v)) yErr.push(v); });
+  });
   var yAxisTicks={dtick:1,tick0:0};
   if(yErr.length){
     var ymin=Math.min.apply(null,yErr), ymax=Math.max.apply(null,yErr);
@@ -3519,30 +3562,37 @@ function _renderConvergenceNow(){
     yAxisTicks={tick0:lo, dtick:span/6, range:[lo,lo+span]};
   }
 
-  /* X axis (subdivisions n): one tick per decade can leave <4 ticks when n
-     spans only a decade or two.  Use nice 1–2–5 integer ticks; if that
-     yields fewer than 4, fall back to log-spaced integers. */
-  var xVals=[];
-  traces.forEach(function(tr){ if(tr.x) tr.x.forEach(function(v){ if(v>0&&isFinite(v)) xVals.push(v); }); });
-  var xTickVals=null;
-  if(xVals.length){
-    var xmin=Math.min.apply(null,xVals), xmax=Math.max.apply(null,xVals);
-    var tk=[],dd=Math.floor(Math.log10(xmin));
-    for(;Math.pow(10,dd)<=xmax*1.5;dd++){
-      [1,2,5].forEach(function(bse){var v=bse*Math.pow(10,dd); if(v>=Math.floor(xmin)&&v<=Math.ceil(xmax)) tk.push(v);});
+  /* X axis (subdivisions n): in log–log mode use nice 1–2–5 integer decade
+     ticks (falling back to log-spaced integers); in semi-log y mode n is a
+     LINEAR axis (so exponential decay reads as a straight line). */
+  var xaxisCfg;
+  if(semilog){
+    xaxisCfg={title:{text:'n',font:{size:14}},type:'linear',rangemode:'tozero',
+      showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12},nticks:7};
+  }else{
+    var xVals=[];
+    traces.forEach(function(tr){ if(tr.x) tr.x.forEach(function(v){ if(v>0&&isFinite(v)) xVals.push(v); }); });
+    var xTickVals=null;
+    if(xVals.length){
+      var xmin=Math.min.apply(null,xVals), xmax=Math.max.apply(null,xVals);
+      var tk=[],dd=Math.floor(Math.log10(xmin));
+      for(;Math.pow(10,dd)<=xmax*1.5;dd++){
+        [1,2,5].forEach(function(bse){var v=bse*Math.pow(10,dd); if(v>=Math.floor(xmin)&&v<=Math.ceil(xmax)) tk.push(v);});
+      }
+      tk=tk.filter(function(v,j){return tk.indexOf(v)===j;});
+      if(tk.length<4){
+        var l10=Math.log10(xmin), h10=Math.log10(xmax), g=[];
+        for(var gi=0;gi<5;gi++) g.push(Math.round(Math.pow(10,l10+(h10-l10)*gi/4)));
+        tk=g.filter(function(v,j){return g.indexOf(v)===j;});
+      }
+      xTickVals=tk;
     }
-    tk=tk.filter(function(v,j){return tk.indexOf(v)===j;});
-    if(tk.length<4){
-      var l10=Math.log10(xmin), h10=Math.log10(xmax), g=[];
-      for(var gi=0;gi<5;gi++) g.push(Math.round(Math.pow(10,l10+(h10-l10)*gi/4)));
-      tk=g.filter(function(v,j){return g.indexOf(v)===j;});
-    }
-    xTickVals=tk;
+    xaxisCfg=xTickVals?{title:{text:'n',font:{size:14}},type:'log',tickmode:'array',tickvals:xTickVals,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}}
+                      :{title:{text:'n',font:{size:14}},type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}};
   }
 
   var layout={title:'',
-    xaxis:xTickVals?{title:{text:'n',font:{size:14}},type:'log',tickmode:'array',tickvals:xTickVals,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}}
-                   :{title:{text:'n',font:{size:14}},type:'log',dtick:1,showgrid:true,gridcolor:'#e5e7eb',tickfont:{size:12}},
+    xaxis:xaxisCfg,
     yaxis:{title:{text:'|Error|',font:{size:14}},type:'log',tickmode:'linear',tick0:yAxisTicks.tick0,dtick:yAxisTicks.dtick,range:yAxisTicks.range,showgrid:true,gridcolor:'#e5e7eb',tickformat:'.2e',tickfont:{size:12}},
     /* Plotly's built-in legend is hidden \u2014 we draw our own HTML legend
        below the plot.  Avoids MathJax having to re-render legend labels
@@ -3560,11 +3610,13 @@ function _renderConvergenceNow(){
   Plotly.react('convergencePlot',traces,layout,
     {responsive:true,displayModeBar:false,displaylogo:false});
   var cc=document.getElementById('convCaption');
-  cc.innerHTML='Log-log convergence \u2014 solid: '+METHOD_NAMES[method]+
+  cc.innerHTML=(semilog?'Semi-log y':'Log-log')+' convergence \u2014 solid: '+METHOD_NAMES[method]+
     (traces.length>2?', dotted: comparison methods':'')+
-    (isSpectral
-      ? '. Spectral / double-exponential convergence \u2014 faster than any fixed \\(\\mathcal{O}(h^{p})\\).'
-      : '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\).');
+    (semilog
+      ? '. A straight line means exponential convergence \\(|E|\\sim Ce^{-\\alpha n}\\).'+rateNote
+      : (isSpectral
+          ? '. Spectral / double-exponential convergence \u2014 faster than any fixed \\(\\mathcal{O}(h^{p})\\); switch to semi-log y to read its exponential rate.'
+          : '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\); a straight line means algebraic \\(\\mathcal{O}(n^{-p})\\).'));
   mj([cc]);
 }
 
@@ -4036,6 +4088,23 @@ document.querySelectorAll('#convCompare input[type=checkbox]').forEach(function(
     if(!ST.fn||ST.exact===null)return;
     /* Only render if the panel body is currently expanded; otherwise
        mark dirty so the next expand picks up the new selection. */
+    var expanded=document.getElementById('convBtn').getAttribute('aria-expanded')==='true';
+    _convDirty=true;
+    if(expanded)renderConvergencePlot();
+  });
+});
+
+/* Axis-scale toggle: log–log (algebraic O(n^-p)) vs semi-log y (exponential
+   e^{-αn}).  Re-renders the plot in the chosen scale. */
+document.querySelectorAll('#convScale .cscale-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    if(ST.convScale===btn.dataset.scale)return;
+    ST.convScale=btn.dataset.scale;
+    document.querySelectorAll('#convScale .cscale-btn').forEach(function(b){
+      var on=b.dataset.scale===ST.convScale;
+      b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-checked',String(on));
+    });
+    if(!ST.fn||ST.exact===null)return;
     var expanded=document.getElementById('convBtn').getAttribute('aria-expanded')==='true';
     _convDirty=true;
     if(expanded)renderConvergencePlot();
