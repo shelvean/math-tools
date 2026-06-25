@@ -1190,6 +1190,11 @@ function applyLargeRhoDefaults(v){
   return changed;
 }
 
+/* Cache of the most recently rendered static trajectory, so "Animate
+   attractor" can trace it instead of recomputing the same curve. */
+var LAST_TR=null,LAST_TR_KEY=null;
+function trajKey(v){return [v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,v.tend,v.method].join('|');}
+
 /* ── Update static plot ── */
 var updatePlot=debounce(function(rhoOverride){
   var v=readParams();
@@ -1201,6 +1206,7 @@ var updatePlot=debounce(function(rhoOverride){
   if(applyLargeRhoDefaults(v))say('ρ > 100: switched to DOP853 and capped T at '+v.tend+'.');
   var N=staticN(v);
   var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
+  LAST_TR=tr;LAST_TR_KEY=trajKey(v);
   var ic='('+fmtSig(v.x0)+', '+fmtSig(v.y0)+', '+fmtSig(v.z0)+')';
   Plotly.react('plot',
     [makeJetTrace(decimate(tr),2.5,N)],
@@ -1257,12 +1263,18 @@ function launchParticles(){
 }
 
 function launchAnimateAttractor(){
-  // Incrementally traces the trajectory at the current parameters --
-  // does not pin ρ or the IC -- animates whatever is currently set.  Speed
-  // (speedSteps()) and same Jet colorbar as the transient animation.
+  // Traces the trajectory already shown in the static plot -- reuses the
+  // cached curve instead of recomputing it; only solves if the cache is
+  // missing or the parameters have changed since the last render.
   stopParticles();
   var v=readParams();
-  PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
+  applyLargeRhoDefaults(v);
+  if(LAST_TR&&LAST_TR_KEY===trajKey(v)){
+    PA.t1=LAST_TR;
+  }else{
+    PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
+    LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);
+  }
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
   setProgress(0, 0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
