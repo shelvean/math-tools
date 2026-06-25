@@ -1951,6 +1951,8 @@ function drawAxes(){
 function drawCurve(){
   if(!ST.fn)return;
   var pf=ST.plotFn||ST.fn;
+  /* Laguerre's domain is [0,∞) — don't draw the curve on the wrong side. */
+  var xLo=(ST.method==='laguerre')?0:-Infinity;
   var hc=document.documentElement.classList.contains('hc');
   ctx.save();
   ctx.strokeStyle=hc?'#0000cc':'#1d4ed8';
@@ -1958,6 +1960,7 @@ function drawCurve(){
   var started=false;
   for(var i=0;i<=800;i++){
     var wx=VIEW.xMin+(VIEW.xMax-VIEW.xMin)*i/800;
+    if(wx<xLo){started=false;continue;}
     var wy;try{wy=pf(wx);}catch(e){wy=NaN;}
     if(!isFinite(wy)){started=false;continue;}
     var px=w2cx(wx),py=w2cy(wy);
@@ -2301,15 +2304,18 @@ function drawQuadratureShapes(){
        g(x)=w(x)·f(x) (which diverges at an endpoint when the weight is
        singular — clipped by the view) and mark the Gauss nodes, which
        sit on g.  This is the quantity actually being integrated. */
-    var gpf=ST.plotFn||f, pyBase=w2cy(0),pxs=w2cx(a),pxe=w2cx(b);
+    /* Don't shade the "wrong side": Laguerre lives on [0,∞), so clamp the
+       shaded region's left edge to x=0. */
+    var sa=(m==='laguerre'&&a<0)?0:a, sb=b;
+    var gpf=ST.plotFn||f, pyBase=w2cy(0),pxs=w2cx(sa),pxe=w2cx(sb);
     var sc0=sgnColors(0,1);
     ctx.fillStyle=sc0?sc0.f1:C.f1;
     ctx.beginPath();ctx.moveTo(pxs,pyBase);
     var sps=240;
     for(var j=0;j<=sps;j++){
-      var tt=j/sps, xx=a+(b-a)*tt, yy;
+      var tt=j/sps, xx=sa+(sb-sa)*tt, yy;
       /* nudge off the exact endpoints where w is singular */
-      if(j===0)xx=a+(b-a)*1e-4; if(j===sps)xx=b-(b-a)*1e-4;
+      if(j===0)xx=sa+(sb-sa)*1e-4; if(j===sps)xx=sb-(sb-sa)*1e-4;
       try{yy=gpf(xx);}catch(e){yy=0;}
       if(!isFinite(yy))yy=0;
       ctx.lineTo(w2cx(xx),w2cy(yy));
