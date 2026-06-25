@@ -540,6 +540,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <label for="showInitialPoint">Initial points</label>
       </div>
     </div>
+    <div class="check-wrap" style="justify-content:flex-end;">
+      <span class="clbl" style="visibility:hidden;">Options</span>
+      <div class="check-inner" title="Detect constant solutions y=c where f(t,c)=0 for all t and draw them as brown lines (solid = stable, dashed = unstable)">
+        <input type="checkbox" id="showEquilibria">
+        <label for="showEquilibria">Equilibria</label>
+      </div>
+    </div>
   </div>
 
   <!-- ── Action bar ── -->
@@ -1084,6 +1091,65 @@ document.addEventListener('DOMContentLoaded',function(){
     ctx.restore();
   }
 
+  /* ── Equilibrium detection ──
+     A constant solution y=c is an equilibrium when f(t,c)=0 for ALL t in
+     view (autonomous: f(y)=0; non-autonomous it must still vanish for
+     every t, e.g. cos(t)(y-1)).  Find y-roots of f(t,·) at several t and
+     keep the values that are a root at every sampled t with negligible
+     spread.  Stability comes from the sign of f just below/above c,
+     required consistent across t. */
+  function detectEquilibria(f,tMin,tMax,yMin,yMax){
+    var tN=13,yN=600,i,j;
+    var ts=[];for(i=0;i<tN;i++)ts.push(tMin+(tMax-tMin)*i/(tN-1));
+    function rootsAt(t){
+      var rs=[],prev=null,py=null;
+      for(j=0;j<=yN;j++){
+        var y=yMin+(yMax-yMin)*j/yN,v;
+        try{v=f(t,y);}catch(e){v=NaN;}
+        if(!isFinite(v)){prev=null;py=null;continue;}
+        if(prev!==null&&((prev<0&&v>0)||(prev>0&&v<0))){
+          var lo=py,hi=y,flo=prev;
+          for(var b=0;b<40;b++){var mid=(lo+hi)/2,fm;try{fm=f(t,mid);}catch(e){fm=NaN;}if(!isFinite(fm))break;if((flo<0&&fm<0)||(flo>0&&fm>0)){lo=mid;flo=fm;}else hi=mid;}
+          rs.push((lo+hi)/2);
+        }else if(prev!==null&&v===0)rs.push(y);
+        prev=v;py=y;
+      }
+      return rs;
+    }
+    var rootSets=ts.map(rootsAt);
+    var span=yMax-yMin,tolY=span*0.02,mergeTol=span*0.012;
+    var cand=[];[0,(tN/2)|0,tN-1].forEach(function(ix){rootSets[ix].forEach(function(c){cand.push(c);});});
+    cand.sort(function(a,b){return a-b;});
+    var merged=[];cand.forEach(function(c){if(!merged.length||Math.abs(c-merged[merged.length-1])>mergeTol)merged.push(c);});
+    var d=span*0.01,out=[];
+    merged.forEach(function(c0){
+      var locs=[],ok=true;
+      for(i=0;i<tN;i++){
+        var best=null,bd=Infinity;
+        rootSets[i].forEach(function(r){var dd=Math.abs(r-c0);if(dd<bd){bd=dd;best=r;}});
+        if(best===null||bd>tolY){ok=false;break;}
+        locs.push(best);
+      }
+      if(!ok||!locs.length)return;
+      var avg=locs.reduce(function(a,b){return a+b;},0)/locs.length;
+      var spread=Math.max.apply(null,locs)-Math.min.apply(null,locs);
+      if(spread>=span*0.01)return;
+      if(out.length&&Math.abs(avg-out[out.length-1].y)<=mergeTol)return;
+      /* stability: sign of f below/above c, consistent across t */
+      var stable=0,unstable=0,bad=0;
+      for(i=0;i<tN;i++){
+        var lo,hi;try{lo=f(ts[i],avg-d);hi=f(ts[i],avg+d);}catch(e){bad++;continue;}
+        if(!isFinite(lo)||!isFinite(hi)){bad++;continue;}
+        if(lo>0&&hi<0)stable++;else if(lo<0&&hi>0)unstable++;
+      }
+      var stab='semi';
+      if(stable>0&&unstable===0&&bad===0)stab='stable';
+      else if(unstable>0&&stable===0&&bad===0)stab='unstable';
+      out.push({y:avg,stab:stab});
+    });
+    return out;
+  }
+
   /* ── Draw direction field ── */
   window.drawDirectionField=function(clearFlag){
     if(clearFlag){
@@ -1193,6 +1259,27 @@ document.addEventListener('DOMContentLoaded',function(){
     }
 
     drawAxisLabels(tMin,tMax,yMin,yMax,xScale,yScale);
+
+    /* Equilibrium lines — constant solutions y=c with f(t,c)=0 for all t,
+       drawn in brown (solid = stable, dashed = unstable, dash-dot = semi/
+       indeterminate). */
+    if(document.getElementById('showEquilibria').checked){
+      var eqs=detectEquilibria(slopeFunc,tMin,tMax,yMin,yMax);
+      ctx.save();
+      ctx.strokeStyle='#8b4513';ctx.lineWidth=2.2;ctx.lineCap='butt';ctx.globalAlpha=0.9;
+      eqs.forEach(function(eq){
+        var yy=canvas.height-PADDING-(eq.y-yMin)*yScale;
+        if(eq.stab==='stable')ctx.setLineDash([]);
+        else if(eq.stab==='unstable')ctx.setLineDash([7,5]);
+        else ctx.setLineDash([7,4,2,4]);
+        ctx.beginPath();ctx.moveTo(PADDING,yy);ctx.lineTo(canvas.width-PADDING,yy);ctx.stroke();
+        /* small label at the right edge */
+        ctx.setLineDash([]);
+        ctx.fillStyle='#8b4513';ctx.font='600 11px system-ui,sans-serif';ctx.textAlign='right';ctx.textBaseline='bottom';
+        ctx.fillText('y = '+(+eq.y.toFixed(3)),canvas.width-PADDING-3,yy-2);
+      });
+      ctx.restore();
+    }
 
     /* Solution curves with directional arrowheads */
     solutions.forEach(function(sol){
@@ -1717,6 +1804,7 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('clearSolutionsBtn').addEventListener('click',clearSolutions);
   document.getElementById('downloadBtn').addEventListener('click',downloadPNG);
   document.getElementById('showField').addEventListener('change',function(){drawDirectionField(false);});
+  document.getElementById('showEquilibria').addEventListener('change',function(){drawDirectionField(false);});
   document.getElementById('fieldColor').addEventListener('change',function(){drawDirectionField(false);});
   document.getElementById('trajColor').addEventListener('change',function(){
     var tc=this.value;
