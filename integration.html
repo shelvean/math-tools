@@ -1797,17 +1797,21 @@ function deNodes(method,n){
   return nodes;
 }
 function quadDE(f,n,method){
-  var nd=deNodes(method,n),N=Math.max(2,n),total=0,pts=[],fmax=0;
+  var nd=deNodes(method,n),N=Math.max(2,n),total=0,pts=[],cmax=0,peakF=0;
   for(var i=0;i<nd.length;i++){
     var x=nd[i].x,fx;try{fx=f(x);}catch(e){fx=0;}if(!isFinite(fx))fx=0;
-    var ay=Math.abs(fx); if(ay>fmax)fmax=ay;
-    total+=nd[i].w*fx;
+    var c=nd[i].w*fx; total+=c;
+    var ac=Math.abs(c); if(ac>cmax){cmax=ac;peakF=Math.abs(fx);}  /* bulk scale */
     pts.push({x:x,y:fx,type:method});
   }
   pts.sort(function(p,q){return p.x-q.x;});
-  /* Plot window: the node spread reaches ~1e6, so frame on the x-range
-     where the integrand |f| itself exceeds 0.4% of its peak. */
-  var thr=fmax*0.004,xL=null,xR=null;
+  /* Plot window: the raw node spread reaches ~1e6, so frame on the x-range
+     where |f| exceeds 0.4% of the integrand value at the node of LARGEST
+     area contribution.  Scaling off that bulk node (not the global max |f|)
+     keeps the window robust to integrable endpoint singularities — where
+     |f|→∞ but the DE weight vanishes, so it dominates neither the area nor
+     the scale — while still framing the visible body of the curve. */
+  var thr=peakF*0.004,xL=null,xR=null;
   pts.forEach(function(p){if(Math.abs(p.y)>=thr){if(xL===null||p.x<xL)xL=p.x;if(xR===null||p.x>xR)xR=p.x;}});
   if(xL===null){xL=-1;xR=1;}
   return {value:total,h:2*DE_TMAX/N,pts:pts,nActual:nd.length,infinite:true,de:true,frameLo:xL,frameHi:xR};
