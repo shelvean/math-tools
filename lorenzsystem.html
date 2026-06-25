@@ -978,14 +978,16 @@ function solveLorenz(sigma,rho,beta,x0,y0,z0,N,method){
    this cuts per-react cost ~6-8x on dense renders and the animations with no
    visible change. `to` (inclusive) limits to a growing prefix for animation.
    ──────────────────────────────────────────────────────────────────────────── */
-var MAX_DISPLAY_PTS=4000;
-function decimate(tr,to){
+var MAX_DISPLAY_PTS=12000;    /* static renders — high enough that T=150 stays smooth */
+var ANIM_DISPLAY_PTS=4000;    /* per-frame animation — keep playback light */
+function decimate(tr,to,maxPts){
+  maxPts=maxPts||MAX_DISPLAY_PTS;
   var n=(to===undefined)?tr.x.length:to+1;
-  if(n<=MAX_DISPLAY_PTS){
+  if(n<=maxPts){
     if(to===undefined)return tr;
     return{x:tr.x.slice(0,n),y:tr.y.slice(0,n),z:tr.z.slice(0,n),t:tr.t.slice(0,n)};
   }
-  var stride=Math.ceil(n/MAX_DISPLAY_PTS);
+  var stride=Math.ceil(n/maxPts);
   var xs=[],ys=[],zs=[],ts=[];
   for(var i=0;i<n;i+=stride){xs.push(tr.x[i]);ys.push(tr.y[i]);zs.push(tr.z[i]);ts.push(tr.t[i]);}
   var last=n-1;
@@ -1269,7 +1271,7 @@ function renderParticleFrame(idx){
   var t1=PA.t1,t2=PA.t2;
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
-  var d1=decimate(t1,idx),d2=decimate(t2,idx);
+  var d1=decimate(t1,idx,ANIM_DISPLAY_PTS),d2=decimate(t2,idx,ANIM_DISPLAY_PTS);
   Plotly.react('plot',[
     {x:d1.x,y:d1.y,z:d1.z,
      type:'scatter3d',mode:'lines',name:'Traj 1',
@@ -1294,7 +1296,7 @@ function renderIncrementalFrame(idx, titlePrefix){
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
   var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-  var d=decimate(t1,idx);
+  var d=decimate(t1,idx,ANIM_DISPLAY_PTS);
   var line={color:d.t,colorscale:'Jet',width:3,
             cauto:false,cmin:0,cmax:1,showscale:!mobile};
   if(!mobile)line.colorbar=makeColorbar(t1.x.length);
@@ -1480,7 +1482,7 @@ document.addEventListener('DOMContentLoaded',function(){
           var rs=document.getElementById('rho'),ri=document.getElementById('rhoVal');
           if(rs)rs.value=cur;if(ri)ri.value=fmtSig(cur);
           Plotly.react('plot',
-            [makeJetTrace(decimate(frame.tr),3,ANIM_N)],
+            [makeJetTrace(decimate(frame.tr,undefined,ANIM_DISPLAY_PTS),3,ANIM_N)],
             animLayout('Lorenz Attractor (\u03C1\u2009=\u2009'+fmtSig(cur)+')')
           );
           renderTimeSeries(frame.tr);
