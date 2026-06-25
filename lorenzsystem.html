@@ -1238,6 +1238,10 @@ function launchParticles(){
   var N=staticN(v);
   PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
   PA.t2=solveLorenz(v.sigma,v.rho,v.beta,v.x0+eps,v.y0,v.z0,N,v.method);
+  /* Precompute the decimated display curves once (full static resolution),
+     so each frame just grows a stable prefix of both — smooth, exact, and
+     no per-frame re-decimation. */
+  PA.disp=decimate(PA.t1);PA.disp2=decimate(PA.t2);PA.dispStride=dispStrideFor(PA.t1);
   PA.idx=0;PA.running=true;PA.mode='particles';PA.renderFn=renderParticleFrame;
   setProgress(0, 0, PA.t1.x.length);
   var lb=document.getElementById('launchBtn');lb.textContent='Stop';lb.classList.add('abtn-running');
@@ -1267,11 +1271,19 @@ function launchAnimateAttractor(){
   say('Attractor animation started.');startAnimLoop();
 }
 
+/* Prefix [0..idx] of a pre-decimated curve, plus the exact current point,
+   so an incremental trace stays smooth (stable vertices) and cheap. */
+function tracePrefix(full,disp,stride,idx){
+  var k=Math.min(disp.x.length-1,Math.floor(idx/stride));
+  var xs=disp.x.slice(0,k+1),ys=disp.y.slice(0,k+1),zs=disp.z.slice(0,k+1);
+  if(k*stride!==idx){xs.push(full.x[idx]);ys.push(full.y[idx]);zs.push(full.z[idx]);}
+  return{x:xs,y:ys,z:zs};
+}
 function renderParticleFrame(idx){
-  var t1=PA.t1,t2=PA.t2;
+  var t1=PA.t1,t2=PA.t2,stride=PA.dispStride||1;
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
-  var d1=decimate(t1,idx,ANIM_DISPLAY_PTS),d2=decimate(t2,idx,ANIM_DISPLAY_PTS);
+  var d1=tracePrefix(t1,PA.disp||t1,stride,idx),d2=tracePrefix(t2,PA.disp2||t2,stride,idx);
   Plotly.react('plot',[
     {x:d1.x,y:d1.y,z:d1.z,
      type:'scatter3d',mode:'lines',name:'Traj 1',
