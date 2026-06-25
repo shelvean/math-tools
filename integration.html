@@ -625,6 +625,13 @@ details.mdesc .mbody p{margin:.4rem 0;}
             <p>So accurate that a handful of panels already reach the round-off floor on smooth integrands. Also used internally as the high-accuracy reference fallback.</p>
           </div>
         </details>
+        <details class="mdesc"><summary><span class="mdot" style="background:#4c1d95;"></span>Gauss&ndash;Legendre 7-point<span class="badge">degree 13</span></summary>
+          <div class="mbody">
+            <p>Seven Legendre nodes per subinterval &mdash; the same 7 nodes that anchor the Gauss&ndash;Kronrod pair below. Exact for degree \(\le 2m-1=13\).</p>
+            <div class="defn-box">\[ \xi\approx 0,\ \pm0.4058,\ \pm0.7415,\ \pm0.9491;\qquad \text{exact for degree}\le 13,\ \ O(h^{14}) \]</div>
+            <p>Two more nodes than the 5-point rule, lifting the exactness from degree 9 to 13; on smooth integrands it reaches round-off with just one or two panels.</p>
+          </div>
+        </details>
         <details class="mdesc"><summary><span class="mdot" style="background:#155e75;"></span>Gauss&ndash;Kronrod 7&ndash;15<span class="badge">error est.</span></summary>
           <div class="mbody">
             <p>The 15-point Kronrod rule \(K_{15}\) <em>extends</em> the 7-point Gauss&ndash;Legendre rule \(G_7\): it keeps all 7 Gauss nodes and adds 8 optimally-placed ones, integrating polynomials up to degree 22 (versus 13 for \(G_7\)).</p>
@@ -1282,6 +1289,10 @@ GL[2]={x:[-0.5773502691896258,0.5773502691896258],w:[1.0,1.0]};
 GL[3]={x:[-0.7745966692414834,0.0,0.7745966692414834],w:[0.5555555555555556,0.8888888888888888,0.5555555555555556]};
 GL[5]={x:[-0.9061798459386640,-0.5384693101056831,0.0,0.5384693101056831,0.9061798459386640],
        w:[0.2369268850561891,0.4786286704993665,0.5688888888888889,0.4786286704993665,0.2369268850561891]};
+GL[7]={x:[-0.9491079123427585,-0.7415311855993945,-0.4058451513773972,0.0,
+          0.4058451513773972,0.7415311855993945,0.9491079123427585],
+       w:[0.1294849661688697,0.2797053914892767,0.3818300505051189,0.4179591836734694,
+          0.3818300505051189,0.2797053914892767,0.1294849661688697]};
 
 /* =====================================================
    Examples
@@ -1814,6 +1825,7 @@ function computeQuad(method,f,a,b,n){
     case 'gauss2':    return quadGauss(f,a,b,n,2);
     case 'gauss3':    return quadGauss(f,a,b,n,3);
     case 'gauss5':    return quadGauss(f,a,b,n,5);
+    case 'gauss7':    return quadGauss(f,a,b,n,7);
     case 'adaptive':  return quadAdaptive(f,a,b);
     case 'romberg':   return quadRomberg(f,a,b,n);
     default:          return quadLeft(f,a,b,n);
@@ -1852,6 +1864,7 @@ function quadValFast(method,f,a,b,n){
     case 'gauss2': return gaussValFast(f,a,b,n,2);
     case 'gauss3': return gaussValFast(f,a,b,n,3);
     case 'gauss5': return gaussValFast(f,a,b,n,5);
+    case 'gauss7': return gaussValFast(f,a,b,n,7);
     case 'adaptive':return quadAdaptive(f,a,b).value;
     case 'romberg':return quadRomberg(f,a,b,n).value;
     default: for(s=0,i=0;i<n;i++)s+=f(a+i*h);return s*h;
@@ -2078,6 +2091,7 @@ function getMethodColors(method){
     case 'jacobi':    return gaussPalette('124,45,18');
     case 'hermite':   return gaussPalette('161,98,7');
     case 'laguerre':  return gaussPalette('3,105,161');
+    case 'gauss7':    return gaussPalette('76,29,149');
     case 'kronrod':   return gaussPalette('21,94,117');
     case 'left': return hc
       ? {f1:'rgba(0,0,180,.22)',f2:'rgba(0,0,180,.14)',s:'rgba(0,0,160,.7)',dot:'#0000aa',dot2:'#fff'}
@@ -2696,11 +2710,12 @@ var METHOD_NAMES={
   cheb1:'Gauss–Chebyshev (1st kind)',cheb2:'Gauss–Chebyshev (2nd kind)',jacobi:'Gauss–Jacobi',
   hermite:'Gauss–Hermite',laguerre:'Gauss–Laguerre',
   gauss2:'Gauss-Legendre (2-point)',gauss3:'Gauss-Legendre (3-point)',gauss5:'Gauss-Legendre (5-point)',
+  gauss7:'Gauss-Legendre (7-point)',
   kronrod:'Gauss–Kronrod (7–15)',
   adaptive:'Adaptive Simpson',romberg:'Romberg'
 };
 
-var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss3:6,gauss5:10,
+var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss3:6,gauss5:10,gauss7:14,
   simpson38:4,boole:6,closed6:6,open2:2,open3:4,open4:4,
   lobatto3:4,lobatto4:6,lobatto5:8,radau2:3,radau3:5,
   clenshaw:8,tanhsinh:8,cheb1:8,cheb2:8,jacobi:8,hermite:8,laguerre:8,
@@ -2814,6 +2829,8 @@ function formulaLatex(method,a,b,n,latex){
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{3}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
     case 'gauss5':
       return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{5}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
+    case 'gauss7':
+      return integralStr+'\\;\\approx\\; \\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{7}w_j\\,f\\!\\left(\\dfrac{a_k+b_k}{2}+\\dfrac{h_k}{2}\\xi_j\\right)';
     case 'kronrod':
       return integralStr+'\\;\\approx\\; I_{15}=\\sum_{k=1}^{n}\\dfrac{h_k}{2}\\sum_{j=1}^{15}w_j^{K}\\,f(\\xi_{k,j}),'+
              '\\qquad E\\approx\\bigl|I_{15}-I_{7}\\bigr|';
@@ -2981,7 +2998,7 @@ function doCompute(){
     clenshaw:'#0284c7',tanhsinh:'#65a30d',
     cheb1:'#0f766e',cheb2:'#115e59',jacobi:'#7c2d12',
     hermite:'#a16207',laguerre:'#0369a1',
-    gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',
+    gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',gauss7:'#4c1d95',kronrod:'#155e75',
     adaptive:'#be185d',romberg:'#1e40af'
   };
   var accent=METHOD_ACCENT[ST.method]||'#1d4ed8';
@@ -3150,6 +3167,7 @@ var CONV_NGRID={
   gauss2:[1,2,4,6,10,20,40],
   gauss3:[1,2,3,5,8,14,20],
   gauss5:[1,2,3,5,8,12],
+  gauss7:[1,2,3,5,8,12],
   kronrod:[1,2,3,5,8,12],
   lobatto3:[1,2,4,6,10,20,40],
   lobatto4:[1,2,3,5,8,14,20],
@@ -3169,7 +3187,7 @@ var METHOD_COLORS_CONV={
   left:'#2563eb',right:'#0891b2',midpoint:'#7c3aed',trapezoid:'#059669',
   simpson:'#d97706',simpson38:'#ea580c',boole:'#b45309',closed6:'#92400e',
   open2:'#9333ea',open3:'#db2777',open4:'#0d9488',
-  gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',kronrod:'#155e75',
+  gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',gauss7:'#4c1d95',kronrod:'#155e75',
   lobatto3:'#4f46e5',lobatto4:'#4338ca',lobatto5:'#3730a3',
   radau2:'#e11d48',radau3:'#9f1239',clenshaw:'#0284c7',tanhsinh:'#65a30d',
   cheb1:'#0f766e',cheb2:'#115e59',jacobi:'#7c2d12',
@@ -3210,6 +3228,7 @@ var METHOD_LATEX={
   gauss2:'$\\mathrm{GL}_2$',
   gauss3:'$\\mathrm{GL}_3$',
   gauss5:'$\\mathrm{GL}_5$',
+  gauss7:'$\\mathrm{GL}_7$',
   kronrod:'$\\mathrm{GK}_{7}^{15}$',
   romberg:'$R_{m,m}$'
 };
@@ -3503,6 +3522,7 @@ var QMETHODS=[
   {id:'gauss2',   label:'Gauss–Legendre 2-pt', color:'#7c3aed', badge:'degree 3'},
   {id:'gauss3',   label:'Gauss–Legendre 3-pt', color:'#c026d3', badge:'degree 5'},
   {id:'gauss5',   label:'Gauss–Legendre 5-pt', color:'#0e7490', badge:'degree 9'},
+  {id:'gauss7',   label:'Gauss–Legendre 7-pt', color:'#4c1d95', badge:'degree 13'},
   {id:'kronrod',  label:'Gauss–Kronrod 7–15',  color:'#155e75', badge:'error est.'},
   {id:'lobatto3', label:'Gauss–Lobatto 3-pt',  color:'#4f46e5', badge:'degree 3'},
   {id:'lobatto4', label:'Gauss–Lobatto 4-pt',  color:'#4338ca', badge:'degree 5'},
@@ -3524,7 +3544,7 @@ var QFAMS=[
   {key:'riemann', name:'Riemann sums',        ids:['left','right']},
   {key:'closed',  name:'Closed Newton–Cotes', ids:['trapezoid','simpson','simpson38','boole','closed6']},
   {key:'open',    name:'Open Newton–Cotes',   ids:['midpoint','open2','open3','open4']},
-  {key:'gauss',   name:'Gauss–Legendre & Kronrod', ids:['gauss2','gauss3','gauss5','kronrod']},
+  {key:'gauss',   name:'Gauss–Legendre & Kronrod', ids:['gauss2','gauss3','gauss5','gauss7','kronrod']},
   {key:'lobatto', name:'Gauss–Lobatto',       ids:['lobatto3','lobatto4','lobatto5']},
   {key:'radau',   name:'Gauss–Radau',         ids:['radau2','radau3']},
   {key:'spectral',name:'Spectral & double-exp', ids:['clenshaw','tanhsinh']},
