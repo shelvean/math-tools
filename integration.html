@@ -716,7 +716,7 @@ details.mdesc .mbody p{margin:.4rem 0;}
           </div>
         </details>
 
-        <h3 class="mdesc-grp">Infinite-domain Gauss</h3>
+        <h3 class="mdesc-grp">Infinite-domain</h3>
         <details class="mdesc"><summary><span class="mdot" style="background:#a16207;"></span>Gauss&ndash;Hermite<span class="badge">weight \(e^{-x^2}\) on \(\mathbb{R}\)</span></summary>
           <div class="mbody">
             <p>Integrates over the whole real line against the Gaussian weight \(w(x)=e^{-x^2}\); the \([a,b]\) inputs do not apply. Nodes are the roots of the Hermite polynomial \(H_n\) and the weights follow from Golub&ndash;Welsch (the Jacobi matrix has zero diagonal and off-diagonals \(\sqrt{k/2}\)).</p>
@@ -729,6 +729,20 @@ details.mdesc .mbody p{margin:.4rem 0;}
             <p>Integrates over the half-line \([0,\infty)\) against \(w(x)=e^{-x}\). Nodes are the roots of the Laguerre polynomial \(L_n\); the Jacobi matrix has diagonal \(2k+1\) and off-diagonals \(k\) (Golub&ndash;Welsch).</p>
             <div class="defn-box">\[ \int_{0}^{\infty} e^{-x}\,f(x)\,dx \approx \sum_{k=1}^{n} w_k\,f(x_k) \]</div>
             <p>Exact for \(f(x)\) of degree \(\le 2n-1\); e.g. \(\int_0^{\infty} e^{-x}\cos x\,dx=\tfrac12\). Ideal for integrands that already carry an exponential decay.</p>
+          </div>
+        </details>
+        <details class="mdesc"><summary><span class="mdot" style="background:#047857;"></span>Sinh&ndash;sinh<span class="badge">\(\mathbb{R}\), unweighted</span></summary>
+          <div class="mbody">
+            <p>An <em>unweighted</em> double-exponential rule for the whole line: it integrates \(f\) itself (no built-in weight), unlike Gauss&ndash;Hermite. The map \(x=\sinh\!\big(\tfrac{\pi}{2}\sinh t\big)\) sends \(t\in\mathbb{R}\) to \(x\in\mathbb{R}\) and crushes both tails double-exponentially, so a plain trapezoidal rule in \(t\) converges almost exponentially.</p>
+            <div class="defn-box">\[ \int_{-\infty}^{\infty} f(x)\,dx = \int_{-\infty}^{\infty} f\big(x(t)\big)\,x'(t)\,dt,\qquad x=\sinh\!\big(\tfrac{\pi}{2}\sinh t\big) \]</div>
+            <p>Use it for integrands with algebraic or exponential decay that <em>aren&rsquo;t</em> of the form \(e^{-x^2}\!\times\)(smooth), e.g. \(\int_{-\infty}^{\infty}\tfrac{dx}{1+x^2}=\pi\).</p>
+          </div>
+        </details>
+        <details class="mdesc"><summary><span class="mdot" style="background:#6d28d9;"></span>Exp&ndash;sinh<span class="badge">\([0,\infty)\), unweighted</span></summary>
+          <div class="mbody">
+            <p>The half-line counterpart: \(x=\exp\!\big(\tfrac{\pi}{2}\sinh t\big)\) maps \(t\in\mathbb{R}\) to \(x\in(0,\infty)\), again with a trapezoidal rule in \(t\). Unweighted, so it integrates \(f\) directly over \([0,\infty)\) without the \(e^{-x}\) weight that Gauss&ndash;Laguerre assumes.</p>
+            <div class="defn-box">\[ \int_{0}^{\infty} f(x)\,dx = \int_{-\infty}^{\infty} f\big(x(t)\big)\,x'(t)\,dt,\qquad x=\exp\!\big(\tfrac{\pi}{2}\sinh t\big) \]</div>
+            <p>Handles endpoint singularities and slow decay gracefully, e.g. \(\int_0^{\infty}\tfrac{dx}{1+x^2}=\tfrac{\pi}{2}\) or \(\int_0^{\infty} e^{-x}/\sqrt{x}\,dx=\sqrt{\pi}\).</p>
           </div>
         </details>
 
@@ -1746,6 +1760,60 @@ function infiniteRef(f,method){
   return val;
 }
 
+/* ── Double-exponential rules for INFINITE domains (UNWEIGHTED) ──
+   Integrate ∫ f(x) dx directly (no built-in weight) over an unbounded
+   domain via a double-exponential change of variable + trapezoidal rule:
+     sinh–sinh  ∫_{-∞}^{∞} f dx,  x = sinh(½π·sinh t)
+     exp–sinh   ∫_{0}^{∞}   f dx,  x = exp(½π·sinh t)
+   Both crush the tails double-exponentially, so a uniform trapezoidal rule
+   in t converges almost exponentially for any algebraically- or
+   exponentially-decaying f — the unweighted counterpart to Gauss–Hermite
+   and Gauss–Laguerre, which instead require f times a fixed Gaussian/
+   exponential weight.  The [a,b] inputs are ignored. */
+var INFINITE_DE={sinhsinh:1,expsinh:1};
+var DE_TMAX=4.0;
+function deNodes(method,n){
+  var N=Math.max(2,n),h=2*DE_TMAX/N,nodes=[];
+  for(var k=0;k<=N;k++){
+    var t=-DE_TMAX+k*h,s=(Math.PI/2)*Math.sinh(t),ch=Math.cosh(t),x,w;
+    if(method==='sinhsinh'){x=Math.sinh(s);w=(Math.PI/2)*ch*Math.cosh(s)*h;}
+    else{x=Math.exp(s);w=(Math.PI/2)*ch*x*h;}        /* exp-sinh: half line */
+    if(!isFinite(x)||!isFinite(w)||(method==='expsinh'&&x===0))continue;
+    nodes.push({x:x,w:w});
+  }
+  return nodes;
+}
+function quadDE(f,n,method){
+  var nd=deNodes(method,n),N=Math.max(2,n),total=0,pts=[],fmax=0;
+  for(var i=0;i<nd.length;i++){
+    var x=nd[i].x,fx;try{fx=f(x);}catch(e){fx=0;}if(!isFinite(fx))fx=0;
+    var ay=Math.abs(fx); if(ay>fmax)fmax=ay;
+    total+=nd[i].w*fx;
+    pts.push({x:x,y:fx,type:method});
+  }
+  pts.sort(function(p,q){return p.x-q.x;});
+  /* Plot window: the node spread reaches ~1e6, so frame on the x-range
+     where the integrand |f| itself exceeds 0.4% of its peak. */
+  var thr=fmax*0.004,xL=null,xR=null;
+  pts.forEach(function(p){if(Math.abs(p.y)>=thr){if(xL===null||p.x<xL)xL=p.x;if(xR===null||p.x>xR)xR=p.x;}});
+  if(xL===null){xL=-1;xR=1;}
+  return {value:total,h:2*DE_TMAX/N,pts:pts,nActual:nd.length,infinite:true,de:true,frameLo:xL,frameHi:xR};
+}
+function deValFast(f,n,method){
+  var nd=deNodes(method,n),total=0;
+  for(var i=0;i<nd.length;i++){var fx;try{fx=f(nd[i].x);}catch(e){fx=0;}if(isFinite(fx))total+=nd[i].w*fx;}
+  return total;
+}
+function deRef(f,method){
+  var ns=[100,150,200,300],prev=null,val;
+  for(var i=0;i<ns.length;i++){
+    val=deValFast(f,ns[i],method);
+    if(prev!==null&&Math.abs(val-prev)<1e-13*Math.max(1,Math.abs(val)))return val;
+    prev=val;
+  }
+  return val;
+}
+
 /* ── Adaptive Simpson ──
    Recursively halves each subinterval until the per-panel Richardson
    error estimate (S_split - S_whole)/15 is below the local tolerance.
@@ -1827,6 +1895,7 @@ function computeQuad(method,f,a,b,n){
   if(NODE_RULE[method]) return quadNodeRule(f,a,b,n,method);
   if(WEIGHTED_METHODS[method]) return quadWeighted(f,a,b,n,method);
   if(INFINITE_METHODS[method]) return quadInfinite(f,n,method);
+  if(INFINITE_DE[method]) return quadDE(f,n,method);
   if(method==='clenshaw') return quadClenshaw(f,a,b,n);
   if(method==='tanhsinh') return quadTanhSinh(f,a,b,n);
   if(method==='kronrod')  return quadKronrod(f,a,b,n);
@@ -1854,6 +1923,7 @@ function quadValFast(method,f,a,b,n){
   if(NODE_RULE[method]) return nodeRuleValFast(f,a,b,n,method);
   if(WEIGHTED_METHODS[method]) return weightedValFast(f,a,b,n,method);
   if(INFINITE_METHODS[method]) return infiniteValFast(f,n,method);
+  if(INFINITE_DE[method]) return deValFast(f,n,method);
   if(method==='clenshaw') return clenshawValFast(f,a,b,n);
   if(method==='tanhsinh') return tanhSinhValFast(f,a,b,n);
   if(method==='kronrod')  return kronrodValFast(f,a,b,n);
@@ -2105,6 +2175,8 @@ function getMethodColors(method){
     case 'jacobi':    return gaussPalette('124,45,18');
     case 'hermite':   return gaussPalette('161,98,7');
     case 'laguerre':  return gaussPalette('3,105,161');
+    case 'sinhsinh':  return gaussPalette('4,120,87');
+    case 'expsinh':   return gaussPalette('109,40,217');
     case 'gauss7':    return gaussPalette('76,29,149');
     case 'kronrod':   return gaussPalette('21,94,117');
     case 'left': return hc
@@ -2408,14 +2480,15 @@ function drawQuadratureShapes(){
     });
   }
 
-  else if(WEIGHTED_METHODS[m]||INFINITE_METHODS[m]){
+  else if(WEIGHTED_METHODS[m]||INFINITE_METHODS[m]||INFINITE_DE[m]){
     /* Weighted Gauss: shade the area under the WEIGHTED integrand
        g(x)=w(x)·f(x) (which diverges at an endpoint when the weight is
        singular — clipped by the view) and mark the Gauss nodes, which
-       sit on g.  This is the quantity actually being integrated. */
-    /* Don't shade the "wrong side": Laguerre lives on [0,∞), so clamp the
-       shaded region's left edge to x=0. */
-    var sa=(m==='laguerre'&&a<0)?0:a, sb=b;
+       sit on g.  This is the quantity actually being integrated.
+       For the unweighted DE rules the curve is just f(x). */
+    /* Don't shade the "wrong side": Laguerre / exp–sinh live on [0,∞), so
+       clamp the shaded region's left edge to x=0. */
+    var sa=((m==='laguerre'||m==='expsinh')&&a<0)?0:a, sb=b;
     var gpf=ST.plotFn||f, pyBase=w2cy(0),pxs=w2cx(sa),pxe=w2cx(sb);
     var sc0=sgnColors(0,1);
     ctx.fillStyle=sc0?sc0.f1:C.f1;
@@ -2512,7 +2585,7 @@ function drawQuadratureShapes(){
   var hc=document.documentElement.classList.contains('hc');
   ctx.strokeStyle=hc?'#005500':'#15803d';ctx.lineWidth=2;ctx.setLineDash([4,3]);
   if(ST.result&&ST.result.infinite){
-    if(ST.method==='laguerre'){
+    if(ST.method==='laguerre'||ST.method==='expsinh'){
       var p0=w2cx(0);ctx.beginPath();ctx.moveTo(p0,TMARG);ctx.lineTo(p0,TMARG+PH);ctx.stroke();
     }
   }else{
@@ -2723,6 +2796,7 @@ var METHOD_NAMES={
   clenshaw:'Clenshaw–Curtis',tanhsinh:'Tanh–sinh (double exponential)',
   cheb1:'Gauss–Chebyshev (1st kind)',cheb2:'Gauss–Chebyshev (2nd kind)',jacobi:'Gauss–Jacobi',
   hermite:'Gauss–Hermite',laguerre:'Gauss–Laguerre',
+  sinhsinh:'Sinh–sinh (double exponential)',expsinh:'Exp–sinh (double exponential)',
   gauss2:'Gauss-Legendre (2-point)',gauss3:'Gauss-Legendre (3-point)',gauss5:'Gauss-Legendre (5-point)',
   gauss7:'Gauss-Legendre (7-point)',
   kronrod:'Gauss–Kronrod (7–15)',
@@ -2733,7 +2807,7 @@ var METHOD_ORDER={left:1,right:1,midpoint:2,trapezoid:2,simpson:4,gauss2:4,gauss
   simpson38:4,boole:6,closed6:6,open2:2,open3:4,open4:4,
   lobatto3:4,lobatto4:6,lobatto5:8,radau2:3,radau3:5,
   clenshaw:8,tanhsinh:8,cheb1:8,cheb2:8,jacobi:8,hermite:8,laguerre:8,
-  kronrod:23,adaptive:4,romberg:14};
+  sinhsinh:8,expsinh:8,kronrod:23,adaptive:4,romberg:14};
 
 /* Format a numeric value as a LaTeX rational multiple of pi when it
    matches one to high precision (denominator up to 12); otherwise fall
@@ -2813,6 +2887,13 @@ function formulaLatex(method,a,b,n,latex){
       : '\\int_{0}^{\\infty} e^{-x}\\,'+fLatex+'\\,dx';
     return wI+'\\;\\approx\\;\\sum_{k=1}^{'+n+'}w_k\\,f(x_k)';
   }
+  if(INFINITE_DE[method]){
+    var dInt=(method==='sinhsinh')
+      ? '\\int_{-\\infty}^{\\infty} '+fLatex+'\\,dx'
+      : '\\int_{0}^{\\infty} '+fLatex+'\\,dx';
+    var xmap=(method==='sinhsinh')?'\\sinh':'\\exp';
+    return dInt+'\\;\\approx\\;\\sum_{k} w_k\\,f(x_k),\\quad x_k='+xmap+'\\!\\left(\\tfrac{\\pi}{2}\\sinh t_k\\right),\\ t_k=kh';
+  }
   var NC_CAPTIONS={
     simpson38:'\\dfrac{3h}{8}\\left[f_0+3f_1+3f_2+f_3\\right]',
     boole:'\\dfrac{2h}{45}\\left[7f_0+32f_1+12f_2+32f_3+7f_4\\right]',
@@ -2876,7 +2957,7 @@ function doCompute(){
   var expr=document.getElementById('fnInput').value.trim();
   if(!expr){announce('Please enter a function.');return;}
   var aVal,bVal;
-  var infinite=INFINITE_METHODS[ST.method];
+  var infinite=INFINITE_METHODS[ST.method]||INFINITE_DE[ST.method];
   if(infinite){
     aVal=0;bVal=1;  /* domain is fixed (−∞,∞)/[0,∞); the [a,b] inputs are ignored */
   }else{
@@ -2903,7 +2984,7 @@ function doCompute(){
   }
 
   var fn;
-  var tp=infinite?(ST.method==='hermite'?0:1):(aVal+bVal)/2;
+  var tp=infinite?((ST.method==='hermite'||ST.method==='sinhsinh')?0:1):(aVal+bVal)/2;
   try{fn=makeFn(expr);var tv=fn(tp);if(typeof tv!=='number')throw new Error();}
   catch(e){announce('Error in function expression.');return;}
 
@@ -2914,12 +2995,19 @@ function doCompute(){
      Jacobi, or an unbounded domain for Hermite/Laguerre).  The plotted/
      shaded curve and the reference are the WEIGHTED integrand w·f. */
   var isW=WEIGHTED_METHODS[ST.method];
-  ST.weighted=!!(isW||infinite);
+  var isDE=INFINITE_DE[ST.method];
+  ST.weighted=!!(isW||(infinite&&!isDE));   /* DE rules are unweighted */
   ST.exId='custom';
   ST.exact=null;
   ST.exactIsRef=false;  /* true when using a numerical reference instead of a known exact */
 
-  if(infinite){
+  if(isDE){
+    /* Unweighted infinite domain: the plotted curve is f itself. */
+    ST.weightFn=null;
+    ST.plotFn=fn;
+    ST.exact=deRef(fn,ST.method);
+    ST.exactIsRef=true;
+  }else if(infinite){
     ST.weightFn=function(x){return infiniteWeight(ST.method,x);};
     ST.plotFn=function(x){return ST.weightFn(x)*fn(x);};
     ST.exact=infiniteRef(fn,ST.method);  /* high-order same-weight rule */
@@ -2968,7 +3056,13 @@ function doCompute(){
      peak in a flat tail.  Size the window to where |g| is significant
      (>=0.4% of its peak) so the bulk of the area — the larger y values —
      fills the plot. */
-  if(infinite){
+  if(ST.result.de){
+    /* DE rules carry their own significant x-window (computed from the
+       per-node contributions, since the raw node spread reaches ~1e6). */
+    var dL=ST.result.frameLo, dR=ST.result.frameHi, dpad=((dR-dL)*0.08)||1;
+    if(ST.method==='sinhsinh'){var DM=Math.max(Math.abs(dL),Math.abs(dR))+dpad;ST.a=-DM;ST.b=DM;}
+    else{ST.a=-0.4;ST.b=dR+dpad;}
+  }else if(infinite){
     var g=ST.plotFn;
     var xs=ST.result.pts.map(function(p){return p.x;});
     var hiN=xs.length?xs[xs.length-1]:6, loN=xs.length?xs[0]:-6;
@@ -3011,7 +3105,7 @@ function doCompute(){
     radau2:'#e11d48',radau3:'#9f1239',
     clenshaw:'#0284c7',tanhsinh:'#65a30d',
     cheb1:'#0f766e',cheb2:'#115e59',jacobi:'#7c2d12',
-    hermite:'#a16207',laguerre:'#0369a1',
+    hermite:'#a16207',laguerre:'#0369a1',sinhsinh:'#047857',expsinh:'#6d28d9',
     gauss2:'#7c3aed',gauss3:'#c026d3',gauss5:'#0e7490',gauss7:'#4c1d95',kronrod:'#155e75',
     adaptive:'#be185d',romberg:'#1e40af'
   };
@@ -3032,7 +3126,7 @@ function doCompute(){
   }else if(ST.method==='clenshaw'){
     nLbl='Chebyshev nodes'; nVal=String((ST.result.nActual||n)+1);
     hLbl='Degree \\(N\\)'; hVal=String(ST.result.nActual||n);
-  }else if(ST.method==='tanhsinh'){
+  }else if(ST.method==='tanhsinh'||INFINITE_DE[ST.method]){
     nLbl='Quadrature points'; nVal=String(ST.result.nActual||n);
     hLbl='Step \\(h\\) in \\(t\\)'; hVal=fmtN(h,6);
   }else if(ST.method==='kronrod'){
@@ -3210,6 +3304,8 @@ var CONV_NGRID={
   jacobi:[1,2,3,4,6,8,12,16],
   hermite:[1,2,3,4,6,8,12,16],
   laguerre:[1,2,3,4,6,8,12,16],
+  sinhsinh:[4,8,12,16,24,32,48,64],
+  expsinh:[4,8,12,16,24,32,48,64],
   romberg:[3,4,5,6,7,8,9,10,11,12]
 };
 var METHOD_COLORS_CONV={
@@ -3220,12 +3316,12 @@ var METHOD_COLORS_CONV={
   lobatto3:'#4f46e5',lobatto4:'#4338ca',lobatto5:'#3730a3',
   radau2:'#e11d48',radau3:'#9f1239',clenshaw:'#0284c7',tanhsinh:'#65a30d',
   cheb1:'#0f766e',cheb2:'#115e59',jacobi:'#7c2d12',
-  hermite:'#a16207',laguerre:'#0369a1',
+  hermite:'#a16207',laguerre:'#0369a1',sinhsinh:'#047857',expsinh:'#6d28d9',
   romberg:'#1e40af'
 };
 /* Spectral rules converge faster than any fixed O(h^p), so the
    power-law reference line and "expected order" caption don't apply. */
-var SPECTRAL={clenshaw:1,tanhsinh:1,cheb1:1,cheb2:1,jacobi:1,hermite:1,laguerre:1,kronrod:1};
+var SPECTRAL={clenshaw:1,tanhsinh:1,cheb1:1,cheb2:1,jacobi:1,hermite:1,laguerre:1,sinhsinh:1,expsinh:1,kronrod:1};
 
 /* Legend symbols rendered with real LaTeX via MathJax. Requires the
    SVG build of MathJax (tex-svg.js) so Plotly can embed the rendered
@@ -3254,6 +3350,8 @@ var METHOD_LATEX={
   jacobi:'$\\mathrm{GJ}$',
   hermite:'$\\mathrm{GH}$',
   laguerre:'$\\mathrm{GLa}$',
+  sinhsinh:'$\\mathrm{SS}$',
+  expsinh:'$\\mathrm{ES}$',
   gauss2:'$\\mathrm{GL}_2$',
   gauss3:'$\\mathrm{GL}_3$',
   gauss5:'$\\mathrm{GL}_5$',
@@ -3575,6 +3673,8 @@ var QMETHODS=[
   {id:'jacobi',   label:'Gauss–Jacobi (α,β)',   color:'#7c2d12', badge:'weighted'},
   {id:'hermite',  label:'Gauss–Hermite',        color:'#a16207', badge:'\\(e^{-x^2},\\ \\mathbb{R}\\)'},
   {id:'laguerre', label:'Gauss–Laguerre',       color:'#0369a1', badge:'\\(e^{-x},\\ [0,\\infty)\\)'},
+  {id:'sinhsinh', label:'Sinh–sinh',            color:'#047857', badge:'\\(\\mathbb{R}\\), unweighted'},
+  {id:'expsinh',  label:'Exp–sinh',             color:'#6d28d9', badge:'\\([0,\\infty)\\), unweighted'},
   {id:'adaptive', label:'Adaptive Simpson',     color:'#be185d', badge:'adaptive'},
   {id:'romberg',  label:'Romberg',              color:'#1e40af', badge:'extrapolation'}
 ];
@@ -3588,7 +3688,7 @@ var QFAMS=[
   {key:'radau',   name:'Gauss–Radau',         ids:['radau2','radau3']},
   {key:'spectral',name:'Spectral & double-exp', ids:['clenshaw','tanhsinh']},
   {key:'weighted',name:'Weighted Gaussian',   ids:['cheb1','cheb2','jacobi']},
-  {key:'infinite',name:'Infinite-domain Gauss', ids:['hermite','laguerre']},
+  {key:'infinite',name:'Infinite-domain', ids:['hermite','laguerre','sinhsinh','expsinh']},
   {key:'adapt',   name:'Adaptive & extrapolation', ids:['adaptive','romberg']}
 ];
 function closeMethodMenus(){
