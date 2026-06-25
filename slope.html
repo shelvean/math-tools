@@ -579,11 +579,15 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
   <dl class="rbar" role="region" aria-label="Field status">
     <div class="rcell">
       <dt class="rlbl">Equation</dt>
-      <dd class="rval rval-b" id="rv-eq" title="Current equation">y&prime; = y(2&minus;y)&minus;sin(2t)</dd>
+      <dd class="rval rval-b" id="rv-eq" title="Current equation">y&prime; = sin(t)(4&minus;y&sup2;)</dd>
     </div>
     <div class="rcell">
       <dt class="rlbl">Solutions</dt>
       <dd class="rval rval-g" id="rv-sol" aria-live="polite">0 curves</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Equilibria</dt>
+      <dd class="rval" id="rv-equil" style="color:#dc2626;" aria-live="polite" title="Equilibrium solutions y = c where f(t,c)=0 for all t">&mdash;</dd>
     </div>
     <div class="rcell">
       <dt class="rlbl">Last Click</dt>
@@ -1091,6 +1095,21 @@ document.addEventListener('DOMContentLoaded',function(){
     ctx.restore();
   }
 
+  /* Tidy number for the equilibria list/labels. */
+  function fmtEq(v){return (+(+v).toFixed(4)).toString();}
+  /* True when f(t,y)≡0 over the whole view (every y is an equilibrium). */
+  function identicallyZero(f,tMin,tMax,yMin,yMax){
+    var nt=7,ny=9,fin=0,i,j;
+    for(i=0;i<nt;i++)for(j=0;j<ny;j++){
+      var t=tMin+(tMax-tMin)*(i+0.5)/nt,y=yMin+(yMax-yMin)*(j+0.5)/ny,v;
+      try{v=f(t,y);}catch(e){continue;}
+      if(!isFinite(v))continue;
+      fin++;
+      if(Math.abs(v)>1e-9)return false;
+    }
+    return fin>=10;
+  }
+
   /* ── Equilibrium detection ──
      A constant solution y=c is an equilibrium when f(t,c)=0 for ALL t in
      view (autonomous: f(y)=0; non-autonomous it must still vanish for
@@ -1268,9 +1287,18 @@ document.addEventListener('DOMContentLoaded',function(){
 
     /* Equilibrium lines — constant solutions y=c with f(t,c)=0 for all t,
        drawn as thick red lines (solid = stable, dashed = unstable,
-       dash-dot = semi/indeterminate). */
-    if(document.getElementById('showEquilibria').checked){
-      var eqs=detectEquilibria(slopeFunc,tMin,tMax,yMin,yMax);
+       dash-dot = semi/indeterminate).  Always update the readout box;
+       draw the lines only when the toggle is on. */
+    var eqInfo=null,eqs=[];
+    if(identicallyZero(slopeFunc,tMin,tMax,yMin,yMax)){
+      eqInfo='all y (f ≡ 0)';
+    }else{
+      eqs=detectEquilibria(slopeFunc,tMin,tMax,yMin,yMax);
+      eqInfo=eqs.length?eqs.map(function(e){return fmtEq(e.y);}).join(', '):'none';
+    }
+    var eqBox=document.getElementById('rv-equil');
+    if(eqBox)eqBox.textContent=eqInfo;
+    if(document.getElementById('showEquilibria').checked&&eqs.length){
       ctx.save();
       ctx.strokeStyle='#dc2626';ctx.lineWidth=3.5;ctx.lineCap='butt';ctx.globalAlpha=0.9;
       eqs.forEach(function(eq){
@@ -1282,7 +1310,7 @@ document.addEventListener('DOMContentLoaded',function(){
         /* small label at the right edge */
         ctx.setLineDash([]);
         ctx.fillStyle='#dc2626';ctx.font='600 11px system-ui,sans-serif';ctx.textAlign='right';ctx.textBaseline='bottom';
-        ctx.fillText('y = '+(+eq.y.toFixed(3)),canvas.width-PADDING-3,yy-2);
+        ctx.fillText('y = '+fmtEq(eq.y),canvas.width-PADDING-3,yy-2);
       });
       ctx.restore();
     }
