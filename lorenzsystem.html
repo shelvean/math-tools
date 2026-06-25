@@ -981,8 +981,7 @@ function solveLorenz(sigma,rho,beta,x0,y0,z0,N,method){
 var MAX_DISPLAY_PTS=40000;    /* static renders — near full resolution so the orbit
                                 stays smooth even at long T (T<=200 draws every point;
                                 a single WebGL react handles this fine) */
-var ANIM_DISPLAY_PTS=4000;    /* per-frame animation — keep playback light */
-var TRACE_PTS=8000;           /* attractor trace: fixed decimation resolution */
+var ANIM_DISPLAY_PTS=4000;    /* per-frame animation (particles, ρ-sweep) — keep light */
 function decimate(tr,to,maxPts){
   maxPts=maxPts||MAX_DISPLAY_PTS;
   var n=(to===undefined)?tr.x.length:to+1;
@@ -1193,8 +1192,10 @@ function applyLargeRhoDefaults(v){
 
 /* Cache of the most recently rendered static trajectory, so "Animate
    attractor" can trace it instead of recomputing the same curve. */
-var LAST_TR=null,LAST_TR_KEY=null;
+var LAST_TR=null,LAST_TR_KEY=null,LAST_DISP=null,LAST_DISP_STRIDE=1;
 function trajKey(v){return [v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,v.tend,v.method].join('|');}
+/* Stride that decimate() uses with the default (static) display cap. */
+function dispStrideFor(tr){return (tr.x.length>MAX_DISPLAY_PTS)?Math.ceil(tr.x.length/MAX_DISPLAY_PTS):1;}
 
 /* ── Update static plot ── */
 var updatePlot=debounce(function(rhoOverride){
@@ -1207,10 +1208,14 @@ var updatePlot=debounce(function(rhoOverride){
   if(applyLargeRhoDefaults(v))say('ρ > 100: switched to DOP853 and capped T at '+v.tend+'.');
   var N=staticN(v);
   var tr=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,N,v.method);
+  /* Cache the trajectory AND its decimated display curve so "Animate
+     attractor" traces the very same vertices (identical smoothness). */
+  var dispTr=decimate(tr);
   LAST_TR=tr;LAST_TR_KEY=trajKey(v);
+  LAST_DISP=dispTr;LAST_DISP_STRIDE=dispStrideFor(tr);
   var ic='('+fmtSig(v.x0)+', '+fmtSig(v.y0)+', '+fmtSig(v.z0)+')';
   Plotly.react('plot',
-    [makeJetTrace(decimate(tr),2.5,N)],
+    [makeJetTrace(dispTr,2.5,N)],
     make3DLayout('Lorenz Attractor \u2014 \u03C1\u2009=\u2009'+fmtSig(v.rho)+', IC '+ic+', T = '+fmtSig(v.tend))
   );
   renderTimeSeries(tr);
@@ -1270,16 +1275,16 @@ function launchAnimateAttractor(){
   stopParticles();
   var v=readParams();
   applyLargeRhoDefaults(v);
-  if(LAST_TR&&LAST_TR_KEY===trajKey(v)){
-    PA.t1=LAST_TR;
+  if(LAST_TR&&LAST_TR_KEY===trajKey(v)&&LAST_DISP){
+    PA.t1=LAST_TR;PA.disp=LAST_DISP;PA.dispStride=LAST_DISP_STRIDE;
   }else{
     PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
-    LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);
+    PA.disp=decimate(PA.t1);PA.dispStride=dispStrideFor(PA.t1);
+    LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);LAST_DISP=PA.disp;LAST_DISP_STRIDE=PA.dispStride;
   }
-  /* Decimate the full curve ONCE so the trace grows a stable prefix
-     (no per-frame re-decimation jitter, no O(idx) work per frame). */
-  PA.disp=decimate(PA.t1,undefined,TRACE_PTS);
-  PA.dispStride=(PA.t1.x.length>TRACE_PTS)?Math.ceil(PA.t1.x.length/TRACE_PTS):1;
+  /* PA.disp is the SAME decimated curve the static plot drew, so the trace
+     grows a stable prefix of identical vertices — same smoothness, and a
+     slice per frame (no re-decimation jitter, no O(idx) work). */
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
   setProgress(0, 0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
