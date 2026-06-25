@@ -2799,13 +2799,26 @@ function doCompute(){
   /* Compute quadrature */
   ST.result=computeQuad(ST.method,fn,aVal,bVal,n);
 
-  /* Infinite-domain rules: derive a finite plot window from the actual
-     node spread so the weighted integrand and all nodes are visible. */
+  /* Infinite-domain rules: the weighted integrand g=w·f decays fast, so
+     framing the whole node spread (Laguerre nodes reach ~20+) buries the
+     peak in a flat tail.  Size the window to where |g| is significant
+     (>=0.4% of its peak) so the bulk of the area — the larger y values —
+     fills the plot. */
   if(infinite){
+    var g=ST.plotFn;
     var xs=ST.result.pts.map(function(p){return p.x;});
-    var xmax=xs.length?xs[xs.length-1]:1, xmin=xs.length?xs[0]:-1;
-    if(ST.method==='hermite'){var M=Math.max(Math.abs(xmin),Math.abs(xmax))*1.18||4;ST.a=-M;ST.b=M;}
-    else{ST.a=-0.4;ST.b=(xmax>0?xmax:1)*1.08;}
+    var hiN=xs.length?xs[xs.length-1]:6, loN=xs.length?xs[0]:-6;
+    var lo0=(ST.method==='hermite')?-Math.abs(loN)-1:0;
+    var hi0=(ST.method==='hermite')? Math.abs(hiN)+1:hiN+1;
+    var N=600,gmax=0,gv=[],s,x,v;
+    for(s=0;s<=N;s++){x=lo0+(hi0-lo0)*s/N;try{v=Math.abs(g(x));}catch(e){v=0;}if(!isFinite(v))v=0;gv.push(v);if(v>gmax)gmax=v;}
+    var thr=gmax*0.004,iL=0,iR=N;
+    while(iL<N&&gv[iL]<thr)iL++;
+    while(iR>0&&gv[iR]<thr)iR--;
+    if(iR<iL){iL=0;iR=N;}
+    var xL=lo0+(hi0-lo0)*iL/N, xR=lo0+(hi0-lo0)*iR/N, pad=((xR-xL)*0.08)||1;
+    if(ST.method==='hermite'){var M=Math.max(Math.abs(xL),Math.abs(xR))+pad;ST.a=-M;ST.b=M;}
+    else{ST.a=-0.4;ST.b=xR+pad;}
   }
 
   /* Update view and render */
