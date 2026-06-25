@@ -1890,14 +1890,17 @@ function computeView(){
   var pad=(b-a)*0.12;
   var xMin=a-pad,xMax=b+pad;
   if(!f){VIEW={xMin:xMin,xMax:xMax,yMin:-1,yMax:1};return;}
-  /* Only scale y over the valid domain: for Laguerre [0,∞) the weighted
-     integrand e^{-x}f blows up for x<0, which would otherwise dominate the
-     autoscale and squash the real curve. */
-  var xLo=(ST.method==='laguerre')?0:-Infinity;
+  /* Autoscale y over the INTEGRATION region [a,b], not the padded view —
+     the padding margins can blow up (e.g. x²e^{-x} for x<0, or e^{-x} on
+     the wrong side of Laguerre) and would otherwise dominate the scale and
+     squash the real curve.  Clamp to the valid domain and inset slightly
+     from singular weighted endpoints. */
+  var yA=a,yB=b;
+  if(ST.method==='laguerre') yA=Math.max(a,0);
+  if(WEIGHTED_METHODS[ST.method]){var ins=(b-a)*0.02; yA+=ins; yB-=ins;}
   var ys=[],ns=400;
   for(var i=0;i<=ns;i++){
-    var x=xMin+(xMax-xMin)*i/ns;
-    if(x<xLo)continue;
+    var x=yA+(yB-yA)*i/ns;
     try{var y=f(x);if(isFinite(y)&&Math.abs(y)<1e7)ys.push(y);}catch(e){}
   }
   if(ys.length===0)ys=[-1,1];
