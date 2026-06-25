@@ -1250,7 +1250,8 @@ var EXAMPLES={
   ex6e:  {expr:'x/sqrt(x^4+1)',   a:'0',b:'1',     exact:Math.log(1+Math.SQRT2)/2,
           latex:'\\dfrac{x}{\\sqrt{x^4+1}}',    exactLatex:'\\dfrac{\\ln(1+\\sqrt{2})}{2}',     method:'simpson'},
   /* Weighted Gaussian examples — the smooth factor f is the integrand;
-     the rule supplies the weight w(x).  True value computed by tanh–sinh. */
+     the rule supplies the weight w(x).  True value computed by a
+     high-order rule of the same weight (weightedRef). */
   wjac1: {expr:'1',      a:'0',b:'1',  exact:null, method:'jacobi', alpha:0,   beta:-0.5, latex:'1'},
   wjac2: {expr:'exp(x)', a:'0',b:'1',  exact:null, method:'jacobi', alpha:0,   beta:-0.5, latex:'\\exp(x)'},
   wjac3: {expr:'cos(x)', a:'0',b:'1',  exact:null, method:'jacobi', alpha:-0.5,beta:0,    latex:'\\cos x'},
@@ -1583,6 +1584,22 @@ function weightedValFast(f,a,b,n,method){
   var mid=(a+b)/2,half=(b-a)/2,scale=Math.pow(half,ab.alpha+ab.beta+1),total=0;
   for(var k=0;k<nw.t.length;k++)total+=nw.W[k]*f(mid+half*nw.t[k]);
   return total*scale;
+}
+/* True value of a weighted integral: a high-order rule of the SAME
+   weight.  The singular weight is integrated exactly, so this converges
+   spectrally in the smooth factor f — far better than tanh–sinh on w·f,
+   which has to resolve the endpoint singularity numerically (and fails
+   for strong singularities).  Refine until two estimates agree, so we
+   stop early for smooth f and avoid needless high-n round-off; every
+   reference node count exceeds the method's convergence grid. */
+function weightedRef(f,a,b,method){
+  var ns=[24,32,48,64,96],prev=null,val;
+  for(var i=0;i<ns.length;i++){
+    val=weightedValFast(f,a,b,ns[i],method);
+    if(prev!==null&&Math.abs(val-prev)<1e-13*Math.max(1,Math.abs(val)))return val;
+    prev=val;
+  }
+  return val;
 }
 
 /* ── Adaptive Simpson ──
@@ -2614,9 +2631,9 @@ function doCompute(){
     var wab=weightedAB(ST.method),alc=wab.alpha,bec=wab.beta;
     ST.weightFn=function(x){return Math.pow(bVal-x,alc)*Math.pow(x-aVal,bec);};
     ST.plotFn=function(x){return ST.weightFn(x)*fn(x);};
-    /* True weighted integral via tanh–sinh on w·f (handles the weight's
-       endpoint singularities). */
-    ST.exact=tanhSinhRef(ST.plotFn,aVal,bVal);
+    /* True weighted integral via a high-order rule of the same weight
+       (exact for the singular weight; spectral in f). */
+    ST.exact=weightedRef(fn,aVal,bVal,ST.method);
     ST.exactIsRef=true;
   }else{
     ST.weightFn=null;ST.plotFn=fn;
@@ -2661,7 +2678,7 @@ function doCompute(){
   var h=ST.result.h;
 
   var exactStr=ST.exact!==null?fmtN(ST.exact,12):'unknown';
-  var exactLabel=ST.weighted?'True value (tanh\u2013sinh)':(ST.exactIsRef?'Reference (tanh\u2013sinh)':'Exact Value');
+  var exactLabel=ST.weighted?'True value (high-order Gauss)':(ST.exactIsRef?'Reference (tanh\u2013sinh)':'Exact Value');
   var errorStr=error!==null?fmtErr(error):'—';
   var errorClass=error!==null?(error<1e-10?'res-val-green':error<1e-4?'res-val-blue':'res-val-red'):'';
 
