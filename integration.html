@@ -2674,11 +2674,43 @@ function numToPiLatex(v, dp){
   return fmtN(v, dp==null?4:dp).replace(/\.?0+$/,'');
 }
 
+/* True when the integrand LaTeX is a sum of two or more top-level terms
+   (a '+' or '-' outside any braces/parentheses, ignoring a leading sign).
+   Such an f must be parenthesised so the weight/measure binds to all of it,
+   e.g. w(x)·(x^20 + 3x^15) rather than the ambiguous w(x)·x^20 + 3x^15. */
+function latexIsSum(tex){
+  var depth=0,i=0,n=tex.length,seenTerm=false;
+  while(i<n){
+    var c=tex[i];
+    if(c==='\\'){
+      var j=i+1;
+      if(j<n && /[a-zA-Z]/.test(tex[j])){
+        var cmd='';
+        while(j<n && /[a-zA-Z]/.test(tex[j])){cmd+=tex[j];j++;}
+        if(cmd==='left') depth++;
+        else if(cmd==='right') depth--;
+        else if(depth===0) seenTerm=true; /* \sin, \pi, \sqrt … are terms */
+        i=j; continue;
+      }
+      i+=2; continue; /* escaped single char, e.g. \, \{ \% */
+    }
+    if(c==='{'||c==='('||c==='[') {if(depth===0)seenTerm=true;depth++;i++;continue;}
+    if(c==='}'||c===')'||c===']') {depth--;i++;continue;}
+    if(depth===0 && (c==='+'||c==='-')){ if(seenTerm) return true; }
+    else if(depth===0 && !/\s/.test(c)){ seenTerm=true; }
+    i++;
+  }
+  return false;
+}
+
 function formulaLatex(method,a,b,n,latex){
   var aStr=numToPiLatex(a,4);
   var bStr=numToPiLatex(b,4);
   var hStr=numToPiLatex((b-a)/n,6);
-  var integralStr='\\int_{'+aStr+'}^{'+bStr+'}'+latex+'\\,dx';
+  /* Parenthesise a multi-term integrand so the weight/measure binds to all
+     of f, not just its first term. */
+  var fLatex=latexIsSum(latex) ? '\\left('+latex+'\\right)' : latex;
+  var integralStr='\\int_{'+aStr+'}^{'+bStr+'}'+fLatex+'\\,dx';
   if(WEIGHTED_METHODS[method]){
     /* Weighted integral ∫ w(x) f(x) dx with the explicit weight shown. */
     var wStr;
@@ -2686,13 +2718,13 @@ function formulaLatex(method,a,b,n,latex){
     else if(method==='cheb2') wStr='\\sqrt{(b-x)(x-a)}';
     else { var aE=fmtN(ST.jAlpha,3).replace(/\.?0+$/,''), bE=fmtN(ST.jBeta,3).replace(/\.?0+$/,'');
            wStr='(b-x)^{'+aE+'}\\,(x-a)^{'+bE+'}'; }
-    var wInt='\\int_{'+aStr+'}^{'+bStr+'}'+wStr+'\\,'+latex+'\\,dx';
+    var wInt='\\int_{'+aStr+'}^{'+bStr+'}'+wStr+'\\,'+fLatex+'\\,dx';
     return wInt+'\\;\\approx\\;\\Bigl(\\dfrac{b-a}{2}\\Bigr)^{\\alpha+\\beta+1}\\sum_{k=1}^{'+n+'}w_k\\,f(x_k)';
   }
   if(INFINITE_METHODS[method]){
     var wI=(method==='hermite')
-      ? '\\int_{-\\infty}^{\\infty} e^{-x^2}\\,'+latex+'\\,dx'
-      : '\\int_{0}^{\\infty} e^{-x}\\,'+latex+'\\,dx';
+      ? '\\int_{-\\infty}^{\\infty} e^{-x^2}\\,'+fLatex+'\\,dx'
+      : '\\int_{0}^{\\infty} e^{-x}\\,'+fLatex+'\\,dx';
     return wI+'\\;\\approx\\;\\sum_{k=1}^{'+n+'}w_k\\,f(x_k)';
   }
   var NC_CAPTIONS={
