@@ -2058,8 +2058,10 @@ function c2wy(py){return VIEW.yMin+(TMARG+PH-py)/PH*(VIEW.yMax-VIEW.yMin);}
 
 function computeView(){
   var a=ST.a,b=ST.b,f=ST.plotFn||ST.fn;
-  var pad=(b-a)*0.12;
-  var xMin=a-pad,xMax=b+pad;
+  /* Plot exactly the region of integration [a,b] — no horizontal padding,
+     so nothing is drawn outside it.  For infinite-domain rules a,b are the
+     (suitably truncated) significant window. */
+  var xMin=a,xMax=b;
   if(!f){VIEW={xMin:xMin,xMax:xMax,yMin:-1,yMax:1};return;}
   /* Autoscale y over the INTEGRATION region [a,b], not the padded view —
      the padding margins can blow up (e.g. x²e^{-x} for x<0, or e^{-x} on
@@ -2147,8 +2149,8 @@ function drawAxes(){
 function drawCurve(){
   if(!ST.fn)return;
   var pf=ST.plotFn||ST.fn;
-  /* Laguerre's domain is [0,∞) — don't draw the curve on the wrong side. */
-  var xLo=(ST.method==='laguerre')?0:-Infinity;
+  /* Laguerre / exp–sinh live on [0,∞) — don't draw the curve on the wrong side. */
+  var xLo=(ST.method==='laguerre'||ST.method==='expsinh')?0:-Infinity;
   var hc=document.documentElement.classList.contains('hc');
   ctx.save();
   ctx.strokeStyle=hc?'#0000cc':'#1d4ed8';
@@ -3078,9 +3080,9 @@ function doCompute(){
   if(ST.result.de){
     /* DE rules carry their own significant x-window (computed from the
        per-node contributions, since the raw node spread reaches ~1e6). */
-    var dL=ST.result.frameLo, dR=ST.result.frameHi, dpad=((dR-dL)*0.08)||1;
-    if(ST.method==='sinhsinh'){var DM=Math.max(Math.abs(dL),Math.abs(dR))+dpad;ST.a=-DM;ST.b=DM;}
-    else{ST.a=-0.4;ST.b=dR+dpad;}
+    var dL=ST.result.frameLo, dR=ST.result.frameHi;
+    if(ST.method==='sinhsinh'){var DM=Math.max(Math.abs(dL),Math.abs(dR));ST.a=-DM;ST.b=DM;}
+    else{ST.a=0;ST.b=dR;}        /* half line: start at x=0 */
   }else if(infinite){
     var g=ST.plotFn;
     var xs=ST.result.pts.map(function(p){return p.x;});
@@ -3093,9 +3095,9 @@ function doCompute(){
     while(iL<N&&gv[iL]<thr)iL++;
     while(iR>0&&gv[iR]<thr)iR--;
     if(iR<iL){iL=0;iR=N;}
-    var xL=lo0+(hi0-lo0)*iL/N, xR=lo0+(hi0-lo0)*iR/N, pad=((xR-xL)*0.08)||1;
-    if(ST.method==='hermite'){var M=Math.max(Math.abs(xL),Math.abs(xR))+pad;ST.a=-M;ST.b=M;}
-    else{ST.a=-0.4;ST.b=xR+pad;}
+    var xL=lo0+(hi0-lo0)*iL/N, xR=lo0+(hi0-lo0)*iR/N;
+    if(ST.method==='hermite'){var M=Math.max(Math.abs(xL),Math.abs(xR));ST.a=-M;ST.b=M;}
+    else{ST.a=0;ST.b=xR;}        /* half line: start at x=0 */
   }
 
   /* Update view and render */
