@@ -26,9 +26,11 @@ This repository is set up to mint [Zenodo](https://zenodo.org) DOIs — both a
 single archival DOI for the whole project and an optional DOI per tool. See
 [`docs/ZENODO.md`](docs/ZENODO.md) for the step-by-step setup.
 
-<!-- After your first Zenodo release, replace ZENODO_RECORD_ID below with the
-     concept DOI badge from https://zenodo.org/account/settings/github/ -->
-<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8475.svg)](https://doi.org/10.5281/zenodo.8475)
+
+The badge and `CITATION.cff` use the **concept DOI** (`10.5281/zenodo.8475`),
+which always resolves to the latest version. This specific release is
+`10.5281/zenodo.20979534`.
 
 ## License
 
