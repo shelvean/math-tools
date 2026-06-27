@@ -14,6 +14,7 @@ re-running after edits is safe.
 import os
 import re
 import glob
+import json
 
 BASE = '/home/user/math-tools'
 SITE_URL = 'https://shelvean.github.io/math-tools/'
@@ -31,6 +32,26 @@ SKIP_PAGES = {
     'businessmath.html', 'pdftools.html', 'desktop-preview.html',
     'ttlc2026.html', 'statesdata.html', 'epl.html', 'timer.html',
 }
+
+# Per-tool Zenodo DOIs, produced by zenodo_upload.py. When present, the DOI
+# is woven into all three citation formats (and shown as a link in the box).
+DOI_FILE = os.path.join(BASE, 'zenodo_dois.json')
+
+
+def load_dois():
+    """Map filename -> DOI string, for *published* Zenodo records only."""
+    if not os.path.exists(DOI_FILE):
+        return {}
+    try:
+        with open(DOI_FILE, encoding='utf-8') as f:
+            data = json.load(f)
+    except (ValueError, OSError):
+        return {}
+    return {name: rec['doi'] for name, rec in data.items()
+            if rec.get('published') and rec.get('doi')}
+
+
+DOI_MAP = load_dois()
 
 CSS_START = '/* cite-mark-css:start */'
 CSS_END = '/* cite-mark-css:end */'
@@ -76,6 +97,8 @@ CITE_CSS = f"""{CSS_START}
 .cite-copy:hover{{background:#f3f4f6;color:#111827;}}
 .cite-copy:focus-visible{{outline:2px solid #4338ca;outline-offset:1px;}}
 .cite-copy.cite-ok{{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}}
+.cite-doi{{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}}
+.cite-doi a{{color:#4338ca;word-break:break-all;}}
 @media print{{.cite-box{{display:none;}}}}
 {CSS_END}
 """
@@ -84,6 +107,7 @@ CITE_HTML_TMPL = """{start}
 <details class="cite-box">
   <summary class="cite-summary">Cite this tool</summary>
   <div class="cite-content">
+    {doi_line}
     <div class="cite-tabs" role="tablist" aria-label="Citation format">
       <button type="button" class="cite-tab" role="tab" aria-selected="true"
               aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
@@ -242,22 +266,28 @@ def bib_key(filename):
     return AUTHOR_LAST.lower() + YEAR + re.sub(r'[^a-z0-9]', '', stem)
 
 
-def build_citations(title, filename):
-    url = SITE_URL + filename
+def build_citations(title, filename, doi=None):
+    """Build APA / MLA / BibTeX strings. When a Zenodo DOI is supplied it
+    becomes the canonical link (https://doi.org/<doi>) and a dedicated
+    BibTeX doi field."""
+    url = f'https://doi.org/{doi}' if doi else SITE_URL + filename
     mla_url = url.replace('https://', '').replace('http://', '')
 
     apa = f'{AUTHOR_LAST}, {AUTHOR_INITIAL} ({YEAR}). {title}. {PUBLISHER}. {url}'
     mla = (f'{AUTHOR_LAST}, {AUTHOR_FIRST}. "{title}." '
            f'{PUBLISHER}, {YEAR}, {mla_url}.')
-    bib = (
-        f'@online{{{bib_key(filename)},\n'
-        f'  author       = {{{AUTHOR_FIRST} {AUTHOR_LAST}}},\n'
-        f'  title        = {{{{{bibtex_escape(title)}}}}},\n'
-        f'  year         = {{{YEAR}}},\n'
-        f'  organization = {{{PUBLISHER}}},\n'
-        f'  url          = {{{url}}}\n'
-        f'}}'
-    )
+    bib_lines = [
+        f'@online{{{bib_key(filename)},',
+        f'  author       = {{{AUTHOR_FIRST} {AUTHOR_LAST}}},',
+        f'  title        = {{{{{bibtex_escape(title)}}}}},',
+        f'  year         = {{{YEAR}}},',
+        f'  organization = {{{PUBLISHER}}},',
+    ]
+    if doi:
+        bib_lines.append(f'  doi          = {{{doi}}},')
+    bib_lines.append(f'  url          = {{{url}}}')
+    bib_lines.append('}')
+    bib = '\n'.join(bib_lines)
     return html_escape(apa), html_escape(mla), html_escape(bib)
 
 
@@ -295,7 +325,13 @@ def process(path):
         html = f.read()
     html = strip_old(html)
     title = extract_title(html)
-    apa, mla, bib = build_citations(title, name)
+    doi = DOI_MAP.get(name)
+    apa, mla, bib = build_citations(title, name, doi)
+    doi_line = ''
+    if doi:
+        doi_line = (f'<div class="cite-doi">DOI: '
+                    f'<a href="https://doi.org/{doi}">'
+                    f'https://doi.org/{doi}</a></div>')
 
     if '</style>' in html:
         idx = html.rfind('</style>')
@@ -307,7 +343,7 @@ def process(path):
 
     block = CITE_HTML_TMPL.format(
         start=HTML_START, end=HTML_END,
-        apa=apa, mla=mla, bib=bib,
+        doi_line=doi_line, apa=apa, mla=mla, bib=bib,
     )
     html, where = inject_block(html, block)
 
