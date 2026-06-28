@@ -281,12 +281,45 @@ def main():
             continue
 
         existing = state.get(name)
-        if existing and not args.new_version:
-            print(f'  HAVE {name} -> {existing.get("doi")}')
+
+        # Already fully published — nothing left to do (unless we are
+        # explicitly archiving a brand-new version).
+        if existing and existing.get('published') and not args.new_version:
+            print(f'  HAVE {name} -> {existing.get("doi")} (published)')
             continue
+
         if args.limit and done >= args.limit:
             print(f'  STOP reached --limit {args.limit}')
             break
+
+        # A draft already exists for this tool. Either publish it in place
+        # (mints the reserved DOI) or leave it as a draft.
+        if existing and not args.new_version:
+            if not args.publish:
+                print(f'  DRFT {name} -> {existing.get("doi")} '
+                      f'(draft exists; re-run with --publish to mint)')
+                continue
+            try:
+                pub = zen.publish(existing['record_id'])
+                doi = (pub.get('doi') or pub.get('metadata', {}).get('doi')
+                       or existing.get('doi'))
+                concept = (pub.get('conceptdoi')
+                           or pub.get('metadata', {}).get('conceptdoi')
+                           or existing.get('concept_doi'))
+                existing.update({
+                    'doi': doi,
+                    'concept_doi': concept,
+                    'url': pub.get('links', {}).get('record_html',
+                                                    existing.get('url')),
+                    'published': True,
+                })
+                state[name] = existing
+                save_state(state)  # persist after each tool — crash-safe
+                print(f'  PUB  {name} -> {doi}')
+                done += 1
+            except Exception as e:  # noqa: BLE001 - report and continue
+                print(f'  FAIL {name} (publish): {e}')
+            continue
 
         with open(path, encoding='utf-8') as f:
             html = f.read()
