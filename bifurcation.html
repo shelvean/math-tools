@@ -3211,7 +3211,10 @@ function periodAtR(fn,x0,r,maxPow){
    Returns the onset list (short/empty when there is no sustained cascade). */
 function detectFeigenbaum(fn,x0,p0,p1,want){
   var span=p1-p0; if(!(span>0))return [];
-  var maxPow=8, K=400, onsets=[];
+  /* Keep the coarse-scan step roughly constant (~0.018) regardless of span,
+     so a wide scan doesn't step over narrow period bands (e.g. the P4→P8
+     window of r*x+x^3-x^5, ~0.02 wide). */
+  var maxPow=8, K=Math.max(400,Math.min(1600,Math.round(span/0.018))), onsets=[];
   var prevP=periodAtR(fn,x0,p0,maxPow), prevR=p0, target=2, i, b;
   for(i=1;i<=K;i++){
     var r=p0+(i/K)*span, p=periodAtR(fn,x0,r,maxPow);
@@ -3260,26 +3263,39 @@ function applyCustomMap(){
   var pFull0=(function(){var p=parseMathInput(document.getElementById('pMinNum').value); return isFinite(p)?p:0;})();
   var pFull1=(function(){var p=parseMathInput(document.getElementById('pMaxNum').value); return isFinite(p)?p:4;})();
   if(!(pFull1>pFull0)){pFull0=0;pFull1=4;}
-  /* Auto-detect the parameter window where the dynamics get interesting. */
   var autoOn=!!((document.getElementById('customAutoRange')||{}).checked);
+  /* Locate a period-doubling cascade over a WIDE range, independent of the
+     entered view range. The entered range may start above the first doublings
+     (so the early onsets r1,r2 are missed), target a different region, or have
+     been inherited from a previously-selected map — any of which would make a
+     genuine cascade (even the logistic's) read as "no cascade". */
+  var feigScan0=Math.min(pFull0,-6), feigScan1=Math.max(pFull1,8);
+  var onsets=[]; try{ onsets=detectFeigenbaum(fFn,x0c,feigScan0,feigScan1,6); }catch(e){ onsets=[]; }
+  /* Second pass: the wide scan locates the cascade but its deep onsets are
+     imprecise and it can pick up spurious doublings from periodic windows in
+     the chaos beyond r∞. Re-scan a tight window up to the estimated
+     accumulation point for accurate onsets. */
+  if(onsets.length>=2){
+    var fr1=onsets[0], fgap=(onsets[1]-onsets[0])||0.2;
+    var frInf=fr1+fgap*4.6692/(4.6692-1);
+    var fine=[]; try{ fine=detectFeigenbaum(fFn,x0c,fr1-0.4*fgap,frInf+0.03*fgap+0.005,6); }catch(e){ fine=[]; }
+    if(fine.length>=onsets.length) onsets=fine;
+  }
+
   var win=null;
-  if(autoOn){ try{ win=detectRange(fFn,x0c,pFull0,pFull1); }catch(e){ win=null; } }
-  /* Fallback: the entered r-range produced nothing (commonly the range was
-     inherited from another map and this map's dynamics — a cascade, or any
-     bounded attractor — live elsewhere, or the orbit just diverges here).
-     Scan a wide range to find a cascade and re-centre on it, so the user
-     isn't left with a blank diagram. Updates pFull0/pFull1 so the on-the-fly
-     Feigenbaum detection below scans the right region too. */
-  if(autoOn && !win){
-    var wo=[]; try{ wo=detectFeigenbaum(fFn,x0c,-6,8,6); }catch(e){ wo=[]; }
-    if(wo.length>=2){
-      var wlo=wo[0], whi=wo[wo.length-1], wsp=(whi-wlo)||0.2;
-      pFull0=wlo-0.5*wsp-0.1; pFull1=whi+4*wsp+0.3;
+  if(autoOn){
+    if(onsets.length>=3){
+      /* A cascade exists: re-centre the view on it so the diagram and the
+         Feigenbaum table agree. */
+      var clo=onsets[0], chi=onsets[onsets.length-1], csp=(chi-clo)||0.2;
+      pFull0=clo-0.5*csp-0.1; pFull1=chi+4*csp+0.3;
       try{ win=detectRange(fFn,x0c,pFull0,pFull1); }catch(e){ win=null; }
       if(!win) win=[pFull0,pFull1];
     } else {
-      var ww=null; try{ ww=detectRange(fFn,x0c,-6,8); }catch(e){ ww=null; }
-      if(ww){ pFull0=-6; pFull1=8; win=ww; }
+      /* No cascade: use the entered range, falling back to a wide scan if it
+         yields nothing interesting (inherited range, divergence, etc.). */
+      try{ win=detectRange(fFn,x0c,pFull0,pFull1); }catch(e){ win=null; }
+      if(!win){ var ww=null; try{ ww=detectRange(fFn,x0c,-6,8); }catch(e){ ww=null; } if(ww){ pFull0=-6; pFull1=8; win=ww; } }
     }
   }
   var vMin=win?win[0]:pFull0, vMax=win?win[1]:pFull1;
@@ -3289,11 +3305,9 @@ function applyCustomMap(){
   if(autoOn){ try{ yr=detectStateRange(fFn,x0c,vMin,vMax); }catch(e){ yr=null; } }
   if(yr){ stateLo=yr[0]; stateHi=yr[1]; }
 
-  /* Auto-detect a period-doubling cascade and compute its Feigenbaum ratios
-     on the fly (over the full entered r-range, so onsets below the auto
-     window are still found). ≥3 doublings ⇒ build the table dynamically. */
+  /* Build the Feigenbaum table from the onsets located above. ≥3 doublings
+     ⇒ a cascade table; 1–2 ⇒ a note; 0 ⇒ the default "no cascade" message. */
   var feigOn=false, feigData=null, feigBifPts=[], feigNote=null;
-  var onsets=[]; try{ onsets=detectFeigenbaum(fFn,x0c,pFull0,pFull1,6); }catch(e){ onsets=[]; }
   if(onsets.length>=3){
     feigOn=true;
     var fcols=['rgba(29,78,216,.85)','rgba(15,118,110,.85)','rgba(109,40,217,.75)','rgba(217,119,6,.8)','rgba(190,18,60,.8)','rgba(8,145,178,.8)'];
@@ -3312,7 +3326,7 @@ function applyCustomMap(){
       note:'Detected '+onsets.length+' period-doublings. The ratios \\(\\delta_n\\) approach \\(4.6692\\) as the cascade accumulates; convergence is slow, so the first few land near \\(4.6\\).'
     };
   } else if(onsets.length>0){
-    feigNote='Only '+onsets.length+' period-doubling'+(onsets.length>1?'s were':' was')+' detected over the scanned range \\(r\\in['+(+pFull0.toFixed(3))+',\\,'+(+pFull1.toFixed(3))+']\\), so there is no sustained cascade to extract \\(\\delta\\approx4.6692\\) from.';
+    feigNote='Only '+onsets.length+' period-doubling'+(onsets.length>1?'s were':' was')+' detected over the scanned range \\(r\\in['+(+feigScan0.toFixed(3))+',\\,'+(+feigScan1.toFixed(3))+']\\), so there is no sustained cascade to extract \\(\\delta\\approx4.6692\\) from.';
   }
 
   var fLatex=exprToLatex(exprRaw);
