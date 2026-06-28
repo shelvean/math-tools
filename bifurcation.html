@@ -3135,6 +3135,25 @@ function detectRange(fn,x0,p0,p1){
   return [Math.max(p0,rlo-m), Math.min(p1,rhi+m)];
 }
 
+/* Sample the attractor's vertical extent across an r-window so the y-axis
+   (state) view can be fit to where the orbit actually lives. The entered
+   domain (used as the initial condition) need not contain the attractor —
+   e.g. r·cos(sin x) starts in [0,1] but settles around [2.5, 5.3] — which
+   would otherwise render the diagram entirely off-screen. */
+function detectStateRange(fn,x0,p0,p1){
+  var NR=160, span=p1-p0; if(!(span>0))return null;
+  var lo=Infinity, hi=-Infinity, k;
+  for(var i=0;i<NR;i++){
+    var r=p0+(i+0.5)/NR*span, x=x0, ok=true;
+    for(k=0;k<900;k++){ x=fn(x,r); if(!isFinite(x)||Math.abs(x)>1e8){ok=false;break;} }
+    if(!ok)continue;
+    for(k=0;k<300;k++){ x=fn(x,r); if(!isFinite(x)||Math.abs(x)>1e8){ok=false;break;} if(x<lo)lo=x; if(x>hi)hi=x; }
+  }
+  if(!isFinite(lo)||!isFinite(hi)||!(hi>=lo))return null;
+  var d=hi-lo, m=d>1e-9?0.08*d:Math.max(0.5,0.1*Math.abs(hi)+0.1);
+  return [lo-m, hi+m];
+}
+
 function applyCustomMap(){
   var exprRaw=document.getElementById('customFnInput').value.trim();
   var errEl=document.getElementById('customFnError');
@@ -3168,6 +3187,11 @@ function applyCustomMap(){
   var win=null;
   if(autoOn){ try{ win=detectRange(fFn,x0c,pFull0,pFull1); }catch(e){ win=null; } }
   var vMin=win?win[0]:pFull0, vMax=win?win[1]:pFull1;
+  /* Fit the y-axis (state) view to the attractor over the chosen r-window;
+     the entered domain may not contain it, leaving the diagram off-screen. */
+  var stateLo=xMin, stateHi=xMax, yr=null;
+  if(autoOn){ try{ yr=detectStateRange(fFn,x0c,vMin,vMax); }catch(e){ yr=null; } }
+  if(yr){ stateLo=yr[0]; stateHi=yr[1]; }
   var fLatex=exprToLatex(exprRaw);
 
   MAPS['custom']={
@@ -3178,13 +3202,13 @@ function applyCustomMap(){
     f:fFn, df:dfFn,
     customSrc: preprocess2(exprRaw),
     x0:x0c,
-    xMin:xMin, xMax:xMax,
+    xMin:stateLo, xMax:stateHi,
     pMin:vMin, pMax:vMax,
     pMinFull:pFull0, pMaxFull:pFull1,
     pLabel:'r',
     viewPMin:vMin, viewPMax:vMax,
     feigenbaum:false, bifPts:[],
-    desc:'Custom map \\(x_{n+1}='+fLatex+'\\). '+(win?('Auto-ranged to \\(r\\in['+(+vMin.toFixed(4))+',\\,'+(+vMax.toFixed(4))+']\\), where the interesting dynamics live; uncheck <em>Auto-range</em> and re-Plot to keep \\(r\\in['+(+pFull0.toFixed(4))+',\\,'+(+pFull1.toFixed(4))+']\\) as entered. '):'')+'Fixed points and the Lyapunov exponent are computed numerically (derivative by finite differences).'
+    desc:'Custom map \\(x_{n+1}='+fLatex+'\\). '+(win?('Auto-ranged to \\(r\\in['+(+vMin.toFixed(4))+',\\,'+(+vMax.toFixed(4))+']\\), where the interesting dynamics live; uncheck <em>Auto-range</em> and re-Plot to keep \\(r\\in['+(+pFull0.toFixed(4))+',\\,'+(+pFull1.toFixed(4))+']\\) as entered. '):'')+(yr?('The state (y) axis is fit to the attractor at \\(x\\in['+(+stateLo.toFixed(3))+',\\,'+(+stateHi.toFixed(3))+']\\). '):'')+'Fixed points and the Lyapunov exponent are computed numerically (derivative by finite differences).'
   };
 
   switchMap('custom');
@@ -3193,7 +3217,7 @@ function applyCustomMap(){
   var copt=document.querySelector('#cselList .csel-opt[data-id="custom"]');
   if(copt){copt.innerHTML=MAPS.custom.dropLatex; mj([copt]);}
   updateCustomLatex();
-  say(win?('Custom map plotted; auto-ranged to r in ['+(+vMin.toFixed(3))+', '+(+vMax.toFixed(3))+'].'):'Custom map plotted.');
+  say(win?('Custom map plotted; auto-ranged to r in ['+(+vMin.toFixed(3))+', '+(+vMax.toFixed(3))+']'+(yr?(', state y-axis fit to ['+(+stateLo.toFixed(2))+', '+(+stateHi.toFixed(2))+']'):'')+'.'):'Custom map plotted.');
 }
 
 /* Default placeholder so the Custom option is selectable before the user
