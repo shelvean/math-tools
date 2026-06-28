@@ -1,45 +1,55 @@
 #!/usr/bin/env python3
-"""Mint a Zenodo DOI for each interactive tool via the Zenodo REST API.
+"""Mint a Zenodo DOI for each interactive tool — as a METADATA-ONLY record.
+
+The interactive tools don't run when downloaded from Zenodo (they depend on
+vendored JS/CSS), so each Zenodo record carries no file: it is a citable,
+DOI-bearing landing page whose metadata points at the live, working tool via
+a related identifier. This uses Zenodo's newer InvenioRDM REST API
+(`/api/records` with `files.enabled = false`).
 
 For every tool page (the same set add_citation.py cites), this script:
 
-  1. Creates a new deposition draft (or a new version of an existing one).
-  2. Uploads the tool's HTML file to the deposition.
-  3. Sets metadata: title (from the page <h1>), description (from the
-     page <meta name="description">), creator, license, keywords (from
-     hub-page tags), and a related identifier pointing at the live page.
-  4. Optionally publishes the deposition, which MINTS the DOI.
-  5. Records {filename: {...doi info...}} in zenodo_dois.json, which
-     add_citation.py reads to embed each DOI in the on-page citations.
+  1. Creates a metadata-only draft record (no file upload).
+  2. Sets metadata: title (page <h1>), description (page <meta description>),
+     creator, license, keywords (hub-page tags), and a related identifier
+     pointing at the live page.
+  3. Reserves the DOI (draft) or publishes (mints the DOI permanently).
+  4. Records {filename: {...doi info...}} in zenodo_dois.json, which
+     add_citation.py reads to embed each published DOI in the on-page
+     citations.
 
 Quick start
 -----------
-  # 1. Create a personal access token with the "deposit:write" and
-  #    "deposit:actions" scopes:
+  # 1. Token with the "deposit:write" + "deposit:actions" scopes:
   #      https://zenodo.org/account/settings/applications/tokens/new
-  #      (use https://sandbox.zenodo.org/... for the sandbox)
+  #      (sandbox needs its OWN token from https://sandbox.zenodo.org/...)
   export ZENODO_TOKEN=xxxxxxxxxxxxxxxxxxxx
 
-  # 2. Dry run against the sandbox to make sure everything looks right
-  #    (sandbox DOIs are fake and records are wiped periodically):
+  # 2. Validate one record end-to-end on the sandbox FIRST (fake DOIs):
   python3 zenodo_upload.py --sandbox --only newton.html --publish
 
-  # 3. Create real drafts (no DOI minted yet) and review them in the UI:
+  # 3. If you have leftover file-based drafts from the old uploader, discard
+  #    them so they can be recreated as metadata-only (deletes UNPUBLISHED
+  #    records listed in zenodo_dois.json, then clears them from the file):
+  python3 zenodo_upload.py --discard-old
+
+  # 4. Create metadata-only drafts for every tool (nothing public yet):
   python3 zenodo_upload.py
 
-  # 4. When happy, publish for real (IRREVERSIBLE — DOIs are permanent):
+  # 5. Review at https://zenodo.org/me/uploads, then publish for real
+  #    (IRREVERSIBLE — a published DOI is permanent):
   python3 zenodo_upload.py --publish
 
 State & idempotency
 -------------------
-Progress is tracked in zenodo_dois.json. A tool already recorded there is
-skipped, so the script is safe to re-run after an interruption. To archive
-an updated tool as a *new version* under the same concept DOI, pass
---new-version (optionally with --only to target specific tools).
+Progress is tracked in zenodo_dois.json. A published tool is skipped; an
+existing draft is published in place when --publish is given. Safe to
+re-run after an interruption.
 
 Only the Python standard library is used (urllib) — no third-party deps.
 """
 import argparse
+import datetime
 import json
 import os
 import re
@@ -62,22 +72,22 @@ from add_citation import (
 
 STATE_FILE = os.path.join(BASE, 'zenodo_dois.json')
 
-PROD_API = 'https://zenodo.org/api'
-SANDBOX_API = 'https://sandbox.zenodo.org/api'
+PROD_HOST = 'https://zenodo.org'
+SANDBOX_HOST = 'https://sandbox.zenodo.org'
 
-# Zenodo open-license id (SPDX-style). The HTML/JS/CSS that makes up each
-# tool is MIT-licensed; educational prose is additionally CC BY 4.0 (noted
-# in the description). One license id per record, so MIT is used here.
-LICENSE_ID = 'MIT'
-UPLOAD_TYPE = 'software'
+# InvenioRDM controlled-vocabulary ids. If a sandbox test rejects one of
+# these, the server error names the bad field — adjust here and re-run.
+RESOURCE_TYPE_ID = 'software'          # interactive tools
+LICENSE_ID = 'mit'                     # SPDX id, lowercase
+RELATION_ID = 'isidenticalto'         # this record <-> the live page
+SCHEME_URL = 'url'
 
 KEYWORDS_BASE = [
     'mathematics education',
     'interactive visualization',
 ]
 
-# Hub pages whose tool-cards carry the per-tool tag assignments. Mirrors
-# generate_labels.py so keywords match the site's own taxonomy.
+# Hub pages whose tool-cards carry the per-tool tag assignments.
 HUB_PAGES = [
     'projects.html', 'dynamical.html', 'linear.html',
     'numerical.html', 'optim.html', 'pdftools.html',
@@ -115,7 +125,8 @@ def build_tag_index():
 
 
 def extract_description(html, title):
-    """Use the page's meta description; fall back to a generic sentence."""
+    """Use the page's meta description; fall back to a generic sentence.
+    Appends a line linking the live, runnable tool."""
     m = re.search(
         r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']\s*/?>',
         html, flags=re.IGNORECASE | re.DOTALL,
@@ -123,33 +134,32 @@ def extract_description(html, title):
     desc = clean(m.group(1)) if m else ''
     if not desc:
         desc = f'{title} — an interactive math teaching tool.'
-    lic = ('Source code is MIT-licensed; educational content is licensed '
-           'under CC BY 4.0.')
-    return f'<p>{desc}</p><p>{lic}</p>'
+    note = ('This is a metadata-only record for an interactive, browser-based '
+            'tool that runs live (it is not a downloadable file). '
+            'Source code is MIT-licensed; educational content is licensed '
+            'under CC BY 4.0.')
+    return f'<p>{desc}</p><p>{note}</p>'
 
 
 # --------------------------------------------------------------------------
-# Minimal Zenodo REST client (stdlib only)
+# Minimal InvenioRDM REST client (stdlib only)
 # --------------------------------------------------------------------------
 class Zenodo:
-    def __init__(self, token, api):
+    def __init__(self, token, host):
         self.token = token
-        self.api = api.rstrip('/')
+        self.host = host.rstrip('/')
 
-    def _req(self, method, url, data=None, headers=None, raw=None):
+    def _req(self, method, url, data=None):
         if not url.startswith('http'):
-            url = self.api + url
-        hdrs = {'Authorization': f'Bearer {self.token}'}
+            url = self.host + url
+        hdrs = {'Authorization': f'Bearer {self.token}',
+                'Accept': 'application/json'}
         body = None
         if data is not None:
             body = json.dumps(data).encode('utf-8')
             hdrs['Content-Type'] = 'application/json'
-        elif raw is not None:
-            body = raw
-            hdrs['Content-Type'] = 'application/octet-stream'
-        if headers:
-            hdrs.update(headers)
-        req = urllib.request.Request(url, data=body, headers=hdrs, method=method)
+        req = urllib.request.Request(url, data=body, headers=hdrs,
+                                     method=method)
         last_err = None
         for attempt in range(4):
             try:
@@ -158,10 +168,8 @@ class Zenodo:
                     return json.loads(payload) if payload else {}
             except urllib.error.HTTPError as e:
                 detail = e.read().decode('utf-8', 'replace')
-                # Retry transient server/rate-limit errors with backoff.
                 if e.code in (429, 500, 502, 503, 504) and attempt < 3:
-                    wait = 2 ** (attempt + 1)
-                    time.sleep(wait)
+                    time.sleep(2 ** (attempt + 1))
                     last_err = e
                     continue
                 raise RuntimeError(f'{method} {url} -> HTTP {e.code}: {detail}')
@@ -173,52 +181,80 @@ class Zenodo:
                 raise RuntimeError(f'{method} {url} -> {e}')
         raise RuntimeError(f'{method} {url} failed: {last_err}')
 
-    def create(self):
-        return self._req('POST', '/deposit/depositions', data={})
+    # -- records API (metadata-only) --
+    def create_draft(self, metadata):
+        body = {
+            'access': {'record': 'public', 'files': 'public'},
+            'files': {'enabled': False},
+            'metadata': metadata,
+        }
+        return self._req('POST', '/api/records', data=body)
 
-    def new_version(self, record_id):
-        r = self._req('POST',
-                       f'/deposit/depositions/{record_id}/actions/newversion')
-        # The draft of the new version lives at links.latest_draft.
-        draft_url = r.get('links', {}).get('latest_draft')
-        return self._req('GET', draft_url)
+    def get_draft(self, rec_id):
+        return self._req('GET', f'/api/records/{rec_id}/draft')
 
-    def upload_file(self, deposition, path):
-        bucket = deposition.get('links', {}).get('bucket')
-        fname = os.path.basename(path)
-        with open(path, 'rb') as f:
-            raw = f.read()
-        if bucket:  # modern files API
-            return self._req('PUT', f'{bucket}/{fname}', raw=raw)
-        # Fallback: legacy multipart files API
-        dep_id = deposition['id']
-        return self._req('POST', f'/deposit/depositions/{dep_id}/files',
-                         raw=raw, headers={'Content-Type':
-                                           'application/octet-stream'})
+    def reserve_doi(self, draft):
+        link = (draft.get('links', {}) or {}).get('reserve_doi')
+        if not link:
+            return draft
+        try:
+            self._req('POST', link)
+        except RuntimeError:
+            pass  # some instances auto-assign; ignore reserve failures
+        # Re-fetch to pick up the reserved DOI.
+        return self.get_draft(draft['id'])
 
-    def set_metadata(self, dep_id, metadata):
-        return self._req('PUT', f'/deposit/depositions/{dep_id}',
-                         data={'metadata': metadata})
+    def publish(self, draft):
+        link = (draft.get('links', {}) or {}).get('publish')
+        if not link:
+            link = f"/api/records/{draft['id']}/draft/actions/publish"
+        return self._req('POST', link)
 
-    def publish(self, dep_id):
-        return self._req('POST',
-                         f'/deposit/depositions/{dep_id}/actions/publish')
+    def new_version(self, rec_id):
+        nv = self._req('POST', f'/api/records/{rec_id}/versions')
+        return self.get_draft(nv['id'])
+
+    def delete_draft(self, rec_id):
+        """Delete an unpublished draft. Tries the records API, then the
+        legacy deposit endpoint (for drafts made by the old uploader)."""
+        try:
+            return self._req('DELETE', f'/api/records/{rec_id}/draft')
+        except RuntimeError:
+            return self._req('DELETE', f'/api/deposit/depositions/{rec_id}')
 
 
-def make_metadata(title, description, keywords, live_url):
-    return {
+def dois_of(rec):
+    """(version DOI, concept DOI) from a record/draft payload."""
+    doi = ((rec.get('pids', {}) or {}).get('doi', {}) or {}).get('identifier')
+    concept = ((((rec.get('parent', {}) or {}).get('pids', {}) or {})
+                .get('doi', {}) or {}).get('identifier'))
+    return doi, concept
+
+
+def make_metadata(title, description, keywords):
+    md = {
+        'resource_type': {'id': RESOURCE_TYPE_ID},
         'title': title,
-        'upload_type': UPLOAD_TYPE,
+        'creators': [{
+            'person_or_org': {
+                'type': 'personal',
+                'family_name': AUTHOR_LAST,
+                'given_name': AUTHOR_FIRST,
+            },
+        }],
+        'publication_date': datetime.date.today().isoformat(),
+        'publisher': 'Zenodo',
         'description': description,
-        'creators': [{'name': f'{AUTHOR_LAST}, {AUTHOR_FIRST}'}],
-        'license': LICENSE_ID,
-        'access_right': 'open',
-        'keywords': keywords,
-        'related_identifiers': [
-            {'identifier': live_url, 'relation': 'isIdenticalTo',
-             'scheme': 'url', 'resource_type': 'software'},
-        ],
+        'rights': [{'id': LICENSE_ID}],
+        'related_identifiers': [{
+            'identifier': SITE_URL,  # overwritten per tool below
+            'relation_type': {'id': RELATION_ID},
+            'scheme': SCHEME_URL,
+        }],
     }
+    if keywords:
+        md['subjects'] = [{'subject': k} for k in keywords]
+    return md
 
 
 def load_state():
@@ -236,26 +272,48 @@ def save_state(state):
 
 def tool_pages():
     import glob
-    pages = []
-    for path in sorted(glob.glob(os.path.join(BASE, '*.html'))):
-        name = os.path.basename(path)
-        if name in SKIP_PAGES:
+    return [os.path.basename(p)
+            for p in sorted(glob.glob(os.path.join(BASE, '*.html')))
+            if os.path.basename(p) not in SKIP_PAGES]
+
+
+def discard_old(zen, state):
+    """Delete every UNPUBLISHED record in the state file, then drop it."""
+    removed = 0
+    for name in list(state):
+        rec = state[name]
+        if rec.get('published'):
+            print(f'  KEEP {name} (published — not deleting)')
             continue
-        pages.append(name)
-    return pages
+        rid = rec.get('record_id')
+        try:
+            if rid:
+                zen.delete_draft(rid)
+            del state[name]
+            save_state(state)
+            removed += 1
+            print(f'  DEL  {name} (draft {rid})')
+        except Exception as e:  # noqa: BLE001
+            print(f'  FAIL {name}: {e}')
+    print(f'\nDiscarded {removed} draft(s).')
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--sandbox', action='store_true',
                     help='use sandbox.zenodo.org (fake DOIs, for testing)')
     ap.add_argument('--publish', action='store_true',
-                    help='publish the deposition (MINTS the DOI, irreversible)')
+                    help='publish (MINTS the DOI, irreversible)')
     ap.add_argument('--only', nargs='+', metavar='FILE',
                     help='restrict to specific tool filenames')
     ap.add_argument('--new-version', action='store_true',
-                    help='archive a new version of tools already recorded')
+                    help='archive a new version of tools already published')
+    ap.add_argument('--discard-old', action='store_true',
+                    help='delete unpublished drafts in zenodo_dois.json and '
+                         'remove them from the file (use to clear old '
+                         'file-based drafts before recreating metadata-only)')
     ap.add_argument('--limit', type=int, default=0,
                     help='process at most N tools this run (0 = no limit)')
     args = ap.parse_args()
@@ -264,11 +322,15 @@ def main():
     if not token:
         sys.exit('error: set ZENODO_TOKEN (see the docstring / docs/ZENODO.md)')
 
-    api = SANDBOX_API if args.sandbox else PROD_API
-    zen = Zenodo(token, api)
+    host = SANDBOX_HOST if args.sandbox else PROD_HOST
+    zen = Zenodo(token, host)
     state = load_state()
-    tags = build_tag_index()
 
+    if args.discard_old:
+        discard_old(zen, state)
+        return
+
+    tags = build_tag_index()
     targets = args.only if args.only else tool_pages()
     done = 0
     for name in targets:
@@ -282,8 +344,6 @@ def main():
 
         existing = state.get(name)
 
-        # Already fully published — nothing left to do (unless we are
-        # explicitly archiving a brand-new version).
         if existing and existing.get('published') and not args.new_version:
             print(f'  HAVE {name} -> {existing.get("doi")} (published)')
             continue
@@ -292,72 +352,69 @@ def main():
             print(f'  STOP reached --limit {args.limit}')
             break
 
-        # A draft already exists for this tool. Either publish it in place
-        # (mints the reserved DOI) or leave it as a draft.
+        # Publish an existing draft in place.
         if existing and not args.new_version:
             if not args.publish:
                 print(f'  DRFT {name} -> {existing.get("doi")} '
                       f'(draft exists; re-run with --publish to mint)')
                 continue
             try:
-                pub = zen.publish(existing['record_id'])
-                doi = (pub.get('doi') or pub.get('metadata', {}).get('doi')
-                       or existing.get('doi'))
-                concept = (pub.get('conceptdoi')
-                           or pub.get('metadata', {}).get('conceptdoi')
-                           or existing.get('concept_doi'))
+                draft = zen.get_draft(existing['record_id'])
+                rec = zen.publish(draft)
+                doi, concept = dois_of(rec)
                 existing.update({
-                    'doi': doi,
-                    'concept_doi': concept,
-                    'url': pub.get('links', {}).get('record_html',
+                    'doi': doi or existing.get('doi'),
+                    'concept_doi': concept or existing.get('concept_doi'),
+                    'url': rec.get('links', {}).get('self_html',
                                                     existing.get('url')),
                     'published': True,
                 })
                 state[name] = existing
-                save_state(state)  # persist after each tool — crash-safe
-                print(f'  PUB  {name} -> {doi}')
+                save_state(state)
+                print(f'  PUB  {name} -> {existing["doi"]}')
                 done += 1
-            except Exception as e:  # noqa: BLE001 - report and continue
+            except Exception as e:  # noqa: BLE001
                 print(f'  FAIL {name} (publish): {e}')
             continue
 
+        # Create a fresh metadata-only record.
         with open(path, encoding='utf-8') as f:
             html = f.read()
         title = extract_title(html)
         description = extract_description(html, title)
-        keywords = list(dict.fromkeys(
-            KEYWORDS_BASE + tags.get(name, [])))
-        live_url = SITE_URL + name
+        keywords = list(dict.fromkeys(KEYWORDS_BASE + tags.get(name, [])))
+        metadata = make_metadata(title, description, keywords)
+        metadata['related_identifiers'][0]['identifier'] = SITE_URL + name
 
         try:
             if existing and args.new_version:
-                dep = zen.new_version(existing['record_id'])
+                draft = zen.new_version(existing['record_id'])
+                # Carry forward updated metadata on the new version.
+                draft = zen._req('PUT', f"/api/records/{draft['id']}/draft",
+                                 data={'access': {'record': 'public',
+                                                  'files': 'public'},
+                                       'files': {'enabled': False},
+                                       'metadata': metadata})
                 action = 'new version'
             else:
-                dep = zen.create()
+                draft = zen.create_draft(metadata)
                 action = 'draft'
-            zen.upload_file(dep, path)
-            dep = zen.set_metadata(
-                dep['id'],
-                make_metadata(title, description, keywords, live_url))
 
-            reserved = (dep.get('metadata', {})
-                          .get('prereserve_doi', {}) or {}).get('doi')
+            draft = zen.reserve_doi(draft)
+            reserved, _ = dois_of(draft)
 
             if args.publish:
-                pub = zen.publish(dep['id'])
-                doi = pub.get('doi') or pub.get('metadata', {}).get('doi')
-                concept = (pub.get('conceptdoi')
-                           or pub.get('metadata', {}).get('conceptdoi'))
-                record_id = pub['id']
-                html_url = pub.get('links', {}).get('record_html')
+                rec = zen.publish(draft)
+                doi, concept = dois_of(rec)
+                record_id = rec['id']
+                html_url = rec.get('links', {}).get('self_html')
                 status = f'PUB  {name} -> {doi}'
             else:
-                doi = reserved
-                concept = None
-                record_id = dep['id']
-                html_url = dep.get('links', {}).get('html')
-                status = f'{action.upper():4.4s} {name} -> reserved {doi} (draft)'
+                doi, concept = reserved, None
+                record_id = draft['id']
+                html_url = draft.get('links', {}).get('self_html')
+                status = (f'{action.upper():4.4s} {name} -> '
+                          f'reserved {doi} (draft)')
 
             state[name] = {
                 'doi': doi,
@@ -366,6 +423,7 @@ def main():
                 'url': html_url,
                 'published': bool(args.publish),
                 'sandbox': bool(args.sandbox),
+                'metadata_only': True,
                 'title': title,
             }
             save_state(state)  # persist after each tool — crash-safe
