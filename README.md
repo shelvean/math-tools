@@ -16,6 +16,22 @@ Used by hundreds of students.
 
 **Built independently.**
 
+## Citation & DOI
+
+If you use these tools in teaching or research, please cite them. GitHub shows
+a **"Cite this repository"** button (powered by [`CITATION.cff`](CITATION.cff)),
+and every tool page has its own "Cite this tool" box with APA, MLA, and BibTeX.
+
+This repository is set up to mint [Zenodo](https://zenodo.org) DOIs — both a
+single archival DOI for the whole project and an optional DOI per tool. See
+[`docs/ZENODO.md`](docs/ZENODO.md) for the step-by-step setup.
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8475.svg)](https://doi.org/10.5281/zenodo.8475)
+
+The badge and `CITATION.cff` use the **concept DOI** (`10.5281/zenodo.8475`),
+which always resolves to the latest version. This specific release is
+`10.5281/zenodo.20979534`.
+
 ## License
 
 This project is distributed under two complementary licenses:
