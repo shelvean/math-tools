@@ -3154,6 +3154,61 @@ function detectStateRange(fn,x0,p0,p1){
   return [lo-m, hi+m];
 }
 
+/* Period of the stable attractor at r, reported as a power of two (capped at
+   2^maxPow); returns -1 for chaos / divergence / longer periods. Needs only f. */
+function periodAtR(fn,x0,r,maxPow){
+  var x=x0,i;
+  for(i=0;i<2500;i++){ x=fn(x,r); if(!isFinite(x)||Math.abs(x)>1e9)return -1; }
+  var N=(1<<maxPow)*4, seq=new Array(N), mx=1e-9;
+  for(i=0;i<N;i++){ x=fn(x,r); if(!isFinite(x))return -1; seq[i]=x; if(Math.abs(x)>mx)mx=Math.abs(x); }
+  var tol=1e-5*mx;
+  for(var pw=0;pw<=maxPow;pw++){
+    var p=1<<pw, ok=true;
+    for(var n=0;n+p<N && n<3*p+8;n++){ if(Math.abs(seq[n+p]-seq[n])>tol){ ok=false; break; } }
+    if(ok){
+      /* Confirm the candidate cycle is genuinely attracting via a perturbation
+         contraction test: nudge a cycle point and iterate one full period; an
+         attractor pulls it back (|Δ| shrinks), a repeller pushes it away.
+         Slowly-spreading chaos near onset (e.g. the tent map for r≳1, where
+         orbits expand by r per step) matches a long period within tolerance
+         but expands, so it must be rejected. A perturbation (vs. a pointwise
+         derivative) is robust to non-smooth maps whose cycle lands on a kink. */
+      var d0=1e-7*Math.max(1,mx), worst=0, j, s, assessed=true;
+      var nT=Math.min(p,4);
+      for(j=0;j<nT && assessed;j++){
+        var a=seq[N-p+j], bb=a+d0;
+        for(s=0;s<p;s++){ a=fn(a,r); bb=fn(bb,r); if(!isFinite(a)||!isFinite(bb)){assessed=false;break;} }
+        if(assessed){ var ratio=Math.abs(bb-a)/d0; if(ratio>worst)worst=ratio; }
+      }
+      if(!assessed) return p;        /* can't assess — accept rather than misclassify */
+      return (worst<1) ? p : -1;     /* expanding ⇒ not a stable cycle */
+    }
+  }
+  return -1;
+}
+
+/* Locate successive period-doubling onsets r₁<r₂<… (period 2ⁿ⁻¹→2ⁿ) on the
+   fly: sweep r, watch the measured period, and bisect each doubling. The
+   ratios δₙ=(rₙ−rₙ₋₁)/(rₙ₊₁−rₙ) then converge to Feigenbaum's 4.6692.
+   Returns the onset list (short/empty when there is no sustained cascade). */
+function detectFeigenbaum(fn,x0,p0,p1,want){
+  var span=p1-p0; if(!(span>0))return [];
+  var maxPow=8, K=400, onsets=[];
+  var prevP=periodAtR(fn,x0,p0,maxPow), prevR=p0, target=2, i, b;
+  for(i=1;i<=K;i++){
+    var r=p0+(i/K)*span, p=periodAtR(fn,x0,r,maxPow);
+    if(p>=target && prevP>=1 && prevP<target){
+      var lo=prevR, hi=r;
+      for(b=0;b<55;b++){ var m=(lo+hi)/2; if(periodAtR(fn,x0,m,maxPow)>=target)hi=m; else lo=m; }
+      onsets.push((lo+hi)/2); target*=2;
+      if(onsets.length>=want)break;
+    }
+    if(p>=1)prevP=p;
+    prevR=r;
+  }
+  return onsets;
+}
+
 function applyCustomMap(){
   var exprRaw=document.getElementById('customFnInput').value.trim();
   var errEl=document.getElementById('customFnError');
@@ -3192,6 +3247,33 @@ function applyCustomMap(){
   var stateLo=xMin, stateHi=xMax, yr=null;
   if(autoOn){ try{ yr=detectStateRange(fFn,x0c,vMin,vMax); }catch(e){ yr=null; } }
   if(yr){ stateLo=yr[0]; stateHi=yr[1]; }
+
+  /* Auto-detect a period-doubling cascade and compute its Feigenbaum ratios
+     on the fly (over the full entered r-range, so onsets below the auto
+     window are still found). ≥3 doublings ⇒ build the table dynamically. */
+  var feigOn=false, feigData=null, feigBifPts=[], feigNote=null;
+  var onsets=[]; try{ onsets=detectFeigenbaum(fFn,x0c,pFull0,pFull1,6); }catch(e){ onsets=[]; }
+  if(onsets.length>=3){
+    feigOn=true;
+    var fcols=['rgba(29,78,216,.85)','rgba(15,118,110,.85)','rgba(109,40,217,.75)','rgba(217,119,6,.8)','rgba(190,18,60,.8)','rgba(8,145,178,.8)'];
+    var frows=[], per=2;
+    for(var oi=0;oi<onsets.length;oi++){
+      frows.push({n:''+(oi+1), r:onsets[oi], period:per});
+      feigBifPts.push({r:onsets[oi], label:'r'+(oi+1)+' (P'+per+')', period:per, color:fcols[oi%fcols.length]});
+      per*=2;
+    }
+    var L=onsets.length, rInf=onsets[L-1]+(onsets[L-1]-onsets[L-2])/(4.6692-1);
+    frows.push({n:'\\infty', r:rInf, period:Infinity});
+    feigData={
+      symbol:'r', digits:6,
+      intro:'These onsets are located numerically on the fly: the diagram is swept in \\(r\\) and the attractor’s period is measured, with each doubling \\(2^{n-1}\\!\\to\\!2^{n}\\) pinned by bisection. The accumulation point \\(r_\\infty\\) is extrapolated geometrically using \\(\\delta\\approx4.6692\\).',
+      rows:frows,
+      note:'Detected '+onsets.length+' period-doublings. The ratios \\(\\delta_n\\) approach \\(4.6692\\) as the cascade accumulates; convergence is slow, so the first few land near \\(4.6\\).'
+    };
+  } else if(onsets.length>0){
+    feigNote='Only '+onsets.length+' period-doubling'+(onsets.length>1?'s were':' was')+' detected over the scanned range \\(r\\in['+(+pFull0.toFixed(3))+',\\,'+(+pFull1.toFixed(3))+']\\), so there is no sustained cascade to extract \\(\\delta\\approx4.6692\\) from.';
+  }
+
   var fLatex=exprToLatex(exprRaw);
 
   MAPS['custom']={
@@ -3207,8 +3289,9 @@ function applyCustomMap(){
     pMinFull:pFull0, pMaxFull:pFull1,
     pLabel:'r',
     viewPMin:vMin, viewPMax:vMax,
-    feigenbaum:false, bifPts:[],
-    desc:'Custom map \\(x_{n+1}='+fLatex+'\\). '+(win?('Auto-ranged to \\(r\\in['+(+vMin.toFixed(4))+',\\,'+(+vMax.toFixed(4))+']\\), where the interesting dynamics live; uncheck <em>Auto-range</em> and re-Plot to keep \\(r\\in['+(+pFull0.toFixed(4))+',\\,'+(+pFull1.toFixed(4))+']\\) as entered. '):'')+(yr?('The state (y) axis is fit to the attractor at \\(x\\in['+(+stateLo.toFixed(3))+',\\,'+(+stateHi.toFixed(3))+']\\). '):'')+'Fixed points and the Lyapunov exponent are computed numerically (derivative by finite differences).'
+    feigenbaum:feigOn, bifPts:feigBifPts,
+    feigData:feigData, feigNote:feigNote,
+    desc:'Custom map \\(x_{n+1}='+fLatex+'\\). '+(win?('Auto-ranged to \\(r\\in['+(+vMin.toFixed(4))+',\\,'+(+vMax.toFixed(4))+']\\), where the interesting dynamics live; uncheck <em>Auto-range</em> and re-Plot to keep \\(r\\in['+(+pFull0.toFixed(4))+',\\,'+(+pFull1.toFixed(4))+']\\) as entered. '):'')+(yr?('The state (y) axis is fit to the attractor at \\(x\\in['+(+stateLo.toFixed(3))+',\\,'+(+stateHi.toFixed(3))+']\\). '):'')+(feigOn?('A period-doubling cascade was detected automatically — see the Feigenbaum panel below; the doubling onsets are marked when <em>Feigenbaum lines</em> are shown. '):'')+'Fixed points and the Lyapunov exponent are computed numerically (derivative by finite differences).'
   };
 
   switchMap('custom');
@@ -3217,7 +3300,7 @@ function applyCustomMap(){
   var copt=document.querySelector('#cselList .csel-opt[data-id="custom"]');
   if(copt){copt.innerHTML=MAPS.custom.dropLatex; mj([copt]);}
   updateCustomLatex();
-  say(win?('Custom map plotted; auto-ranged to r in ['+(+vMin.toFixed(3))+', '+(+vMax.toFixed(3))+']'+(yr?(', state y-axis fit to ['+(+stateLo.toFixed(2))+', '+(+stateHi.toFixed(2))+']'):'')+'.'):'Custom map plotted.');
+  say((win?('Custom map plotted; auto-ranged to r in ['+(+vMin.toFixed(3))+', '+(+vMax.toFixed(3))+']'+(yr?(', state y-axis fit to ['+(+stateLo.toFixed(2))+', '+(+stateHi.toFixed(2))+']'):'')+'.'):'Custom map plotted.')+(feigOn?(' Period-doubling cascade detected ('+onsets.length+' doublings).'):''));
 }
 
 /* Default placeholder so the Custom option is selectable before the user
