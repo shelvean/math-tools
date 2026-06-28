@@ -54,6 +54,12 @@ Use `zenodo_upload.py` to give every interactive tool its own Zenodo record
 and DOI. The DOIs are saved to `zenodo_dois.json`, and `add_citation.py` reads
 that file to drop each DOI straight into the tool's on-page citation block.
 
+**These are metadata-only records — no file is uploaded.** The tools depend on
+vendored JS/CSS and don't run when downloaded from Zenodo, so each record is a
+citable, DOI-bearing landing page whose metadata links to the live, working
+tool (via a `related_identifiers` entry). This uses Zenodo's newer InvenioRDM
+`/api/records` endpoint with `files.enabled = false`.
+
 ### 1. Get an API token
 
 Create a personal access token with the **`deposit:write`** and
@@ -77,7 +83,18 @@ python3 zenodo_upload.py --sandbox --only newton.html --publish
 
 Check the record looks right at <https://sandbox.zenodo.org/me/uploads>.
 
-### 3. Create real drafts, review, then publish
+### 3. Discard any old file-based drafts
+
+If you previously ran the older uploader, you may have file-based drafts
+recorded in `zenodo_dois.json`. Delete them so they can be recreated as
+metadata-only (this only deletes **unpublished** records, then removes them
+from the file):
+
+```bash
+python3 zenodo_upload.py --discard-old
+```
+
+### 4. Create metadata-only drafts, review, then publish
 
 ```bash
 # Create drafts for every tool — nothing public yet, DOIs only "reserved":
@@ -88,16 +105,18 @@ python3 zenodo_upload.py
 python3 zenodo_upload.py --publish
 ```
 
-The script is **idempotent**: it skips tools already recorded in
-`zenodo_dois.json`, so you can stop and re-run safely. Useful flags:
+The script is **idempotent**: published tools are skipped, and an existing
+draft is published in place when you pass `--publish`. Safe to stop and
+re-run. Useful flags:
 
 - `--only file1.html file2.html` — target specific tools
 - `--limit N` — process at most N tools this run (good for batching)
 - `--new-version` — archive an updated tool as a new version under its
   existing concept DOI
+- `--discard-old` — delete unpublished drafts and clear them from the file
 - `--sandbox` — use sandbox.zenodo.org
 
-### 4. Embed the DOIs on the pages
+### 5. Embed the DOIs on the pages
 
 Once DOIs are published, regenerate the citation blocks:
 
@@ -109,29 +128,34 @@ Each tool's "Cite this tool" box now shows a `DOI: https://doi.org/…` link,
 and the APA / MLA / BibTeX entries use the DOI as the canonical URL (BibTeX
 also gets a `doi` field).
 
-### 5. Commit
+### 6. Commit
 
 ```bash
 git add zenodo_dois.json *.html
-git commit -m "Add Zenodo DOIs to tool citations"
+git commit -m "Publish Zenodo DOIs and embed them in tool citations"
 ```
 
-> **What gets uploaded:** the script uploads each tool's standalone `.html`
-> file and links the record to the live page via a `related_identifiers`
-> entry. Tools that pull in vendored JS/CSS won't be fully self-contained in
-> the archived file — the record's value is the citable DOI + metadata + link
-> to the live, fully-working version. If you want fully self-contained
-> archives, bundle assets before uploading (out of scope for this script).
+> **No file is uploaded.** Each record is metadata-only and links to the live
+> page via a `related_identifiers` entry (`isIdenticalTo`). The DOI resolves to
+> a Zenodo landing page that points at the working tool. If you ever want an
+> archived, downloadable copy instead, bundle each tool's assets into a
+> self-contained file first (out of scope for this script).
 
-### Metadata sources
+### Metadata sources & InvenioRDM field IDs
 
 - **Title** — the page's `<h1>` (falls back to `<title>`).
 - **Description** — the page's `<meta name="description">`.
-- **Keywords** — the tool's tags as assigned on the hub pages, plus a couple
-  of site-wide defaults.
-- **Creator / license** — `Shelvean Kapita` / `MIT` (the same constants
-  `add_citation.py` uses). Educational content remains CC BY 4.0, noted in the
-  description.
+- **Keywords** — the tool's hub-page tags (sent as InvenioRDM `subjects`),
+  plus a couple of site-wide defaults.
+- **Creator / license** — `Shelvean Kapita` / `mit`.
 
-Tweak the constants near the top of `zenodo_upload.py` (`LICENSE_ID`,
-`UPLOAD_TYPE`, `KEYWORDS_BASE`) if you want different defaults.
+The InvenioRDM controlled-vocabulary IDs are constants near the top of
+`zenodo_upload.py`: `RESOURCE_TYPE_ID` (`software`), `LICENSE_ID` (`mit`),
+`RELATION_ID` (`isidenticalto`), `KEYWORDS_BASE`. If a sandbox test rejects
+one, the server's error message names the offending field — adjust the
+constant and re-run.
+
+> **Test on the sandbox first.** Because this uses the records API, always run
+> `python3 zenodo_upload.py --sandbox --only newton.html --publish` and confirm
+> the record at <https://sandbox.zenodo.org/me/uploads> before doing all tools
+> on production.
