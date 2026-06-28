@@ -608,7 +608,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
     <div class="pwrap" id="canvasWrap">
       <div class="phdr">
         <span class="pdot" style="background:#1d4ed8" aria-hidden="true"></span>
-        Direction Field &mdash; \(y' = f(t,y)\) &ensp;&bull;&ensp; arrows show slope at each grid point
+        Direction Field &mdash; <span id="eqDisplay">\(y' = f(t,y)\)</span> &ensp;&bull;&ensp; arrows show slope at each grid point
       </div>
       <div class="canvas-wrap">
         <div class="canvas-overlay" id="canvasOverlay" aria-live="polite">
@@ -1060,6 +1060,79 @@ document.addEventListener('DOMContentLoaded',function(){
     return eq;
   }
 
+  /* Convert a user expression (in t, y) to display LaTeX. */
+  function exprToLatex(s){
+    if(!s)return '';
+    var t=String(s);
+    t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+      if((l==='e'||l==='E')&&o+2<=str.length){var c=str.charAt(o+2);if((c>='0'&&c<='9')||c==='+'||c==='-')return m;}
+      return d+'*'+l;
+    });
+    function wrapPow(str){
+      var out='',i=0,n=str.length;
+      while(i<n){
+        if(str.charAt(i)==='^'){
+          if(i+1<n&&str.charAt(i+1)==='{'){out+='^';i++;continue;}
+          i++;var sign='';
+          if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+          var body='';
+          if(i<n&&str.charAt(i)==='('){
+            var depth=1,j=i+1;
+            while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+            body=str.slice(i+1,j);i=(j<n)?j+1:j;
+          }else{var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));if(mm){body=mm[0];i+=mm[0].length;}}
+          out+='^{'+sign+body+'}';
+        }else{out+=str.charAt(i);i++;}
+      }
+      return out;
+    }
+    t=wrapPow(t);
+    function callMap(str,name,mapper){
+      var i=0,nlen=name.length;
+      while((i=str.indexOf(name+'(',i))!==-1){
+        if(i>0&&/[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+        var depth=1,j=i+nlen+1,len=str.length;
+        while(j<len){var c=str.charAt(j);if(c==='(')depth++;else if(c===')'){depth--;if(depth===0)break;}j++;}
+        if(depth!==0)break;
+        var inner=str.slice(i+nlen+1,j),rep=mapper(exprToLatex(inner));
+        str=str.slice(0,i)+rep+str.slice(j+1);i+=rep.length;
+      }
+      return str;
+    }
+    t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+    t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+    t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+    t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+    t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+    t=callMap(t,'floor',function(x){return '\\lfloor '+x+'\\rfloor';});
+    t=callMap(t,'ceil', function(x){return '\\lceil '+x+'\\rceil';});
+    t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+    t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+    t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+    t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+    t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+    t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+    t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+    t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+    t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+    t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+    t=callMap(t,'cot',  function(x){return '\\cot\\!\\left('+x+'\\right)';});
+    t=callMap(t,'sec',  function(x){return '\\sec\\!\\left('+x+'\\right)';});
+    t=callMap(t,'csc',  function(x){return '\\csc\\!\\left('+x+'\\right)';});
+    t=t.replace(/([^\\]|^)\bpi\b/gi,'$1\\pi ');
+    t=t.replace(/\*/g,'\\cdot ');
+    return t;
+  }
+
+  /* Show the current equation as LaTeX in the field header. */
+  function updateEqDisplay(eq){
+    var el=document.getElementById('eqDisplay');
+    if(!el)return;
+    var disp=String(eq).replace(/\bx\b/g,'t');  /* x is treated as t */
+    el.innerHTML='\\(y\' = '+exprToLatex(disp)+'\\)';
+    if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
+  }
+
   function getNiceStep(range){
     var rough=range/8;
     var exp=Math.pow(10,Math.floor(Math.log10(rough)));
@@ -1191,6 +1264,7 @@ document.addEventListener('DOMContentLoaded',function(){
     ctx.fillRect(0,0,canvas.width,canvas.height);
 
     var eq=document.getElementById('equation').value.trim()||'0';
+    updateEqDisplay(eq);
     var tMin=+document.getElementById('tMin').value;
     var tMax=+document.getElementById('tMax').value;
     var yMin=+document.getElementById('yMin').value;
@@ -1914,8 +1988,9 @@ document.addEventListener('DOMContentLoaded',function(){
   /* Initial draw */
   drawDirectionField();
 
-  /* Typeset MathJax once ready */
-  if(window.MathJax&&MathJax.startup){
+  /* Typeset MathJax once ready (guard the promise — it isn't attached until
+     the MathJax library finishes loading, which can race this script). */
+  if(window.MathJax&&MathJax.startup&&MathJax.startup.promise){
     MathJax.startup.promise.then(function(){
       MathJax.typesetPromise().catch(function(){});
     }).catch(function(){});
