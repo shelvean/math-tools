@@ -628,6 +628,9 @@ if(document.referrer.includes('dynamical.html')){
     <button class="tab-btn" role="tab" aria-selected="false" id="tab-sine" aria-controls="panel-sine" type="button">
       Sine Map<br><small>\(a\sin(\pi x)\)</small>
     </button>
+    <button class="tab-btn" role="tab" aria-selected="false" id="tab-rexpsin" aria-controls="panel-rexpsin" type="button">
+      Damped Sine<br><small>\(r\,e^{-0.2x}\sin x\)</small>
+    </button>
   </div>
 
   <!-- Definition bar (updates per map) -->
@@ -1143,6 +1146,42 @@ var MAPS = {
       if(a<0.87)   return 'In the <strong>period-doubling cascade</strong>. Successive doublings occur at \\(a\\approx0.7278,\\,0.8326,\\,0.8589,\\ldots\\) converging to \\(a_\\infty\\approx0.87\\). The Feigenbaum constant \\(\\delta\\approx4.669\\) governs the ratio of intervals — identical to the logistic map, demonstrating universality.';
       if(a<1)      return 'Past the accumulation point \\(a_\\infty\\approx0.87\\) — the orbit is <strong>chaotic</strong> with \\(\\lambda>0\\). The sine map and logistic map are in the same universality class: same Feigenbaum constant, same qualitative bifurcation structure.';
       return 'At \\(a=1\\): the map \\(f(x)=\\sin(\\pi x)\\) is fully chaotic on \\([0,1]\\). This is the standard form of the sine map studied by Feigenbaum in establishing universality. Lyapunov exponent \\(\\lambda>0\\).';
+    }
+  },
+
+  rexpsin: {
+    id: 'rexpsin',
+    tabId: 'tab-rexpsin',
+    defnLatex: '\\[x_{n+1} = r\\,e^{-0.2x_n}\\sin x_n\\]',
+    latexF: 'r\\,e^{-0.2x}\\sin x',
+    domain: [-2.0, 3.7],
+    x0: 2.8,
+    N: 200,
+    /* The slider range IS the period-7 band, so Sweep walks the full bubble:
+       period 7 -> 14 -> 28 -> thin chaos and back (remerging), then the
+       interior crisis near r≈-2.527 that explodes it into broadband chaos. */
+    paramDef: {id:'r', label:'\\(r\\)', aria:'damped sine map parameter r', min:-2.556, max:-2.512, step:0.0001, val:-2.556},
+    f: function(x,r){ return r*Math.exp(-0.2*x)*Math.sin(x); },
+    df: function(x,r){ return r*Math.exp(-0.2*x)*(Math.cos(x)-0.2*Math.sin(x)); },
+    presets: [
+      {label:'r = -2.556 (period-7)',          r:-2.556, aria:'r equals minus 2.556, stable period-7 cycle'},
+      {label:'r = -2.550 (period-14)',         r:-2.550, aria:'r equals minus 2.550, period-14, first doubling'},
+      {label:'r = -2.548 (period-28)',         r:-2.548, aria:'r equals minus 2.548, period-28'},
+      {label:'r = -2.545 (bubble chaos)',      r:-2.545, aria:'r equals minus 2.545, thin chaotic band at the bubble peak'},
+      {label:'r = -2.540 (period-14, reversal)', r:-2.540, aria:'r equals minus 2.540, period-14 on the way back down — reversal'},
+      {label:'r = -2.528 (period-7, remerged)', r:-2.528, aria:'r equals minus 2.528, remerged back to period-7'},
+      {label:'r = -2.524 (post-crisis chaos)', r:-2.524, aria:'r equals minus 2.524, broadband chaos after the interior crisis'}
+    ],
+    regime: function(r){
+      var t=Math.max(0,Math.min(1,(r+2.556)/0.044));
+      if(r < -2.5515) return {name:'Period-7 window',                   frac:0.05+t*0.2,  color:'#15803d'};
+      if(r < -2.527)  return {name:'Period-doubling bubbles (remerging)', frac:0.30+t*0.40, color:'#b45309'};
+      return {name:'Chaotic — post-crisis (λ>0)',                        frac:0.72+t*0.28, color:'#b91c1c'};
+    },
+    descFn: function(r){
+      if(r < -2.5515) return 'A stable <strong>period-7 cycle</strong>. Its seven points span \\(x\\in[-1.9,\\,3.5]\\), so the orbit plot hops across the whole range while the cobweb traces a seven-step loop. (The bifurcation tool’s default view crops to one of these points near \\(x\\approx2.8\\).)';
+      if(r < -2.527)  return 'Inside the <strong>remerging bubbles</strong>: as \\(r\\) increases the period-7 cycle doubles (7\\(\\to\\)14\\(\\to\\)28\\(\\to\\) thin chaos) and then <em>halves back</em> to 7 — a hallmark of <strong>antimonotonicity</strong> in this multimodal map. The chaos here is marginal (\\(\\lambda\\lesssim0\\)); the cascade never completes a Feigenbaum accumulation, so \\(\\delta\\approx4.6692\\) does not apply. <strong>Sweep \\(r\\)</strong> to watch the period grow and shrink.';
+      return 'Past the <strong>interior crisis</strong> near \\(r\\approx-2.527\\): the small attractor collides with its repelling skeleton and abruptly widens into <strong>broadband chaos</strong> (\\(\\lambda\\approx+0.3\\)). The cobweb now fills a region densely; the sharp folds are iterated images of the critical points \\(\\tan x=5\\).';
     }
   }
 };
@@ -1767,7 +1806,7 @@ function switchMap(mapId){
   say('Switched to '+m.id+' map');
 }
 
-['logistic','quadratic','tent','sine'].forEach(function(id){
+['logistic','quadratic','tent','sine','rexpsin'].forEach(function(id){
   document.getElementById('tab-'+id).addEventListener('click',function(){switchMap(id);});
 });
 
