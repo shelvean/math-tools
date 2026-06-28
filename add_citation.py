@@ -16,7 +16,7 @@ import re
 import glob
 import json
 
-BASE = '/home/user/math-tools'
+BASE = os.path.dirname(os.path.abspath(__file__))
 SITE_URL = 'https://shelvean.github.io/math-tools/'
 AUTHOR_LAST = 'Kapita'
 AUTHOR_FIRST = 'Shelvean'
