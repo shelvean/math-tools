@@ -1650,6 +1650,7 @@ var WORKER_SRC = [
 '  var Ntot=m.N_cols_total||m.N_cols, cs=m.colStart||0, ce=m.colEnd||Ntot;',
 '  var n=ce-cs, Nt=m.N_trans, Np=m.N_plot;',
 '  var pMin=m.pMin, pRange=m.pMax-m.pMin, x0F=m.x0;',
+'  var xLo=(m.xLo!=null)?m.xLo:-1, xHi=(m.xHi!=null)?m.xHi:1;',
 '  var storeLen=Math.min(Np, m.maxStore);',
 '  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen), xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
 '  var prevX=null;',
@@ -1657,43 +1658,52 @@ var WORKER_SRC = [
 '  for(var k=0;k<n;k++){',
 '    var i=cs+k;',
 '    var p=pMin+(i+0.5)/Ntot*pRange; pArr[k]=p;',
-/* 0 is a fixed point for logistic, tent, sine — once the warm-start lands there,
-   every subsequent column stays pinned at 0. Fall back to x0 in that case. */
-'    var x=(prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100)?prevX:x0F;',
-/* Extra transient at shard boundaries: the first column of a non-zero
-   shard starts cold (no warm-start across shards), so give it 2x Nt
-   to reliably land on the attractor and avoid Lyapunov drift visible
-   as a faint vertical seam in the rendered diagram. */
-'    var NtThis=(k===0 && cs>0)?Nt*2:Nt;',
-'    for(var t=0;t<NtThis;t++){ try{x=f(x,p);}catch(e){x=x0F;break;} if(!isFinite(x)){x=x0F;break;} }',
+/* Multi-IC sampling: a single warm-started trajectory shows only one
+   attractor and can jump between coexisting attractors (e.g. the mirror
+   pair created by a symmetry-breaking pitchfork in an odd map), leaving a
+   misleading gap. Seed each column from the warm-start (which keeps the
+   seam-smoothing benefit and supplies λ) plus two spread initial conditions
+   so coexisting attractors all appear. 0 is a fixed point for logistic/
+   tent/sine — if the warm-start pins there, fall back to x0. */
+'    var warmX=(prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100)?prevX:x0F;',
+'    var ICfr=[0.27,0.73], NIC=1+ICfr.length, dom=(xHi-xLo)||1;',
+'    var perIC=Math.max(1,Math.floor(storeLen/NIC));',
+'    var cnt=0,lyaSum=0,lyaCnt=0,prevNext=warmX;',
+'    for(var ic=0; ic<NIC; ic++){',
+'      var x=(ic===0)?warmX:(xLo+ICfr[ic-1]*dom);',
+/* Extra transient at shard boundaries: the first column of a non-zero shard
+   starts cold (no warm-start across shards), so give it 2x Nt. */
+'      var NtThis=(ic===0 && k===0 && cs>0)?Nt*2:Nt;',
+'      for(var t=0;t<NtThis;t++){ try{x=f(x,p);}catch(e){x=x0F;break;} if(!isFinite(x)){x=x0F;break;} }',
 /* Adaptive transient (critical slowing down): near a bifurcation the new
-   attractor is only weakly attracting, so the fixed transient leaves the
-   orbit still spiralling in — it renders as a fuzzy vertical smear instead
-   of clean separated branches. Keep iterating while the attractor band is
-   still contracting; a settled orbit (stable cycle or chaotic attractor)
-   stops contracting within a chunk and breaks immediately, so the extra
-   cost is spent only on the columns near bifurcation points. */
-'    var aM=128, aEx=0, aMax=Math.min(Nt*4,4000), aPrev=Infinity;',
-'    while(aEx<aMax){',
-'      var aLo=1e300, aHi=-1e300, aOk=true;',
-'      for(var at=0;at<aM;at++){ try{x=f(x,p);}catch(e){aOk=false;break;} if(!isFinite(x)){aOk=false;break;} if(x<aLo)aLo=x; if(x>aHi)aHi=x; }',
-'      if(!aOk)break;',
-'      aEx+=aM; var aBand=aHi-aLo;',
-'      if(!(aBand < 0.9*aPrev)) break;',
-'      aPrev=aBand;',
-'    }',
-'    var cnt=0,lyaSum=0,lyaCnt=0;',
-'    for(var t=0;t<Np;t++){',
-'      if(isFinite(x)){',
-'        if(cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
-'        try{ var d=Math.abs(df(x,p)); if(d>1e-15 && isFinite(d)){ lyaSum+=Math.log(d); lyaCnt++; } }catch(e){}',
+   attractor is only weakly attracting, so a fixed transient leaves the orbit
+   still spiralling in — a fuzzy smear instead of clean branches. Keep
+   iterating while the attractor band is still contracting; a settled orbit
+   (stable cycle or chaotic attractor) stops contracting and breaks at once,
+   so the extra cost falls only on columns near bifurcation points (and a
+   redundant IC that landed on the primary attractor settles immediately). */
+'      var aM=128, aEx=0, aMax=Math.min(Nt*4,4000), aPrev=Infinity;',
+'      while(aEx<aMax){',
+'        var aLo=1e300, aHi=-1e300, aOk=true;',
+'        for(var at=0;at<aM;at++){ try{x=f(x,p);}catch(e){aOk=false;break;} if(!isFinite(x)){aOk=false;break;} if(x<aLo)aLo=x; if(x>aHi)aHi=x; }',
+'        if(!aOk)break;',
+'        aEx+=aM; var aBand=aHi-aLo;',
+'        if(!(aBand < 0.9*aPrev)) break;',
+'        aPrev=aBand;',
 '      }',
-'      try{ x=f(x,p); }catch(e){ break; }',
-'      if(!isFinite(x)) break;',
+'      for(var t=0;t<perIC;t++){',
+'        if(isFinite(x)){',
+'          if(cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
+'          if(ic===0){ try{ var d=Math.abs(df(x,p)); if(d>1e-15 && isFinite(d)){ lyaSum+=Math.log(d); lyaCnt++; } }catch(e){} }',
+'        }',
+'        try{ x=f(x,p); }catch(e){ break; }',
+'        if(!isFinite(x)) break;',
+'      }',
+'      if(ic===0) prevNext=x;',
 '    }',
 '    xCounts[k]=cnt;',
 '    lyaArr[k]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
-'    prevX=x;',
+'    prevX=prevNext;',
 '    if(k>0 && (k%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:Ntot,token:m.token});',
 '  }',
 '  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
@@ -2046,41 +2056,48 @@ function computeChunkSync(startCol, endCol){
   var N    = BDATA.N_cols;
   var storeLen = BDATA.xArrs[0] ? BDATA.xArrs[0].length : Np;
   var x0Fallback = ST.x0;
+  var xLo = (ex.xMin!=null)?ex.xMin:-1, xHi = (ex.xMax!=null)?ex.xMax:1;
 
-  /* Warm-start: carry last x across columns. Each column's attractor is
-     typically close to its neighbour's, so starting from the previous
-     column's on-attractor x dramatically shortens the effective
-     transient and keeps detail consistent across parameter space. */
+  /* Mirror of the Web Worker's runCompute (kept in sync): warm-start carries
+     x across columns; multiple initial conditions per column capture
+     coexisting attractors; an adaptive transient resolves critical slowing
+     down near bifurcations. See those blocks in the worker source for the
+     rationale. */
   var prevX = null;
+  var ICfr=[0.27,0.73], NIC=1+ICfr.length, dom=(xHi-xLo)||1;
+  var perIC=Math.max(1,Math.floor(storeLen/NIC));
 
   for(var i=startCol; i<endCol && i<N; i++){
     var p = pMin + (i+0.5)/N*pRange;
     BDATA.pArr[i] = p;
 
-    /* 0 is a fixed point for logistic/tent/sine — if warm-start hits 0,
-       every subsequent column stays trapped there. Fall back to x0. */
-    var x = (prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100) ? prevX : x0Fallback;
+    var warmX = (prevX!==null && isFinite(prevX) && Math.abs(prevX)>1e-100) ? prevX : x0Fallback;
+    var cnt=0, lyaSum=0, lyaCnt=0, prevNext=warmX;
 
-    for(var t=0;t<Nt;t++){
-      try{ x=f(x,p); }catch(e){ x=x0Fallback; break; }
-      if(!isFinite(x)){ x=x0Fallback; break; }
-    }
-    /* Store iterates CONTIGUOUSLY (no stride) so period-N attractors
-       aren't aliased to a sub-orbit. The Lyapunov sum still uses the
-       full Np iterations regardless of how many we store. */
-    var cnt=0, lyaSum=0, lyaCnt=0;
-    for(var t=0;t<Np;t++){
-      if(isFinite(x)){
-        if(cnt<storeLen){
-          BDATA.xArrs[i][cnt++]=x;
-        }
-        try{
-          var d=Math.abs(df(x,p));
-          if(d>1e-15&&isFinite(d)){lyaSum+=Math.log(d);lyaCnt++;}
-        }catch(e2){}
+    for(var ic=0; ic<NIC; ic++){
+      var x = (ic===0) ? warmX : (xLo + ICfr[ic-1]*dom);
+      for(var t=0;t<Nt;t++){
+        try{ x=f(x,p); }catch(e){ x=x0Fallback; break; }
+        if(!isFinite(x)){ x=x0Fallback; break; }
       }
-      try{ x=f(x,p); }catch(e){ break; }
-      if(!isFinite(x)) break;
+      var aM=128, aEx=0, aMax=Math.min(Nt*4,4000), aPrev=Infinity;
+      while(aEx<aMax){
+        var aLo=1e300, aHi=-1e300, aOk=true;
+        for(var at=0;at<aM;at++){ try{x=f(x,p);}catch(e){aOk=false;break;} if(!isFinite(x)){aOk=false;break;} if(x<aLo)aLo=x; if(x>aHi)aHi=x; }
+        if(!aOk)break;
+        aEx+=aM; var aBand=aHi-aLo;
+        if(!(aBand < 0.9*aPrev)) break;
+        aPrev=aBand;
+      }
+      for(var t=0;t<perIC;t++){
+        if(isFinite(x)){
+          if(cnt<storeLen){ BDATA.xArrs[i][cnt++]=x; }
+          if(ic===0){ try{ var d=Math.abs(df(x,p)); if(d>1e-15&&isFinite(d)){lyaSum+=Math.log(d);lyaCnt++;} }catch(e2){} }
+        }
+        try{ x=f(x,p); }catch(e){ break; }
+        if(!isFinite(x)) break;
+      }
+      if(ic===0) prevNext=x;
     }
     BDATA.xCounts[i]=cnt;
     var lya = lyaCnt>0 ? lyaSum/lyaCnt : NaN;
@@ -2089,7 +2106,7 @@ function computeChunkSync(startCol, endCol){
     BDATA.colColors[i*4]=col[0]; BDATA.colColors[i*4+1]=col[1];
     BDATA.colColors[i*4+2]=col[2]; BDATA.colColors[i*4+3]=col[3];
 
-    prevX = x;
+    prevX = prevNext;
   }
   BDATA.N_done = endCol < N ? endCol : N;
 }
@@ -2235,6 +2252,8 @@ function runProgressiveLevel(){
       pMin: ST.pMin, pMax: ST.pMax,
       pMinStr: String(ST.pMin), pMaxStr: String(ST.pMax),
       x0: ST.x0, y0: (MAPS[ST.mapId] && MAPS[ST.mapId].y0) || 0,
+      xLo: (MAPS[ST.mapId] && MAPS[ST.mapId].xMin!=null)?MAPS[ST.mapId].xMin:-1,
+      xHi: (MAPS[ST.mapId] && MAPS[ST.mapId].xMax!=null)?MAPS[ST.mapId].xMax:1,
       N_cols_total: cfg.N_cols,
       N_trans: cfg.N_trans, N_plot: cfg.N_plot,
       maxStore: MAX_ORBIT_STORE,
