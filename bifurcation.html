@@ -1366,6 +1366,18 @@ var ZOOM_HIST = [];
 var autoRefineTimer = null;
 var AUTO_REFINE_MS = 380;
 
+/* The visible x-window the most recent compute was filtered to. Because
+   compute now only stores in-view iterates, a change to the x-window (e.g.
+   a vertical pan/zoom) needs a recompute to repopulate the new band — the
+   stored points no longer cover it. */
+var LAST_COMPUTE_X = null;
+function xWindowSettled(){
+  if(!LAST_COMPUTE_X) return false;
+  var xr = Math.max(1e-300, Math.abs(LAST_COMPUTE_X.max - LAST_COMPUTE_X.min));
+  return Math.abs(VBIF.xMin - LAST_COMPUTE_X.min) < xr*0.08 &&
+         Math.abs(VBIF.xMax - LAST_COMPUTE_X.max) < xr*0.08;
+}
+
 /* Rubber-band box selection for zoom-to-region */
 var RUBBER = null;
 
@@ -1666,6 +1678,16 @@ var WORKER_SRC = [
 '  var pMin=m.pMin, pRange=m.pMax-m.pMin, x0F=m.x0;',
 '  var xLo=(m.xLo!=null)?m.xLo:-1, xHi=(m.xHi!=null)?m.xHi:1;',
 '  var storeLen=Math.min(Np, m.maxStore);',
+/* View-window filtering + fill budget: only iterates inside the visible band
+   [vLo,vHi] are stored. When that band is a small slice of the attractor we
+   iterate harder (plotBudget) so the slice fills to full density rather than
+   catching the few iterates that happen to land there. fillBoost scales with
+   how thin the view is relative to the IC-seeding domain. */
+'  var vLo=(m.xViewLo!=null && isFinite(m.xViewLo))?m.xViewLo:-Infinity;',
+'  var vHi=(m.xViewHi!=null && isFinite(m.xViewHi))?m.xViewHi:Infinity;',
+'  var domAll=(xHi-xLo)||1, viewXr=(isFinite(vHi)&&isFinite(vLo)&&vHi>vLo)?(vHi-vLo):domAll;',
+'  var fillBoost=Math.max(1,Math.min(40,domAll/Math.max(1e-300,viewXr)));',
+'  var plotBudget=Math.min(12000,Math.max(Np,Math.round(Np*fillBoost)));',
 '  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen), xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
 '  var prevX=null;',
 '  var progEvery=Math.max(32, Math.floor(n/20));',
@@ -1705,11 +1727,18 @@ var WORKER_SRC = [
 '        if(!(aBand < 0.9*aPrev)) break;',
 '        aPrev=aBand;',
 '      }',
-'      for(var t=0;t<perIC;t++){',
+/* Collect this IC's slice of in-view iterates. Iterate up to plotBudget,
+   storing only points inside [vLo,vHi] (up to perIC for this IC). λ is a
+   property of the orbit, not the view, so it accumulates on the primary IC
+   over every iterate until it has enough samples (lyaTarget). Each IC stops
+   as soon as its storage slice is full (and, for ic 0, λ has converged). */
+'      var icStored=0, lyaTarget=Math.min(plotBudget,800);',
+'      for(var t=0;t<plotBudget;t++){',
 '        if(isFinite(x)){',
-'          if(cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
-'          if(ic===0){ try{ var d=Math.abs(df(x,p)); if(d>1e-15 && isFinite(d)){ lyaSum+=Math.log(d); lyaCnt++; } }catch(e){} }',
+'          if(icStored<perIC && cnt<storeLen && x>=vLo && x<=vHi){ xArrsFlat[k*storeLen+cnt]=x; cnt++; icStored++; }',
+'          if(ic===0 && lyaCnt<lyaTarget){ try{ var d=Math.abs(df(x,p)); if(d>1e-15 && isFinite(d)){ lyaSum+=Math.log(d); lyaCnt++; } }catch(e){} }',
 '        }',
+'        if(icStored>=perIC && (ic!==0 || lyaCnt>=lyaTarget)) break;',
 '        try{ x=f(x,p); }catch(e){ break; }',
 '        if(!isFinite(x)) break;',
 '      }',
@@ -1788,6 +1817,15 @@ var WORKER_SRC = [
 '  var pMin=m.pMin, pRange=m.pMax-m.pMin;',
 '  var bH=0.3;',
 '  var storeLen=Math.min(Np, m.maxStore);',
+/* View-window filter + fill budget — store only in-view iterates and iterate
+   harder when the visible band is thin (see runCompute). The orbit/tangent
+   run the full budget so the Lyapunov estimate stays correct. */
+'  var vLo=(m.xViewLo!=null && isFinite(m.xViewLo))?m.xViewLo:-Infinity;',
+'  var vHi=(m.xViewHi!=null && isFinite(m.xViewHi))?m.xViewHi:Infinity;',
+'  var xLoH=(m.xLo!=null)?m.xLo:-1.5, xHiH=(m.xHi!=null)?m.xHi:1.5;',
+'  var domAll=(xHiH-xLoH)||1, viewXr=(isFinite(vHi)&&isFinite(vLo)&&vHi>vLo)?(vHi-vLo):domAll;',
+'  var fillBoost=Math.max(1,Math.min(40,domAll/Math.max(1e-300,viewXr)));',
+'  var plotBudget=Math.min(12000,Math.max(Np,Math.round(Np*fillBoost)));',
 '  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen);',
 '  var xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
 '  var progEvery=Math.max(8, Math.floor(n/20));',
@@ -1808,8 +1846,8 @@ var WORKER_SRC = [
 '    var u=1, v=0;',  // tangent vector for Jacobian
 '    var lyaSum=0, lyaCnt=0, renormCnt=0;',
 '    var cnt=0;',
-'    for(var t=0;t<Np;t++){',
-'      if(isFinite(x) && cnt<storeLen){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
+'    for(var t=0;t<plotBudget;t++){',
+'      if(isFinite(x) && cnt<storeLen && x>=vLo && x<=vHi){ xArrsFlat[k*storeLen+cnt]=x; cnt++; }',
 '      var un=-2*a*x*u+v; var vn=bH*u;',
 '      u=un; v=vn;',
 '      var xn=1-a*x*x+y; var yn=bH*x;',
@@ -2080,6 +2118,11 @@ function computeChunkSync(startCol, endCol){
   var prevX = null;
   var ICfr=[0.27,0.73], NIC=1+ICfr.length, dom=(xHi-xLo)||1;
   var perIC=Math.max(1,Math.floor(storeLen/NIC));
+  /* View-window filter + fill budget — see runCompute in the worker source. */
+  var vLo=isFinite(VBIF.xMin)?VBIF.xMin:-Infinity, vHi=isFinite(VBIF.xMax)?VBIF.xMax:Infinity;
+  var viewXr=(isFinite(vHi)&&isFinite(vLo)&&vHi>vLo)?(vHi-vLo):dom;
+  var fillBoost=Math.max(1,Math.min(40,dom/Math.max(1e-300,viewXr)));
+  var plotBudget=Math.min(12000,Math.max(Np,Math.round(Np*fillBoost)));
 
   for(var i=startCol; i<endCol && i<N; i++){
     var p = pMin + (i+0.5)/N*pRange;
@@ -2103,11 +2146,13 @@ function computeChunkSync(startCol, endCol){
         if(!(aBand < 0.9*aPrev)) break;
         aPrev=aBand;
       }
-      for(var t=0;t<perIC;t++){
+      var icStored=0, lyaTarget=Math.min(plotBudget,800);
+      for(var t=0;t<plotBudget;t++){
         if(isFinite(x)){
-          if(cnt<storeLen){ BDATA.xArrs[i][cnt++]=x; }
-          if(ic===0){ try{ var d=Math.abs(df(x,p)); if(d>1e-15&&isFinite(d)){lyaSum+=Math.log(d);lyaCnt++;} }catch(e2){} }
+          if(icStored<perIC && cnt<storeLen && x>=vLo && x<=vHi){ BDATA.xArrs[i][cnt++]=x; icStored++; }
+          if(ic===0 && lyaCnt<lyaTarget){ try{ var d=Math.abs(df(x,p)); if(d>1e-15&&isFinite(d)){lyaSum+=Math.log(d);lyaCnt++;} }catch(e2){} }
         }
+        if(icStored>=perIC && (ic!==0 || lyaCnt>=lyaTarget)) break;
         try{ x=f(x,p); }catch(e){ break; }
         if(!isFinite(x)) break;
       }
@@ -2138,6 +2183,13 @@ function computeChunkSyncHenon(startCol, endCol){
   var renormSteps = 20;
   var warm = null;
   var x0F = ST.x0 || 0.1, y0F = (MAPS[ST.mapId] && MAPS[ST.mapId].y0) || 0.1;
+  /* View-window filter + fill budget — see runComputeHenon in the worker. */
+  var exH = MAPS[ST.mapId];
+  var xLoH=(exH && exH.xMin!=null)?exH.xMin:-1.5, xHiH=(exH && exH.xMax!=null)?exH.xMax:1.5;
+  var vLo=isFinite(VBIF.xMin)?VBIF.xMin:-Infinity, vHi=isFinite(VBIF.xMax)?VBIF.xMax:Infinity;
+  var domAll=(xHiH-xLoH)||1, viewXr=(isFinite(vHi)&&isFinite(vLo)&&vHi>vLo)?(vHi-vLo):domAll;
+  var fillBoost=Math.max(1,Math.min(40,domAll/Math.max(1e-300,viewXr)));
+  var plotBudget=Math.min(12000,Math.max(Np,Math.round(Np*fillBoost)));
   for(var i=startCol;i<endCol && i<N;i++){
     var a = pMin + (i+0.5)/N*pRange;
     BDATA.pArr[i] = a;
@@ -2151,8 +2203,8 @@ function computeChunkSyncHenon(startCol, endCol){
     }
     var u=1, v=0;
     var lyaSum=0, lyaCnt=0, renormCnt=0, cnt=0;
-    for(var t=0;t<Np;t++){
-      if(isFinite(x) && cnt<storeLen){ BDATA.xArrs[i][cnt++]=x; }
+    for(var t=0;t<plotBudget;t++){
+      if(isFinite(x) && cnt<storeLen && x>=vLo && x<=vHi){ BDATA.xArrs[i][cnt++]=x; }
       var un=-2*a*x*u+v; var vn=bH*u;
       u=un; v=vn;
       var xn=1-a*x*x+y; var yn=bH*x;
@@ -2207,6 +2259,9 @@ function stopAll(){
 
 function runCompute(onDone){
   stopAll();
+  /* Record the x-window this run is filtered to, so a later vertical
+     zoom/pan knows whether the stored points still cover the view. */
+  LAST_COMPUTE_X = { min: VBIF.xMin, max: VBIF.xMax };
   PROG.level = 0;
   PROG.maxLevel = getMaxLevel();
   PROG.active = true;
@@ -2268,6 +2323,10 @@ function runProgressiveLevel(){
       x0: ST.x0, y0: (MAPS[ST.mapId] && MAPS[ST.mapId].y0) || 0,
       xLo: (MAPS[ST.mapId] && MAPS[ST.mapId].xMin!=null)?MAPS[ST.mapId].xMin:-1,
       xHi: (MAPS[ST.mapId] && MAPS[ST.mapId].xMax!=null)?MAPS[ST.mapId].xMax:1,
+      /* Visible x-window: stored iterates are filtered to this band so a
+         deep vertical zoom fills with in-view points instead of scattering
+         the per-column budget across the whole (off-screen) attractor. */
+      xViewLo: VBIF.xMin, xViewHi: VBIF.xMax,
       N_cols_total: cfg.N_cols,
       N_trans: cfg.N_trans, N_plot: cfg.N_plot,
       maxStore: MAX_ORBIT_STORE,
@@ -2418,10 +2477,11 @@ function popZoomHistory(){
 }
 
 function refineView(){
-  /* Only push/compute if the visible param window differs from ST. */
+  /* Recompute when the visible param window OR the x-window differs from the
+     last compute — the latter because stored iterates are filtered to view. */
   var w = VBIF.pMax - VBIF.pMin;
   if(w<=1e-14) return;
-  var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12;
+  var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12 && xWindowSettled();
   if(same && BDATA.N_done===BDATA.N_cols){ return; }
   pushZoomHistory();
   ST.pMin = VBIF.pMin;
@@ -2438,7 +2498,7 @@ function scheduleAutoRefine(){
     /* A new zoom cancels the current progressive chain and starts a
        fresh one at the new view — the in-flight levels were computing
        a now-stale window. */
-    var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12;
+    var same = Math.abs(VBIF.pMin-ST.pMin)<1e-12 && Math.abs(VBIF.pMax-ST.pMax)<1e-12 && xWindowSettled();
     if(same && !PROG.active) return;
     if(same && PROG.active) return; /* already refining this same view */
     refineView();
@@ -3568,8 +3628,8 @@ function resetView(){
   syncParamInputs();
   ZOOM_HIST.length=0;
   updateBackBtn();
-  /* If data was computed on a narrower range, re-run at the default view. */
-  var needRecompute = Math.abs(ST.pMin-VBIF.dflt.pMin)>1e-9 || Math.abs(ST.pMax-VBIF.dflt.pMax)>1e-9;
+  /* If data was computed on a narrower param OR x window, re-run at default. */
+  var needRecompute = Math.abs(ST.pMin-VBIF.dflt.pMin)>1e-9 || Math.abs(ST.pMax-VBIF.dflt.pMax)>1e-9 || !xWindowSettled();
   if(needRecompute && BDATA.N_done>0){
     ST.pMin=VBIF.dflt.pMin; ST.pMax=VBIF.dflt.pMax;
     syncParamInputs();
@@ -3717,6 +3777,7 @@ document.getElementById('xMinNum').addEventListener('change',function(){
   VBIF.xMin=v;
   VBIF.dflt.xMin=v;
   renderAll();
+  scheduleAutoRefine(); /* refill the new band — stored points are view-filtered */
 });
 document.getElementById('xMaxNum').addEventListener('change',function(){
   var v=parseMathInput(this.value);
@@ -3725,6 +3786,7 @@ document.getElementById('xMaxNum').addEventListener('change',function(){
   VBIF.xMax=v;
   VBIF.dflt.xMax=v;
   renderAll();
+  scheduleAutoRefine(); /* refill the new band — stored points are view-filtered */
 });
 document.getElementById('x0Num').addEventListener('change',function(){
   var v=parseMathInput(this.value);
