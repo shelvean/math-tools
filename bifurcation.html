@@ -1657,7 +1657,36 @@ var WORKER_SRC = [
 '  try{ importScripts(url); DECIMAL_READY=(typeof Decimal!=="undefined"); DECIMAL_URL=url; return DECIMAL_READY; }',
 '  catch(e){ return false; }',
 '}',
-'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute"){ if(m.mapId==="henon"){ if(m.useDecimal) runComputeHenonDecimal(m); else runComputeHenon(m); } else if(m.useDecimal) runComputeDecimal(m); else runCompute(m); } };',
+'self.onmessage=function(e){var m=e.data; if(m.cmd==="compute"){ if(m.mapId==="henon"){ if(m.useDecimal) runComputeHenonDecimal(m); else runComputeHenon(m); } else if(m.useDecimal) runComputeDecimal(m); else runCompute(m); } else if(m.cmd==="densify"){ runDensify(m); } };',
+/* Incremental densification: resume each column from the orbit state the base
+   compute left off at (no transient re-run) and append more in-view particles
+   for the CURRENT window only. Cheap and embarrassingly parallel — used to
+   build extra density on a settled deep zoom without recomputing anything. */
+'function runDensify(m){',
+'  var mapDef=MAPS[m.mapId]; var f;',
+'  if(mapDef){ f=mapDef.f; }',
+'  else if(m.customSrc){ try{ var raw=new Function("x","r","return "+m.customSrc+";"); f=function(x,r){ try{return raw(x,r);}catch(e){return NaN;} }; }catch(e){ self.postMessage({cmd:"error",msg:e.message,token:m.token}); return; } }',
+'  else { self.postMessage({cmd:"error",msg:"Unknown map: "+m.mapId,token:m.token}); return; }',
+'  var Ntot=m.N_cols_total, cs=m.colStart||0, ce=m.colEnd||Ntot, n=ce-cs;',
+'  var pMin=m.pMin, pRange=m.pMax-m.pMin;',
+'  var vLo=(m.xViewLo!=null&&isFinite(m.xViewLo))?m.xViewLo:-Infinity;',
+'  var vHi=(m.xViewHi!=null&&isFinite(m.xViewHi))?m.xViewHi:Infinity;',
+'  var addTarget=m.addTarget, batch=m.batch, resumeIn=m.resumeXArr;',
+'  var outFlat=new Float32Array(n*addTarget), outCounts=new Int32Array(n), resumeOut=new Float32Array(n);',
+'  for(var k=0;k<n;k++){',
+'    var i=cs+k, p=pMin+(i+0.5)/Ntot*pRange;',
+'    var x=resumeIn[k], c=0;',
+'    if(isFinite(x)){',
+'      for(var t=0;t<batch && c<addTarget;t++){',
+'        if(x>=vLo && x<=vHi){ outFlat[k*addTarget+c]=x; c++; }',
+'        try{ x=f(x,p); }catch(e){ break; }',
+'        if(!isFinite(x)) break;',
+'      }',
+'    }',
+'    outCounts[k]=c; resumeOut[k]=x;',
+'  }',
+'  self.postMessage({cmd:"densified",outFlat:outFlat,outCounts:outCounts,resumeOut:resumeOut,addTarget:addTarget,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[outFlat.buffer,outCounts.buffer,resumeOut.buffer]);',
+'}',
 'function runCompute(m){',
 '  var mapDef=MAPS[m.mapId]; var f,df;',
 '  if(mapDef){ f=mapDef.f; df=mapDef.df; }',
@@ -1689,6 +1718,7 @@ var WORKER_SRC = [
 '  var fillBoost=Math.max(1,Math.min(40,domAll/Math.max(1e-300,viewXr)));',
 '  var plotBudget=Math.min(12000,Math.max(Np,Math.round(Np*fillBoost)));',
 '  var pArr=new Float32Array(n), xArrsFlat=new Float32Array(n*storeLen), xCounts=new Int32Array(n), lyaArr=new Float32Array(n);',
+'  var xResume=new Float32Array(n);',  /* per-column orbit state for incremental densify */
 '  var prevX=null;',
 '  var progEvery=Math.max(32, Math.floor(n/20));',
 '  for(var k=0;k<n;k++){',
@@ -1746,10 +1776,11 @@ var WORKER_SRC = [
 '    }',
 '    xCounts[k]=cnt;',
 '    lyaArr[k]=lyaCnt>0?lyaSum/lyaCnt:NaN;',
+'    xResume[k]=isFinite(prevNext)?prevNext:NaN;',
 '    prevX=prevNext;',
 '    if(k>0 && (k%progEvery)===0) self.postMessage({cmd:"progress",col:i,total:Ntot,token:m.token});',
 '  }',
-'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,storeLen:storeLen,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer]);',
+'  self.postMessage({cmd:"done",pArr:pArr,xArrsFlat:xArrsFlat,xCounts:xCounts,lyaArr:lyaArr,xResume:xResume,storeLen:storeLen,token:m.token,shardId:m.shardId,colStart:cs,colEnd:ce},[pArr.buffer,xArrsFlat.buffer,xCounts.buffer,lyaArr.buffer,xResume.buffer]);',
 '}',
 'function runComputeDecimal(m){',
 '  if(!ensureDecimal(m.useDecimal.url)){ self.postMessage({cmd:"error",msg:"Could not load decimal.js.",token:m.token}); return; }',
@@ -2074,6 +2105,7 @@ function allocBDATA(N){
   BDATA.xCounts  = new Int32Array(N);
   BDATA.lyaArr   = new Float32Array(N);
   BDATA.colColors= new Uint8Array(N*4);
+  BDATA.resumeX  = new Float32Array(N);   /* per-column orbit state for densify */
   var storeLen = Math.min(ST.N_plot, MAX_ORBIT_STORE);
   for(var i=0;i<N;i++) BDATA.xArrs[i]=new Float32Array(storeLen);
 }
@@ -2254,6 +2286,7 @@ function stopAll(){
   ST.computing=false;
   if(ST.compTimer)clearTimeout(ST.compTimer); ST.compTimer=null;
   cancelProgressive();
+  cancelDensify();     /* stop any in-flight densification for the old window */
   terminateWorker();   /* kill in-flight iteration */
 }
 
@@ -2285,6 +2318,7 @@ function runProgressiveLevel(){
     say('Refinement complete — '+(PROG.maxLevel+1)+' levels.');
     updateFormula();
     if(PROG.onDone){ PROG.onDone(); PROG.onDone=null; }
+    startDensify();   /* keep adding in-view particles to this window while idle */
     return;
   }
 
@@ -2383,6 +2417,12 @@ function advanceProgressive(){
 
 function onWorkerMessage(e){
   var msg = e.data;
+  /* Densify results ride a separate token — handle (or discard if stale) before
+     the PROG.busyToken gate, which only applies to resolution-level compute. */
+  if(msg.cmd === 'densified'){
+    if(msg.token === DENSIFY.busyToken) applyDensified(msg);
+    return;
+  }
   if(msg.token !== PROG.busyToken) return;   /* stale result from a cancelled level */
   if(msg.cmd === 'progress'){
     /* micro-progress within a level */
@@ -2403,6 +2443,7 @@ function onWorkerMessage(e){
       BDATA.pArr[gi]   = msg.pArr[k];
       BDATA.xCounts[gi]= msg.xCounts[k];
       BDATA.lyaArr[gi] = msg.lyaArr[k];
+      if(msg.xResume && BDATA.resumeX) BDATA.resumeX[gi] = msg.xResume[k];
       /* Zero-copy view into the shard's flat buffer. */
       BDATA.xArrs[gi]  = msg.xArrsFlat.subarray(k*storeLen, (k+1)*storeLen);
       var c = getColColor(msg.lyaArr[k]);
@@ -2414,6 +2455,111 @@ function onWorkerMessage(e){
       BDATA.N_done = BDATA.N_cols;
       renderAll();
       advanceProgressive();
+    }
+  }
+}
+
+/* =====================================================
+   Incremental densification
+   Once a window is fully refined, keep ADDING in-view particles to it during
+   idle time. Each round resumes every column's orbit from where the base
+   compute stopped (BDATA.resumeX) — no transient re-run — iterates a batch in
+   the worker, and appends the iterates that fall inside the visible band. This
+   builds density on a settled deep zoom cheaply (parallel, in-view only, no
+   recompute) and is capped so render cost stays bounded. Any view change /
+   recompute cancels it (see stopAll).
+===================================================== */
+var DENSIFY = { active:false, round:0, maxRounds:8, busyToken:0,
+                shardsTotal:0, shardsDone:0, idleId:null,
+                cap:1200, addTarget:250, batch:40000 };
+
+function cancelDensify(){
+  DENSIFY.active = false;
+  DENSIFY.shardsTotal = 0; DENSIFY.shardsDone = 0;
+  if(DENSIFY.idleId!=null){
+    if(window.cancelIdleCallback) cancelIdleCallback(DENSIFY.idleId);
+    DENSIFY.idleId = null;
+  }
+}
+
+function maxColStored(){
+  var m=0; for(var i=0;i<BDATA.N_cols;i++){ var c=BDATA.xCounts[i]; if(c>m)m=c; }
+  return m;
+}
+
+function startDensify(){
+  cancelDensify();
+  var ex = MAPS[ST.mapId];
+  if(!ex || ex.dim2) return;            /* Hénon: separate 2D path, not supported */
+  if(isDeepZoomActive()) return;        /* decimal deep-zoom path has no resume */
+  if(!BDATA.resumeX || !BDATA.N_cols) return;
+  /* Only worth it when zoomed in x — at a wide view the band is already dense
+     and extra points would just inflate render cost. */
+  var domX = ((ex.xMax!=null?ex.xMax:1) - (ex.xMin!=null?ex.xMin:-1)) || 1;
+  if((VBIF.xMax - VBIF.xMin) > domX*0.5) return;
+  if(maxColStored() >= DENSIFY.cap) return;
+  DENSIFY.active = true; DENSIFY.round = 0;
+  runDensifyRound();
+}
+
+function runDensifyRound(){
+  if(!DENSIFY.active) return;
+  if(DENSIFY.round >= DENSIFY.maxRounds || maxColStored() >= DENSIFY.cap){
+    DENSIFY.active = false; return;
+  }
+  var pool = getWorkerPool();
+  if(!pool || !pool.length){ DENSIFY.active = false; return; }
+  workerToken++; DENSIFY.busyToken = workerToken;
+  var customSrc = (ST.mapId==='custom' && MAPS.custom && MAPS.custom.customSrc) ? MAPS.custom.customSrc : null;
+  var N = BDATA.N_cols;
+  var nShards = Math.min(pool.length, Math.max(1, Math.ceil(N/200)));
+  var shardSize = Math.ceil(N/nShards);
+  DENSIFY.shardsTotal = 0; DENSIFY.shardsDone = 0;
+  for(var s=0;s<nShards;s++){
+    var c0 = s*shardSize, c1 = Math.min(N, c0+shardSize);
+    if(c0>=c1) continue;
+    var resumeSlice = BDATA.resumeX.slice(c0, c1);  /* copy → transferable */
+    DENSIFY.shardsTotal++;
+    pool[s % pool.length].postMessage({
+      cmd:'densify', token:workerToken,
+      mapId:ST.mapId, customSrc:customSrc,
+      pMin:ST.pMin, pMax:ST.pMax, N_cols_total:N,
+      colStart:c0, colEnd:c1,
+      xViewLo:VBIF.xMin, xViewHi:VBIF.xMax,
+      addTarget:DENSIFY.addTarget, batch:DENSIFY.batch,
+      resumeXArr:resumeSlice, shardId:s
+    }, [resumeSlice.buffer]);
+  }
+  if(DENSIFY.shardsTotal === 0) DENSIFY.active = false;
+}
+
+function applyDensified(msg){
+  var cs = msg.colStart, ce = msg.colEnd, addTarget = msg.addTarget, cap = DENSIFY.cap;
+  for(var k=0;k<ce-cs;k++){
+    var gi = cs + k, add = msg.outCounts[k];
+    if(add > 0){
+      var oldCnt = BDATA.xCounts[gi], buf = BDATA.xArrs[gi];
+      if(buf.length < oldCnt + add){
+        /* Grow once to cap (base buffers are zero-copy views of length storeLen). */
+        var nb = new Float32Array(Math.max(cap, oldCnt + add));
+        nb.set(buf.subarray(0, oldCnt), 0);
+        buf = nb; BDATA.xArrs[gi] = nb;
+      }
+      buf.set(msg.outFlat.subarray(k*addTarget, k*addTarget + add), oldCnt);
+      BDATA.xCounts[gi] = oldCnt + add;
+    }
+    if(BDATA.resumeX) BDATA.resumeX[gi] = msg.resumeOut[k];
+  }
+  DENSIFY.shardsDone++;
+  if(DENSIFY.shardsDone >= DENSIFY.shardsTotal){
+    renderAll();
+    DENSIFY.round++;
+    if(DENSIFY.active){
+      if(window.requestIdleCallback){
+        DENSIFY.idleId = requestIdleCallback(function(){ DENSIFY.idleId=null; runDensifyRound(); }, {timeout:1500});
+      } else {
+        setTimeout(runDensifyRound, 60);
+      }
     }
   }
 }
