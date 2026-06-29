@@ -1232,6 +1232,7 @@ var ST = {
   animating: false,
   animTimer: null,
   trailMode: 'solid',
+  _trailKey: null,
   view: {xMin:-1, xMax:3.4, yMin:-1, yMax:3.4},
   defaultView: {xMin:-1, xMax:3.4, yMin:-1, yMax:3.4}
 };
@@ -1425,6 +1426,35 @@ function buildOrbit() {
     if(Math.abs(x - xPrev) < 1e-8) break;
   }
   ST.orbit = orbit;
+  applyDefaultTrail();
+}
+
+/* Default trail style by behaviour: solid for a fixed point (the orbit
+   settles to a single value, or the example is an unstable fixed point),
+   faded for periodic/chaotic orbits. Re-asserts on example switch or when
+   the behaviour changes (keyed), but leaves a manual choice alone within a
+   given behaviour so the Trail control still works. */
+function applyDefaultTrail(){
+  var ex = getEx();
+  var want;
+  if(ex && ex.category === 'unstable'){
+    want = 'solid';   /* unstable fixed point — solid so the outward spiral reads clearly */
+  } else {
+    /* The orbit settled to a fixed point iff its final value satisfies
+       f(x)=x. (Tail-distinctness would misread an oscillatory convergence
+       to a stable fixed point — e.g. the cosine map's Dottie spiral.) */
+    var o = ST.orbit, n = o.length, last = o[n-1], fx;
+    try{ fx = ex.f(last, ST.params); }catch(e){ fx = NaN; }
+    var isFP = isFinite(fx) && Math.abs(fx - last) < 1e-4*(Math.abs(last)+1);
+    want = isFP ? 'solid' : 'faded';
+  }
+  var key = ST.exId + ':' + want;
+  if(key !== ST._trailKey){
+    ST._trailKey = key;
+    ST.trailMode = want;
+    var sel = document.getElementById('trailSel');
+    if(sel) sel.value = want;
+  }
 }
 
 /* ── Find fixed points via grid + bisection ── */
