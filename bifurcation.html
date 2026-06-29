@@ -1466,6 +1466,20 @@ function panLya(dpx, dpy){
 /* ── Canvas interaction ── */
 var lastDrag={x:0,y:0,down:false,canvas:null};
 
+/* rAF-coalesced redraw for continuous gestures (drag-pan, wheel-zoom,
+   rubber-band, touch). A fast trackpad or high-rate mouse can fire several
+   move/wheel events per frame; calling renderAll() on each one redraws the
+   full diagram multiple times for a single displayed frame. Coalescing to one
+   render per animation frame caps redraws at the display refresh rate while
+   still painting the latest view state (handlers mutate VBIF synchronously
+   before scheduling, so the deferred render reads the newest coordinates). */
+var _renderRAF = null;
+var _raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb,16); };
+function scheduleRender(){
+  if(_renderRAF!==null) return;
+  _renderRAF = _raf(function(){ _renderRAF=null; renderAll(); });
+}
+
 function addCanvasEvents(canvas, isLya){
   canvas.addEventListener('wheel',function(e){
     e.preventDefault();
@@ -1474,7 +1488,7 @@ function addCanvasEvents(canvas, isLya){
     var f=e.deltaY>0?1.12:0.88;
     if(isLya) zoomLya(cx,cy,f,f);
     else       zoomBif(cx,cy,f,f);
-    renderAll();
+    scheduleRender();
     scheduleAutoRefine();
   },{passive:false});
 
@@ -1534,7 +1548,7 @@ function addCanvasEvents(canvas, isLya){
       }
     }
     lastTouches=ts;
-    renderAll();
+    scheduleRender();
   },{passive:false});
   canvas.addEventListener('touchend',function(){
     lastTouches=null;
@@ -1547,14 +1561,14 @@ window.addEventListener('mousemove',function(e){
     var rect=bifCanvas.getBoundingClientRect();
     RUBBER.x1=e.clientX-rect.left;
     RUBBER.y1=e.clientY-rect.top;
-    renderAll();
+    scheduleRender();
     return;
   }
   if(!lastDrag.down)return;
   var dx=e.clientX-lastDrag.x, dy=e.clientY-lastDrag.y;
   lastDrag.x=e.clientX; lastDrag.y=e.clientY;
   if(lastDrag.isLya)panLya(dx,dy); else panBif(dx,dy);
-  renderAll();
+  scheduleRender();
 });
 window.addEventListener('mouseup',function(e){
   var wasDragging = lastDrag.down;
@@ -2491,6 +2505,36 @@ function drawSlantedTick(ctx, text, cx, cy){
   ctx.restore();
 }
 
+/* Reusable render scratch buffers. renderBif() runs on every pan/zoom and on
+   each progressive level, so reallocating multi-MB typed arrays (and a fresh
+   <canvas>) per call churns GC and stutters interaction. Cache them keyed by
+   the plot-area pixel dims; reallocate only when the size actually changes,
+   otherwise just reset in place with native fills. Output is byte-identical. */
+var RS = { w:0, h:0, imgData:null, dU32:null, count:null, pxColor:null,
+           hasColor:null, tempCanvas:null, tc:null, bgU32:0 };
+function getRenderScratch(imgW, imgH){
+  if(RS.w!==imgW || RS.h!==imgH || !RS.imgData){
+    var nPix=imgW*imgH;
+    RS.imgData    = new ImageData(imgW, imgH);
+    RS.dU32       = new Uint32Array(RS.imgData.data.buffer);
+    RS.count      = new Float32Array(nPix);
+    RS.pxColor    = new Uint8Array(nPix*3);
+    RS.hasColor   = new Uint8Array(nPix);
+    RS.tempCanvas = document.createElement('canvas');
+    RS.tempCanvas.width=imgW; RS.tempCanvas.height=imgH;
+    RS.tc = RS.tempCanvas.getContext('2d');
+    /* Pack the (250,250,250,255) plot background once. Writing the four bytes
+       and reading them back as one u32 is endianness-agnostic. */
+    var b=RS.imgData.data; b[0]=250; b[1]=250; b[2]=250; b[3]=255;
+    RS.bgU32 = RS.dU32[0];
+    RS.w=imgW; RS.h=imgH;
+  }
+  RS.dU32.fill(RS.bgU32);   /* reset background (replaces per-pixel white fill) */
+  RS.count.fill(0);
+  RS.hasColor.fill(0);      /* pxColor is guarded by hasColor, no reset needed */
+  return RS;
+}
+
 /* ── Draw bifurcation diagram ── */
 function renderBif(){
   var ctx=bCtx;
@@ -2520,10 +2564,9 @@ function renderBif(){
 
   /* ── Pixel-fill the dots (ImageData for speed) ── */
   var imgW=Math.round(W*dpr), imgH=Math.round(H*dpr);
-  var imgData=new ImageData(imgW,imgH);
+  var RSc=getRenderScratch(imgW,imgH);
+  var imgData=RSc.imgData;
   var d=imgData.data;
-  /* Fill white */
-  for(var i=0;i<d.length;i+=4){d[i]=250;d[i+1]=250;d[i+2]=250;d[i+3]=255;}
 
   var pRange=VBIF.pMax-VBIF.pMin, xRange=VBIF.xMax-VBIF.xMin;
 
@@ -2534,9 +2577,9 @@ function renderBif(){
      staircases when the attractor sits between rows. The colour for a
      pixel is the colour of the (unique) column that wrote to it. */
   var nPix = imgW*imgH;
-  var count = new Float32Array(nPix);
-  var pxColor = new Uint8Array(nPix*3);
-  var hasColor = new Uint8Array(nPix);
+  var count = RSc.count;
+  var pxColor = RSc.pxColor;
+  var hasColor = RSc.hasColor;
   var hMax = imgH-1;
 
   for(var col=0;col<BDATA.N_done;col++){
@@ -2595,9 +2638,8 @@ function renderBif(){
 
   /* Draw ImageData at plot area offset */
   var offCtx=bifCanvas.getContext('2d');
-  var tempCanvas=document.createElement('canvas');
-  tempCanvas.width=imgW; tempCanvas.height=imgH;
-  var tc=tempCanvas.getContext('2d');
+  var tempCanvas=RSc.tempCanvas;
+  var tc=RSc.tc;
   tc.putImageData(imgData,0,0);
   offCtx.save();
   offCtx.setTransform(1,0,0,1,0,0);
