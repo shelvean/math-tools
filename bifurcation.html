@@ -1466,6 +1466,20 @@ function panLya(dpx, dpy){
 /* ── Canvas interaction ── */
 var lastDrag={x:0,y:0,down:false,canvas:null};
 
+/* rAF-coalesced redraw for continuous gestures (drag-pan, wheel-zoom,
+   rubber-band, touch). A fast trackpad or high-rate mouse can fire several
+   move/wheel events per frame; calling renderAll() on each one redraws the
+   full diagram multiple times for a single displayed frame. Coalescing to one
+   render per animation frame caps redraws at the display refresh rate while
+   still painting the latest view state (handlers mutate VBIF synchronously
+   before scheduling, so the deferred render reads the newest coordinates). */
+var _renderRAF = null;
+var _raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb,16); };
+function scheduleRender(){
+  if(_renderRAF!==null) return;
+  _renderRAF = _raf(function(){ _renderRAF=null; renderAll(); });
+}
+
 function addCanvasEvents(canvas, isLya){
   canvas.addEventListener('wheel',function(e){
     e.preventDefault();
@@ -1474,7 +1488,7 @@ function addCanvasEvents(canvas, isLya){
     var f=e.deltaY>0?1.12:0.88;
     if(isLya) zoomLya(cx,cy,f,f);
     else       zoomBif(cx,cy,f,f);
-    renderAll();
+    scheduleRender();
     scheduleAutoRefine();
   },{passive:false});
 
@@ -1534,7 +1548,7 @@ function addCanvasEvents(canvas, isLya){
       }
     }
     lastTouches=ts;
-    renderAll();
+    scheduleRender();
   },{passive:false});
   canvas.addEventListener('touchend',function(){
     lastTouches=null;
@@ -1547,14 +1561,14 @@ window.addEventListener('mousemove',function(e){
     var rect=bifCanvas.getBoundingClientRect();
     RUBBER.x1=e.clientX-rect.left;
     RUBBER.y1=e.clientY-rect.top;
-    renderAll();
+    scheduleRender();
     return;
   }
   if(!lastDrag.down)return;
   var dx=e.clientX-lastDrag.x, dy=e.clientY-lastDrag.y;
   lastDrag.x=e.clientX; lastDrag.y=e.clientY;
   if(lastDrag.isLya)panLya(dx,dy); else panBif(dx,dy);
-  renderAll();
+  scheduleRender();
 });
 window.addEventListener('mouseup',function(e){
   var wasDragging = lastDrag.down;
