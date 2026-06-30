@@ -1455,6 +1455,9 @@ function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var gamma=SDIRK_GAMMA,scope={x:0,y:0};
   var dS=Math.max(xMax-xMin,yMax-yMin),dm=dS*0.05;
   var atol=1e-5*tolScale,rtol=1e-3*tolScale,hMin=1e-14,hMax=dS*0.05,maxSteps=steps.maxIter,maxPts=steps.maxPts;
+  /* Cap per-step spatial displacement so fast regions are subdivided for smooth
+     rendering (see computeTrajectoryTsit5); scales with the Step-size selector. */
+  var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
   function estH(x,y){
     scope.x=x;scope.y=y;var fx,fy;try{fx=f.evaluate(scope);fy=g.evaluate(scope);}catch(e){return hMax;}
     var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
@@ -1482,11 +1485,15 @@ function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
       var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(xN)),scY=atol+rtol*Math.max(Math.abs(y),Math.abs(yN));
       var eN=Math.sqrt(0.5*((eX/scX)*(eX/scX)+(eY/scY)*(eY/scY)));
       if(eN>1){h*=Math.max(0.1,0.9/Math.sqrt(eN));rejects++;if(rejects>50)break;continue;}
+      var dispS=Math.hypot(xN-x,yN-y);
+      if(dispS>maxDisp){h*=Math.max(0.1,0.9*maxDisp/dispS);rejects++;if(rejects>50)break;continue;}
       rejects=0;t+=h;x=xN;y=yN;
       pts.push({x:x,y:y,t:t});
       if(x<xMin-dm||x>xMax+dm||y<yMin-dm||y>yMax+dm)break;
       var spd=Math.sqrt(f0*f0+g0*g0);if(pts.length>20&&spd<1e-8)break;
-      h*=eN>1e-10?Math.min(2,0.9/Math.sqrt(eN)):2;
+      var grow=eN>1e-10?Math.min(2,0.9/Math.sqrt(eN)):2;
+      if(dispS>1e-30)grow=Math.min(grow,0.9*maxDisp/dispS);
+      h*=Math.max(0.1,grow);
     }
     return pts;
   }
