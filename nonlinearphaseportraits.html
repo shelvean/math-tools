@@ -845,6 +845,22 @@ var trajCanvas=document.getElementById('traj-canvas');
 var fieldCtx=fieldCanvas.getContext('2d');
 var trajCtx=trajCanvas.getContext('2d');
 
+/* Supersample the trajectory layer. Trajectories — especially the thin
+   Fine/Finer widths — render grainy on the fixed 875x625 bitmap because a
+   sub-pixel-wide line gets only partial anti-aliased coverage (worse when the
+   browser upscales on HiDPI). Render the backing store at 2-3x and let CSS
+   downscale to 875x625 so every thickness is smooth. drawTraj maps coordinates
+   off fieldCanvas.width and draws on trajCtx, so the trajectory layer can be
+   scaled independently of the field layer. */
+var TRAJ_SS=Math.max(2,Math.min(3,Math.ceil(window.devicePixelRatio||1)));
+(function(){
+  trajCanvas.style.width=trajCanvas.width+'px';
+  trajCanvas.style.height=trajCanvas.height+'px';
+  trajCanvas.width=trajCanvas.width*TRAJ_SS;
+  trajCanvas.height=trajCanvas.height*TRAJ_SS;
+  trajCtx.scale(TRAJ_SS,TRAJ_SS);   /* persistent: drawTraj works in logical 875x625 coords */
+})();
+
 /* ── State ── */
 var userPoints=[],trajectories=[],fCompiled,gCompiled;
 var timeVarX=true,timeVarY=false;
@@ -2215,7 +2231,7 @@ function downloadPNG(){
 
   /* ----- phase portrait (field + trajectories) inset within the margins ----- */
   ctx.drawImage(fieldCanvas, mL, headerH);
-  ctx.drawImage(trajCanvas, mL, headerH);
+  ctx.drawImage(trajCanvas, mL, headerH, W, H);  /* supersampled: downscale to logical size */
   ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.strokeRect(mL+0.5, headerH+0.5, W-1, H-1);
 
   /* ----- axis tick labels (same nice-step mapping as the on-screen labels) ----- */
