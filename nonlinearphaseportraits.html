@@ -1455,6 +1455,9 @@ function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var gamma=SDIRK_GAMMA,scope={x:0,y:0};
   var dS=Math.max(xMax-xMin,yMax-yMin),dm=dS*0.05;
   var atol=1e-5*tolScale,rtol=1e-3*tolScale,hMin=1e-14,hMax=dS*0.05,maxSteps=steps.maxIter,maxPts=steps.maxPts;
+  /* Cap per-step spatial displacement so fast regions are subdivided for smooth
+     rendering (see computeTrajectoryTsit5); scales with the Step-size selector. */
+  var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
   function estH(x,y){
     scope.x=x;scope.y=y;var fx,fy;try{fx=f.evaluate(scope);fy=g.evaluate(scope);}catch(e){return hMax;}
     var eps=Math.max(1e-8,1e-6*(1+Math.abs(x)+Math.abs(y)));
@@ -1482,11 +1485,15 @@ function computeTrajectorySDIRK2(f,g,x0,y0,xMin,xMax,yMin,yMax){
       var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(xN)),scY=atol+rtol*Math.max(Math.abs(y),Math.abs(yN));
       var eN=Math.sqrt(0.5*((eX/scX)*(eX/scX)+(eY/scY)*(eY/scY)));
       if(eN>1){h*=Math.max(0.1,0.9/Math.sqrt(eN));rejects++;if(rejects>50)break;continue;}
+      var dispS=Math.hypot(xN-x,yN-y);
+      if(dispS>maxDisp){h*=Math.max(0.1,0.9*maxDisp/dispS);rejects++;if(rejects>50)break;continue;}
       rejects=0;t+=h;x=xN;y=yN;
       pts.push({x:x,y:y,t:t});
       if(x<xMin-dm||x>xMax+dm||y<yMin-dm||y>yMax+dm)break;
       var spd=Math.sqrt(f0*f0+g0*g0);if(pts.length>20&&spd<1e-8)break;
-      h*=eN>1e-10?Math.min(2,0.9/Math.sqrt(eN)):2;
+      var grow=eN>1e-10?Math.min(2,0.9/Math.sqrt(eN)):2;
+      if(dispS>1e-30)grow=Math.min(grow,0.9*maxDisp/dispS);
+      h*=Math.max(0.1,grow);
     }
     return pts;
   }
@@ -1551,6 +1558,9 @@ function computeTrajectory(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var hMax=mesh.dtMax,hMin=1e-14;
   var BLOW=Math.max(1e6,dS*1000);
   var minSep=dS*1e-4;
+  /* Cap per-step spatial displacement so fast regions are subdivided for
+     smooth rendering (see computeTrajectoryTsit5 for the rationale). */
+  var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
   var scope={x:0,y:0};
 
   function integrate(sign,maxP){
@@ -1565,10 +1575,18 @@ function computeTrajectory(f,g,x0,y0,xMin,xMax,yMin,yMax){
         res=dpStep2D(f,g,x,y,curH,scope);
         if(!res||!isFinite(res.xNext)||!isFinite(res.yNext)){curH*=0.25;attempt++;continue;}
         var ratio=res.error/TOL;
-        var hOpt=Math.abs(curH)*(ratio>1e-12?Math.pow(SAFETY/ratio,0.2):5);
-        hOpt=Math.max(hMin,Math.min(hMax,hOpt))*sign;
-        if(ratio<=1){t+=curH;x=res.xNext;y=res.yNext;h=hOpt;ok=true;}
-        else{curH=hOpt;attempt++;}
+        var disp=Math.hypot(res.xNext-x,res.yNext-y);
+        if(ratio<=1 && disp<=maxDisp){
+          t+=curH;x=res.xNext;y=res.yNext;
+          var fac=ratio>1e-12?Math.min(5,Math.pow(SAFETY/ratio,0.2)):5;
+          if(disp>1e-30)fac=Math.min(fac,0.9*maxDisp/disp);
+          h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,fac)))*sign;ok=true;
+        }else{
+          var facErr=ratio>1e-12?Math.pow(SAFETY/ratio,0.2):5;
+          var facDisp=disp>maxDisp?0.9*maxDisp/disp:5;
+          var fac2=Math.max(0.1,Math.min(facErr,facDisp));
+          curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac2))*sign;attempt++;
+        }
       }
       if(!ok)break;
       if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;
@@ -1639,6 +1657,13 @@ function computeTrajectoryTsit5(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-6*tolScale,rtol=1e-3*tolScale;
   var hMax=mesh.dtMax,hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* Spatial-displacement cap. Time-local error control alone keeps the full
+     hMax step through fast, near-straight-in-time motion (e.g. a Van der Pol
+     relaxation jump), so the polyline leaps a long way and renders as jagged
+     straight segments through the sharpest part of the curve. Cap the per-step
+     displacement to a small fraction of the view so fast regions are
+     subdivided into real solution points — smoother curve AND better accuracy. */
+  var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
   var scope={x:0,y:0};
 
   function integrate(sign,maxP){
@@ -1653,13 +1678,18 @@ function computeTrajectoryTsit5(f,g,x0,y0,xMin,xMax,yMin,yMax){
         var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(res.xNext));
         var scY=atol+rtol*Math.max(Math.abs(y),Math.abs(res.yNext));
         var errN=Math.sqrt(0.5*((res.errX/scX)*(res.errX/scX)+(res.errY/scY)*(res.errY/scY)));
-        if(errN<=1){
+        var disp=Math.hypot(res.xNext-x,res.yNext-y);
+        if(errN<=1 && disp<=maxDisp){
           t+=curH;x=res.xNext;y=res.yNext;
           k1x=res.k7x;k1y=res.k7y;/* FSAL */
           var fac=errN>1e-12?Math.min(5,0.9*Math.pow(errN,-0.2)):5;
-          h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac))*sign;ok=true;
+          /* Don't grow into an over-long next step: keep displacement bounded. */
+          if(disp>1e-30)fac=Math.min(fac,0.9*maxDisp/disp);
+          h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,fac)))*sign;ok=true;
         }else{
-          var fac2=Math.max(0.1,0.9*Math.pow(errN,-0.2));
+          var facErr=errN>1e-12?0.9*Math.pow(errN,-0.2):5;
+          var facDisp=disp>maxDisp?0.9*maxDisp/disp:5;
+          var fac2=Math.max(0.1,Math.min(facErr,facDisp));
           curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac2))*sign;
           k1x=null;k1y=null;attempt++;
         }
@@ -1722,6 +1752,9 @@ function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-6*tolScale,rtol=1e-3*tolScale;
   var hMax=mesh.dtMax,hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* Cap per-step spatial displacement so fast regions are subdivided for
+     smooth rendering (see computeTrajectoryTsit5 for the rationale). */
+  var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
   var scope={x:0,y:0};
 
   function integrate(sign,maxP){
@@ -1740,12 +1773,16 @@ function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
         var err5sq=n5x*n5x+n5y*n5y,err3sq=n3x*n3x+n3y*n3y;
         var deno=err5sq+0.01*err3sq;
         var errN=(deno<=0)?0:Math.abs(curH)*err5sq/Math.sqrt(deno*2);
-        if(errN<=1){
+        var disp=Math.hypot(res.xNext-x,res.yNext-y);
+        if(errN<=1 && disp<=maxDisp){
           t+=curH;x=res.xNext;y=res.yNext;
           var fac=errN>1e-12?Math.min(6,0.9*Math.pow(errN,-0.125)):6;
-          h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac))*sign;ok=true;
+          if(disp>1e-30)fac=Math.min(fac,0.9*maxDisp/disp);
+          h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,fac)))*sign;ok=true;
         }else{
-          var fac2=Math.max(0.1,0.9*Math.pow(errN,-0.125));
+          var facErr=errN>1e-12?0.9*Math.pow(errN,-0.125):6;
+          var facDisp=disp>maxDisp?0.9*maxDisp/disp:6;
+          var fac2=Math.max(0.1,Math.min(facErr,facDisp));
           curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac2))*sign;attempt++;
         }
       }
