@@ -429,6 +429,7 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
         <li>Select an <strong>example</strong> from the dropdown to load a preset matrix with strategic trajectories illustrating the classification.</li>
         <li><strong>Click anywhere</strong> on the phase plane to integrate a trajectory through that initial condition (forward and backward), or type an exact \((x_0, y_0)\) in the <strong>Initial condition</strong> box and press <strong>Add trajectory</strong> (keyboard-friendly). Trajectories are color-coded.</li>
         <li>Use <strong>Generate</strong> to redraw the field and clear trajectories; <strong>Clear trajectories</strong> removes curves while keeping the field.</li>
+        <li>Set the viewing window with the \(x_\text{min}, x_\text{max}, y_\text{min}, y_\text{max}\) fields (numbers or expressions such as <code>-pi</code> or <code>2*pi</code>) to zoom in or out on the phase plane.</li>
         <li>Adjust arrows per axis, arrow length, field opacity, and colors. Toggle grid and initial point markers using the checkboxes.</li>
         <li>Open the <strong>Time Series</strong> panel to plot \(x(t)\) and/or \(y(t)\) for all current trajectories.</li>
         <li>Download a PNG of the current portrait using <strong>Download PNG</strong>.</li>
@@ -587,6 +588,14 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
         </optgroup>
       </select>
     </div>
+  </div>
+
+  <!-- Domain / canvas size controls -->
+  <div class="cbar" role="group" aria-label="Domain settings">
+    <div class="cfield cfield-xs"><label for="xMin">x<sub>min</sub></label><input type="text" inputmode="decimal" id="xMin" value="-5" title="Accepts numbers or expressions, e.g. -pi, -2*pi"></div>
+    <div class="cfield cfield-xs"><label for="xMax">x<sub>max</sub></label><input type="text" inputmode="decimal" id="xMax" value="5" title="Accepts numbers or expressions, e.g. pi, 2*pi"></div>
+    <div class="cfield cfield-xs"><label for="yMin">y<sub>min</sub></label><input type="text" inputmode="decimal" id="yMin" value="-5" title="Accepts numbers or expressions, e.g. -pi, -2*pi"></div>
+    <div class="cfield cfield-xs"><label for="yMax">y<sub>max</sub></label><input type="text" inputmode="decimal" id="yMax" value="5" title="Accepts numbers or expressions, e.g. pi, 2*pi"></div>
   </div>
 
   <!-- Action bar -->
@@ -826,6 +835,19 @@ function c2sx(cx){return SX_MIN+(cx-xOff())/xScale();}
 function c2sy(cy){return SY_MIN+(CH-xOff()-cy)/yScale();}
 function inBounds(x,y){return x>=SX_MIN&&x<=SX_MAX&&y>=SY_MIN&&y<=SY_MAX;}
 function inCanvas(cx,cy){return cx>=PAD&&cx<=CW-PAD&&cy>=PAD&&cy<=CH-PAD;}
+
+/* ── Domain read ── sync the view window from the xMin/xMax/yMin/yMax inputs.
+   Values may be numbers or expressions (pi, 2*pi, …). A field is only applied
+   when the pair is finite and min < max, so a partial/invalid edit keeps the
+   last good window rather than blowing up the coordinate transforms. */
+function readDomain(){
+  var xmin=parseMathInput(document.getElementById('xMin').value);
+  var xmax=parseMathInput(document.getElementById('xMax').value);
+  var ymin=parseMathInput(document.getElementById('yMin').value);
+  var ymax=parseMathInput(document.getElementById('yMax').value);
+  if(isFinite(xmin)&&isFinite(xmax)&&xmax>xmin){SX_MIN=xmin;SX_MAX=xmax;}
+  if(isFinite(ymin)&&isFinite(ymax)&&ymax>ymin){SY_MIN=ymin;SY_MAX=ymax;}
+}
 
 /* ── Matrix read ── */
 function getM(){
@@ -1223,6 +1245,7 @@ function drawEigenLines(ctx,color){
 var COLORS=['#1d4ed8','#dc2626','#059669','#9333ea','#ea580c','#0891b2','#be185d','#4b5563'];
 
 function drawPortrait(){
+  readDomain();
   var canvas=document.getElementById('phCanvas');
   var ctx=canvas.getContext('2d');
   var M=getM(),a=M.a,b=M.b,c=M.c,d=M.d;
@@ -1580,6 +1603,14 @@ document.addEventListener('DOMContentLoaded',function(){
   var dDraw=debounce(function(){clearComputed();drawPortraitAndReset();updateActiveSolver();},300);
   ['a','b','c','d'].forEach(function(id){
     document.getElementById(id).addEventListener('input',function(){clearComputed();dDraw();});
+  });
+
+  /* Domain / canvas size: sync the window immediately (so a subsequent click
+     integrates against the current view) and redraw on a short debounce.
+     Changing the window clears trajectories, matching a fresh Generate. */
+  var dDomain=debounce(drawPortraitAndReset,300);
+  ['xMin','xMax','yMin','yMax'].forEach(function(id){
+    document.getElementById(id).addEventListener('input',function(){readDomain();dDomain();});
   });
 
   /* Solver change: re-integrate any new trajectories with the new method
