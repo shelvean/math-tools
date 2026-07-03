@@ -1694,10 +1694,26 @@ function gwEigHP(d,e,n){
   return {x:x,z0:w};
 }
 
+/* Node/weight memo + hard size cap.  The Golub–Welsch build is O(n²) in
+   extended precision (~5 s at n=256), so results are cached per (family,n,α,β)
+   and refused above HP_NODE_CAP — beyond which the caller falls back to double
+   precision instead of freezing the page. */
+var HP_NODE_CAP=110;
+var _hpNodeCache={};
+function _hpNodeMemo(key,build){
+  var v=_hpNodeCache[key]; if(v)return v;
+  if(Object.keys(_hpNodeCache).length>400)_hpNodeCache={};
+  return (_hpNodeCache[key]=build());
+}
+
 /* HP Gauss–Jacobi via Golub–Welsch on the Jacobi three-term recurrence.
-   Throws for α+β near a negative integer (degenerate 0/0 off-diagonal); the
-   caller then falls back to double precision. */
+   Throws for α+β near a negative integer (degenerate 0/0 off-diagonal) or for
+   n beyond the cap; the caller then falls back to double precision. */
 function gaussJacobiHP(n,alf,bet){
+  if(n>HP_NODE_CAP)throw new Error('n exceeds HP node cap');
+  return _hpNodeMemo('J'+n+'|'+alf+'|'+bet,function(){ return _gaussJacobiHP(n,alf,bet); });
+}
+function _gaussJacobiHP(n,alf,bet){
   alf=_D(alf); bet=_D(bet);
   var d=new Array(n+1),e=new Array(n+1),k;
   for(k=0;k<n;k++){
@@ -1735,16 +1751,22 @@ function quadWeightedHP(fHP,a,b,n,method){
    via Golub–Welsch on their three-term recurrences (Jacobi-matrix diagonal a_k
    and sub-diagonal b_k), sharing the robust QL eigensolver above. */
 function gaussHermiteHP(n){
-  var d=new Array(n+1),e=new Array(n+1),k;
-  for(k=0;k<n;k++){ d[k+1]=_D(0); e[k+1]=(k>0)?Decimal.sqrt(_D(k).div(2)):_D(0); }
-  var mu0=Decimal.sqrt(Decimal.acos(-1)),ev=gwEigHP(d,e,n);
-  return {x:ev.x,w:ev.z0.map(function(z){return mu0.times(z).times(z);})};
+  if(n>HP_NODE_CAP)throw new Error('n exceeds HP node cap');
+  return _hpNodeMemo('H'+n,function(){
+    var d=new Array(n+1),e=new Array(n+1),k;
+    for(k=0;k<n;k++){ d[k+1]=_D(0); e[k+1]=(k>0)?Decimal.sqrt(_D(k).div(2)):_D(0); }
+    var mu0=Decimal.sqrt(Decimal.acos(-1)),ev=gwEigHP(d,e,n);
+    return {x:ev.x,w:ev.z0.map(function(z){return mu0.times(z).times(z);})};
+  });
 }
 function gaussLaguerreHP(n){
-  var d=new Array(n+1),e=new Array(n+1),k;
-  for(k=0;k<n;k++){ d[k+1]=_D(2*k+1); e[k+1]=(k>0)?_D(k):_D(0); }
-  var ev=gwEigHP(d,e,n);  /* μ₀ = Γ(1) = 1 */
-  return {x:ev.x,w:ev.z0.map(function(z){return z.times(z);})};
+  if(n>HP_NODE_CAP)throw new Error('n exceeds HP node cap');
+  return _hpNodeMemo('L'+n,function(){
+    var d=new Array(n+1),e=new Array(n+1),k;
+    for(k=0;k<n;k++){ d[k+1]=_D(2*k+1); e[k+1]=(k>0)?_D(k):_D(0); }
+    var ev=gwEigHP(d,e,n);  /* μ₀ = Γ(1) = 1 */
+    return {x:ev.x,w:ev.z0.map(function(z){return z.times(z);})};
+  });
 }
 function quadInfiniteHP(fHP,n,method){
   var nw=(method==='hermite')?gaussHermiteHP(n):gaussLaguerreHP(n),tot=_D(0);
@@ -1818,6 +1840,17 @@ function getHPContext(){
   if(ST._hpCtxGen===ST.gen) return ST._hpCtx;   /* memoised for this compute */
   ST._hpCtxGen=ST.gen; ST._hpCtx=null;
   if(ST.exact===null) return null;
+  /* Divergent / ill-posed integrals (e.g. e^x on the real line) make the
+     double result non-finite or astronomically large; extended precision
+     cannot rescue a divergent integral, so skip it rather than spend time
+     building a meaningless high-precision reference.  The magnitude test only
+     applies to the weighted/infinite/DE families (where a huge value signals a
+     non-decaying, divergent integrand) — a plain integral over [a,b] can be
+     genuinely large yet perfectly convergent. */
+  var dApprox=ST.result?ST.result.value:NaN;
+  if(!isFinite(ST.exact)||!isFinite(dApprox)) return null;
+  if((WEIGHTED_METHODS[ST.method]||INFINITE_METHODS[ST.method]||INFINITE_DE[ST.method])
+     && (Math.abs(ST.exact)>1e12||Math.abs(dApprox)>1e12)) return null;
   try{
     var fHP=makeFnHP(ST.expr),aHP,bHP;
     try{ aHP=makeFnHP(document.getElementById('aInput').value.trim())(new Decimal(0)); }catch(e){ aHP=new Decimal(0); }
@@ -4281,17 +4314,23 @@ function computeTolerance(){
     }
     return Math.abs(quadValFast(method,f,a,b,n)-ST.exact);
   }
-  /* HP node generation for the weighted/infinite/DE families is O(n²), so cap
-     them tighter (they are spectral and meet any realistic tolerance at small
-     n anyway); plain rules keep the larger cap. */
-  var HPCAP=(hpCtx&&hpCtx.kind!=='plain')?256:8192;
-  var CAP=useHP?HPCAP:(1<<22);  /* HP: keep responsive; double: 4,194,304 */
+  /* Node generation for the weighted/infinite Gauss families is expensive in n
+     (an O(n²) HP eigensolve, O(n³) in double), so cap those searches tightly —
+     they are spectral and meet any realistic tolerance at small n, so a search
+     that would otherwise run to millions of nodes (e.g. on a divergent
+     integrand) is what froze the page.  Double-exponential rules are cheap per
+     node (a trapezoid sum) so they get a looser cap; plain rules keep theirs. */
+  var tkind=methodKind(method);
+  var isFam=(tkind==='weighted'||tkind==='infinite');
+  var HPCAP=isFam?64:(tkind==='de'?512:8192);
+  var DBLCAP=isFam?128:(tkind==='de'?2048:(1<<22));
+  var CAP=useHP?HPCAP:DBLCAP;
   var nHi=step, err=errAt(nHi);
-  while(err>tol && nHi<CAP){
+  while((err>tol||!isFinite(err)) && nHi<CAP){
     nHi*=2;
     err=errAt(nHi);
   }
-  if(err>tol){
+  if(err>tol||!isFinite(err)){
     tolDiv.innerHTML='<div class="tol-result" style="border-color:var(--red);background:rgba(220,38,38,.06);">'+
       'Tolerance \\(\\varepsilon = '+tolStr+'\\) requires an impractically large \\(n\\) with the <strong>'+
       METHOD_NAMES[method]+'</strong>. Consider a higher-order method (Simpson, Gauss\u2013Legendre, or Romberg).</div>';
