@@ -513,7 +513,7 @@ details.mdesc .mbody p{margin:.4rem 0;}
         <li><strong>Simpson:</strong> \(|E| \le \dfrac{(b-a)^5}{180n^4}\,\max|f^{(4)}|\) &mdash; \(O(h^4)\)</li>
         <li><strong>Composite degree-\(p\) rule:</strong> error \(O(h^{p+1})\) for odd \(p\), \(O(h^{p+2})\) for even \(p\) &mdash; one extra order from symmetry.</li>
       </ul>
-      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, the finite-domain, unweighted rules (Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg, Clenshaw&ndash;Curtis and tanh&ndash;sinh) re-evaluate <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the reported absolute error \(|Q_n-I|\) is carried down to about <strong>32 decimal places</strong> &mdash; well beyond double precision. The value cards still show the first 16 digits; only the error is reported at full precision. The same extended precision drives the <strong>convergence plot</strong> (whose curves keep falling past the \(10^{-16}\) floor instead of flattening) and the <strong>tolerance calculator</strong> (which can now solve for accuracies well below machine epsilon). Weighted, infinite-domain, adaptive and embedded-estimate rules keep the standard double-precision estimate.</p>
+      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, nearly every rule &mdash; the Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg, Clenshaw&ndash;Curtis and tanh&ndash;sinh rules, plus the weighted Gaussian (Chebyshev, Jacobi), infinite-domain (Hermite, Laguerre) and double-exponential (sinh&ndash;sinh, exp&ndash;sinh) families &mdash; re-evaluates <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the reported absolute error \(|Q_n-I|\) is carried down to about <strong>32 decimal places</strong>. This uses extended-precision nodes and weights computed on the fly: Gauss&ndash;Legendre/Hermite/Laguerre/Jacobi abscissae are found by high-precision Newton iteration on their orthogonal-polynomial recurrences (with a Spouge \(\Gamma\) function for the Jacobi weights), and the Chebyshev and tanh&ndash;sinh/double-exponential nodes from their closed forms. The value cards still show the first 16 digits; only the error is reported at full precision. The same extended precision drives the <strong>convergence plot</strong> (whose curves keep falling past the \(10^{-16}\) floor instead of flattening) and the <strong>tolerance calculator</strong> (which can now solve for accuracies well below machine epsilon). The adaptive-Simpson and Gauss&ndash;Kronrod rules keep the standard double-precision estimate (the latter reports its own embedded \(|I_{15}-I_{7}|\) estimator).</p>
 
       <h2>This Tool</h2>
       <ul>
@@ -1383,12 +1383,14 @@ function diffDigitsHTML(approxStr, exactStr){
    IEEE-754 double precision can resolve.  The value cards still show the
    first 16 digits; only the error is carried to full precision.
 
-   Supported for the finite-domain, unweighted rules (Riemann, Newton–Cotes,
-   Gauss–Legendre, Gauss–Lobatto/Radau, Romberg, Clenshaw–Curtis, tanh–sinh).
-   The same engine also drives the convergence plot and tolerance calculator.
-   Weighted, infinite-domain, adaptive and embedded-estimate rules keep the
-   double-precision display.  If decimal.js is unavailable, every HP path
-   degrades gracefully to the original double-precision behaviour. ============*/
+   Supported for almost every rule: the plain finite-domain rules (Riemann,
+   Newton–Cotes, Gauss–Legendre, Gauss–Lobatto/Radau, Romberg, Clenshaw–Curtis,
+   tanh–sinh) plus the weighted Gaussian (Chebyshev, Jacobi), infinite-domain
+   (Hermite, Laguerre) and double-exponential (sinh–sinh, exp–sinh) families —
+   their HP nodes/weights are built just below.  The same engine also drives the
+   convergence plot and tolerance calculator.  Only adaptive Simpson and
+   Gauss–Kronrod keep the double-precision display.  If decimal.js is
+   unavailable, every HP path degrades gracefully to double precision. =========*/
 var HP_OK = (typeof Decimal !== 'undefined');
 if(HP_OK){ Decimal.set({precision:50}); }
 
@@ -1497,7 +1499,8 @@ var HP_METHODS={left:1,right:1,midpoint:1,trapezoid:1,simpson:1,
   simpson38:1,boole:1,closed6:1,open2:1,open3:1,open4:1,
   gauss2:1,gauss3:1,gauss5:1,gauss7:1,
   lobatto3:1,lobatto4:1,lobatto5:1,radau2:1,radau3:1,romberg:1,
-  clenshaw:1,tanhsinh:1};
+  clenshaw:1,tanhsinh:1,
+  cheb1:1,cheb2:1,jacobi:1,hermite:1,laguerre:1,sinhsinh:1,expsinh:1};
 
 /* HP Clenshaw–Curtis weights/nodes (Chebyshev extreme points), mirroring
    the double-precision ccWeightsNodes. */
@@ -1519,6 +1522,11 @@ function ccWeightsNodesHP(N){
    node-for-node, so the only difference from the on-screen approximation is
    the arithmetic precision. */
 function quadHP(method,f,a,b,n){
+  /* Weighted / infinite-domain / double-exponential families first (their
+     nodes/weights come from the dedicated HP builders above). */
+  if(WEIGHTED_METHODS[method]) return quadWeightedHP(f,a,b,n,method);
+  if(INFINITE_METHODS[method]) return quadInfiniteHP(f,n,method);
+  if(INFINITE_DE[method])      return quadDEHP(f,n,method);
   a=_D(a); b=_D(b);
   var h,s,i,total;
   if(method==='left'){ h=b.minus(a).div(n); s=new Decimal(0); for(i=0;i<n;i++)s=s.plus(f(a.plus(h.times(i)))); return s.times(h); }
@@ -1614,6 +1622,169 @@ function tanhSinhRefHPcached(f,a,b,key){
   var v=tanhSinhRefHP(f,a,b); _hpRefCache.key=key; _hpRefCache.val=v; return v;
 }
 
+/* =====================================================
+   HP nodes/weights for the WEIGHTED, INFINITE-DOMAIN and DOUBLE-EXPONENTIAL
+   families — the analogues of the double-precision node builders below, so
+   Gauss–Chebyshev/Jacobi, Gauss–Hermite/Laguerre and sinh–sinh/exp–sinh can
+   also resolve their error to 32+ digits instead of flooring at ~1e-16.
+===================================================== */
+
+/* HP Γ(z) via Spouge — needed for the Gauss–Jacobi weight normalisation.
+   Chebyshev, Hermite and Laguerre(α=0) weights are Γ-free. */
+var _factHP=[new Decimal(1)];
+function factHP(k){ for(var i=_factHP.length;i<=k;i++)_factHP[i]=_factHP[i-1].times(i); return _factHP[k]; }
+var SPOUGE_A=55,_spougeC=null;
+function spougeCoeffs(a){
+  if(_spougeC&&_spougeC.a===a)return _spougeC.c;
+  var c=[Decimal.sqrt(Decimal.acos(-1).times(2))];
+  for(var k=1;k<a;k++){ var ak=a-k,ck=_D(ak).pow(_D(k).minus(0.5)).times(Decimal.exp(ak)).div(factHP(k-1));
+    if((k-1)%2===1)ck=ck.neg(); c.push(ck); }
+  _spougeC={a:a,c:c}; return c;
+}
+function gammaHP(z){
+  z=_D(z);
+  if(z.lt(0.5)){ var pi=Decimal.acos(-1); return pi.div(Decimal.sin(pi.times(z)).times(gammaHP(_D(1).minus(z)))); }
+  var a=SPOUGE_A,c=spougeCoeffs(a); z=z.minus(1);
+  var sum=c[0]; for(var k=1;k<a;k++)sum=sum.plus(c[k].div(z.plus(k)));
+  var t=z.plus(a); return t.pow(z.plus(0.5)).times(Decimal.exp(t.neg())).times(sum);
+}
+
+/* HP Gauss–Jacobi (NR gaujac): Newton on the Jacobi polynomial recurrence. */
+function gaussJacobiHP(n,alf,bet){
+  alf=_D(alf); bet=_D(bet);
+  var x=new Array(n),w=new Array(n),z=_D(0),EPS=new Decimal(10).pow(-44),MAXIT=120,alfbet=alf.plus(bet);
+  for(var i=0;i<n;i++){
+    if(i===0){ var an=alf.div(n),bn=bet.div(n);
+      var r1=_D(1).plus(alf).times(_D(2.78).div(_D(4).plus(n*n)).plus(an.times(0.768).div(n)));
+      var r2=_D(1).plus(an.times(1.48)).plus(bn.times(0.96)).plus(an.times(an).times(0.452)).plus(an.times(bn).times(0.83));
+      z=_D(1).minus(r1.div(r2)); }
+    else if(i===1){ var r1b=_D(4.1).plus(alf).div(_D(1).plus(alf).times(_D(1).plus(alf.times(0.156))));
+      var r2b=_D(1).plus(_D(0.06).times(n-8).times(_D(1).plus(alf.times(0.12))).div(n));
+      var r3b=_D(1).plus(_D(0.012).times(bet).times(_D(1).plus(alf.abs().times(0.25))).div(n));
+      z=z.minus(_D(1).minus(z).times(r1b).times(r2b).times(r3b)); }
+    else if(i===2){ var r1c=_D(1.67).plus(alf.times(0.28)).div(_D(1).plus(alf.times(0.37)));
+      var r2c=_D(1).plus(_D(0.22).times(n-8).div(n));
+      var r3c=_D(1).plus(_D(8).times(bet).div(_D(6.28).plus(bet).times(n*n)));
+      z=z.minus(x[0].minus(z).times(r1c).times(r2c).times(r3c)); }
+    else z=_D(3).times(x[i-1]).minus(_D(3).times(x[i-2])).plus(x[i-3]);
+    var p1,p2,p3,pp,temp;
+    for(var its=0;its<MAXIT;its++){
+      temp=_D(2).plus(alfbet); p1=alf.minus(bet).plus(temp.times(z)).div(2); p2=_D(1);
+      for(var j=2;j<=n;j++){ p3=p2; p2=p1; temp=_D(2*j).plus(alfbet);
+        var a_=_D(2*j).times(_D(j).plus(alfbet)).times(temp.minus(2));
+        var b_=temp.minus(1).times(alf.times(alf).minus(bet.times(bet)).plus(temp.times(temp.minus(2)).times(z)));
+        var c_=_D(2).times(_D(j-1).plus(alf)).times(_D(j-1).plus(bet)).times(temp);
+        p1=b_.times(p2).minus(c_.times(p3)).div(a_); }
+      pp=_D(n).times(alf.minus(bet).minus(temp.times(z))).times(p1).plus(_D(2).times(_D(n).plus(alf)).times(_D(n).plus(bet)).times(p2)).div(temp.times(_D(1).minus(z.times(z))));
+      var z1=z; z=z1.minus(p1.div(pp)); if(z.minus(z1).abs().lt(EPS))break;
+    }
+    x[i]=z;
+    var lg=gammaHP(alf.plus(n)).times(gammaHP(bet.plus(n))).div(gammaHP(n+1).times(gammaHP(_D(n).plus(alfbet).plus(1))));
+    w[i]=lg.times(temp).times(_D(2).pow(alfbet)).div(pp.times(p2));
+  }
+  return {t:x,W:w};
+}
+
+/* HP Gauss–Chebyshev 1st/2nd kind (closed-form nodes/weights). */
+function chebNWHP(method,n){
+  var pi=Decimal.acos(-1),t=[],W=[],k;
+  if(method==='cheb1'){ for(k=1;k<=n;k++){ t.push(Decimal.cos(pi.times(2*k-1).div(2*n))); W.push(pi.div(n)); } }
+  else { for(k=1;k<=n;k++){ var s=Decimal.sin(pi.times(k).div(n+1)); t.push(Decimal.cos(pi.times(k).div(n+1))); W.push(pi.div(n+1).times(s).times(s)); } }
+  return {t:t,W:W};
+}
+function weightedABHP(method){ if(method==='cheb1')return[-0.5,-0.5]; if(method==='cheb2')return[0.5,0.5]; return [ST.jAlpha,ST.jBeta]; }
+function weightedNodesHP(method,n){ return (method==='cheb1'||method==='cheb2')?chebNWHP(method,n):gaussJacobiHP(n,ST.jAlpha,ST.jBeta); }
+function quadWeightedHP(fHP,a,b,n,method){
+  a=_D(a); b=_D(b); var ab=weightedABHP(method),nw=weightedNodesHP(method,n);
+  var mid=a.plus(b).div(2),half=b.minus(a).div(2),scale=half.pow(_D(ab[0]).plus(ab[1]).plus(1)),tot=_D(0);
+  for(var k=0;k<nw.t.length;k++)tot=tot.plus(nw.W[k].times(fHP(mid.plus(half.times(nw.t[k])))));
+  return tot.times(scale);
+}
+
+/* HP Gauss–Hermite (weight e^{-x²}) and Gauss–Laguerre (weight e^{-x}, α=0),
+   Newton on the respective recurrences (NR gauher / gaulag). */
+function gaussHermiteHP(n){
+  var EPS=new Decimal(10).pow(-44),PIM4=Decimal.acos(-1).pow(-0.25),MAXIT=100;
+  var m=Math.floor((n+1)/2),x=new Array(n),w=new Array(n),z=_D(0),pp=_D(0);
+  for(var i=0;i<m;i++){
+    if(i===0)z=Decimal.sqrt(2*n+1).minus(_D(1.85575).times(_D(2*n+1).pow(-0.16667)));
+    else if(i===1)z=z.minus(_D(1.14).times(_D(n).pow(0.426)).div(z));
+    else if(i===2)z=_D(1.86).times(z).minus(_D(0.86).times(x[0]));
+    else if(i===3)z=_D(1.91).times(z).minus(_D(0.91).times(x[1]));
+    else z=_D(2).times(z).minus(x[i-2]);
+    var p1,p2,p3;
+    for(var its=0;its<MAXIT;its++){ p1=PIM4; p2=_D(0);
+      for(var j=1;j<=n;j++){ p3=p2; p2=p1; p1=z.times(Decimal.sqrt(_D(2).div(j))).times(p2).minus(Decimal.sqrt(_D(j-1).div(j)).times(p3)); }
+      pp=Decimal.sqrt(_D(2*n)).times(p2); var z1=z; z=z1.minus(p1.div(pp)); if(z.minus(z1).abs().lt(EPS))break; }
+    x[i]=z; x[n-1-i]=z.neg(); w[i]=_D(2).div(pp.times(pp)); w[n-1-i]=w[i];
+  }
+  return {x:x,w:w};
+}
+function gaussLaguerreHP(n){
+  var EPS=new Decimal(10).pow(-44),MAXIT=120,alf=_D(0),x=new Array(n),w=new Array(n),z=_D(0),pp=_D(0);
+  for(var i=0;i<n;i++){
+    if(i===0)z=_D(1).plus(alf).times(_D(3).plus(alf.times(0.92))).div(_D(1).plus(2.4*n).plus(alf.times(1.8)));
+    else if(i===1)z=z.plus(_D(15).plus(alf.times(6.25)).div(_D(1).plus(alf.times(0.9)).plus(2.5*n)));
+    else { var ai=i-1; z=z.plus(_D(1).plus(_D(2.55).times(ai)).div(_D(1.9).times(ai)).plus(_D(1.26).times(ai).times(alf).div(_D(1).plus(_D(3.5).times(ai)))).times(z.minus(x[i-2])).div(_D(1).plus(alf.times(0.3)))); }
+    var p1,p2,p3;
+    for(var its=0;its<MAXIT;its++){ p1=_D(1); p2=_D(0);
+      for(var j=1;j<=n;j++){ p3=p2; p2=p1; p1=_D(2*j-1).plus(alf).minus(z).times(p2).minus(_D(j-1).plus(alf).times(p3)).div(j); }
+      pp=_D(n).times(p1).minus(_D(n).plus(alf).times(p2)).div(z); var z1=z; z=z1.minus(p1.div(pp)); if(z.minus(z1).abs().lt(EPS))break; }
+    x[i]=z; w[i]=gammaHP(alf.plus(n)).div(gammaHP(n)).div(pp.times(n).times(p2)).neg();
+  }
+  return {x:x,w:w};
+}
+function quadInfiniteHP(fHP,n,method){
+  var nw=(method==='hermite')?gaussHermiteHP(n):gaussLaguerreHP(n),tot=_D(0);
+  for(var k=0;k<nw.x.length;k++)tot=tot.plus(nw.w[k].times(fHP(nw.x[k])));
+  return tot;
+}
+
+/* HP double-exponential rules.  The method uses tMax=4 (matching the on-screen
+   double rule); the reference widens to tMax=5 so the method's ~1e-19 tail is
+   still fully resolvable. */
+var DE_TMAX_HP=4.0;
+function quadDEHP(fHP,n,method,tMax){
+  tMax=tMax||DE_TMAX_HP; var N=Math.max(2,n),h=new Decimal(2*tMax).div(N),pi2=Decimal.acos(-1).div(2),tot=_D(0);
+  for(var k=0;k<=N;k++){
+    var t=new Decimal(-tMax).plus(h.times(k)),s=pi2.times(Decimal.sinh(t)),ch=Decimal.cosh(t),x,w;
+    if(s.abs().gt(300))continue;
+    if(method==='sinhsinh'){ x=Decimal.sinh(s); w=pi2.times(ch).times(Decimal.cosh(s)).times(h); }
+    else { x=Decimal.exp(s); w=pi2.times(ch).times(x).times(h); }
+    var fx; try{ fx=fHP(x); }catch(e){ continue; } if(!fx.isFinite())continue;
+    tot=tot.plus(w.times(fx));
+  }
+  return tot;
+}
+
+/* High-order HP references (true value) for each family, returned as
+   {val, floor}.  For the same-weight Gauss families two polynomial orders
+   bracket the true value; their disagreement is the trust floor — this
+   self-diagnoses both an unconverged rule AND the loss of abscissa precision
+   at high degree (the Jacobi/Hermite/Laguerre nodes come from Newton on a
+   degree-n recurrence, exact only to ~1e-30 by n≈50, whereas the Chebyshev
+   nodes are closed-form and agree to ~1e-42).  The double-exponential
+   reference widens to tMax=5 and is reliable to ~1e-40. */
+function _famRef(quadN){
+  var vLo=quadN(40),vHi=quadN(56);
+  /* |vHi−vLo| already over-bounds vHi's error (vHi is the higher order); a
+     small extra margin guards the last digit. */
+  var floor=Decimal.max(new Decimal(10).pow(-42),vHi.minus(vLo).abs().times(4)).toNumber();
+  return {val:vHi,floor:floor};
+}
+function weightedRefHP(fHP,a,b,method){ return _famRef(function(n){ return quadWeightedHP(fHP,a,b,n,method); }); }
+function infiniteRefHP(fHP,method){ return _famRef(function(n){ return quadInfiniteHP(fHP,n,method); }); }
+function deRefHP(fHP,method){ return {val:quadDEHP(fHP,700,method,5.0),floor:1e-40}; }
+
+/* Kind of a method for extended precision: which integral it computes. */
+function methodKind(m){
+  if(WEIGHTED_METHODS[m])return 'weighted';
+  if(INFINITE_METHODS[m])return 'infinite';
+  if(INFINITE_DE[m])return 'de';
+  if(HP_METHODS[m])return 'plain';
+  return 'other';
+}
+
 /* Format a Decimal to its first 16 significant digits (value cards). */
 function fmt16HP(d){ return d.toSignificantDigits(16).toString(); }
 
@@ -1635,21 +1806,29 @@ function getHPContext(){
   if(!HP_OK) return null;
   if(ST._hpCtxGen===ST.gen) return ST._hpCtx;   /* memoised for this compute */
   ST._hpCtxGen=ST.gen; ST._hpCtx=null;
-  if(ST.exact===null || ST.weighted) return null;
+  if(ST.exact===null) return null;
   try{
-    var fHP=makeFnHP(ST.expr);
-    var aHP=makeFnHP(document.getElementById('aInput').value.trim())(new Decimal(0));
-    var bHP=makeFnHP(document.getElementById('bInput').value.trim())(new Decimal(0));
-    var exactHP;
-    if(!ST.exactIsRef && EXACT_HP[ST.exId]) exactHP=makeFnHP(EXACT_HP[ST.exId])(new Decimal(0));
+    var fHP=makeFnHP(ST.expr),aHP,bHP;
+    try{ aHP=makeFnHP(document.getElementById('aInput').value.trim())(new Decimal(0)); }catch(e){ aHP=new Decimal(0); }
+    try{ bHP=makeFnHP(document.getElementById('bInput').value.trim())(new Decimal(0)); }catch(e){ bHP=new Decimal(1); }
+    /* True value in the space the ACTIVE method integrates: a same-weight
+       high-order rule for weighted/infinite/DE families, else the closed form
+       or a tanh–sinh reference for the plain ∫_a^b f. */
+    var exactHP,famFloor=null,refBased=true;
+    if(WEIGHTED_METHODS[ST.method]){      var rw=weightedRefHP(fHP,aHP,bHP,ST.method); exactHP=rw.val; famFloor=rw.floor; }
+    else if(INFINITE_METHODS[ST.method]){ var ri=infiniteRefHP(fHP,ST.method);        exactHP=ri.val; famFloor=ri.floor; }
+    else if(INFINITE_DE[ST.method]){      var rd=deRefHP(fHP,ST.method);               exactHP=rd.val; famFloor=rd.floor; }
+    else if(!ST.exactIsRef && EXACT_HP[ST.exId]){ exactHP=makeFnHP(EXACT_HP[ST.exId])(new Decimal(0)); refBased=false; }
     else exactHP=tanhSinhRefHPcached(fHP,aHP,bHP,ST.expr+'|'+aHP.toString()+'|'+bHP.toString());
     if(!exactHP.isFinite()) return null;
-    /* Trust floor: the smallest error worth displaying.  A closed-form true
-       value is good to full working precision; a tanh–sinh reference to ~38
-       digits — below that the "error" is reference noise, not method error. */
+    /* Trust floor: the smallest error worth displaying — below it the "error"
+       is reference noise, not method error.  The weighted/infinite/DE families
+       supply their own floor (from cross-order agreement); a plain closed-form
+       true value is good to full working precision, a tanh–sinh reference to
+       ~36 digits. */
     var mag=Decimal.max(1,exactHP.abs()).toNumber();
-    var floor=(ST.exactIsRef?1e-36:1e-45)*mag;
-    ST._hpCtx={fHP:fHP,aHP:aHP,bHP:bHP,exactHP:exactHP,floor:floor};
+    var floor=(famFloor!=null)?famFloor:(refBased?1e-36:1e-45)*mag;
+    ST._hpCtx={fHP:fHP,aHP:aHP,bHP:bHP,exactHP:exactHP,floor:floor,kind:methodKind(ST.method)};
   }catch(e){ ST._hpCtx=null; }
   return ST._hpCtx;
 }
@@ -1660,7 +1839,7 @@ function getHPContext(){
    the values, the error to ~32 decimal places.  No-op (double precision kept)
    for unsupported methods or if decimal.js is unavailable. */
 function refineErrorHP(expr, n, a, b, accent){
-  if(!HP_OK || !HP_METHODS[ST.method] || ST.exact===null || ST.weighted) return;
+  if(!HP_OK || !HP_METHODS[ST.method] || ST.exact===null) return;
   var myGen=ST.gen;
   var lbl=document.getElementById('resErrorLbl');
   if(lbl && !document.getElementById('resErrHint')){
@@ -1684,13 +1863,21 @@ function refineErrorHP(expr, n, a, b, accent){
     var dd=diffDigitsHTML(fmt16HP(hpApprox), fmt16HP(hpExact));
     var ec=document.getElementById('resExactCell');  if(ec)ec.innerHTML=dd.exact;
     var ac=document.getElementById('resApproxCell'); if(ac)ac.innerHTML=dd.approx;
+    /* When the true value is a numerical reference (weighted / infinite / DE
+       families) the error can only be trusted down to the reference's floor;
+       below it the method has converged past what we can measure, so report
+       "< floor" rather than the (reference-noise) raw difference. */
     var errNum=hpErr.toNumber();
-    var eClass=(hpErr.isZero()||errNum<1e-10)?'res-val-green':errNum<1e-4?'res-val-blue':'res-val-red';
+    var floored=(ctx.kind!=='plain' && errNum<ctx.floor);
+    var shownErr=floored?_D(ctx.floor):hpErr;
+    var shownNum=shownErr.toNumber();
+    var eClass=(shownErr.isZero()||shownNum<1e-10)?'res-val-green':shownNum<1e-4?'res-val-blue':'res-val-red';
     var errCell=document.getElementById('resErrorCell');
     if(errCell){
       errCell.className='res-val res-val-hp '+eClass;
-      errCell.innerHTML=fmtErrHP(hpErr)+'<div class="res-hp-note">to 32&nbsp;dp &middot; 40-digit precision</div>';
-      if(!hpErr.isZero()) errCell.title='Absolute error to 32 decimal places:\n'+hpErr.toFixed(32);
+      errCell.innerHTML=(floored?'&lt; ':'')+fmtErrHP(shownErr)+
+        '<div class="res-hp-note">'+(floored?'reference-resolution limit':'to 32&nbsp;dp &middot; 40-digit precision')+'</div>';
+      if(!shownErr.isZero()) errCell.title=(floored?'Below the reference resolution (~'+shownErr.toExponential(1)+'); the rule has converged past what the true value can measure.':'Absolute error to 32 decimal places:\n'+hpErr.toFixed(32));
     }
     var hint=document.getElementById('resErrHint'); if(hint)hint.remove();
   },0);
@@ -3867,10 +4054,15 @@ function _renderConvergenceNow(){
      spectral rules. */
   var hpCtx=getHPContext();
   var usedHP=false;
+  /* HP applies where the true value matches what `mk` integrates: for a plain
+     active method, every plain comparison shares the same ∫f; for weighted /
+     infinite / DE active methods the reference is weight-specific, so only the
+     active curve itself is measured in HP (comparisons stay double). */
+  var activeKind=hpCtx?hpCtx.kind:'other';
   methods.forEach(function(mk){
     var grid=CONV_NGRID[mk];
     if(!grid)return;
-    var useHP=!!(hpCtx && HP_METHODS[mk]);
+    var useHP=!!(hpCtx && HP_METHODS[mk] && (activeKind==='plain' ? methodKind(mk)==='plain' : mk===method));
     var floor=useHP?hpCtx.floor:ROUNDOFF;
     var ns=[],errs=[];
     for(var i=0;i<grid.length;i++){
@@ -3911,18 +4103,18 @@ function _renderConvergenceNow(){
 
   if(semilog){
     /* Semi-log y: fit ln|E| = A \u2212 \u03b1\u00b7n by least squares to MEASURE the
-       exponential rate \u03b1.  Fit only the DESCENDING part: walk from coarse n
-       and stop as soon as the error stops dropping meaningfully \u2014 that flat
-       tail is the machine-epsilon round-off floor (often well above true eps
-       for ill-conditioned integrands) and would otherwise flatten the rate. */
+       exponential rate \u03b1.  Fit EVERY point that sits clearly above the
+       precision floor \u2014 the largest and the smallest resolved errors both
+       carry the rate, so we keep them all and drop only the flat tail pinned
+       at the floor (which would otherwise bend the slope toward zero).  This
+       avoids latching onto a middle band of points that happen to line up. */
     var refFloor=ref.floor||ROUNDOFF;
-    var fx=[],fy=[],i2,prevErr=Infinity;
+    var fx=[],fy=[],i2;
     for(i2=0;i2<ref.ns.length;i2++){
       var ev=ref.errs[i2];
       if(!(ev>0&&isFinite(ev)))continue;
-      if(ev<=refFloor*1.5) break;                 /* reached the precision floor */
-      if(fx.length>0 && ev>prevErr*0.85) break;   /* descent stalled \u2192 elevated floor */
-      fx.push(ref.ns[i2]); fy.push(Math.log(ev)); prevErr=ev;
+      if(ev<=refFloor*10) continue;               /* floor/round-off tail: exclude, don't stop */
+      fx.push(ref.ns[i2]); fy.push(Math.log(ev));
     }
     if(fx.length>=2){
       var nP=fx.length,sx=0,sy=0,sxx=0,sxy=0;
@@ -4077,7 +4269,11 @@ function computeTolerance(){
     }
     return Math.abs(quadValFast(method,f,a,b,n)-ST.exact);
   }
-  var CAP=useHP?8192:(1<<22);  /* HP: keep responsive; double: 4,194,304 */
+  /* HP node generation for the weighted/infinite/DE families is O(n²), so cap
+     them tighter (they are spectral and meet any realistic tolerance at small
+     n anyway); plain rules keep the larger cap. */
+  var HPCAP=(hpCtx&&hpCtx.kind!=='plain')?256:8192;
+  var CAP=useHP?HPCAP:(1<<22);  /* HP: keep responsive; double: 4,194,304 */
   var nHi=step, err=errAt(nHi);
   while(err>tol && nHi<CAP){
     nHi*=2;
