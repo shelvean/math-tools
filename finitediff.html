@@ -341,7 +341,7 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
       </ul>
 
       <h2>This Tool</h2>
-      <p>Enter any set of integer stencil points (e.g., \(-2, -1, 0, 1, 2\)) and a derivative order. The tool solves the Vandermonde system using <strong>exact rational (BigInt) arithmetic</strong> &mdash; no floating-point rounding &mdash; and returns:</p>
+      <p>Enter any set of integer stencil points (e.g., \(-2, -1, 0, 1, 2\)) and a derivative order. You can also use <strong>MATLAB-style ranges</strong> instead of listing every point: <code>-2:2</code> expands to \(-2,-1,0,1,2\), and <code>a:s:b</code> steps by \(s\) (e.g. <code>-4:2:4</code> gives \(-4,-2,0,2,4\)); ranges and individual points can be mixed and comma-separated. The tool solves the Vandermonde system using <strong>exact rational (BigInt) arithmetic</strong> &mdash; no floating-point rounding &mdash; and returns:</p>
       <ul>
         <li>The finite difference formula with exact rational coefficients</li>
         <li>The leading error term \(C \cdot h^p \cdot f^{(q)}(\xi)\) with exact constant \(C\)</li>
@@ -355,8 +355,8 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
   <!-- Controls -->
   <div class="cbar" role="group" aria-label="Input settings">
     <div class="cfield cfield-lg">
-      <label for="points">Stencil points (comma-separated integers)</label>
-      <input type="text" id="points" value="-1, 0, 1" placeholder="e.g. -2, -1, 0, 1, 2">
+      <label for="points">Stencil points (integers or ranges, e.g. <code>-2:2</code>)</label>
+      <input type="text" id="points" value="-1, 0, 1" placeholder="e.g. -2, -1, 0, 1, 2  or  -2:2  or  -4:2:4">
     </div>
     <div class="cfield cfield-sm">
       <label for="derivative-order">Derivative order</label>
@@ -645,11 +645,11 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
         }
       });
       
-      // Validate input for integers only
+      // Validate input for integers and MATLAB-style ranges (a:b or a:s:b)
       pointsInput.addEventListener('input', function() {
         const value = pointsInput.value;
-        // Remove any non-digit, non-comma, non-minus characters
-        pointsInput.value = value.replace(/[^\d,\-\s]/g, '');
+        // Allow digits, comma, minus, colon (ranges) and whitespace
+        pointsInput.value = value.replace(/[^\d,\-\s:]/g, '');
       });
       
       // Calculate coefficients when button is clicked
@@ -726,35 +726,66 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
         }
       }
       
+      // Expand one comma token to a list of integers.  Accepts a plain integer
+      // or MATLAB-style ranges: "a:b" (all integers a..b, either direction) and
+      // "a:s:b" (from a in steps of s, MATLAB semantics).
+      const RANGE_MAX = 200;  // guard against runaway expansions
+      function expandPointToken(token) {
+        const parts = token.split(':').map(s => s.trim());
+        const isInt = s => /^-?\d+$/.test(s);
+        if (parts.length === 1) {
+          if (!isInt(parts[0])) throw new Error(`Invalid integer: "${token}"`);
+          return [parseInt(parts[0], 10)];
+        }
+        if (parts.length === 2 || parts.length === 3) {
+          if (!parts.every(isInt)) throw new Error(`Invalid range: "${token}" — use integers like -2:2 or -4:2:4`);
+          let a, step, stop;
+          if (parts.length === 2) {              // a:b — step ±1 toward b
+            a = parseInt(parts[0], 10); stop = parseInt(parts[1], 10);
+            step = stop >= a ? 1 : -1;
+          } else {                               // a:s:b — explicit step
+            a = parseInt(parts[0], 10); step = parseInt(parts[1], 10); stop = parseInt(parts[2], 10);
+            if (step === 0) throw new Error(`Range step cannot be zero: "${token}"`);
+          }
+          const out = [];
+          for (let v = a; step > 0 ? v <= stop : v >= stop; v += step) {
+            out.push(v);
+            if (out.length > RANGE_MAX) throw new Error(`Range "${token}" produces more than ${RANGE_MAX} points`);
+          }
+          if (out.length === 0) throw new Error(`Range "${token}" is empty — check the step direction`);
+          return out;
+        }
+        throw new Error(`Invalid range: "${token}"`);
+      }
+
       function parseAndValidatePoints(pointStrings) {
         const points = [];
         const uniquePoints = new Set();
         let hasDuplicates = false;
-        let originalCount = pointStrings.length;
-        
+        let expandedCount = 0;   // total integers after range expansion
+
         for (const pointStr of pointStrings) {
-          // Parse as integer
-          const point = parseInt(pointStr);
-          if (isNaN(point)) {
-            throw new Error(`Invalid integer: "${pointStr}"`);
+          for (const point of expandPointToken(pointStr)) {
+            expandedCount++;
+            // Check for duplicates
+            if (uniquePoints.has(point)) {
+              hasDuplicates = true;
+              continue; // Skip duplicate
+            }
+            uniquePoints.add(point);
+            points.push(point);
           }
-          
-          // Check for duplicates
-          if (uniquePoints.has(point)) {
-            hasDuplicates = true;
-            continue; // Skip duplicate
-          }
-          uniquePoints.add(point);
-          points.push(point);
         }
-        
+
         // Show warning if duplicates were removed
         if (hasDuplicates) {
-          const removedCount = originalCount - points.length;
+          const removedCount = expandedCount - points.length;
           pointsWarningDiv.textContent = `Removed ${removedCount} duplicate point${removedCount > 1 ? 's' : ''}. Using unique points only.`;
           pointsWarningDiv.classList.remove('hidden');
         }
-        
+
+        if (points.length > RANGE_MAX) throw new Error(`Too many stencil points (${points.length}); please use at most ${RANGE_MAX}`);
+
         // Sort points for consistent behavior
         points.sort((a, b) => a - b);
         return points;
