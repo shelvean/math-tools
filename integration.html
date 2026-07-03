@@ -20,6 +20,9 @@
   </script>
   <script src="vendor/mathjax@3.2.2/es5/tex-svg.js" async></script>
   <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js" charset="utf-8"></script>
+  <!-- decimal.js: extended-precision arithmetic so the absolute error can be
+       computed to ~32 decimal places, well beyond IEEE-754 double precision. -->
+  <script src="vendor/decimal.js@10.4.3/decimal.js"></script>
   <style>
 :root{
   --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;
@@ -175,6 +178,10 @@ details.mdesc .mbody p{margin:.4rem 0;}
 .res-val-green{color:var(--green);}
 .res-val-red{color:var(--red);}
 .res-val-vio{color:var(--vio);}
+/* High-precision (32-dp) absolute error: long mantissa, so shrink and wrap. */
+.res-val-hp{font-size:.8rem;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  font-weight:600;line-height:1.25;word-break:break-all;}
+.res-hp-note{font-size:.65rem;font-weight:600;color:var(--txt2);opacity:.75;margin-top:.15rem;}
 /* Formula display */
 .formula-box{padding:.75rem;overflow-x:auto;}
 /* Canvas */
@@ -506,6 +513,7 @@ details.mdesc .mbody p{margin:.4rem 0;}
         <li><strong>Simpson:</strong> \(|E| \le \dfrac{(b-a)^5}{180n^4}\,\max|f^{(4)}|\) &mdash; \(O(h^4)\)</li>
         <li><strong>Composite degree-\(p\) rule:</strong> error \(O(h^{p+1})\) for odd \(p\), \(O(h^{p+2})\) for even \(p\) &mdash; one extra order from symmetry.</li>
       </ul>
+      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, the finite-domain, unweighted rules (Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg) re-evaluate <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the reported absolute error \(|Q_n-I|\) is carried down to about <strong>32 decimal places</strong> &mdash; well beyond double precision. The value cards still show the first 16 digits; only the error is reported at full precision. (Weighted, infinite-domain, adaptive and embedded-estimate rules keep the standard double-precision estimate.)</p>
 
       <h2>This Tool</h2>
       <ul>
@@ -1367,6 +1375,267 @@ function diffDigitsHTML(approxStr, exactStr){
 }
 
 /* =====================================================
+   EXTENDED-PRECISION (≈40-digit) ERROR ENGINE
+   ----------------------------------------------------
+   The quadrature approximation and the true value are both re-evaluated
+   with decimal.js at 50 significant digits, so the absolute error can be
+   reported down to ~32 decimal places — far beyond the ~16 digits that
+   IEEE-754 double precision can resolve.  The value cards still show the
+   first 16 digits; only the error is carried to full precision.
+
+   Supported for the finite-domain, unweighted rules (Riemann, Newton–Cotes,
+   Gauss–Legendre, Gauss–Lobatto/Radau, Romberg).  Weighted, infinite-domain,
+   adaptive and embedded-estimate rules keep the double-precision display.
+   If decimal.js is unavailable, every HP path degrades gracefully to the
+   original double-precision behaviour. =====================================*/
+var HP_OK = (typeof Decimal !== 'undefined');
+if(HP_OK){ Decimal.set({precision:50}); }
+
+var HP_FUNCS = HP_OK ? {
+  sin:function(v){return Decimal.sin(v);}, cos:function(v){return Decimal.cos(v);},
+  tan:function(v){return Decimal.tan(v);}, asin:function(v){return Decimal.asin(v);},
+  acos:function(v){return Decimal.acos(v);}, atan:function(v){return Decimal.atan(v);},
+  sinh:function(v){return Decimal.sinh(v);}, cosh:function(v){return Decimal.cosh(v);},
+  tanh:function(v){return Decimal.tanh(v);}, exp:function(v){return Decimal.exp(v);},
+  ln:function(v){return Decimal.ln(v);}, log:function(v){return Decimal.ln(v);},
+  log10:function(v){return Decimal.log10(v);}, log2:function(v){return Decimal.log2(v);},
+  sqrt:function(v){return Decimal.sqrt(v);}, cbrt:function(v){return Decimal.cbrt(v);},
+  abs:function(v){return v.abs();}, floor:function(v){return v.floor();}, ceil:function(v){return v.ceil();}
+} : {};
+var HP_CONSTS = HP_OK ? {
+  pi:function(){return Decimal.acos(-1);}, e:function(){return Decimal.exp(1);}
+} : {};
+
+/* Tokenise a math expression (numbers, names, operators, implicit mult). */
+function hpTokenize(s){
+  var toks=[],i=0,n=s.length;
+  function isD(c){return c>='0'&&c<='9';}
+  function isA(c){return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||c==='_';}
+  while(i<n){
+    var c=s[i];
+    if(c===' '||c==='\t'){i++;continue;}
+    if(isD(c)||(c==='.'&&isD(s[i+1]))){
+      var j=i; while(j<n&&(isD(s[j])||s[j]==='.'))j++;
+      if(j<n&&(s[j]==='e'||s[j]==='E')&&(isD(s[j+1])||((s[j+1]==='+'||s[j+1]==='-')&&isD(s[j+2])))){
+        j++; if(s[j]==='+'||s[j]==='-')j++; while(j<n&&isD(s[j]))j++;
+      }
+      toks.push({t:'num',v:s.slice(i,j)}); i=j; continue;
+    }
+    if(isA(c)){ var k=i; while(k<n&&(isA(s[k])||isD(s[k])))k++; toks.push({t:'name',v:s.slice(i,k)}); i=k; continue; }
+    if('+-*/^(),'.indexOf(c)>=0){ toks.push({t:'op',v:c}); i++; continue; }
+    throw new Error('bad char '+c);
+  }
+  return toks;
+}
+
+/* Compile an expression to a function(Decimal x) → Decimal.  Recursive-descent
+   parser matching the operators/functions/constants of the double-precision
+   makeFn/preprocess path (implicit multiplication included). */
+function makeFnHP(expr){
+  var toks=hpTokenize(expr),pos=0;
+  function peek(){return toks[pos];}
+  function nextT(){return toks[pos++];}
+  function expect(v){var t=nextT(); if(!t||t.v!==v)throw new Error('expected '+v);}
+  function pAdd(x){ var v=pMul(x);
+    while(peek()&&peek().t==='op'&&(peek().v==='+'||peek().v==='-')){ var op=nextT().v,r=pMul(x); v=op==='+'?v.plus(r):v.minus(r); }
+    return v; }
+  function pMul(x){ var v=pUn(x);
+    for(;;){ var p=peek();
+      if(p&&p.t==='op'&&(p.v==='*'||p.v==='/')){ var op=nextT().v,r=pUn(x); v=op==='*'?v.times(r):v.div(r); }
+      else if(p&&(p.t==='num'||p.t==='name'||(p.t==='op'&&p.v==='('))){ v=v.times(pUn(x)); }  /* implicit mult */
+      else break; }
+    return v; }
+  function pUn(x){ var p=peek();
+    if(p&&p.t==='op'&&p.v==='-'){ nextT(); return pUn(x).neg(); }
+    if(p&&p.t==='op'&&p.v==='+'){ nextT(); return pUn(x); }
+    return pPow(x); }
+  function pPow(x){ var v=pAtom(x);
+    if(peek()&&peek().t==='op'&&peek().v==='^'){ nextT(); v=v.pow(pUn(x)); }
+    return v; }
+  function pAtom(x){ var t=nextT(); if(!t)throw new Error('unexpected end');
+    if(t.t==='num')return new Decimal(t.v);
+    if(t.t==='op'&&t.v==='('){ var v=pAdd(x); expect(')'); return v; }
+    if(t.t==='name'){ var nm=t.v;
+      if(peek()&&peek().t==='op'&&peek().v==='('){ nextT(); var arg=pAdd(x); expect(')');
+        var fn=HP_FUNCS[nm.toLowerCase()]; if(!fn)throw new Error('unknown fn '+nm); return fn(arg); }
+      if(nm==='x')return x;
+      var lc=nm.toLowerCase(); if(HP_CONSTS[lc])return HP_CONSTS[lc]();
+      throw new Error('unknown name '+nm);
+    }
+    throw new Error('bad token'); }
+  return function(xd){ pos=0; return pAdd(xd instanceof Decimal?xd:new Decimal(xd)); };
+}
+
+/* HP Gauss–Legendre nodes/weights via Newton iteration on the Legendre
+   polynomial (recurrence), cached per point-count. */
+var _glHP={};
+function glNodesHP(m){
+  if(_glHP[m])return _glHP[m];
+  var xs=[],ws=[],pi=Decimal.acos(-1),tol=new Decimal(10).pow(-44);
+  for(var i=1;i<=m;i++){
+    var x=Decimal.cos(pi.times(i-0.25).div(m+0.5));
+    for(var it=0;it<100;it++){
+      var p0=new Decimal(1),p1=x,k;
+      for(k=2;k<=m;k++){ var pk=x.times(2*k-1).times(p1).minus(new Decimal(k-1).times(p0)).div(k); p0=p1; p1=pk; }
+      var dp=new Decimal(m).times(x.times(p1).minus(p0)).div(x.times(x).minus(1));
+      var dx=p1.div(dp); x=x.minus(dx);
+      if(dx.abs().lt(tol))break;
+    }
+    var q0=new Decimal(1),q1=x,k2;
+    for(k2=2;k2<=m;k2++){ var qk=x.times(2*k2-1).times(q1).minus(new Decimal(k2-1).times(q0)).div(k2); q0=q1; q1=qk; }
+    var dpm=new Decimal(m).times(x.times(q1).minus(q0)).div(x.times(x).minus(1));
+    xs.push(x); ws.push(new Decimal(2).div(new Decimal(1).minus(x.times(x)).times(dpm.times(dpm))));
+  }
+  return (_glHP[m]={x:xs,w:ws});
+}
+
+function _D(v){return v instanceof Decimal?v:new Decimal(v);}
+
+/* Rules for which a ≈40-digit error is meaningful (finite, unweighted). */
+var HP_METHODS={left:1,right:1,midpoint:1,trapezoid:1,simpson:1,
+  simpson38:1,boole:1,closed6:1,open2:1,open3:1,open4:1,
+  gauss2:1,gauss3:1,gauss5:1,gauss7:1,
+  lobatto3:1,lobatto4:1,lobatto5:1,radau2:1,radau3:1,romberg:1};
+
+/* Extended-precision quadrature — mirrors the double-precision quad* routines
+   node-for-node, so the only difference from the on-screen approximation is
+   the arithmetic precision. */
+function quadHP(method,f,a,b,n){
+  a=_D(a); b=_D(b);
+  var h,s,i,total;
+  if(method==='left'){ h=b.minus(a).div(n); s=new Decimal(0); for(i=0;i<n;i++)s=s.plus(f(a.plus(h.times(i)))); return s.times(h); }
+  if(method==='right'){ h=b.minus(a).div(n); s=new Decimal(0); for(i=1;i<=n;i++)s=s.plus(f(a.plus(h.times(i)))); return s.times(h); }
+  if(method==='midpoint'){ h=b.minus(a).div(n); s=new Decimal(0); for(i=0;i<n;i++)s=s.plus(f(a.plus(h.times(i+0.5)))); return s.times(h); }
+  if(method==='trapezoid'){ h=b.minus(a).div(n); s=f(a).plus(f(b)).div(2); for(i=1;i<n;i++)s=s.plus(f(a.plus(h.times(i)))); return s.times(h); }
+  if(method==='simpson'){ if(n%2!==0)n++; h=b.minus(a).div(n); s=f(a).plus(f(b)); for(i=1;i<n;i++)s=s.plus(f(a.plus(h.times(i))).times(i%2?4:2)); return s.times(h).div(3); }
+  var NC={ simpson38:{P:3,closed:true,w:[1,3,3,1],facN:3,facD:8}, boole:{P:4,closed:true,w:[7,32,12,32,7],facN:2,facD:45},
+    closed6:{P:5,closed:true,w:[19,75,50,50,75,19],facN:5,facD:288}, open2:{P:3,closed:false,w:[1,1],facN:3,facD:2},
+    open3:{P:4,closed:false,w:[2,-1,2],facN:4,facD:3}, open4:{P:5,closed:false,w:[11,1,1,11],facN:5,facD:24} };
+  if(NC[method]){
+    var P=NC[method],Psz=P.P,N=n-(n%Psz); if(N<Psz)N=Psz;
+    h=b.minus(a).div(N); total=new Decimal(0);
+    for(var p=0;p<N/Psz;p++){
+      var x0=a.plus(h.times(p*Psz)),ps=new Decimal(0),j;
+      if(P.closed){ for(j=0;j<=Psz;j++)ps=ps.plus(_D(P.w[j]).times(f(x0.plus(h.times(j))))); }
+      else { for(j=1;j<Psz;j++)ps=ps.plus(_D(P.w[j-1]).times(f(x0.plus(h.times(j))))); }
+      total=total.plus(_D(P.facN).times(h).div(P.facD).times(ps));
+    }
+    return total;
+  }
+  var NR={
+    lobatto3:function(){return {x:[_D(-1),_D(0),_D(1)],w:[_D(1).div(3),_D(4).div(3),_D(1).div(3)]};},
+    lobatto4:function(){var r=Decimal.sqrt(5);return {x:[_D(-1),_D(-1).div(r),_D(1).div(r),_D(1)],w:[_D(1).div(6),_D(5).div(6),_D(5).div(6),_D(1).div(6)]};},
+    lobatto5:function(){var r=Decimal.sqrt(_D(3).div(7));return {x:[_D(-1),r.neg(),_D(0),r,_D(1)],w:[_D(1).div(10),_D(49).div(90),_D(32).div(45),_D(49).div(90),_D(1).div(10)]};},
+    radau2:function(){return {x:[_D(-1),_D(1).div(3)],w:[_D(1).div(2),_D(3).div(2)]};},
+    radau3:function(){var t=Decimal.sqrt(6);return {x:[_D(-1),_D(1).minus(t).div(5),_D(1).plus(t).div(5)],w:[_D(2).div(9),_D(16).plus(t).div(18),_D(16).minus(t).div(18)]};}
+  };
+  if(NR[method]){
+    var tbl=NR[method](),mm=tbl.x.length; h=b.minus(a).div(n); total=new Decimal(0);
+    for(i=0;i<n;i++){ var ai=a.plus(h.times(i)),mid=ai.plus(h.div(2)),half=h.div(2);
+      for(var jn=0;jn<mm;jn++)total=total.plus(tbl.w[jn].times(f(mid.plus(half.times(tbl.x[jn])))).times(half)); }
+    return total;
+  }
+  var gmap={gauss2:2,gauss3:3,gauss5:5,gauss7:7};
+  if(gmap[method]){
+    var mg=gmap[method],gl=glNodesHP(mg); h=b.minus(a).div(n); total=new Decimal(0);
+    for(i=0;i<n;i++){ var a2=a.plus(h.times(i)),md=a2.plus(h.div(2)),hf=h.div(2);
+      for(var jg=0;jg<mg;jg++)total=total.plus(gl.w[jg].times(f(md.plus(hf.times(gl.x[jg])))).times(hf)); }
+    return total;
+  }
+  if(method==='romberg'){
+    var maxL=Math.max(2,Math.min(n||10,14)),T=[],fa=f(a),fb=f(b);
+    T.push([b.minus(a).div(2).times(fa.plus(fb))]);
+    for(var kk=1;kk<maxL;kk++){
+      var nk=1<<(kk-1),hh=b.minus(a).div(1<<kk),sum=new Decimal(0),ii;
+      for(ii=0;ii<nk;ii++)sum=sum.plus(f(a.plus(hh.times(2*ii+1))));
+      var row=[T[kk-1][0].div(2).plus(hh.times(sum))];
+      for(var jr=1;jr<=kk;jr++){ var p4=Math.pow(4,jr); row.push(_D(p4).times(row[jr-1]).minus(T[kk-1][jr-1]).div(p4-1)); }
+      T.push(row);
+    }
+    var lastR=T[T.length-1]; return lastR[lastR.length-1];
+  }
+  throw new Error('HP method not supported: '+method);
+}
+
+/* HP tanh–sinh reference — a ~40-digit true value for arbitrary smooth f on
+   [a,b], robust at (integrable) endpoint singularities.  Cached by expr+limits. */
+var _hpRefCache={key:null,val:null};
+function tanhSinhRefHP(f,a,b){
+  a=_D(a); b=_D(b);
+  var mid=a.plus(b).div(2),half=b.minus(a).div(2),pi2=Decimal.acos(-1).div(2);
+  var tMax=4.2,N=900,h=new Decimal(2*tMax).div(N),total=new Decimal(0);
+  for(var k=0;k<=N;k++){
+    var t=new Decimal(-tMax).plus(h.times(k)),u=pi2.times(Decimal.sinh(t)),x=Decimal.tanh(u);
+    if(x.abs().gte(1))continue;
+    var ch=Decimal.cosh(u),w=pi2.times(Decimal.cosh(t)).div(ch.times(ch)).times(h);
+    var fv; try{ fv=f(mid.plus(half.times(x))); }catch(e){ continue; }
+    if(!fv.isFinite())continue;
+    total=total.plus(w.times(fv).times(half));
+  }
+  return total;
+}
+function tanhSinhRefHPcached(f,a,b,key){
+  if(_hpRefCache.key===key&&_hpRefCache.val!==null)return _hpRefCache.val;
+  var v=tanhSinhRefHP(f,a,b); _hpRefCache.key=key; _hpRefCache.val=v; return v;
+}
+
+/* Format a Decimal to its first 16 significant digits (value cards). */
+function fmt16HP(d){ return d.toSignificantDigits(16).toString(); }
+
+/* Format the absolute error to ~32 decimal places of resolution: scientific
+   notation whose least significant mantissa digit lands at 1e-32. */
+function fmtErrHP(err){
+  if(err.isZero())return '0';
+  var E=err.e;                              /* exponent of the leading digit */
+  var k=Math.max(2,Math.min(32,E+32));      /* mantissa decimals to reach 1e-32 */
+  return err.toExponential(k);
+}
+
+/* Deferred extended-precision refinement of the result cards.  Recomputes the
+   exact value, approximation and absolute error at ~40 digits, then patches
+   the Exact / Approximation / Absolute-Error cells: 16 significant digits for
+   the values, the error to ~32 decimal places.  No-op (double precision kept)
+   for unsupported methods or if decimal.js is unavailable. */
+function refineErrorHP(expr, n, a, b, accent){
+  if(!HP_OK || !HP_METHODS[ST.method] || ST.exact===null || ST.weighted) return;
+  var myGen=ST.gen;
+  var lbl=document.getElementById('resErrorLbl');
+  if(lbl && !document.getElementById('resErrHint')){
+    lbl.insertAdjacentHTML('beforeend',' <span id="resErrHint" style="font-weight:600;opacity:.55;">&middot; refining&hellip;</span>');
+  }
+  setTimeout(function(){
+    if(ST.gen!==myGen) return;
+    var hpExact,hpApprox,hpErr;
+    try{
+      var fHP=makeFnHP(expr);
+      var aHP=makeFnHP(document.getElementById('aInput').value.trim())(new Decimal(0));
+      var bHP=makeFnHP(document.getElementById('bInput').value.trim())(new Decimal(0));
+      if(!ST.exactIsRef && EXACT_HP[ST.exId]) hpExact=makeFnHP(EXACT_HP[ST.exId])(new Decimal(0));
+      else hpExact=tanhSinhRefHPcached(fHP,aHP,bHP,expr+'|'+aHP.toString()+'|'+bHP.toString());
+      hpApprox=quadHP(ST.method,fHP,aHP,bHP,n);
+      if(!hpExact.isFinite()||!hpApprox.isFinite()) throw new Error('non-finite');
+      hpErr=hpApprox.minus(hpExact).abs();
+    }catch(e){
+      var h0=document.getElementById('resErrHint'); if(h0)h0.remove();
+      return;  /* leave the double-precision display in place */
+    }
+    if(ST.gen!==myGen) return;
+    var dd=diffDigitsHTML(fmt16HP(hpApprox), fmt16HP(hpExact));
+    var ec=document.getElementById('resExactCell');  if(ec)ec.innerHTML=dd.exact;
+    var ac=document.getElementById('resApproxCell'); if(ac)ac.innerHTML=dd.approx;
+    var errNum=hpErr.toNumber();
+    var eClass=(hpErr.isZero()||errNum<1e-10)?'res-val-green':errNum<1e-4?'res-val-blue':'res-val-red';
+    var errCell=document.getElementById('resErrorCell');
+    if(errCell){
+      errCell.className='res-val res-val-hp '+eClass;
+      errCell.innerHTML=fmtErrHP(hpErr)+'<div class="res-hp-note">to 32&nbsp;dp &middot; 40-digit precision</div>';
+      if(!hpErr.isZero()) errCell.title='Absolute error to 32 decimal places:\n'+hpErr.toFixed(32);
+    }
+    var hint=document.getElementById('resErrHint'); if(hint)hint.remove();
+  },0);
+}
+
+/* =====================================================
    Gauss-Legendre nodes & weights on [-1,1]
 ===================================================== */
 var GL={};
@@ -1433,6 +1702,19 @@ var EXAMPLES={
   esinh1:{expr:'1/(1+x^2)',     a:'0', b:'1', exact:null, method:'expsinh',  n:100, latex:'\\dfrac{1}{1+x^2}'},
   esinh2:{expr:'exp(-x)/sqrt(x)',a:'0',b:'1', exact:null, method:'expsinh',  n:100, latex:'\\dfrac{e^{-x}}{\\sqrt{x}}'},
   custom:{expr:'',a:'0',b:'1',exact:null,latex:'f(x)',exactLatex:'\\text{unknown}'}
+};
+
+/* Closed-form true values as expression strings, evaluated with makeFnHP at
+   ~40-digit precision (see the extended-precision error engine above).  Keys
+   match EXAMPLES ids; each string is the exact integral of that example over
+   its stated limits.  Examples without an elementary closed form (e.g. the
+   error-function integral) are omitted and fall back to the HP tanh–sinh
+   reference. */
+var EXACT_HP={
+  x2:'1/3', sinx:'2', expx:'e-1', arctan:'pi/4', lnx:'ln(2)', sqrt:'2/3',
+  atanrad:'pi^2/16', xsincos2:'pi^2/4', lnratio:'ln(2)+pi/2',
+  ex1a:'ln(2)/3', ex1b:'sqrt(10)-3', ex6a:'pi/2-1', ex6b:'pi^2-4',
+  ex6c:'(exp(pi)-1)/17', ex6d:'ln(2)/2', ex6e:'ln(1+sqrt(2))/2'
 };
 
 /* =====================================================
@@ -3235,13 +3517,21 @@ function doCompute(){
 
   rc.innerHTML=
     '<div class="res-cell" style="border-left:3px solid '+accent+';"><div class="res-lbl">Method</div><div class="res-val" style="font-size:.8125rem;color:'+accent+';">'+METHOD_NAMES[ST.method]+'</div></div>'+
-    '<div class="res-cell"><div class="res-lbl">'+exactLabel+'</div><div class="res-val">'+exactVal+'</div></div>'+
-    '<div class="res-cell"><div class="res-lbl">Approximation</div><div class="res-val">'+approxVal+'</div></div>'+
-    '<div class="res-cell"><div class="res-lbl">Absolute Error</div><div class="res-val '+errorClass+'">'+errorStr+'</div></div>'+
+    '<div class="res-cell"><div class="res-lbl" id="resExactLbl">'+exactLabel+'</div><div class="res-val" id="resExactCell">'+exactVal+'</div></div>'+
+    '<div class="res-cell"><div class="res-lbl">Approximation</div><div class="res-val" id="resApproxCell">'+approxVal+'</div></div>'+
+    '<div class="res-cell"><div class="res-lbl" id="resErrorLbl">Absolute Error</div><div class="res-val '+errorClass+'" id="resErrorCell">'+errorStr+'</div></div>'+
     '<div class="res-cell"><div class="res-lbl">'+nLbl+'</div><div class="res-val">'+nVal+'</div></div>'+
     '<div class="res-cell"><div class="res-lbl">'+hLbl+'</div><div class="res-val">'+hVal+'</div></div>'+
     extraCells;
   mj([rc]);
+
+  /* Extended-precision refinement: re-evaluate the exact value, the
+     approximation and the absolute error at ~40-digit precision, then patch
+     the three value cards — 16 significant digits for the values, and the
+     absolute error carried to ~32 decimal places.  Deferred so the double-
+     precision cards paint instantly; cancelled if a newer compute supersedes
+     this one (ST.gen guard). */
+  refineErrorHP(expr, n, aVal, bVal, accent);
 
   /* Formula */
   var fp=document.getElementById('formulaPanel');fp.classList.remove('hidden');
