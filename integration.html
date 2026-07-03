@@ -513,7 +513,7 @@ details.mdesc .mbody p{margin:.4rem 0;}
         <li><strong>Simpson:</strong> \(|E| \le \dfrac{(b-a)^5}{180n^4}\,\max|f^{(4)}|\) &mdash; \(O(h^4)\)</li>
         <li><strong>Composite degree-\(p\) rule:</strong> error \(O(h^{p+1})\) for odd \(p\), \(O(h^{p+2})\) for even \(p\) &mdash; one extra order from symmetry.</li>
       </ul>
-      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, the finite-domain, unweighted rules (Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg) re-evaluate <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the reported absolute error \(|Q_n-I|\) is carried down to about <strong>32 decimal places</strong> &mdash; well beyond double precision. The value cards still show the first 16 digits; only the error is reported at full precision. (Weighted, infinite-domain, adaptive and embedded-estimate rules keep the standard double-precision estimate.)</p>
+      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, the finite-domain, unweighted rules (Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg, Clenshaw&ndash;Curtis and tanh&ndash;sinh) re-evaluate <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the reported absolute error \(|Q_n-I|\) is carried down to about <strong>32 decimal places</strong> &mdash; well beyond double precision. The value cards still show the first 16 digits; only the error is reported at full precision. The same extended precision drives the <strong>convergence plot</strong> (whose curves keep falling past the \(10^{-16}\) floor instead of flattening) and the <strong>tolerance calculator</strong> (which can now solve for accuracies well below machine epsilon). Weighted, infinite-domain, adaptive and embedded-estimate rules keep the standard double-precision estimate.</p>
 
       <h2>This Tool</h2>
       <ul>
@@ -1384,10 +1384,11 @@ function diffDigitsHTML(approxStr, exactStr){
    first 16 digits; only the error is carried to full precision.
 
    Supported for the finite-domain, unweighted rules (Riemann, Newton–Cotes,
-   Gauss–Legendre, Gauss–Lobatto/Radau, Romberg).  Weighted, infinite-domain,
-   adaptive and embedded-estimate rules keep the double-precision display.
-   If decimal.js is unavailable, every HP path degrades gracefully to the
-   original double-precision behaviour. =====================================*/
+   Gauss–Legendre, Gauss–Lobatto/Radau, Romberg, Clenshaw–Curtis, tanh–sinh).
+   The same engine also drives the convergence plot and tolerance calculator.
+   Weighted, infinite-domain, adaptive and embedded-estimate rules keep the
+   double-precision display.  If decimal.js is unavailable, every HP path
+   degrades gracefully to the original double-precision behaviour. ============*/
 var HP_OK = (typeof Decimal !== 'undefined');
 if(HP_OK){ Decimal.set({precision:50}); }
 
@@ -1495,7 +1496,24 @@ function _D(v){return v instanceof Decimal?v:new Decimal(v);}
 var HP_METHODS={left:1,right:1,midpoint:1,trapezoid:1,simpson:1,
   simpson38:1,boole:1,closed6:1,open2:1,open3:1,open4:1,
   gauss2:1,gauss3:1,gauss5:1,gauss7:1,
-  lobatto3:1,lobatto4:1,lobatto5:1,radau2:1,radau3:1,romberg:1};
+  lobatto3:1,lobatto4:1,lobatto5:1,radau2:1,radau3:1,romberg:1,
+  clenshaw:1,tanhsinh:1};
+
+/* HP Clenshaw–Curtis weights/nodes (Chebyshev extreme points), mirroring
+   the double-precision ccWeightsNodes. */
+function ccWeightsNodesHP(N){
+  var pi=Decimal.acos(-1),x=[],w=[],theta=[],k,j;
+  for(k=0;k<=N;k++){ theta[k]=pi.times(k).div(N); x[k]=Decimal.cos(theta[k]); }
+  var even=(N%2===0);
+  for(k=0;k<=N;k++){
+    if(k===0||k===N){ w[k]=even?_D(1).div(N*N-1):_D(1).div(N*N); continue; }
+    var v=_D(1),K=even?N/2-1:(N-1)/2;
+    for(j=1;j<=K;j++) v=v.minus(_D(2).times(Decimal.cos(theta[k].times(2*j))).div(4*j*j-1));
+    if(even) v=v.minus(Decimal.cos(theta[k].times(N)).div(N*N-1));
+    w[k]=v.times(2).div(N);
+  }
+  return {x:x,w:w};
+}
 
 /* Extended-precision quadrature — mirrors the double-precision quad* routines
    node-for-node, so the only difference from the on-screen approximation is
@@ -1554,6 +1572,23 @@ function quadHP(method,f,a,b,n){
     }
     var lastR=T[T.length-1]; return lastR[lastR.length-1];
   }
+  if(method==='clenshaw'){
+    var Nc=Math.max(2,n),cw=ccWeightsNodesHP(Nc),midc=a.plus(b).div(2),halfc=b.minus(a).div(2);
+    total=new Decimal(0);
+    for(var kc=0;kc<=Nc;kc++) total=total.plus(cw.w[kc].times(f(midc.plus(halfc.times(cw.x[kc])))).times(halfc));
+    return total;
+  }
+  if(method==='tanhsinh'){
+    var Nt=Math.max(2,n),tMx=3.0,ht=new Decimal(2*tMx).div(Nt),pi2t=Decimal.acos(-1).div(2);
+    var midt=a.plus(b).div(2),halft=b.minus(a).div(2); total=new Decimal(0);
+    for(var kt=0;kt<=Nt;kt++){
+      var tt=new Decimal(-tMx).plus(ht.times(kt)),ut=pi2t.times(Decimal.sinh(tt)),xt=Decimal.tanh(ut);
+      if(xt.abs().gte(1))continue;                     /* saturated node: skip */
+      var cht=Decimal.cosh(ut),wt=pi2t.times(Decimal.cosh(tt)).div(cht.times(cht)).times(ht);
+      total=total.plus(wt.times(f(midt.plus(halft.times(xt)))).times(halft));
+    }
+    return total;
+  }
   throw new Error('HP method not supported: '+method);
 }
 
@@ -1591,6 +1626,34 @@ function fmtErrHP(err){
   return err.toExponential(k);
 }
 
+/* Shared extended-precision context for the current integrand: the HP
+   integrand, HP limits and HP true value (closed form when known, otherwise a
+   ~40-digit tanh–sinh reference).  Method-independent, so the error card, the
+   convergence plot and the tolerance calculator all reuse it — and the costly
+   reference is computed at most once per compute.  Cached by generation. */
+function getHPContext(){
+  if(!HP_OK) return null;
+  if(ST._hpCtxGen===ST.gen) return ST._hpCtx;   /* memoised for this compute */
+  ST._hpCtxGen=ST.gen; ST._hpCtx=null;
+  if(ST.exact===null || ST.weighted) return null;
+  try{
+    var fHP=makeFnHP(ST.expr);
+    var aHP=makeFnHP(document.getElementById('aInput').value.trim())(new Decimal(0));
+    var bHP=makeFnHP(document.getElementById('bInput').value.trim())(new Decimal(0));
+    var exactHP;
+    if(!ST.exactIsRef && EXACT_HP[ST.exId]) exactHP=makeFnHP(EXACT_HP[ST.exId])(new Decimal(0));
+    else exactHP=tanhSinhRefHPcached(fHP,aHP,bHP,ST.expr+'|'+aHP.toString()+'|'+bHP.toString());
+    if(!exactHP.isFinite()) return null;
+    /* Trust floor: the smallest error worth displaying.  A closed-form true
+       value is good to full working precision; a tanh–sinh reference to ~38
+       digits — below that the "error" is reference noise, not method error. */
+    var mag=Decimal.max(1,exactHP.abs()).toNumber();
+    var floor=(ST.exactIsRef?1e-36:1e-45)*mag;
+    ST._hpCtx={fHP:fHP,aHP:aHP,bHP:bHP,exactHP:exactHP,floor:floor};
+  }catch(e){ ST._hpCtx=null; }
+  return ST._hpCtx;
+}
+
 /* Deferred extended-precision refinement of the result cards.  Recomputes the
    exact value, approximation and absolute error at ~40 digits, then patches
    the Exact / Approximation / Absolute-Error cells: 16 significant digits for
@@ -1607,13 +1670,11 @@ function refineErrorHP(expr, n, a, b, accent){
     if(ST.gen!==myGen) return;
     var hpExact,hpApprox,hpErr;
     try{
-      var fHP=makeFnHP(expr);
-      var aHP=makeFnHP(document.getElementById('aInput').value.trim())(new Decimal(0));
-      var bHP=makeFnHP(document.getElementById('bInput').value.trim())(new Decimal(0));
-      if(!ST.exactIsRef && EXACT_HP[ST.exId]) hpExact=makeFnHP(EXACT_HP[ST.exId])(new Decimal(0));
-      else hpExact=tanhSinhRefHPcached(fHP,aHP,bHP,expr+'|'+aHP.toString()+'|'+bHP.toString());
-      hpApprox=quadHP(ST.method,fHP,aHP,bHP,n);
-      if(!hpExact.isFinite()||!hpApprox.isFinite()) throw new Error('non-finite');
+      var ctx=getHPContext();
+      if(!ctx) throw new Error('no hp context');
+      hpExact=ctx.exactHP;
+      hpApprox=quadHP(ST.method,ctx.fHP,ctx.aHP,ctx.bHP,n);
+      if(!hpApprox.isFinite()) throw new Error('non-finite');
       hpErr=hpApprox.minus(hpExact).abs();
     }catch(e){
       var h0=document.getElementById('resErrHint'); if(h0)h0.remove();
@@ -3800,19 +3861,32 @@ function _renderConvergenceNow(){
      a floor those zero points are dropped and the trace vanishes ("not
      showing"); clamping to the floor keeps a flat curve at round-off. */
   var ROUNDOFF=2.220446049250313e-16*Math.max(1,Math.abs(ST.exact||0));
+  /* Extended precision: where available, measure each method's error at ~40
+     digits so the curve keeps falling past the double-precision round-off floor
+     (~1e-16) instead of flattening there — the whole point for high-order and
+     spectral rules. */
+  var hpCtx=getHPContext();
+  var usedHP=false;
   methods.forEach(function(mk){
     var grid=CONV_NGRID[mk];
     if(!grid)return;
+    var useHP=!!(hpCtx && HP_METHODS[mk]);
+    var floor=useHP?hpCtx.floor:ROUNDOFF;
     var ns=[],errs=[];
     for(var i=0;i<grid.length;i++){
-      var val=quadValFast(mk,f,a,b,grid[i]);
-      var err=Math.abs(val-ST.exact);
+      var err;
+      if(useHP){
+        try{ err=quadHP(mk,hpCtx.fHP,hpCtx.aHP,hpCtx.bHP,grid[i]).minus(hpCtx.exactHP).abs().toNumber(); usedHP=true; }
+        catch(e){ err=Math.abs(quadValFast(mk,f,a,b,grid[i])-ST.exact); }
+      }else{
+        err=Math.abs(quadValFast(mk,f,a,b,grid[i])-ST.exact);
+      }
       if(!isFinite(err))continue;
-      if(err<ROUNDOFF)err=ROUNDOFF;
+      if(err<floor)err=floor;
       ns.push(grid[i]);errs.push(err);
     }
     if(ns.length<2)return;
-    if(!first)first={method:mk,ns:ns,errs:errs};
+    if(!first)first={method:mk,ns:ns,errs:errs,floor:floor};
     var color=METHOD_COLORS_CONV[mk]||'#1d4ed8';
     var isActive=(mk===method);
     traces.push({
@@ -3841,11 +3915,12 @@ function _renderConvergenceNow(){
        and stop as soon as the error stops dropping meaningfully \u2014 that flat
        tail is the machine-epsilon round-off floor (often well above true eps
        for ill-conditioned integrands) and would otherwise flatten the rate. */
+    var refFloor=ref.floor||ROUNDOFF;
     var fx=[],fy=[],i2,prevErr=Infinity;
     for(i2=0;i2<ref.ns.length;i2++){
       var ev=ref.errs[i2];
       if(!(ev>0&&isFinite(ev)))continue;
-      if(ev<=ROUNDOFF*1.5) break;                 /* reached machine-epsilon floor */
+      if(ev<=refFloor*1.5) break;                 /* reached the precision floor */
       if(fx.length>0 && ev>prevErr*0.85) break;   /* descent stalled \u2192 elevated floor */
       fx.push(ref.ns[i2]); fy.push(Math.log(ev)); prevErr=ev;
     }
@@ -3951,7 +4026,8 @@ function _renderConvergenceNow(){
       ? '. A straight line means exponential convergence \\(|E|\\sim Ce^{-\\alpha n}\\).'+rateNote
       : (isSpectral
           ? '. Spectral / double-exponential convergence \u2014 faster than any fixed \\(\\mathcal{O}(h^{p})\\); switch to semi-log y to read its exponential rate.'
-          : '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\); a straight line means algebraic \\(\\mathcal{O}(n^{-p})\\).'));
+          : '. Dashed: expected \\(\\mathcal{O}(h^{'+order+'})\\); a straight line means algebraic \\(\\mathcal{O}(n^{-p})\\).'))+
+    (usedHP?' Errors are measured at 40-digit precision, so the curve keeps falling past the \\(\\approx\\!10^{-16}\\) double-precision floor.':'');
   mj([cc]);
 }
 
@@ -3985,12 +4061,23 @@ function computeTolerance(){
           that meets the tolerance.
      Step is 2 for Simpson (so n stays even), 1 otherwise. */
   var step=(method==='simpson')?2:1;
+  /* Below ~1e-13 the double-precision error measurement bottoms out at
+     round-off, so measure in extended precision when the rule supports it.
+     The n cap is kept small for the HP path — high-order and spectral rules
+     reach these tolerances at small n, while low-order rules hit the cap and
+     are (correctly) reported as impractical. */
+  var hpCtx=getHPContext();
+  var useHP=!!(hpCtx && HP_METHODS[method] && tol<1e-13);
   function errAt(n){
     if(n<step)n=step;
     if(method==='simpson'&&n%2!==0)n++;
+    if(useHP){
+      try{ return quadHP(method,hpCtx.fHP,hpCtx.aHP,hpCtx.bHP,n).minus(hpCtx.exactHP).abs().toNumber(); }
+      catch(e){ return Math.abs(quadValFast(method,f,a,b,n)-ST.exact); }
+    }
     return Math.abs(quadValFast(method,f,a,b,n)-ST.exact);
   }
-  var CAP=1<<22;  /* 4,194,304 — beyond this, a higher-order method is needed */
+  var CAP=useHP?8192:(1<<22);  /* HP: keep responsive; double: 4,194,304 */
   var nHi=step, err=errAt(nHi);
   while(err>tol && nHi<CAP){
     nHi*=2;
@@ -4016,10 +4103,16 @@ function computeTolerance(){
   var nReq=nHi;
   if(method==='simpson'&&nReq%2!==0)nReq++;
 
-  var refNote=ST.exactIsRef?' (error measured against high-accuracy reference)':' (error measured against the exact value)';
+  var against=ST.exactIsRef?'high-accuracy reference':'exact value';
+  var refNote=useHP?' (error measured at 40-digit precision against the '+against+')':' (error measured against the '+against+')';
+  var mErrStr;
+  if(useHP){
+    try{ mErrStr=fmtErrHP(quadHP(method,hpCtx.fHP,hpCtx.aHP,hpCtx.bHP,nReq).minus(hpCtx.exactHP).abs()); }
+    catch(e){ mErrStr=errAt(nReq).toExponential(2); }
+  }else{ mErrStr=errAt(nReq).toExponential(2); }
   tolDiv.innerHTML='<div class="tol-result">For tolerance \\(\\varepsilon = '+tolStr+'\\) with the <strong>'+METHOD_NAMES[method]+'</strong>:<br>'+
     '<strong style="font-size:1.1rem;color:var(--teal);">\\(n = '+nReq+'\\)</strong> subdivisions are sufficient'+refNote+
-    '.<br>Step size: \\(h = '+fmtN((b-a)/nReq,8)+'\\). Measured error: \\(|E| = '+errAt(nReq).toExponential(2)+'\\).</div>';
+    '.<br>Step size: \\(h = '+fmtN((b-a)/nReq,8)+'\\). Measured error: \\(|E| = '+mErrStr+'\\).</div>';
   mj([tolDiv]);
 }
 
