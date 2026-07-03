@@ -19,7 +19,10 @@
     };
   </script>
   <script src="vendor/mathjax@3.2.2/es5/tex-svg.js" async></script>
-  <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js" charset="utf-8"></script>
+  <!-- Plotly (~1.3 MB) is only needed for the on-demand convergence plot, so
+       defer it: the page parses and becomes interactive without waiting on it,
+       and it is prewarmed in the background after load. -->
+  <script async src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js" charset="utf-8"></script>
   <!-- decimal.js: extended-precision arithmetic so the absolute error can be
        resolved far beyond the ~1e-16 IEEE-754 double-precision floor. -->
   <script src="vendor/decimal.js@10.4.3/decimal.js"></script>
@@ -4810,33 +4813,34 @@ window.addEventListener('resize',function(){
 /* =====================================================
    Init
 ===================================================== */
-window.addEventListener('load',function(){
+/* Paint the first example as soon as the DOM is parsed — the canvas render
+   needs neither Plotly nor MathJax, so it no longer waits on those (async)
+   downloads and the graph appears noticeably sooner. */
+function _renderFirstExample(){
   resizeCanvas();
-  /* Load first example */
   ST.fn=makeFn('sin(x)');ST.a=0;ST.b=Math.PI;ST.n=6;ST.exact=2;ST.exId='sinx';
   ST.result=computeQuad('left',ST.fn,0,Math.PI,6);
   computeView();
   render();
-  if(window.MathJax&&MathJax.startup)
+}
+/* MathJax typesetting of the static page math + background prewarming of the
+   convergence-plot legend and Plotly.  Retries until MathJax is ready. */
+function _initMathAndWarm(){
+  if(window.MathJax&&MathJax.startup){
     MathJax.startup.promise.then(function(){
       MathJax.typesetPromise().catch(function(){});
-      /* Cache the convergence-plot legend symbols so the first expand
-         doesn't have to wait on MathJax to render $T_n$, $O(h^p)$, etc. */
       prewarmConvergenceMath();
-      /* Warm up Plotly with an offscreen 2-trace scatter that uses the
-         same scale type and legend math the convergence plot does.
-         Plotly's first newPlot on a page pays init costs (SVG layer
-         setup, MathJax-in-SVG bootstrap, font loading) that we move
-         to background time so the user's first real expand is fast.
-         Done after MathJax is ready so the math-in-legend path warms
-         up too. */
       setTimeout(prewarmPlotly,800);
     }).catch(function(){});
-});
+  }else setTimeout(_initMathAndWarm,60);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_renderFirstExample);
+else _renderFirstExample();
+window.addEventListener('load',_initMathAndWarm);
 
 function prewarmPlotly(){
-  if(typeof Plotly==='undefined')return;
   if(window._plotlyPrewarmed)return;
+  if(typeof Plotly==='undefined'){ setTimeout(prewarmPlotly,300); return; }  /* async Plotly still loading */
   var warm=document.createElement('div');
   warm.setAttribute('aria-hidden','true');
   warm.style.cssText='position:fixed;left:-9999px;top:-9999px;width:240px;height:140px;pointer-events:none;';
@@ -4850,6 +4854,11 @@ function prewarmPlotly(){
     try{Plotly.purge(warm);}catch(e){}
     if(warm.parentNode)warm.parentNode.removeChild(warm);
     window._plotlyPrewarmed=true;
+    /* If the convergence plot was requested while Plotly was still loading
+       (async), its render bailed at the Plotly call and cleared the dirty
+       flag — redraw it now that Plotly is ready. */
+    var cp=document.getElementById('convergencePanel');
+    if(cp && !cp.classList.contains('hidden') && ST.fn && ST.exact!==null){ _convDirty=true; renderConvergencePlot(); }
   }).catch(function(){
     if(warm.parentNode)warm.parentNode.removeChild(warm);
   });
