@@ -21,7 +21,7 @@
   <script src="vendor/mathjax@3.2.2/es5/tex-svg.js" async></script>
   <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js" charset="utf-8"></script>
   <!-- decimal.js: extended-precision arithmetic so the absolute error can be
-       computed to ~32 decimal places, well beyond IEEE-754 double precision. -->
+       resolved far beyond the ~1e-16 IEEE-754 double-precision floor. -->
   <script src="vendor/decimal.js@10.4.3/decimal.js"></script>
   <style>
 :root{
@@ -513,7 +513,7 @@ details.mdesc .mbody p{margin:.4rem 0;}
         <li><strong>Simpson:</strong> \(|E| \le \dfrac{(b-a)^5}{180n^4}\,\max|f^{(4)}|\) &mdash; \(O(h^4)\)</li>
         <li><strong>Composite degree-\(p\) rule:</strong> error \(O(h^{p+1})\) for odd \(p\), \(O(h^{p+2})\) for even \(p\) &mdash; one extra order from symmetry.</li>
       </ul>
-      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, nearly every rule &mdash; the Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg, Clenshaw&ndash;Curtis and tanh&ndash;sinh rules, plus the weighted Gaussian (Chebyshev, Jacobi), infinite-domain (Hermite, Laguerre) and double-exponential (sinh&ndash;sinh, exp&ndash;sinh) families &mdash; re-evaluates <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the reported absolute error \(|Q_n-I|\) is carried down to about <strong>32 decimal places</strong>. This uses extended-precision nodes and weights computed on the fly: Gauss&ndash;Legendre/Hermite/Laguerre/Jacobi abscissae are found by high-precision Newton iteration on their orthogonal-polynomial recurrences (with a Spouge \(\Gamma\) function for the Jacobi weights), and the Chebyshev and tanh&ndash;sinh/double-exponential nodes from their closed forms. The value cards still show the first 16 digits; only the error is reported at full precision. The same extended precision drives the <strong>convergence plot</strong> (whose curves keep falling past the \(10^{-16}\) floor instead of flattening) and the <strong>tolerance calculator</strong> (which can now solve for accuracies well below machine epsilon). The adaptive-Simpson and Gauss&ndash;Kronrod rules keep the standard double-precision estimate (the latter reports its own embedded \(|I_{15}-I_{7}|\) estimator).</p>
+      <p><strong>Extended-precision error.</strong> A double-precision computation caps the resolvable error near machine epsilon (\(\approx 10^{-16}\)): once a high-order or spectral rule reaches that floor, its true error is buried in round-off. To see past it, nearly every rule &mdash; the Riemann, Newton&ndash;Cotes, Gauss&ndash;Legendre, Gauss&ndash;Lobatto/Radau, Romberg, Clenshaw&ndash;Curtis and tanh&ndash;sinh rules, plus the weighted Gaussian (Chebyshev, Jacobi), infinite-domain (Hermite, Laguerre) and double-exponential (sinh&ndash;sinh, exp&ndash;sinh) families &mdash; re-evaluates <em>both</em> the approximation \(Q_n\) and the true value \(I\) with ~40-digit arithmetic, so the absolute error \(|Q_n-I|\) is <strong>resolved 10+ orders past the \(10^{-16}\) double-precision floor</strong> (and shown in concise scientific notation &mdash; the exponent already carries the magnitude). This uses extended-precision nodes and weights computed on the fly: Gauss&ndash;Legendre/Hermite/Laguerre/Jacobi abscissae come from the eigenvalues of the recurrence&rsquo;s Jacobi matrix (Golub&ndash;Welsch, via a high-precision QL iteration, with a Spouge \(\Gamma\) function for the Jacobi weights), and the Chebyshev and tanh&ndash;sinh/double-exponential nodes from their closed forms. The value cards show the first 16 digits. The same extended precision drives the <strong>convergence plot</strong> (whose curves keep falling past the \(10^{-16}\) floor instead of flattening) and the <strong>tolerance calculator</strong> (which can now solve for accuracies well below machine epsilon). The adaptive-Simpson and Gauss&ndash;Kronrod rules keep the standard double-precision estimate (the latter reports its own embedded \(|I_{15}-I_{7}|\) estimator).</p>
 
       <h2>This Tool</h2>
       <ul>
@@ -1649,40 +1649,70 @@ function gammaHP(z){
   var t=z.plus(a); return t.pow(z.plus(0.5)).times(Decimal.exp(t.neg())).times(sum);
 }
 
-/* HP Gauss–Jacobi (NR gaujac): Newton on the Jacobi polynomial recurrence. */
+/* HP symmetric-tridiagonal QL with implicit shifts (Golub–Welsch).  d[1..n]
+   diagonal, e[1..n] sub-diagonal (e[1] unused on entry).  Returns eigenvalues
+   (nodes, ascending) and the first component of each eigenvector — tracking
+   only the first row of the accumulated rotation matrix is enough for the
+   Gauss weights (w_i = μ₀·z0_i²).  Robust for any n and for the zero-diagonal
+   symmetric weights, unlike the Newton root-finder it replaces (which produced
+   duplicate roots for clustered weights such as α=0, β=−½).  1-based arrays. */
+function _pythagHP(a,b){ return Decimal.sqrt(a.times(a).plus(b.times(b))); }
+function _sgnHP(a,b){ return b.gte(0)?a.abs():a.abs().neg(); }
+function gwEigHP(d,e,n){
+  var EPS=new Decimal(10).pow(-44),ABS=new Decimal(10).pow(-46),i,l,m,iter;
+  var z0=new Array(n+1); for(i=1;i<=n;i++)z0[i]=(i===1)?_D(1):_D(0);
+  for(i=2;i<=n;i++)e[i-1]=e[i]; e[n]=_D(0);
+  for(l=1;l<=n;l++){
+    iter=0;
+    do{
+      for(m=l;m<=n-1;m++){ var dd=d[m].abs().plus(d[m+1].abs()); if(e[m].abs().lte(EPS.times(dd).plus(ABS)))break; }
+      if(m!==l){
+        if(iter++===200)throw new Error('QL failed to converge');
+        var g=d[l+1].minus(d[l]).div(e[l].times(2));
+        var r=_pythagHP(g,_D(1));
+        g=d[m].minus(d[l]).plus(e[l].div(g.plus(_sgnHP(r,g))));
+        var s=_D(1),c=_D(1),p=_D(0);
+        for(i=m-1;i>=l;i--){
+          var f=s.times(e[i]),b=c.times(e[i]);
+          r=_pythagHP(f,g); e[i+1]=r;
+          if(r.isZero()){ d[i+1]=d[i+1].minus(p); e[m]=_D(0); break; }
+          s=f.div(r); c=g.div(r);
+          g=d[i+1].minus(p);
+          r=d[i].minus(g).times(s).plus(c.times(b).times(2));
+          p=s.times(r); d[i+1]=g.plus(p);
+          g=c.times(r).minus(b);
+          var f0=z0[i+1]; z0[i+1]=s.times(z0[i]).plus(c.times(f0)); z0[i]=c.times(z0[i]).minus(s.times(f0));
+        }
+        if(r.isZero()&&i>=l)continue;
+        d[l]=d[l].minus(p); e[l]=g; e[m]=_D(0);
+      }
+    }while(m!==l);
+  }
+  var idx=[]; for(i=1;i<=n;i++)idx.push(i);
+  idx.sort(function(p,q){return d[p].cmp(d[q]);});
+  var x=[],w=[]; idx.forEach(function(j){ x.push(d[j]); w.push(z0[j]); });
+  return {x:x,z0:w};
+}
+
+/* HP Gauss–Jacobi via Golub–Welsch on the Jacobi three-term recurrence.
+   Throws for α+β near a negative integer (degenerate 0/0 off-diagonal); the
+   caller then falls back to double precision. */
 function gaussJacobiHP(n,alf,bet){
   alf=_D(alf); bet=_D(bet);
-  var x=new Array(n),w=new Array(n),z=_D(0),EPS=new Decimal(10).pow(-44),MAXIT=120,alfbet=alf.plus(bet);
-  for(var i=0;i<n;i++){
-    if(i===0){ var an=alf.div(n),bn=bet.div(n);
-      var r1=_D(1).plus(alf).times(_D(2.78).div(_D(4).plus(n*n)).plus(an.times(0.768).div(n)));
-      var r2=_D(1).plus(an.times(1.48)).plus(bn.times(0.96)).plus(an.times(an).times(0.452)).plus(an.times(bn).times(0.83));
-      z=_D(1).minus(r1.div(r2)); }
-    else if(i===1){ var r1b=_D(4.1).plus(alf).div(_D(1).plus(alf).times(_D(1).plus(alf.times(0.156))));
-      var r2b=_D(1).plus(_D(0.06).times(n-8).times(_D(1).plus(alf.times(0.12))).div(n));
-      var r3b=_D(1).plus(_D(0.012).times(bet).times(_D(1).plus(alf.abs().times(0.25))).div(n));
-      z=z.minus(_D(1).minus(z).times(r1b).times(r2b).times(r3b)); }
-    else if(i===2){ var r1c=_D(1.67).plus(alf.times(0.28)).div(_D(1).plus(alf.times(0.37)));
-      var r2c=_D(1).plus(_D(0.22).times(n-8).div(n));
-      var r3c=_D(1).plus(_D(8).times(bet).div(_D(6.28).plus(bet).times(n*n)));
-      z=z.minus(x[0].minus(z).times(r1c).times(r2c).times(r3c)); }
-    else z=_D(3).times(x[i-1]).minus(_D(3).times(x[i-2])).plus(x[i-3]);
-    var p1,p2,p3,pp,temp;
-    for(var its=0;its<MAXIT;its++){
-      temp=_D(2).plus(alfbet); p1=alf.minus(bet).plus(temp.times(z)).div(2); p2=_D(1);
-      for(var j=2;j<=n;j++){ p3=p2; p2=p1; temp=_D(2*j).plus(alfbet);
-        var a_=_D(2*j).times(_D(j).plus(alfbet)).times(temp.minus(2));
-        var b_=temp.minus(1).times(alf.times(alf).minus(bet.times(bet)).plus(temp.times(temp.minus(2)).times(z)));
-        var c_=_D(2).times(_D(j-1).plus(alf)).times(_D(j-1).plus(bet)).times(temp);
-        p1=b_.times(p2).minus(c_.times(p3)).div(a_); }
-      pp=_D(n).times(alf.minus(bet).minus(temp.times(z))).times(p1).plus(_D(2).times(_D(n).plus(alf)).times(_D(n).plus(bet)).times(p2)).div(temp.times(_D(1).minus(z.times(z))));
-      var z1=z; z=z1.minus(p1.div(pp)); if(z.minus(z1).abs().lt(EPS))break;
-    }
-    x[i]=z;
-    var lg=gammaHP(alf.plus(n)).times(gammaHP(bet.plus(n))).div(gammaHP(n+1).times(gammaHP(_D(n).plus(alfbet).plus(1))));
-    w[i]=lg.times(temp).times(_D(2).pow(alfbet)).div(pp.times(p2));
+  var d=new Array(n+1),e=new Array(n+1),k;
+  for(k=0;k<n;k++){
+    var ab2=_D(2*k).plus(alf).plus(bet),den=ab2.times(ab2.plus(2));
+    d[k+1]=den.abs().lt(new Decimal(10).pow(-40))?bet.minus(alf).div(alf.plus(bet).plus(2)):bet.times(bet).minus(alf.times(alf)).div(den);
+    if(k>0){
+      var num=_D(4*k).times(_D(k).plus(alf)).times(_D(k).plus(bet)).times(_D(k).plus(alf).plus(bet));
+      var de=ab2.pow(2).times(ab2.plus(1)).times(ab2.minus(1));
+      if(de.isZero()||num.div(de).isNegative())throw new Error('degenerate Jacobi (α+β near a negative integer)');
+      e[k+1]=Decimal.sqrt(num.div(de));
+    } else e[1]=_D(0);
   }
-  return {t:x,W:w};
+  var mu0=_D(2).pow(alf.plus(bet).plus(1)).times(gammaHP(alf.plus(1)).times(gammaHP(bet.plus(1))).div(gammaHP(alf.plus(bet).plus(2))));
+  var ev=gwEigHP(d,e,n);
+  return {t:ev.x,W:ev.z0.map(function(z){return mu0.times(z).times(z);})};
 }
 
 /* HP Gauss–Chebyshev 1st/2nd kind (closed-form nodes/weights). */
@@ -1701,38 +1731,20 @@ function quadWeightedHP(fHP,a,b,n,method){
   return tot.times(scale);
 }
 
-/* HP Gauss–Hermite (weight e^{-x²}) and Gauss–Laguerre (weight e^{-x}, α=0),
-   Newton on the respective recurrences (NR gauher / gaulag). */
+/* HP Gauss–Hermite (weight e^{-x²}) and Gauss–Laguerre (weight e^{-x}, α=0)
+   via Golub–Welsch on their three-term recurrences (Jacobi-matrix diagonal a_k
+   and sub-diagonal b_k), sharing the robust QL eigensolver above. */
 function gaussHermiteHP(n){
-  var EPS=new Decimal(10).pow(-44),PIM4=Decimal.acos(-1).pow(-0.25),MAXIT=100;
-  var m=Math.floor((n+1)/2),x=new Array(n),w=new Array(n),z=_D(0),pp=_D(0);
-  for(var i=0;i<m;i++){
-    if(i===0)z=Decimal.sqrt(2*n+1).minus(_D(1.85575).times(_D(2*n+1).pow(-0.16667)));
-    else if(i===1)z=z.minus(_D(1.14).times(_D(n).pow(0.426)).div(z));
-    else if(i===2)z=_D(1.86).times(z).minus(_D(0.86).times(x[0]));
-    else if(i===3)z=_D(1.91).times(z).minus(_D(0.91).times(x[1]));
-    else z=_D(2).times(z).minus(x[i-2]);
-    var p1,p2,p3;
-    for(var its=0;its<MAXIT;its++){ p1=PIM4; p2=_D(0);
-      for(var j=1;j<=n;j++){ p3=p2; p2=p1; p1=z.times(Decimal.sqrt(_D(2).div(j))).times(p2).minus(Decimal.sqrt(_D(j-1).div(j)).times(p3)); }
-      pp=Decimal.sqrt(_D(2*n)).times(p2); var z1=z; z=z1.minus(p1.div(pp)); if(z.minus(z1).abs().lt(EPS))break; }
-    x[i]=z; x[n-1-i]=z.neg(); w[i]=_D(2).div(pp.times(pp)); w[n-1-i]=w[i];
-  }
-  return {x:x,w:w};
+  var d=new Array(n+1),e=new Array(n+1),k;
+  for(k=0;k<n;k++){ d[k+1]=_D(0); e[k+1]=(k>0)?Decimal.sqrt(_D(k).div(2)):_D(0); }
+  var mu0=Decimal.sqrt(Decimal.acos(-1)),ev=gwEigHP(d,e,n);
+  return {x:ev.x,w:ev.z0.map(function(z){return mu0.times(z).times(z);})};
 }
 function gaussLaguerreHP(n){
-  var EPS=new Decimal(10).pow(-44),MAXIT=120,alf=_D(0),x=new Array(n),w=new Array(n),z=_D(0),pp=_D(0);
-  for(var i=0;i<n;i++){
-    if(i===0)z=_D(1).plus(alf).times(_D(3).plus(alf.times(0.92))).div(_D(1).plus(2.4*n).plus(alf.times(1.8)));
-    else if(i===1)z=z.plus(_D(15).plus(alf.times(6.25)).div(_D(1).plus(alf.times(0.9)).plus(2.5*n)));
-    else { var ai=i-1; z=z.plus(_D(1).plus(_D(2.55).times(ai)).div(_D(1.9).times(ai)).plus(_D(1.26).times(ai).times(alf).div(_D(1).plus(_D(3.5).times(ai)))).times(z.minus(x[i-2])).div(_D(1).plus(alf.times(0.3)))); }
-    var p1,p2,p3;
-    for(var its=0;its<MAXIT;its++){ p1=_D(1); p2=_D(0);
-      for(var j=1;j<=n;j++){ p3=p2; p2=p1; p1=_D(2*j-1).plus(alf).minus(z).times(p2).minus(_D(j-1).plus(alf).times(p3)).div(j); }
-      pp=_D(n).times(p1).minus(_D(n).plus(alf).times(p2)).div(z); var z1=z; z=z1.minus(p1.div(pp)); if(z.minus(z1).abs().lt(EPS))break; }
-    x[i]=z; w[i]=gammaHP(alf.plus(n)).div(gammaHP(n)).div(pp.times(n).times(p2)).neg();
-  }
-  return {x:x,w:w};
+  var d=new Array(n+1),e=new Array(n+1),k;
+  for(k=0;k<n;k++){ d[k+1]=_D(2*k+1); e[k+1]=(k>0)?_D(k):_D(0); }
+  var ev=gwEigHP(d,e,n);  /* μ₀ = Γ(1) = 1 */
+  return {x:ev.x,w:ev.z0.map(function(z){return z.times(z);})};
 }
 function quadInfiniteHP(fHP,n,method){
   var nw=(method==='hermite')?gaussHermiteHP(n):gaussLaguerreHP(n),tot=_D(0);
@@ -1788,13 +1800,12 @@ function methodKind(m){
 /* Format a Decimal to its first 16 significant digits (value cards). */
 function fmt16HP(d){ return d.toSignificantDigits(16).toString(); }
 
-/* Format the absolute error to ~32 decimal places of resolution: scientific
-   notation whose least significant mantissa digit lands at 1e-32. */
+/* Format the absolute error in scientific notation to 2 decimal places — the
+   exponent already carries the magnitude/precision, so extra mantissa digits
+   add noise, not information (e.g. 1.23e-27). */
 function fmtErrHP(err){
   if(err.isZero())return '0';
-  var E=err.e;                              /* exponent of the leading digit */
-  var k=Math.max(2,Math.min(32,E+32));      /* mantissa decimals to reach 1e-32 */
-  return err.toExponential(k);
+  return err.toExponential(2);
 }
 
 /* Shared extended-precision context for the current integrand: the HP
@@ -1836,8 +1847,9 @@ function getHPContext(){
 /* Deferred extended-precision refinement of the result cards.  Recomputes the
    exact value, approximation and absolute error at ~40 digits, then patches
    the Exact / Approximation / Absolute-Error cells: 16 significant digits for
-   the values, the error to ~32 decimal places.  No-op (double precision kept)
-   for unsupported methods or if decimal.js is unavailable. */
+   the values, the error resolved far past 1e-16 and shown to 2 significant
+   figures.  No-op (double precision kept) for unsupported methods or if
+   decimal.js is unavailable. */
 function refineErrorHP(expr, n, a, b, accent){
   if(!HP_OK || !HP_METHODS[ST.method] || ST.exact===null) return;
   var myGen=ST.gen;
@@ -1876,8 +1888,8 @@ function refineErrorHP(expr, n, a, b, accent){
     if(errCell){
       errCell.className='res-val res-val-hp '+eClass;
       errCell.innerHTML=(floored?'&lt; ':'')+fmtErrHP(shownErr)+
-        '<div class="res-hp-note">'+(floored?'reference-resolution limit':'to 32&nbsp;dp &middot; 40-digit precision')+'</div>';
-      if(!shownErr.isZero()) errCell.title=(floored?'Below the reference resolution (~'+shownErr.toExponential(1)+'); the rule has converged past what the true value can measure.':'Absolute error to 32 decimal places:\n'+hpErr.toFixed(32));
+        '<div class="res-hp-note">'+(floored?'reference-resolution limit':'40-digit precision')+'</div>';
+      if(!shownErr.isZero()) errCell.title=(floored?'Below the reference resolution; the rule has converged past what the true value can measure.':'Computed at 40-digit precision. Exact error: '+hpErr.toExponential(6));
     }
     var hint=document.getElementById('resErrHint'); if(hint)hint.remove();
   },0);
