@@ -20,6 +20,10 @@
   </script>
   <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
   <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js" charset="utf-8"></script>
+  <!-- decimal.js: recompute the convergence-graph errors at ~40-digit precision
+       so the finite-difference round-off wall (~1e-16 in double precision) is
+       pushed far down and the true O(h^p) truncation error stays visible. -->
+  <script src="vendor/decimal.js@10.4.3/decimal.js"></script>
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
   <style>
@@ -344,6 +348,7 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
         <li>A log-log convergence plot demonstrating the computed order of accuracy \(O(h^p)\) using \(f(x) = e^x\)</li>
       </ul>
       <p>For an \(n\)-th derivative you need at least \(n+1\) stencil points. Symmetric stencils (e.g., \(-2,\!-1,\!0,\!1,\!2\)) typically yield higher-order accuracy due to cancellation of odd error terms.</p>
+      <p><strong>Round-off vs. truncation.</strong> The convergence plot shows the error two ways. In ordinary <strong>double precision</strong> the error decreases as \(O(h^p)\) only until it reaches the finite-difference <em>round-off wall</em> near \(10^{-16}\) &mdash; subtracting nearly-equal function values and dividing by \(h^{\text{order}}\) magnifies rounding, so shrinking \(h\) further makes the error <em>worse</em> (dramatically so for high derivatives). Recomputing the identical formula at <strong>~40-digit precision</strong> (via decimal.js) pushes that wall far down, so the true \(O(h^p)\) truncation error stays visible &mdash; a direct picture of why every finite-difference formula has an optimal step size.</p>
     </div>
   </div>
 
@@ -1223,58 +1228,67 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
         const f = (t) => Math.exp(t);
         const exactDeriv = Math.exp(x0); // All derivatives of e^x are e^x
         
-        // Generate step sizes
-        const hs = [0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625];
-        const errors = [];
-        
-        // Calculate errors
-        for (let i = 0; i < hs.length; i++) {
-          const h = hs[i];
+        // Step-size ladder, extended down to 2^-20 so double precision reaches
+        // its finite-difference round-off wall (where subtracting nearly-equal
+        // f-values and dividing by a tiny h^order amplifies rounding) and the
+        // extended-precision curve visibly continues along O(h^p).
+        const hs = [];
+        for (let k = 1; k <= 20; k++) hs.push(Math.pow(2, -k));
+
+        // Double-precision errors — what a naive floating-point implementation
+        // of this exact-coefficient stencil actually achieves.
+        const errors = hs.map(h => {
           let sum = 0.0;
-          
           for (let j = 0; j < points.length; j++) {
-            const p = points[j];
-            const rat_c = rationalCoefficients[j];
-            const c = Number(rat_c.num) / Number(rat_c.den);
-            sum += c * f(x0 + p * h);
+            const c = Number(rationalCoefficients[j].num) / Number(rationalCoefficients[j].den);
+            sum += c * f(x0 + points[j] * h);
           }
-          
-          const approx = sum / Math.pow(h, derivativeOrder);
-          const error = Math.abs(approx - exactDeriv);
-          errors.push(error);
+          return Math.abs(sum / Math.pow(h, derivativeOrder) - exactDeriv);
+        });
+
+        // Extended-precision errors (decimal.js, ~40 digits): the SAME exact
+        // rational coefficients and the same formula, but the catastrophic
+        // cancellation no longer bottoms out near machine epsilon, so the true
+        // truncation error stays visible far below the double-precision floor.
+        let hpErrors = null;
+        if (typeof Decimal !== 'undefined') {
+          Decimal.set({ precision: 45 });
+          const eHP = Decimal.exp(1);                        // exact f^(k)(1) for f=e^x
+          const cHP = rationalCoefficients.map(r => new Decimal(r.num.toString()).div(r.den.toString()));
+          hpErrors = hs.map(h => {
+            const H = new Decimal(h);                        // exact: h is a power of two
+            let sum = new Decimal(0);
+            for (let j = 0; j < points.length; j++) {
+              sum = sum.plus(cHP[j].times(Decimal.exp(H.times(points[j]).plus(1))));  // f(1 + p·h)
+            }
+            const err = sum.div(H.pow(derivativeOrder)).minus(eHP).abs();
+            return Math.max(err.toNumber(), 1e-42);          // floor for the log axis
+          });
         }
-        
-        // Create reference line
-        const refH = hs[2];
-        const refError = errors[2];
+
+        // Reference O(h^p) line, anchored on a clean (round-off-free) point.
+        const refSeries = hpErrors || errors;
+        const refIdx = 3, refH = hs[refIdx], refError = refSeries[refIdx];
         const refData = hs.map(h => refError * Math.pow(h / refH, errorOrder));
-        
-        // Calculate dynamic error range
-        const minError = Math.min(...errors);
-        const maxError = Math.max(...errors);
-        
-        // Determine the appropriate y-axis range
-        let minExponent, maxExponent;
-        
-        if (minError <= 1e-15) {
-          // If the smallest error is less than 10^-15, cap at 10^-15
-          minExponent = -15;
-        } else {
-          // If the smallest error is larger than 10^-15, go one order below
-          minExponent = Math.floor(Math.log10(minError)) - 1;
-        }
-        
-        // Set max exponent to 0 (10^0 = 1) or the next order above max error
-        maxExponent = Math.max(0, Math.ceil(Math.log10(maxError)));
-        
-        // Generate y-axis tick values
+
+        // y-axis range spanning both curves; capped so the tall round-off
+        // branch of high-order/high-derivative stencils stays readable.
+        const allErr = errors.concat(hpErrors || [], refData).filter(v => v > 0 && isFinite(v));
+        const minError = Math.min(...allErr), maxError = Math.max(...allErr);
+        const minExponent = Math.max(-40, Math.floor(Math.log10(minError)) - 1);
+        const maxExponent = Math.min(12, Math.max(0, Math.ceil(Math.log10(maxError))));
+
+        // Generate y-axis tick values (thinned when the range spans many decades)
+        const ySpan = maxExponent - minExponent;
+        const tickStep = ySpan > 24 ? 4 : (ySpan > 12 ? 2 : 1);
         const yTickExponents = [];
-        for (let i = minExponent; i <= maxExponent; i++) {
+        for (let i = Math.ceil(minExponent / tickStep) * tickStep; i <= maxExponent; i += tickStep) {
           yTickExponents.push(i);
         }
-        
         const yTickVals = yTickExponents.map(e => Math.pow(10, e));
         const yTickText = yTickExponents.map(e => `10<sup>${e}</sup>`);
+        // Thin the x-axis ticks too (20 step sizes would crowd the axis).
+        const xTickVals = hs.filter((_, i) => i % 2 === 1);
         
         // Format step sizes with one decimal place in scientific notation
         const formatStepSize = (h) => {
@@ -1293,20 +1307,31 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
           return `${finalCoefficient.toFixed(1)}e${finalExponent}`;
         };
         
-        // Create Plotly trace for actual errors
+        // Double-precision error (markers) — flattens/rises at the round-off wall
         const actualTrace = {
           x: hs,
           y: errors,
           mode: 'markers',
           type: 'scatter',
-          name: 'Actual Error',
+          name: 'Double precision',
           marker: {
             size: 8,
             color: 'rgb(59, 130, 246)'
           }
         };
-        
-        // Create Plotly trace for expected convergence
+
+        // Extended-precision error (markers + line) — keeps falling along O(h^p)
+        const hpTrace = hpErrors ? {
+          x: hs,
+          y: hpErrors,
+          mode: 'lines+markers',
+          type: 'scatter',
+          name: '40-digit precision',
+          marker: { size: 6, color: 'rgb(16, 185, 129)' },
+          line: { color: 'rgb(16, 185, 129)', width: 2 }
+        } : null;
+
+        // Expected convergence rate (dashed reference)
         const expectedTrace = {
           x: hs,
           y: refData,
@@ -1327,8 +1352,8 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
             title: 'Step Size',
             type: 'log',
             autorange: 'reversed',
-            tickvals: hs,
-            ticktext: hs.map(h => formatStepSize(h)),
+            tickvals: xTickVals,
+            ticktext: xTickVals.map(h => formatStepSize(h)),
             showgrid: true,
             showline: true,
             mirror: true
@@ -1359,15 +1384,18 @@ details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outlin
           }
         };
         
-        // Plot the data
-        Plotly.newPlot('convergence-plot', [actualTrace, expectedTrace], layout, {
+        // Plot the data (expected line first, then the two error series)
+        const traces = hpTrace ? [expectedTrace, actualTrace, hpTrace] : [actualTrace, expectedTrace];
+        Plotly.newPlot('convergence-plot', traces, layout, {
           responsive: true,
           displayModeBar: true
         });
-        
+
         // Update caption with LaTeX
         const captionDiv = document.getElementById('chart-caption');
-        captionDiv.innerHTML = `Log-log plot of absolute error vs. step size. Dashed line shows expected convergence rate \\(O(h^{${errorOrder}})\\).`;
+        captionDiv.innerHTML = hpTrace
+          ? `Log-log plot of absolute error vs. step size for \\(f(x)=e^x\\). In <span style="color:rgb(59,130,246)">double precision</span> the error stops improving at the finite-difference round-off wall (\\(\\approx 10^{-16}\\), from catastrophic cancellation) and can rise again; at <span style="color:rgb(16,185,129)">40-digit precision</span> the true \\(O(h^{${errorOrder}})\\) truncation error (dashed) stays visible far below it.`
+          : `Log-log plot of absolute error vs. step size. Dashed line shows expected convergence rate \\(O(h^{${errorOrder}})\\).`;
         renderMathInElement(captionDiv, {
           delimiters: [
             {left: '$$', right: '$$', display: true},
