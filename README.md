@@ -4,7 +4,7 @@
 > "I think your work is just wonderful! I think they will become widely known." – **Gilbert Strang**, MIT  
 > "Thanks for sharing this with me, Shelvean! They are beautiful! Very elegant." – **Steven Strogatz**, Cornell
 
-40+ real-time web applications for Differential Equations, Linear Algebra, and Numerical Methods.  
+70+ real-time web applications for Differential Equations, Linear Algebra, and Numerical Methods.  
 Used by hundreds of students.
 
 - Phase portraits with trajectories
@@ -12,7 +12,7 @@ Used by hundreds of students.
 - Mass-spring-damping systems
 - Polynomial interpolation
 - Finite difference schemes
-- and 30+ more
+- and 60+ more
 
 **Built independently.**
 
