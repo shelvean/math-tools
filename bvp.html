@@ -1606,7 +1606,28 @@ function setMode(mode){
   $('convSecBtn').parentElement.style.display=time?'none':'';
   if(time)$('femMechPanel').style.display='none';   // re-shown by plotFEMbasis in steady mode
   if(time)$('thetaRow').style.display=($('schemeSel').value==='cn')?'':'none';
+  if(mode==='wave')setWaveDefaults();               // heat's T=0.1 is far too short to see oscillation
+  else if(mode==='heat')$('timeNote').innerHTML='Method of lines with finite differences in space. Heat is unconditionally stable; press Play to watch it diffuse.';
   refreshReadouts(); run();
+}
+/* Wave: pick a final time showing ~1.5 fundamental periods (period = 2L/√p),
+   and a step count keeping the leapfrog CFL comfortably below 1. Only override
+   when the current T is too short to reveal an oscillation, so a user-tuned T
+   is preserved. */
+function setWaveDefaults(){
+  var pv=parseFloat($('pSlider').value)||1;
+  var a=parseFloat($('aInput').value), bb=parseFloat($('bbInput').value);
+  if(!isFinite(a))a=0; if(!isFinite(bb)||bb<=a)bb=a+1;
+  var L=bb-a, period=2*L/Math.sqrt(pv), Tcur=parseFloat($('tEndInput').value);
+  if(!(Tcur>=0.75*period)){
+    var T=1.5*period;
+    $('tEndInput').value=(Math.round(T*1000)/1000);
+    var Ns=Math.min(parseInt($('nSlider').value,10)||16,80), h=L/Ns;
+    var steps=Math.max(60,Math.min(600,Math.ceil(Math.sqrt(pv)*T/(h*0.6))));
+    $('mStepsInput').value=steps;
+  }
+  $('timeNote').innerHTML='Wave uses explicit leapfrog (CFL-limited). \\(T\\) is preset to about 1.5 oscillation periods (\\(2L/\\sqrt{p}\\)); press Play to watch it swing.';
+  typeset([$('timeNote')]);
 }
 
 /* collapsible sections */
