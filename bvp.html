@@ -693,9 +693,10 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <div id="solnEqn" class="soln-eqn" aria-live="polite"></div>
         <div id="solnPlot"></div>
         <div class="tslice-row" id="tsliceRow" style="display:none;">
+          <button type="button" id="playBtn" class="view-btn" aria-pressed="false" aria-label="Play or pause the time animation" style="min-width:5.4rem;padding:.4rem .6rem;">&#9654; Play</button>
           <label for="tSlice" style="font-size:.8rem;font-weight:700;color:var(--txt2);">time \(t\)</label>
-          <input type="range" id="tSlice" min="0" max="1" step="0.001" value="1" aria-label="Time slice">
-          <span class="sval" id="tSliceVal">t = 0.100</span>
+          <input type="range" id="tSlice" min="0" max="1" step="1" value="0" aria-label="Time (animation scrubber)">
+          <span class="sval" id="tSliceVal">t = 0.000</span>
         </div>
         <div class="plot-foot">
           <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
@@ -706,7 +707,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
           </span>
           <button class="view-btn" id="resetViewBtn" type="button" aria-label="Reset view">Reset view</button>
         </div>
-        <details class="pnote"><summary>About this plot</summary>The black curve is the exact (manufactured) solution. Coloured curves are the selected methods sampled on their nodes; discontinuous Galerkin is drawn element by element so its jumps at interfaces are visible. In Heat/Wave mode the plot shows the finite-difference solution at the time chosen by the slider, over the faded space&ndash;time history.</details>
+        <details class="pnote"><summary>About this plot</summary>The black curve is the exact (manufactured) solution. Coloured curves are the selected methods sampled on their nodes; discontinuous Galerkin is drawn element by element so its jumps at interfaces are visible. In Heat/Wave mode the plot animates the finite-difference solution profile \(u(x,t)\) over time &mdash; press Play or scrub the time slider; the dotted grey curve is the initial condition and the full space&ndash;time field is shown in the panel below.</details>
       </div>
 
       <!-- How FEM works — basis functions & assembly (shown when FEM is selected) -->
@@ -1480,39 +1481,68 @@ function plotTimeField(cfg){
   var theta=$('schemeSel').value==='be'?1:0.5;
   var res=(STATE.mode==='heat')?timeHeat(P,N,T,steps,theta):timeWave(P,N,T,steps);
   STATE.timeField=res;
-  // heatmap space-time
+  // fixed y-range over the whole evolution so the animated curve doesn't jitter
+  var lo=Infinity,hi=-Infinity;
+  res.field.forEach(function(row){ row.forEach(function(v){ if(v<lo)lo=v; if(v>hi)hi=v; }); });
+  if(!isFinite(lo)){ lo=-1; hi=1; } var pad=0.08*((hi-lo)||1); STATE.tyRange=[lo-pad,hi+pad];
   var h=parseInt($('sizeSlider').value,10)||360;
-  Plotly.react('solnPlot',[{z:res.field,x:res.x,y:res.times,type:'heatmap',
-    colorscale:'RdBu',reversescale:true,zmid:0,colorbar:{title:'u',thickness:12}}],
-    baseLayout({height:h,showlegend:false,
-      xaxis:{title:{text:'x'},gridcolor:'#e5e7eb'},yaxis:{title:{text:'t'},gridcolor:'#e5e7eb'}}),PCONFIG);
-  $('solnTitle').textContent=(STATE.mode==='heat'?'Heat equation':'Wave equation')+' — space–time field';
+  var col=(STATE.mode==='heat')?'#b91c1c':'#6d28d9';
+  // MAIN plot: animated profile u(x,t) — initial condition (faint) + current profile (bold)
+  Plotly.react('solnPlot',[
+    {x:res.x,y:res.field[0],mode:'lines',name:'initial u(x,0)',line:{color:'#9ca3af',width:1.4,dash:'dot'},hoverinfo:'skip'},
+    {x:res.x,y:res.field[0],mode:'lines',name:'u(x,t)',line:{color:col,width:2.6}}
+  ],baseLayout({height:h,
+    xaxis:{title:{text:'x'},gridcolor:'#e5e7eb'},
+    yaxis:{title:{text:'u'},gridcolor:'#e5e7eb',range:STATE.tyRange.slice()}}),PCONFIG);
+  $('solnTitle').textContent=(STATE.mode==='heat'?'Heat equation':'Wave equation')+' — u(x,t) animation';
   var note=(STATE.mode==='heat')?('\\(u_t=p\\,u_{xx}\\), '+($('schemeSel').value==='be'?'backward Euler':'Crank–Nicolson')+', unconditionally stable.'):
     ('\\(u_{tt}=p\\,u_{xx}\\), explicit leapfrog, CFL \\(=\\sqrt{p}\\,\\Delta t/h\\approx'+fmt(res.cfl,2)+'\\)'+(res.cfl>1?' — <b>unstable (&gt;1)</b>':' (stable)'));
   $('solnEqn').innerHTML=note; typeset([$('solnEqn')]);
-  // time slice slider
-  $('tSlice').max=res.times.length-1; $('tSlice').value=res.times.length-1;
-  updateSlice();
+  // SECONDARY panel: space–time heatmap with a horizontal marker at the current time
+  var xr0=res.x[0],xr1=res.x[res.x.length-1];
+  Plotly.react('errPlot',[{z:res.field,x:res.x,y:res.times,type:'heatmap',
+    colorscale:'RdBu',reversescale:true,zmid:0,colorbar:{title:'u',thickness:12}}],
+    baseLayout({height:Math.max(240,h-40),showlegend:false,
+      xaxis:{title:{text:'x'},gridcolor:'#e5e7eb'},yaxis:{title:{text:'t'},gridcolor:'#e5e7eb'},
+      shapes:[{type:'line',x0:xr0,x1:xr1,y0:res.times[0],y1:res.times[0],
+        line:{color:'#111827',width:1.5,dash:'dot'}}]}),PCONFIG);
+  var kmax=res.times.length-1;
+  $('tSlice').min=0; $('tSlice').max=kmax; $('tSlice').step=1;
+  if(prefersReduced()){ $('tSlice').value=kmax; updateSlice(); stopAnim(); }
+  else { $('tSlice').value=0; updateSlice(); playAnim(); }
 }
 function updateSlice(){
   var res=STATE.timeField; if(!res)return; var k=parseInt($('tSlice').value,10)||0;
+  var kmax=res.times.length-1; if(k<0)k=0; if(k>kmax)k=kmax;
   $('tSliceVal').textContent='t = '+fmt(res.times[k],4);
-  // overlay slice as line on a second axis? redraw heatmap with a line trace
-  var h=parseInt($('sizeSlider').value,10)||360;
-  Plotly.react('solnPlot',[
-    {z:res.field,x:res.x,y:res.times,type:'heatmap',colorscale:'RdBu',reversescale:true,zmid:0,colorbar:{title:'u',thickness:12}},
-    {x:res.x,y:res.x.map(function(){return res.times[k];}),mode:'lines',line:{color:'#111827',width:1.5,dash:'dot'},hoverinfo:'skip',showlegend:false}
-  ],baseLayout({height:h,showlegend:false,
-    xaxis:{title:{text:'x'},gridcolor:'#e5e7eb'},yaxis:{title:{text:'t'},gridcolor:'#e5e7eb'}}),PCONFIG);
-  // also draw the profile in the error panel area as the slice curve
-  Plotly.react('errPlot',[{x:res.x,y:res.field[k],mode:'lines',line:{color:'#1d4ed8',width:2},name:'u(x,t)'}],
-    baseLayout({height:Math.max(240,h-40),yaxis:{title:{text:'u'},gridcolor:'#e5e7eb'}}),PCONFIG);
+  // cheap per-frame updates: restyle the profile's y, move the heatmap marker
+  try{ Plotly.restyle('solnPlot',{y:[res.field[k]]},[1]); }catch(e){}
+  try{ Plotly.relayout('errPlot',{'shapes[0].y0':res.times[k],'shapes[0].y1':res.times[k]}); }catch(e){}
 }
+/* ---- time-animation controls ---- */
+var animTimer=null;
+function prefersReduced(){ return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+function setPlayLabel(playing){ var b=$('playBtn'); if(!b)return;
+  b.setAttribute('aria-pressed',playing?'true':'false'); b.innerHTML=playing?'&#10073;&#10073; Pause':'&#9654; Play'; }
+function stopAnim(){ if(animTimer){ clearInterval(animTimer); animTimer=null; } setPlayLabel(false); }
+function playAnim(){
+  var res=STATE.timeField; if(!res)return; stopAnim();
+  var kmax=res.times.length-1;
+  if((parseInt($('tSlice').value,10)||0)>=kmax)$('tSlice').value=0;   // restart from t=0 if at the end
+  setPlayLabel(true);
+  animTimer=setInterval(function(){
+    var k=parseInt($('tSlice').value,10)||0;
+    if(k>=kmax){ stopAnim(); return; }
+    $('tSlice').value=k+1; updateSlice();
+  },45);
+}
+function togglePlay(){ if(animTimer)stopAnim(); else playAnim(); }
 
 /* =================== master run =================== */
 function run(){
   var cfg=readUI(); STATE.P=cfg.P; STATE.opts=cfg.opts; window._cfg=cfg;
   $('errMsg').textContent='';
+  stopAnim();   // halt any running time animation before re-rendering
   if(STATE.mode!=='steady'){ // time modes
     try{ plotTimeField(cfg); }catch(e){ $('errMsg').textContent='Error: '+e.message; console.error(e); }
     return;
@@ -1565,10 +1595,10 @@ function setMode(mode){
   $('tsliceRow').style.display=time?'':'none';
   $('bRow').style.display=time?'none':'';           // advection not used in the time demo
   $('methodGrid').parentElement.style.display=time?'none':'';
-  // The error panel is repurposed in time mode to show the u(x,t) slice
-  // profile drawn by updateSlice(); relabel it and keep it visible.
+  // The error panel is repurposed in time mode to show the space–time
+  // heatmap (with a marker at the animated time); relabel and keep visible.
   $('errSecBtn').parentElement.style.display='';
-  $('errSecLbl').innerHTML=time?'Solution profile \\(u(x,t)\\) at the selected time'
+  $('errSecLbl').innerHTML=time?'Space&ndash;time field \\(u(x,t)\\)'
                                 :'Pointwise error &mdash; \\(|u_h(x) - u(x)|\\)';
   typeset([$('errSecLbl')]);
   // discretization + convergence need a steady manufactured exact solution
@@ -1610,7 +1640,9 @@ function init(){
   // sliders read-outs
   ['pSlider','bSlider','cSlider','sigSlider','nSlider'].forEach(function(id){
     $(id).addEventListener('input',function(){ refreshReadouts(); liveKick(); }); });
-  $('sizeSlider').addEventListener('input',function(){ $('sizeVal').textContent=$('sizeSlider').value+'px'; if(STATE.mode==='steady'){ if(window._cfg){plotSolution(window._cfg);plotError(window._cfg);plotFEMbasis(window._cfg);} } else updateSlice(); });
+  $('sizeSlider').addEventListener('input',function(){ $('sizeVal').textContent=$('sizeSlider').value+'px';
+    if(STATE.mode==='steady'){ if(window._cfg){plotSolution(window._cfg);plotError(window._cfg);plotFEMbasis(window._cfg);} }
+    else { var hh=parseInt($('sizeSlider').value,10)||360; try{ Plotly.relayout('solnPlot',{height:hh}); Plotly.relayout('errPlot',{height:Math.max(240,hh-40)}); }catch(e){} } });
   if($('nInput'))$('nInput').addEventListener('change',function(){ var v=clamp(parseInt($('nInput').value,10)||16,2,128); $('nSlider').value=v; refreshReadouts(); liveKick(); });
   ['aInput','bbInput'].forEach(function(id){ $(id).addEventListener('change',function(){ refreshReadouts(); run(); }); });
   ['exSelect','bcLeft','bcRight','femDeg','dgDeg','splDeg'].forEach(function(id){ $(id).addEventListener('change',function(){ refreshReadouts(); run(); }); });
@@ -1631,7 +1663,8 @@ function init(){
   $('modeWave').addEventListener('click',function(){ setMode('wave'); });
   $('schemeSel')&&$('schemeSel').addEventListener('change',function(){ $('thetaRow').style.display=($('schemeSel').value==='cn')?'':'none'; if(STATE.mode!=='steady')run(); });
   ['tEndInput','mStepsInput'].forEach(function(id){ if($(id))$(id).addEventListener('change',function(){ if(STATE.mode!=='steady')run(); }); });
-  $('tSlice')&&$('tSlice').addEventListener('input',updateSlice);
+  $('tSlice')&&$('tSlice').addEventListener('input',function(){ stopAnim(); updateSlice(); });
+  $('playBtn')&&$('playBtn').addEventListener('click',togglePlay);
   // sections
   wireInfoPanel('infoBtn','infoBody','infoIcon');
   wireInfoPanel('mdescBtn','mdescBody','mdescIcon');
