@@ -387,6 +387,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
 .bcval{font-size:.78rem;color:var(--bl2);font-weight:700;font-variant-numeric:tabular-nums;}
 #solnPlot{width:100%;height:380px;} #errPlot{width:100%;height:320px;}
 #discPlot{width:100%;height:340px;} #convPlot{width:100%;height:320px;}
+#basisPlot{width:100%;height:360px;}
 .disc-formula{padding:.5rem .8rem .7rem;font-size:.9rem;color:var(--txt2);line-height:1.6;overflow-x:auto;}
 .disc-formula .defn-box{margin:.4rem 0;}
 .stencil-tag{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -708,6 +709,25 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <details class="pnote"><summary>About this plot</summary>The black curve is the exact (manufactured) solution. Coloured curves are the selected methods sampled on their nodes; discontinuous Galerkin is drawn element by element so its jumps at interfaces are visible. In Heat/Wave mode the plot shows the finite-difference solution at the time chosen by the slider, over the faded space&ndash;time history.</details>
       </div>
 
+      <!-- How FEM works — basis functions & assembly (shown when FEM is selected) -->
+      <div class="pwrap pw-span" id="femMechPanel" style="display:none;">
+        <button type="button" id="basisSecBtn" class="sec-btn" aria-expanded="true" aria-controls="basisSecBody">
+          <span>How the finite element method builds the solution</span>
+          <span class="sec-icon" id="basisSecIcon" aria-hidden="true">&minus;</span>
+        </button>
+        <div id="basisSecBody">
+          <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.5rem .75rem 0;">
+            <span class="seg" role="group" aria-label="Finite element view">
+              <button type="button" id="basisModeAsm" aria-pressed="true">Assembly \(u_h=\sum c_i\varphi_i\)</button>
+              <button type="button" id="basisModeBasis" aria-pressed="false">Basis functions \(\varphi_i\)</button>
+            </span>
+          </div>
+          <div id="basisPlot"></div>
+          <div id="basisFormula" class="disc-formula"></div>
+          <details class="pnote"><summary>About this plot</summary>The finite element solution is a linear combination \(u_h(x)=\sum_i c_i\,\varphi_i(x)\) of local basis functions &mdash; hat functions for P\(_1\), quadratics for P\(_2\), each equal to 1 at its own node and 0 at every other. <strong>Assembly</strong> view draws each weighted contribution \(c_i\varphi_i\) (thin) and their sum \(u_h\) (bold); the coefficients \(c_i\) are the nodal values, so the dots sit on \(u_h\). <strong>Basis functions</strong> view shows the unscaled \(\varphi_i\), which form a partition of unity. A small mesh is used here so the shapes stay legible.</details>
+        </div>
+      </div>
+
       <!-- Error vs x -->
       <div class="pwrap">
         <button type="button" id="errSecBtn" class="sec-btn" aria-expanded="true" aria-controls="errSecBody">
@@ -952,7 +972,14 @@ function solveFEM(P,N,kdeg,keepA){
   function cont(xq){ var e=Math.floor((xq-a)/h); if(e<0)e=0; if(e>N-1)e=N-1;
     var xi=2*(xq-(a+e*h))/h-1,s=0,off=e*kdeg;
     for(var I=0;I<nloc;I++)s+=u[off+I]*basis.L(I,xi); return s; }
-  return {x:x,u:u,A:keepA?K:null, cont:(kdeg===1?linInterp(x,u):cont)};
+  /* global basis function i: nonzero only on the element(s) touching node i.
+     Used by the "how FEM works" panel to draw the hats/quadratics and the
+     assembly u_h = sum_i c_i * phi_i. */
+  function phi(i,xq){ var e=Math.floor((xq-a)/h); if(e<0)e=0; if(e>N-1)e=N-1;
+    var s0=e*kdeg; if(i<s0||i>s0+kdeg)return 0;
+    var xi=2*(xq-(a+e*h))/h-1; return basis.L(i-s0,xi); }
+  return {x:x,u:u,A:keepA?K:null, cont:(kdeg===1?linInterp(x,u):cont),
+          fem:true, kdeg:kdeg, nodes:x, phi:phi};
 }
 
 /* 3. Spectral (Chebyshev collocation) */
@@ -1227,6 +1254,49 @@ function plotError(cfg){
     yaxis:{type:'log',gridcolor:'#e5e7eb',title:{text:'|u_h − u|'},exponentformat:'power'}}),PCONFIG);
 }
 
+/* =================== HOW FEM WORKS (basis functions & assembly) =================== */
+var femMechMode='asm';   /* 'asm' = assembly view, 'basis' = raw basis functions */
+/* distinct hues for the local basis functions, cycled across nodes */
+var BASIS_HUES=['#2563eb','#dc2626','#0f766e','#d97706','#7c3aed','#db2777','#0891b2','#65a30d'];
+function plotFEMbasis(cfg){
+  var show=(STATE.mode==='steady' && cfg.sel.indexOf('fem')>=0);
+  var panel=$('femMechPanel'); if(panel)panel.style.display=show?'':'none';
+  if(!show)return;
+  if($('basisSecBtn').getAttribute('aria-expanded')!=='true')return;
+  var P=cfg.P,a=P.a,b=P.b,kdeg=cfg.opts.femDeg||1,Nb=6,M=600;
+  var R=solveFEM(P,Nb,kdeg,false),n=R.nodes.length,traces=[],i,k,x;
+  function col(idx){ return BASIS_HUES[idx%BASIS_HUES.length]; }
+  if(femMechMode==='basis'){
+    // unscaled basis functions phi_i (partition of unity)
+    for(i=0;i<n;i++){ var xs=[],ys=[];
+      for(k=0;k<=M;k++){ x=a+(b-a)*k/M; xs.push(x); ys.push(R.phi(i,x)); }
+      traces.push({x:xs,y:ys,mode:'lines',line:{color:col(i),width:1.6},showlegend:false,
+        hovertemplate:'φ<sub>'+i+'</sub>(x)=%{y:.3f}<extra></extra>'}); }
+    traces.push({x:Array.from(R.nodes),y:R.nodes.map(function(){return 0;}),mode:'markers',
+      name:'nodes x_i',marker:{color:'#111827',size:5},hoverinfo:'x'});
+  } else {
+    // assembly: exact (dotted), weighted contributions c_i*phi_i (thin), sum u_h (bold), coeffs (dots)
+    var xe=[],ye=[]; for(k=0;k<=M;k++){ x=a+(b-a)*k/M; xe.push(x); ye.push(P.u(x)); }
+    traces.push({x:xe,y:ye,mode:'lines',name:'exact u(x)',line:{color:'#111827',width:1.6,dash:'dot'},hoverinfo:'skip'});
+    for(i=0;i<n;i++){ var ci=R.u[i]; if(Math.abs(ci)<1e-14)continue; var cx=[],cy=[];
+      for(k=0;k<=M;k++){ x=a+(b-a)*k/M; cx.push(x); cy.push(ci*R.phi(i,x)); }
+      traces.push({x:cx,y:cy,mode:'lines',line:{color:col(i),width:1},opacity:.6,showlegend:false,
+        hovertemplate:'c<sub>'+i+'</sub>φ<sub>'+i+'</sub>, c='+fmt(ci,3)+'<extra></extra>'}); }
+    var sx=[],sy=[]; for(k=0;k<=M;k++){ x=a+(b-a)*k/M; sx.push(x); sy.push(R.cont(x)); }
+    traces.push({x:sx,y:sy,mode:'lines',name:'u_h = Σ cᵢφᵢ',line:{color:'#1d4ed8',width:2.6}});
+    traces.push({x:Array.from(R.nodes),y:Array.from(R.u),mode:'markers',name:'coefficients cᵢ',
+      marker:{color:'#1d4ed8',size:6,line:{color:'#fff',width:1}}});
+  }
+  var h=parseInt($('sizeSlider').value,10)||360;
+  Plotly.react('basisPlot',traces,baseLayout({height:Math.max(280,h-20),showlegend:femMechMode!=='basis',
+    yaxis:{gridcolor:'#e5e7eb',title:{text:femMechMode==='basis'?'φᵢ(x)':'u'}}}),PCONFIG);
+  var degName=(kdeg===2?'quadratic P₂':'linear P₁');
+  $('basisFormula').innerHTML=(femMechMode==='basis'
+    ? 'The '+n+' global basis functions \\(\\varphi_i\\) ('+degName+', '+Nb+' elements). Each equals 1 at node \\(x_i\\) and 0 at all others; together they sum to 1 everywhere (a partition of unity). The finite element solution lives in their span.'
+    : 'Each thin curve is a weighted basis function \\(c_i\\varphi_i\\); their sum is the bold solution \\(u_h=\\sum_i c_i\\varphi_i\\) ('+degName+'). The coefficients \\(c_i\\) (dots) are the nodal values, found by solving \\(K\\mathbf c=\\mathbf f\\).');
+  typeset([$('basisFormula')]);
+}
+
 /* =================== DISCRETIZATION (matrix + indices) =================== */
 var DISC_FORMULA={
  fd:"For an interior node \\(i\\) the second-order stencil of \\(-p\\,u''+b\\,u'+c\\,u=f\\) is "+
@@ -1455,7 +1525,7 @@ function run(){
   cfg.sel.forEach(function(id){ var o=document.createElement('option'); o.value=id; o.textContent=METBY[id].label; ds.appendChild(o); });
   if(prev&&cfg.sel.indexOf(prev)>=0)ds.value=prev;
   populateExport(cfg);
-  plotSolution(cfg); plotError(cfg); plotDiscretization(cfg); fillResults(cfg);
+  plotSolution(cfg); plotError(cfg); plotFEMbasis(cfg); plotDiscretization(cfg); fillResults(cfg);
   scheduleConvergence(cfg);
 }
 
@@ -1504,6 +1574,7 @@ function setMode(mode){
   // discretization + convergence need a steady manufactured exact solution
   $('discSecBtn').parentElement.style.display=time?'none':'';
   $('convSecBtn').parentElement.style.display=time?'none':'';
+  if(time)$('femMechPanel').style.display='none';   // re-shown by plotFEMbasis in steady mode
   if(time)$('thetaRow').style.display=($('schemeSel').value==='cn')?'':'none';
   refreshReadouts(); run();
 }
@@ -1539,7 +1610,7 @@ function init(){
   // sliders read-outs
   ['pSlider','bSlider','cSlider','sigSlider','nSlider'].forEach(function(id){
     $(id).addEventListener('input',function(){ refreshReadouts(); liveKick(); }); });
-  $('sizeSlider').addEventListener('input',function(){ $('sizeVal').textContent=$('sizeSlider').value+'px'; if(STATE.mode==='steady'){ if(window._cfg){plotSolution(window._cfg);plotError(window._cfg);} } else updateSlice(); });
+  $('sizeSlider').addEventListener('input',function(){ $('sizeVal').textContent=$('sizeSlider').value+'px'; if(STATE.mode==='steady'){ if(window._cfg){plotSolution(window._cfg);plotError(window._cfg);plotFEMbasis(window._cfg);} } else updateSlice(); });
   if($('nInput'))$('nInput').addEventListener('change',function(){ var v=clamp(parseInt($('nInput').value,10)||16,2,128); $('nSlider').value=v; refreshReadouts(); liveKick(); });
   ['aInput','bbInput'].forEach(function(id){ $(id).addEventListener('change',function(){ refreshReadouts(); run(); }); });
   ['exSelect','bcLeft','bcRight','femDeg','dgDeg','splDeg'].forEach(function(id){ $(id).addEventListener('change',function(){ refreshReadouts(); run(); }); });
@@ -1565,6 +1636,14 @@ function init(){
   wireInfoPanel('infoBtn','infoBody','infoIcon');
   wireInfoPanel('mdescBtn','mdescBody','mdescIcon');
   wireSection('errSecBtn','errSecBody','errSecIcon',function(){ if(window._cfg)plotError(window._cfg); });
+  wireSection('basisSecBtn','basisSecBody','basisSecIcon',function(){ if(window._cfg)plotFEMbasis(window._cfg); });
+  // FEM view toggle: assembly vs raw basis functions
+  function setBasisMode(mode){ femMechMode=mode;
+    $('basisModeAsm').setAttribute('aria-pressed',mode==='asm');
+    $('basisModeBasis').setAttribute('aria-pressed',mode==='basis');
+    if(window._cfg)plotFEMbasis(window._cfg); }
+  $('basisModeAsm').addEventListener('click',function(){ setBasisMode('asm'); });
+  $('basisModeBasis').addEventListener('click',function(){ setBasisMode('basis'); });
   wireSection('discSecBtn','discSecBody','discSecIcon',function(){ if(window._cfg)plotDiscretization(window._cfg); });
   wireSection('convSecBtn','convSecBody','convSecIcon',function(){ if(window._cfg)scheduleConvergence(window._cfg); });
   // reset-view buttons
@@ -1573,7 +1652,7 @@ function init(){
   // high-contrast toggle
   $('hcToggle').addEventListener('click',function(){
     var on=document.body.classList.toggle('hc'); $('hcToggle').setAttribute('aria-pressed',on);
-    if(STATE.mode==='steady'){ if(window._cfg){ plotSolution(window._cfg); plotError(window._cfg); plotDiscretization(window._cfg); scheduleConvergence(window._cfg);} }
+    if(STATE.mode==='steady'){ if(window._cfg){ plotSolution(window._cfg); plotError(window._cfg); plotFEMbasis(window._cfg); plotDiscretization(window._cfg); scheduleConvergence(window._cfg);} }
     else updateSlice();
   });
   $('sizeVal').textContent=($('sizeSlider').value||'360')+'px';
