@@ -1040,7 +1040,11 @@ function solveDG(P,N,kdeg,sigma,keepA){
   function cont(x){ var e=Math.floor((x-a)/h); if(e<0)e=0; if(e>N-1)e=N-1; var xi=2*(x-(a+e*h))/h-1; var s=0; for(var I=0;I<nloc;I++)s+=u[e*nloc+I]*basis.L(I,xi); return s; }
   var xn=[],un=[];
   for(e=0;e<N;e++){ for(I=0;I<nloc;I++){ xn.push(X(e,nodes[I])); un.push(u[e*nloc+I]); } }
-  return {x:xn,u:un,raw:u,nloc:nloc,N:N,A:keepA?A:null, cont:cont, dg:true, h:h};
+  /* per-element evaluator: element e's OWN polynomial at local xi in [-1,1].
+     Unlike cont(), this never borrows the neighbour's value at a shared node,
+     so consecutive element segments show the true DG jumps. */
+  function elem(e,xi){ var s=0; for(var I=0;I<nloc;I++)s+=u[e*nloc+I]*basis.L(I,xi); return s; }
+  return {x:xn,u:un,raw:u,nloc:nloc,N:N,A:keepA?A:null, cont:cont, elem:elem, dg:true, h:h};
 }
 
 /* 5. Spline FEM (clamped uniform B-splines) */
@@ -1185,12 +1189,17 @@ function plotSolution(cfg){
   traces.push({x:xe,y:ye,mode:'lines',name:'exact u(x)',line:{color:'#111827',width:2.5}});
   cfg.sel.forEach(function(id){
     var R=STATE.results[id]; if(!R)return; var m=METBY[id];
-    if(R.dg){ // element-by-element with breaks
-      var xs=[],ys=[]; var nl=R.nloc;
-      for(var e=0;e<R.N;e++){ var x0=a+e*R.h,x1=x0+R.h,S=24;
-        for(var k=0;k<=S;k++){ var xx=x0+(x1-x0)*k/S; xs.push(xx); ys.push(R.cont(xx)); }
-        xs.push(null); ys.push(null); }
-      traces.push({x:xs,y:ys,mode:'lines',name:m.label,line:{color:m.color,width:2}});
+    if(R.dg){ // discontinuous: draw each element's own polynomial, jumps left visible
+      var xs=[],ys=[],ex0=[],ey0=[],ex1=[],ey1=[],S=24;
+      for(var e=0;e<R.N;e++){ var x0=a+e*R.h,x1=x0+R.h;
+        for(var k=0;k<=S;k++){ var t=k/S; xs.push(x0+(x1-x0)*t); ys.push(R.elem(e,2*t-1)); }
+        xs.push(null); ys.push(null);
+        ex0.push(x0); ey0.push(R.elem(e,-1));   // left endpoint value (this element)
+        ex1.push(x1); ey1.push(R.elem(e,1)); }   // right endpoint value (this element)
+      traces.push({x:xs,y:ys,mode:'lines',name:m.label,line:{color:m.color,width:2},connectgaps:false});
+      // filled dots mark each element's own endpoint values so the jumps are unmistakable
+      traces.push({x:ex0.concat(ex1),y:ey0.concat(ey1),mode:'markers',name:m.label+' endpoints',
+        marker:{color:m.color,size:5,line:{color:'#fff',width:1}},showlegend:false,hoverinfo:'skip'});
     } else if(R.dense){
       traces.push({x:R.x,y:R.u,mode:'lines',name:m.label,line:{color:m.color,width:2}});
     } else {
@@ -1461,7 +1470,7 @@ function buildMethodGrid(){
   var g=$('methodGrid'); g.innerHTML='';
   MET.forEach(function(m,idx){
     var lab=document.createElement('label'); lab.className='mck';
-    var cb=document.createElement('input'); cb.type='checkbox'; cb.id='mck_'+m.id; cb.checked=(m.id!=='shoot');
+    var cb=document.createElement('input'); cb.type='checkbox'; cb.id='mck_'+m.id; cb.checked=(m.id==='fd'||m.id==='fem');
     var dot='<span class="mdot" style="background:'+m.color+'"></span>';
     lab.appendChild(cb);
     var sp=document.createElement('span'); sp.innerHTML=dot+m.label; lab.appendChild(sp);
@@ -1541,7 +1550,7 @@ function init(){
     $('pSlider').value=1; $('bSlider').value=0; $('cSlider').value=0; $('sigSlider').value=10; $('nSlider').value=16;
     $('aInput').value=0; $('bbInput').value=1; $('bcLeft').value='D'; $('bcRight').value='D';
     $('exSelect').value='sin'; $('femDeg').value=1; $('dgDeg').value=2; $('splDeg').value=3;
-    MET.forEach(function(m){ var cb=$('mck_'+m.id); if(cb)cb.checked=(m.id!=='shoot'); });
+    MET.forEach(function(m){ var cb=$('mck_'+m.id); if(cb)cb.checked=(m.id==='fd'||m.id==='fem'); });
     setMode('steady'); toggleMethodBlocks(); refreshReadouts(); run();
   });
   $('exportBtn').addEventListener('click',doExport);
