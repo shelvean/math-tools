@@ -543,6 +543,16 @@ if(document.referrer.includes('dynamical.html')){
       </div>
       <div class="sl-block">
         <div class="sl-row">
+          <label class="sl-lbl" for="method">Integrator</label>
+          <select id="method" class="sl-num" style="min-width:9rem" aria-label="Numerical integration method">
+            <option value="rk4" selected>RK4 (4th order)</option>
+            <option value="dop853">DOP853 (8th order)</option>
+            <option value="forward_euler">Forward Euler</option>
+          </select>
+        </div>
+      </div>
+      <div class="sl-block">
+        <div class="sl-row">
           <label class="sl-lbl" for="simSpeed">Speed multiplier</label>
           <input type="range" id="simSpeedSlider" min="0.25" max="6" step="0.25" value="1" aria-label="Simulation speed">
           <input type="number" id="simSpeed" class="sl-num" value="1" min="0.25" max="6" step="0.25">
@@ -602,6 +612,30 @@ if(document.referrer.includes('dynamical.html')){
     </div>
 
   </div><!-- /controls-grid -->
+
+  <!-- ── Accuracy panel: numerical error vs the exact small-angle solution ── -->
+  <style>
+    #accPanel{margin:1.25rem 0;padding:1rem 1.15rem;border:1px solid var(--bdr2);
+      border-radius:10px;background:var(--sect);}
+    #accPanel .acc-title{font-size:1.05rem;margin:0 0 .35rem;color:var(--txt);}
+    #accPanel .acc-sub{font-size:.85rem;color:var(--txt2);margin:0 0 .75rem;line-height:1.5;}
+    table.acc-tbl{border-collapse:collapse;width:100%;font-size:.9rem;color:var(--txt);}
+    table.acc-tbl th,table.acc-tbl td{border:1px solid var(--bdr2);padding:.4rem .6rem;text-align:center;}
+    table.acc-tbl thead th{background:rgba(124,58,237,.12);font-weight:700;}
+    table.acc-tbl td:first-child,table.acc-tbl th:first-child{text-align:left;font-variant-numeric:tabular-nums;}
+    table.acc-tbl tr.acc-active td{background:rgba(124,58,237,.14);font-weight:600;}
+    .acc-tag{display:inline-block;margin-left:.4rem;padding:.02rem .4rem;border-radius:.5rem;
+      background:var(--vio);color:#fff;font-size:.62rem;font-weight:800;vertical-align:middle;}
+    #accPanel .acc-meta{margin-top:.6rem;font-size:.75rem;color:var(--txt2);line-height:1.5;}
+  </style>
+  <div id="accPanel" role="region" aria-label="Numerical accuracy of each method">
+    <h2 class="acc-title">Numerical accuracy — global error vs the exact solution</h2>
+    <p class="acc-sub">Every bob is an independent small-angle oscillator whose exact solution is known
+      in closed form. Each integrator is benchmarked on the hardest (fastest) bob, released from θ₀ at
+      the tool's own time step; the value is the largest angular deviation over the run relative to the
+      amplitude — lower is better, and the ordering follows each method's order of accuracy.</p>
+    <div id="accTable" aria-live="polite"></div>
+  </div>
 
     <!-- cite-mark:start -->
 <details class="cite-box">
@@ -746,7 +780,7 @@ const DT=0.005;
 const STEPS_BASE=4;
 
 /* ── Config ────────────────────────────────────────────────────────── */
-let cfg={N:15,T:60,n0:51,theta0:Math.PI/4,damping:0,speed:1,trailLen:70};
+let cfg={N:15,T:60,n0:51,theta0:Math.PI/4,damping:0,speed:1,trailLen:70,method:'rk4'};
 
 /* ── State ─────────────────────────────────────────────────────────── */
 let pendulums=[]; // {length,theta,omega}
@@ -797,21 +831,68 @@ function initPendulums(startPhase){
   // storeEvery: aim for trail to span one "snake period" = T/(N-1)
   const snakePeriod=cfg.T/Math.max(1,cfg.N-1);
   storeEvery=Math.max(1,Math.round(snakePeriod/(cfg.trailLen*DT)));
+  renderWaveAccuracy();
 }
 
-/* ── RK4 step ───────────────────────────────────────────────────────── */
-function rk4Step(pend){
-  const {length,theta,omega}=pend;
-  const d=cfg.damping;
-  function deriv(th,om){
-    return{dth:om,dom:-(G/length)*Math.sin(th)-d*om};
+/* ── Generic fixed-step integrators on state array y=[theta,omega] ───── */
+function eulerStep(y,f,h){
+  const d=f(y),o=y.slice();
+  for(let i=0;i<y.length;i++)o[i]=y[i]+h*d[i];
+  return o;
+}
+function rk4StepGen(y,f,h){
+  const n=y.length;let i;
+  const k1=f(y),y2=y.slice();
+  for(i=0;i<n;i++)y2[i]=y[i]+0.5*h*k1[i];
+  const k2=f(y2),y3=y.slice();
+  for(i=0;i<n;i++)y3[i]=y[i]+0.5*h*k2[i];
+  const k3=f(y3),y4=y.slice();
+  for(i=0;i<n;i++)y4[i]=y[i]+h*k3[i];
+  const k4=f(y4),o=y.slice();
+  for(i=0;i<n;i++)o[i]=y[i]+h/6*(k1[i]+2*k2[i]+2*k3[i]+k4[i]);
+  return o;
+}
+/* DOP853 — Dormand–Prince 8(5,3), 12-stage explicit RK, 8th order
+   (Hairer, Nørsett & Wanner; coefficients as in SciPy's dop853). */
+function dop853Step(y,f,h){
+  const n=y.length,k=[];
+  function add(coeffs){
+    const r=y.slice();
+    for(let j=0;j<coeffs.length;j++){const cf=coeffs[j];if(!cf)continue;const kj=k[j];
+      for(let m=0;m<n;m++)r[m]+=h*cf*kj[m];}
+    return r;
   }
-  const k1=deriv(theta,omega);
-  const k2=deriv(theta+k1.dth*DT/2,omega+k1.dom*DT/2);
-  const k3=deriv(theta+k2.dth*DT/2,omega+k2.dom*DT/2);
-  const k4=deriv(theta+k3.dth*DT,omega+k3.dom*DT);
-  pend.theta+=DT/6*(k1.dth+2*k2.dth+2*k3.dth+k4.dth);
-  pend.omega+=DT/6*(k1.dom+2*k2.dom+2*k3.dom+k4.dom);
+  k[0]=f(y);
+  k[1]=f(add([5.26001519587677319e-2]));
+  k[2]=f(add([1.97250569845379e-2,5.91751709536137e-2]));
+  k[3]=f(add([2.95875854768068e-2,0,8.87627564304205e-2]));
+  k[4]=f(add([2.41365134159267e-1,0,-8.84549479328286e-1,9.24834003261792e-1]));
+  k[5]=f(add([3.7037037037037e-2,0,0,1.70828608729474e-1,1.25467687566822e-1]));
+  k[6]=f(add([3.7109375e-2,0,0,1.70252211019544e-1,6.0216538980456e-2,-1.7578125e-2]));
+  k[7]=f(add([3.7092000118505e-2,0,0,1.7038392571224e-1,1.07262030446373e-1,-1.53194377486244e-2,8.27378916381402e-3]));
+  k[8]=f(add([6.24110958716076e-1,0,0,-3.36089262944694,-8.68219346841726e-1,2.75920996994467e1,2.01540675504779e1,-4.348988418107e1]));
+  k[9]=f(add([4.77662536438264e-1,0,0,-2.48811461997167,-5.90290826836843e-1,2.12300514481812e1,1.52792336328824e1,-3.32882109689849e1,-2.03312017085086e-2]));
+  k[10]=f(add([-9.3714243008599e-1,0,0,5.18637242884406,1.09143734899673,-8.14978701074693,-1.8520065659997e1,2.27394870993505e1,2.49360555267965,-3.04676447189822]));
+  k[11]=f(add([2.27331014751654,0,0,-1.05344954667373e1,-2.00087205822486,-1.79589318631188e1,2.794888452942e1,-2.85899827713502,-8.87285693353063,1.23605671757943e1,6.43392746015764e-1]));
+  const B=[5.42937341165688e-2,0,0,0,0,4.45031289275241,1.8915178993145,-5.80120396001058,3.1116436695782e-1,-1.52160949662516e-1,2.01365400804030e-1,4.47106157277726e-2];
+  const o=y.slice();
+  for(let i=0;i<12;i++){const cf=B[i];if(!cf)continue;const ki=k[i];
+    for(let m=0;m<n;m++)o[m]+=h*cf*ki[m];}
+  return o;
+}
+/* Nonlinear pendulum RHS for a bob of given length (with linear damping). */
+function pendWaveRHS(length){
+  const d=cfg.damping;
+  return function(y){return [y[1], -(G/length)*Math.sin(y[0]) - d*y[1]];};
+}
+/* Advance one bob by one step with the currently selected integrator. */
+function stepPend(pend){
+  const f=pendWaveRHS(pend.length);
+  let y=[pend.theta,pend.omega];
+  if(cfg.method==='dop853') y=dop853Step(y,f,DT);
+  else if(cfg.method==='forward_euler') y=eulerStep(y,f,DT);
+  else y=rk4StepGen(y,f,DT);
+  pend.theta=y[0]; pend.omega=y[1];
 }
 
 /* ── Geometry — 3D perspective projection (auto-fit) ────────────────── */
@@ -1191,7 +1272,7 @@ function updateStatusBar(){
 
 /* ── Physics step ───────────────────────────────────────────────────── */
 function stepPhysics(){
-  for(const p of pendulums) rk4Step(p);
+  for(const p of pendulums) stepPend(p);
   simTime+=DT;
   storeCounter++;
   if(storeCounter>=storeEvery){
@@ -1240,6 +1321,73 @@ function readConfig(){
   cfg.damping=parseFloat(document.getElementById('damping').value)||0;
   cfg.speed=parseFloat(document.getElementById('simSpeed').value)||1;
   cfg.trailLen=parseInt(document.getElementById('trailLen').value)||70;
+  cfg.method=document.getElementById('method').value||'rk4';
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Accuracy panel — global error vs the exact small-angle solution.
+   Each bob is an independent linear oscillator θ″ + d·θ′ + ω_k²·θ = 0
+   (ω_k² = g/L_k), whose closed form is known. The panel benchmarks the
+   worst case — the highest-frequency (shortest) pendulum, hardest to
+   integrate at the fixed step Δt — released from θ₀ at rest, reporting
+   each method's global angular error relative to the amplitude.
+   ══════════════════════════════════════════════════════════════════════ */
+function exactLinPendulum(t,th0,om0,twoBeta,w0sq){
+  const beta=twoBeta/2,disc=beta*beta-w0sq;
+  if(disc<-1e-12){const wd=Math.sqrt(w0sq-beta*beta);
+    return Math.exp(-beta*t)*(th0*Math.cos(wd*t)+(om0+beta*th0)/wd*Math.sin(wd*t));}
+  else if(disc>1e-12){const s=Math.sqrt(disc),r1=-beta+s,r2=-beta-s;
+    const C1=(om0-r2*th0)/(r1-r2),C2=(r1*th0-om0)/(r1-r2);
+    return C1*Math.exp(r1*t)+C2*Math.exp(r2*t);}
+  return Math.exp(-beta*t)*(th0+(om0+beta*th0)*t);
+}
+function accFmt(v){
+  if(!isFinite(v))return'diverged';
+  if(v<=0)return'0';
+  if(v<1e-15)return'&lt;10⁻¹⁵';
+  let ex=Math.floor(Math.log10(v)),mnt=v/Math.pow(10,ex);
+  if(mnt>=9.995){mnt/=10;ex++;}
+  const sup=String(ex).split('').map(ch=>({'-':'⁻','0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'}[ch]||ch)).join('');
+  return mnt.toFixed(1)+'×10'+sup;
+}
+function computeWaveAccuracy(){
+  const oscMax=cfg.n0+cfg.N-1;                    // fastest (shortest) bob
+  const w0sq=(2*Math.PI*oscMax/cfg.T)**2;         // = g/L_k
+  const twoBeta=cfg.damping, th0=cfg.theta0, h=DT;
+  const period=2*Math.PI/Math.sqrt(w0sq);
+  const N=Math.min(6000,Math.max(200,Math.round(6*period/h)));   // ~6 periods
+  const f=y=>[y[1],-twoBeta*y[1]-w0sq*y[0]];
+  const methods=[
+    {key:'forward_euler',name:'Forward Euler',order:1,step:y=>eulerStep(y,f,h)},
+    {key:'rk4',name:'RK4',order:4,step:y=>rk4StepGen(y,f,h)},
+    {key:'dop853',name:'DOP853',order:8,step:y=>dop853Step(y,f,h)}
+  ];
+  const results=methods.map(mm=>{
+    let y=[th0,0],maxErr=0,maxRef=0,bad=false;
+    for(let i=1;i<=N;i++){
+      y=mm.step(y);
+      if(!isFinite(y[0])||!isFinite(y[1])){bad=true;break;}
+      const ex=exactLinPendulum(i*h,th0,0,twoBeta,w0sq),e=Math.abs(y[0]-ex),r=Math.abs(ex);
+      if(e>maxErr)maxErr=e;if(r>maxRef)maxRef=r;
+    }
+    return {name:mm.name,key:mm.key,order:mm.order,rel:bad?Infinity:(maxRef>1e-12?maxErr/maxRef:maxErr)};
+  });
+  return {N,h,T:N*h,results,w0:Math.sqrt(w0sq)};
+}
+function renderWaveAccuracy(){
+  const el=document.getElementById('accTable');if(!el)return;
+  const acc=computeWaveAccuracy();
+  let best=Infinity;acc.results.forEach(r=>{if(isFinite(r.rel)&&r.rel<best)best=r.rel;});
+  const rows=acc.results.map(r=>{
+    const active=r.key===cfg.method;
+    const star=(isFinite(r.rel)&&r.rel===best)?' <span title="most accurate">★</span>':'';
+    return '<tr'+(active?' class="acc-active"':'')+'><td>'+r.name+star+
+      (active?' <span class="acc-tag">running</span>':'')+'</td><td>'+r.order+'</td><td>'+accFmt(r.rel)+'</td></tr>';
+  }).join('');
+  el.innerHTML='<table class="acc-tbl"><thead><tr><th>Method</th><th>Order</th><th>Rel. error</th></tr></thead><tbody>'+
+    rows+'</tbody></table>'+
+    '<div class="acc-meta">Worst-case (fastest) bob ω = '+acc.w0.toFixed(2)+' rad/s, released from θ₀ · step h = '+DT+
+    ' s · '+acc.N+' steps ('+acc.T.toFixed(1)+' s ≈ 6 periods) · norm max|θ−θ<sub>exact</sub>| ⁄ max|θ<sub>exact</sub>| · ★ most accurate</div>';
 }
 
 /* ── Equation display ───────────────────────────────────────────────── */
@@ -1294,6 +1442,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('clearBtn').addEventListener('click',()=>{
     envelopeHistory=[];
     say('Trail cleared.');
+  });
+  document.getElementById('method').addEventListener('change',()=>{
+    cfg.method=document.getElementById('method').value;
+    renderWaveAccuracy();
+    say('Integrator: '+cfg.method);
   });
 
   // Info panel
