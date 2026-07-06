@@ -1765,9 +1765,46 @@ function dop853Step2D(f,g,x,y,h,scope){
   E3[0]-=.244094488188976;E3[8]-=.733846688281612;E3[11]-=.220588235294118e-1;
   var e5x=0,e5y=0,e3x=0,e3y=0;
   for(var j=0;j<12;j++){e5x+=E5[j]*kx[j];e5y+=E5[j]*ky[j];e3x+=E3[j]*kx[j];e3y+=E3[j]*ky[j];}
-  return{xNext:xN,yNext:yN,e5x:e5x,e5y:e5y,e3x:e3x,e3y:e3y,spd:spd};
+  return{xNext:xN,yNext:yN,e5x:e5x,e5y:e5y,e3x:e3x,e3y:e3y,spd:spd,kx:kx,ky:ky};
   }catch(e){return null;}
 }
+
+/* ── DOP853 dense (continuous) output for the 2D system ──────────────────────
+   Hairer & Wanner's 7th-order continuous interpolant (the same D coefficients
+   and three extra stages used by SciPy's DOP853). After an accepted step it
+   builds per-component polynomials Fx,Fy so the trajectory can be sampled at
+   any θ=(t−t₀)/h ∈[0,1] between the (now large) accepted steps — letting the
+   order-8 method stride while the plotted curve stays smooth. The three extra
+   f/g evaluations per accepted step are the only added cost. */
+var DOP853_CEX=[0.1,0.2,0.7777777777777778];
+var DOP853_AEX=[[0.056167502283047954,0,0,0,0,0,0.25350021021662483,-0.2462390374708025,-0.12419142326381637,0.15329179827876568,0.00820105229563469,0.007567897660545699,-0.008298,0,0,0],[0.03183464816350214,0,0,0,0,0.028300909672366776,0.053541988307438566,-0.05492374857139099,0,0,-0.00010834732869724932,0.0003825710908356584,-0.00034046500868740456,0.1413124436746325,0,0],[-0.42889630158379194,0,0,0,0,-4.697621415361164,7.683421196062599,4.06898981839711,0.3567271874552811,0,0,0,-0.0013990241651590145,2.9475147891527724,-9.15095847217987,0]];
+var DOP853_D=[[-8.428938276109013,0,0,0,0,0.5667149535193777,-3.0689499459498917,2.38466765651207,2.117034582445028,-0.871391583777973,2.2404374302607883,0.6315787787694688,-0.08899033645133331,18.148505520854727,-9.194632392478356,-4.436036387594894],[10.427508642579134,0,0,0,0,242.28349177525817,165.20045171727028,-374.5467547226902,-22.113666853125306,7.733432668472264,-30.674084731089398,-9.332130526430229,15.697238121770845,-31.139403219565178,-9.35292435884448,35.81684148639408],[19.985053242002433,0,0,0,0,-387.0373087493518,-189.17813819516758,527.8081592054236,-11.57390253995963,6.8812326946963,-1.0006050966910838,0.7777137798053443,-2.778205752353508,-60.19669523126412,84.32040550667716,11.99229113618279],[-25.69393346270375,0,0,0,0,-154.18974869023643,-231.5293791760455,357.6391179106141,93.40532418362432,-37.45832313645163,104.0996495089623,29.8402934266605,-43.53345659001114,96.32455395918828,-39.17726167561544,-149.72683625798564]];
+/* Build the interpolation coefficient set {Fx,Fy} for one accepted step whose
+   twelve stage slopes are kx,ky. fN/gN are the RHS at the step end; three extra
+   stages extend K to sixteen entries. Returns null on any non-finite evaluation. */
+function dop853Dense2D(f,g,x,y,h,xN,yN,kx,ky,scope){
+  try{
+    var Kx=new Array(16),Ky=new Array(16),i,s,a;
+    for(i=0;i<12;i++){Kx[i]=kx[i];Ky[i]=ky[i];}
+    scope.x=xN;scope.y=yN;var fN=f.evaluate(scope),gN=g.evaluate(scope);
+    if(!isFinite(fN)||!isFinite(gN))return null;
+    Kx[12]=fN;Ky[12]=gN;
+    for(s=13;s<16;s++){
+      var ax=0,ay=0,row=DOP853_AEX[s-13];
+      for(i=0;i<s;i++){a=row[i];if(a){ax+=a*Kx[i];ay+=a*Ky[i];}}
+      scope.x=x+h*ax;scope.y=y+h*ay;
+      Kx[s]=f.evaluate(scope);Ky[s]=g.evaluate(scope);
+      if(!isFinite(Kx[s])||!isFinite(Ky[s]))return null;
+    }
+    var dx=xN-x,dy=yN-y;
+    var Fx=[dx,h*kx[0]-dx,2*dx-h*(fN+kx[0]),0,0,0,0];
+    var Fy=[dy,h*ky[0]-dy,2*dy-h*(gN+ky[0]),0,0,0,0];
+    for(var r=0;r<4;r++){var dxs=0,dys=0,dr=DOP853_D[r];for(i=0;i<16;i++){var dc=dr[i];if(dc){dxs+=dc*Kx[i];dys+=dc*Ky[i];}}Fx[3+r]=h*dxs;Fy[3+r]=h*dys;}
+    return{Fx:Fx,Fy:Fy};
+  }catch(e){return null;}
+}
+/* Evaluate a dense component at θ∈[0,1]; θ=0→start value, θ=1→end value. */
+function dop853DenseEval(F,v0,th){var v=0;for(var i=0;i<7;i++){v+=F[6-i];if(i%2===0)v*=th;else v*=(1-th);}return v+v0;}
 
 function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var mesh=MESH_PARAMS[document.getElementById('meshSize').value]||MESH_PARAMS.normal;
@@ -1776,20 +1813,27 @@ function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var tolScale=meshKey==='coarse'?100:meshKey==='fine'?0.1:meshKey==='veryfine'?0.01:1;
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-6*tolScale,rtol=1e-3*tolScale;
-  var hMax=mesh.dtMax,hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
-  /* Cap per-step spatial displacement so fast regions are subdivided for
-     smooth rendering (see computeTrajectoryTsit5 for the rationale). */
+  var hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
+  /* maxDisp is now the plotted-chord resolution (not a step cap): the order-8
+     step strides as large as error control allows, then the 7th-order dense
+     output is sampled so consecutive plotted points stay within maxDisp — the
+     same smooth picture as before, at a fraction of the RHS evaluations. A
+     loose maxStepDisp still rejects any single step that would leap across the
+     phase plane (keeping error control reliable in fast regions), and hMaxBig
+     lifts the old tiny dtMax cap so DOP853's large steps are actually allowed. */
   var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
+  var maxStepDisp=Math.max(dS*0.2,maxDisp*16);
+  var hMaxBig=mesh.dtMax*50;
   var scope={x:0,y:0};
 
   function integrate(sign,maxP){
-    var x=x0,y=y0,t=0,h=sign*Math.min(mesh.dtMin,hMax);
+    var x=x0,y=y0,t=0,h=sign*Math.min(mesh.dtMin,hMaxBig);
     var pts=[],lastX=x,lastY=y;
     for(var i=0;i<steps.maxIter&&pts.length<maxP;i++){
-      if(Math.abs(h)<hMin)h=hMin*sign;if(Math.abs(h)>hMax)h=hMax*sign;
-      var ok=false,attempt=0,curH=h;
+      if(Math.abs(h)<hMin)h=hMin*sign;if(Math.abs(h)>hMaxBig)h=hMaxBig*sign;
+      var ok=false,attempt=0,curH=h,res=null,px=x,py=y;
       while(!ok&&attempt<25){
-        var res=dop853Step2D(f,g,x,y,curH,scope);
+        res=dop853Step2D(f,g,x,y,curH,scope);
         if(!res||!isFinite(res.xNext)||!isFinite(res.yNext)){curH*=0.25;attempt++;continue;}
         var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(res.xNext));
         var scY=atol+rtol*Math.max(Math.abs(y),Math.abs(res.yNext));
@@ -1799,24 +1843,33 @@ function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
         var deno=err5sq+0.01*err3sq;
         var errN=(deno<=0)?0:Math.abs(curH)*err5sq/Math.sqrt(deno*2);
         var disp=Math.hypot(res.xNext-x,res.yNext-y);
-        if(errN<=1 && disp<=maxDisp){
-          t+=curH;x=res.xNext;y=res.yNext;
+        if(errN<=1 && disp<=maxStepDisp){
           var fac=errN>1e-12?Math.min(6,0.9*Math.pow(errN,-0.125)):6;
-          if(disp>1e-30)fac=Math.min(fac,0.9*maxDisp/disp);
-          h=Math.max(hMin,Math.min(hMax,Math.abs(curH)*Math.max(0.1,fac)))*sign;ok=true;
+          if(disp>1e-30)fac=Math.min(fac,0.9*maxStepDisp/disp);
+          /* Emit smooth interpolated points along the accepted step. */
+          var dense=dop853Dense2D(f,g,px,py,curH,res.xNext,res.yNext,res.kx,res.ky,scope);
+          var nSub=Math.max(1,Math.min(64,Math.ceil(disp/maxDisp)));
+          if(dense){
+            for(var q=1;q<=nSub&&pts.length<maxP;q++){
+              var th=q/nSub, ix=dop853DenseEval(dense.Fx,px,th), iy=dop853DenseEval(dense.Fy,py,th);
+              var ddx=ix-lastX,ddy=iy-lastY;
+              if(Math.sqrt(ddx*ddx+ddy*ddy)>=minSep){pts.push({x:ix,y:iy,t:t+th*curH});lastX=ix;lastY=iy;}
+            }
+          }
+          t+=curH;x=res.xNext;y=res.yNext;
+          if(!dense){var ex=x-lastX,ey=y-lastY;if(Math.sqrt(ex*ex+ey*ey)>=minSep){pts.push({x:x,y:y,t:t});lastX=x;lastY=y;}}
+          h=Math.max(hMin,Math.min(hMaxBig,Math.abs(curH)*Math.max(0.1,fac)))*sign;ok=true;
         }else{
           var facErr=errN>1e-12?0.9*Math.pow(errN,-0.125):6;
-          var facDisp=disp>maxDisp?0.9*maxDisp/disp:6;
+          var facDisp=disp>maxStepDisp?0.9*maxStepDisp/disp:6;
           var fac2=Math.max(0.1,Math.min(facErr,facDisp));
-          curH=Math.max(hMin,Math.min(hMax,Math.abs(curH)*fac2))*sign;attempt++;
+          curH=Math.max(hMin,Math.min(hMaxBig,Math.abs(curH)*fac2))*sign;attempt++;
         }
       }
       if(!ok)break;
       if(x<xMin-1||x>xMax+1||y<yMin-1||y>yMax+1)break;
       if(Math.abs(x)>BLOW||Math.abs(y)>BLOW)break;
       if(pts.length>10&&res&&res.spd<1e-4)break;
-      var dx=x-lastX,dy=y-lastY;
-      if(pts.length===0||Math.sqrt(dx*dx+dy*dy)>=minSep){pts.push({x:x,y:y,t:t});lastX=x;lastY=y;}
     }
     return pts;
   }
