@@ -403,6 +403,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <li><strong>Auto (default)</strong> &mdash; starts with explicit Tsit5 and watches a stiffness indicator \(|h\,\hat L|\), where \(\hat L \approx |\partial f/\partial y|\) is estimated for free from the FSAL stages (the Tsit5 linear-stability boundary on the negative real axis is \(\approx 3.3\)). When the indicator stays elevated for many steps &mdash; the signature of a step held down by <em>stability</em> rather than accuracy &mdash; the run is declared stiff and continued with BDF5. Smooth non-stiff equations (even steep or blow-up cases) stay on Tsit5.</li>
         <li><strong>Tsit5 (non-stiff)</strong> &mdash; the adaptive explicit Runge&ndash;Kutta method above; best for smooth, non-stiff equations.</li>
         <li><strong>BDF5 (stiff)</strong> &mdash; a 5th-order <strong>backward differentiation formula</strong>, an implicit linear multistep method solved at each step by Newton's method (first five points bootstrapped with Tsit5). Being A(\(\alpha\))-stable, it integrates stiff equations such as \(y' = -50\,(y - \cos t)\) without the tiny steps an explicit method would require.</li>
+        <li><strong>DOP853 (8(5,3)) &mdash; dense</strong> &mdash; the order-8 Dormand&ndash;Prince method with its embedded 5th/3rd-order error pair for step control and a 7th-order <strong>continuous (dense) output</strong>. The large error-controlled steps are interpolated by the dense polynomial, so the plotted curve stays smooth while following the true solution to high precision &mdash; ideal for accurate non-stiff trajectories with far fewer accepted steps.</li>
       </ul>
       <p class="method-box" style="text-align:left;">BDF5: \(\;\tfrac{137}{60}y_{n+1} - 5y_n + 5y_{n-1} - \tfrac{10}{3}y_{n-2} + \tfrac{5}{4}y_{n-3} - \tfrac{1}{5}y_{n-4} = h\,f(t_{n+1},y_{n+1})\)</p>
       <p>(Arc-length mode always uses Tsit5: its unit-speed right-hand side is bounded and non-stiff by construction.)</p>
@@ -468,6 +469,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
         <option value="auto" selected>Auto (detect stiffness)</option>
         <option value="tsit5">Tsit5 (non-stiff)</option>
         <option value="bdf5">BDF5 (stiff)</option>
+        <option value="dop853">DOP853 (8(5,3)) &mdash; dense</option>
       </select>
     </div>
   </div>
@@ -1514,6 +1516,124 @@ document.addEventListener('DOMContentLoaded',function(){
     }catch(e){return{yNext:NaN,error:Infinity,k7:null,lip:0};}
   }
 
+  /* ── DOP853 (Dormand–Prince 8(5,3)) adaptive + 7th-order dense output ──
+     Ported verbatim (tableau, E5/E3 embedded estimators, dense interpolant)
+     from the validated scalar integrator in ivp.html. The order-8 step takes
+     large error-controlled strides; the 7th-order continuous output then fills
+     smooth curve points between the few accepted nodes. */
+  var DOP853_TAB={ c:[0.0,0.05260015195876773,0.0789002279381516,0.1183503419072274,0.2816496580927726,0.3333333333333333,0.25,0.3076923076923077,0.6512820512820513,0.6,0.8571428571428571,1.0],
+    A:[
+      [],
+      [0.05260015195876773],
+      [0.0197250569845379,0.0591751709536137],
+      [0.02958758547680685,0.0,0.08876275643042054],
+      [0.2413651341592667,0.0,-0.8845494793282861,0.924834003261792],
+      [0.037037037037037035,0.0,0.0,0.17082860872947386,0.12546768756682242],
+      [0.037109375,0.0,0.0,0.17025221101954405,0.06021653898045596,-0.017578125],
+      [0.03709200011850479,0.0,0.0,0.17038392571223998,0.10726203044637328,-0.015319437748624402,0.008273789163814023],
+      [0.6241109587160757,0.0,0.0,-3.3608926294469414,-0.868219346841726,27.59209969944671,20.154067550477894,-43.48988418106996],
+      [0.47766253643826434,0.0,0.0,-2.4881146199716677,-0.590290826836843,21.230051448181193,15.279233632882423,-33.28821096898486,-0.020331201708508627],
+      [-0.9371424300859873,0.0,0.0,5.186372428844064,1.0914373489967295,-8.149787010746927,-18.52006565999696,22.739487099350505,2.4936055526796523,-3.0467644718982196],
+      [2.273310147516538,0.0,0.0,-10.53449546673725,-2.0008720582248625,-17.9589318631188,27.94888452941996,-2.8589982771350235,-8.87285693353063,12.360567175794303,0.6433927460157636]],
+    b:[0.054293734116568765,0.0,0.0,0.0,0.0,4.450312892752409,1.8915178993145003,-5.801203960010585,0.3111643669578199,-0.1521609496625161,0.20136540080403034,0.04471061572777259] };
+  var DOP853E5=[0.01312004499419488073250102996,0,0,0,0,-1.225156446376204440720569753,-0.4957589496572501915214079952,1.664377182454986536961530415,-0.350328848749973681688648729,0.3341791187130174790297318841,0.08192320648511571246570742613,-0.02235530786388629525884427845];
+  var DOP853E3=(function(){ var b=DOP853_TAB.b.slice();
+    b[0]-=0.244094488188976377952755905512; b[8]-=0.733846688281611857341361741547; b[11]-=0.0220588235294117647058823529412;
+    return b; })();
+  var DOP853_CEX=[0.1,0.2,0.7777777777777778];
+  var DOP853_AEX=[[0.056167502283047954,0.0,0.0,0.0,0.0,0.0,0.25350021021662483,-0.2462390374708025,-0.12419142326381637,0.15329179827876568,0.00820105229563469,0.007567897660545699,-0.008298,0.0,0.0,0.0],[0.03183464816350214,0.0,0.0,0.0,0.0,0.028300909672366776,0.053541988307438566,-0.05492374857139099,0.0,0.0,-0.00010834732869724932,0.0003825710908356584,-0.00034046500868740456,0.1413124436746325,0.0,0.0],[-0.42889630158379194,0.0,0.0,0.0,0.0,-4.697621415361164,7.683421196062599,4.06898981839711,0.3567271874552811,0.0,0.0,0.0,-0.0013990241651590145,2.9475147891527724,-9.15095847217987,0.0]];
+  var DOP853_D=[[-8.428938276109013,0.0,0.0,0.0,0.0,0.5667149535193777,-3.0689499459498917,2.38466765651207,2.117034582445028,-0.871391583777973,2.2404374302607883,0.6315787787694688,-0.08899033645133331,18.148505520854727,-9.194632392478356,-4.436036387594894],[10.427508642579134,0.0,0.0,0.0,0.0,242.28349177525817,165.20045171727028,-374.5467547226902,-22.113666853125306,7.733432668472264,-30.674084731089398,-9.332130526430229,15.697238121770845,-31.139403219565178,-9.35292435884448,35.81684148639408],[19.985053242002433,0.0,0.0,0.0,0.0,-387.0373087493518,-189.17813819516758,527.8081592054236,-11.57390253995963,6.8812326946963,-1.0006050966910838,0.7777137798053443,-2.778205752353508,-60.19669523126412,84.32040550667716,11.99229113618279],[-25.69393346270375,0.0,0.0,0.0,0.0,-154.18974869023643,-231.5293791760455,357.6391179106141,93.40532418362432,-37.45832313645163,104.0996495089623,29.8402934266605,-43.53345659001114,96.32455395918828,-39.17726167561544,-149.72683625798564]];
+  /* One adaptive DOP853 step: 12 stage slopes, order-8 solution, and the
+     Hairer E5/E3 combined tolerance-normalised error norm (scalar, n=1). The
+     stage slopes k are returned so the dense builder can reuse them. */
+  function dop853Step(t,y,h,f,tol){
+    try{
+      var T=DOP853_TAB,s=T.c.length,k=new Array(s),i,j;
+      for(i=0;i<s;i++){ var yi=y; for(j=0;j<i;j++) yi+=h*T.A[i][j]*k[j]; k[i]=f(t+T.c[i]*h,yi); }
+      var yn=y,e5=0,e3=0;
+      for(i=0;i<s;i++){ yn+=h*T.b[i]*k[i]; e5+=DOP853E5[i]*k[i]; e3+=DOP853E3[i]*k[i]; }
+      if(!isFinite(yn)) return {yNext:NaN,en:Infinity,k:null};
+      var sc=tol+tol*Math.max(Math.abs(y),Math.abs(yn)); e5/=sc; e3/=sc;
+      var e5n2=e5*e5, deno=e5n2+0.01*e3*e3;
+      var en=(deno<=0)?0:Math.abs(h)*e5n2/Math.sqrt(deno);
+      return {yNext:yn, en:isFinite(en)?en:Infinity, k:k};
+    }catch(e){return {yNext:NaN,en:Infinity,k:null};}
+  }
+  /* Build the 7th-order interpolation coefficients F[0..6] for one accepted
+     DOP853 step. k holds the twelve stage slopes; fNew = f at the step end and
+     three extra stages (nodes 0.1, 0.2, 7/9) extend K to sixteen entries. */
+  function dop853Dense(t,y,h,ynew,k,f,nfd){
+    var K=new Array(16), i, s, a;
+    for (i=0;i<12;i++) K[i]=k[i];
+    var fOld=k[0], fNew=f(t+h,ynew); K[12]=fNew; nfd.n++;
+    for (s=13;s<16;s++){ a=0; for(i=0;i<s;i++) a+=DOP853_AEX[s-13][i]*K[i]; K[s]=f(t+DOP853_CEX[s-13]*h, y+h*a); nfd.n++; }
+    var delta=ynew-y, F=[delta, h*fOld-delta, 2*delta-h*(fNew+fOld), 0,0,0,0];
+    for (var r=0;r<4;r++){ var d=0; for(i=0;i<16;i++) d+=DOP853_D[r][i]*K[i]; F[3+r]=h*d; }
+    return F;
+  }
+  /* Evaluate the continuous interpolant at x=(t−t_old)/h∈[0,1]; x=0→y_old, x=1→y_new. */
+  function dop853DenseEval(F,y0,x){ var y=0; for (var i=0;i<7;i++){ y+=F[6-i]; if(i%2===0) y*=x; else y*=(1-x); } return y+y0; }
+
+  /* ── DOP853 solver (t-step) ── mirrors solve() but uses the DOP853 tableau,
+     E5/E3 error norm and dense output for smooth high-precision curves. */
+  function solveDOP853(t0,y0){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+
+    var tR=tMax-tMin;
+    var MAX_STEPS=50000,TOL=1e-8;
+    var MIN_H=1e-14,MAX_H=Math.min(0.5,tR/20);   /* relaxed cap: DOP853 can stride */
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000);
+    var MIN_DT=tR/5000;
+
+    function integrate(dir){
+      var pts=[],t=t0,y=y0,steps=0,lastT=t,nfd={n:0};
+      pts.push({t:t,y:y});
+      var tEnd=dir>0?tMax:tMin;
+      var h=dir*Math.min(0.01,tR/200);
+      while(steps<MAX_STEPS/2){
+        if(dir>0&&t+h>tEnd)h=tEnd-t;
+        if(dir<0&&t+h<tEnd)h=tEnd-t;
+        if(Math.abs(h)<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=dop853Step(t,y,curH,f,TOL);
+          if(!isFinite(res.yNext)||res.en===Infinity){curH*=0.5;attempt++;continue;}
+          var en=res.en;
+          var fac=0.9*Math.pow(Math.max(en,1e-30),-0.125);
+          fac=Math.min(5,Math.max(0.2,fac));
+          var hOpt=Math.max(MIN_H,Math.min(MAX_H,Math.abs(curH)*fac))*dir;
+          if(en<=1){
+            var tOld=t,yOld=y;
+            var F=dop853Dense(tOld,yOld,curH,res.yNext,res.k,f,nfd);
+            t+=curH;y=res.yNext;h=hOpt;ok=true;
+            /* Emit dense sub-points so consecutive points are ≤ MIN_DT apart. */
+            var nSub=Math.max(1,Math.min(64,Math.ceil(Math.abs(curH)/MIN_DT)));
+            for(var q=1;q<=nSub;q++){
+              var x=q/nSub, tt=tOld+x*curH, yy=dop853DenseEval(F,yOld,x);
+              if(Math.abs(tt-lastT)>=MIN_DT||q===nSub||Math.abs(tt-tEnd)<MIN_H){pts.push({t:tt,y:yy});lastT=tt;}
+            }
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if((dir>0&&t>=tMax)||(dir<0&&t<=tMin)){
+          if(!pts.length||pts[pts.length-1].t!==t)pts.push({t:t,y:y});
+          break;
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().concat(fwd.slice(1));
+  }
+
   /* ── IVP solver ── */
   function solve(t0,y0){
     var tMin=+document.getElementById('tMin').value;
@@ -1826,6 +1946,7 @@ document.addEventListener('DOMContentLoaded',function(){
     if(mode==='arc'){pts=solveArc(t,yVal);}            /* arc-length RHS is unit-speed (bounded), so it stays on Tsit5 */
     else if(method==='bdf5'){pts=solveBDF5(t,yVal);}
     else if(method==='auto'){pts=solveAuto(t,yVal);}
+    else if(method==='dop853'){pts=solveDOP853(t,yVal);}
     else{pts=solve(t,yVal);}
     if(pts.length>0){
       var tc=document.getElementById('trajColor').value;

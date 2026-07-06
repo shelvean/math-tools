@@ -460,8 +460,12 @@ if(document.referrer.includes('dynamical.html')){
 
       <h2>Numerical Method</h2>
       <p>
-        Static trajectories use a fixed-step Runge-Kutta integrator with \(\Delta t=0.005\) and a
-        configurable end time \(T\) (default \(T=150\), so 30,000 steps).
+        Trajectories are sampled on a uniform \(\Delta t=0.005\) grid with a
+        configurable end time \(T\) (default \(T=150\), so 30,000 samples).
+        RK4 and DP5 take fixed \(\Delta t\) steps; DOP853 instead steps <em>adaptively</em>
+        with error control and reconstructs the state on the same \(\Delta t\) grid from its
+        7th-order <strong>dense (continuous) output</strong>, so every method is compared on
+        identical sampling while the order-8 integrator strides efficiently.
         The <strong>Method</strong> selector switches between three options so the user can verify
         that any feature of interest is intrinsic to the dynamics rather than an artifact of one solver:
       </p>
@@ -934,8 +938,109 @@ function stepDOP853(x,y,z,s,r,b,h){
   return [x+h*bx, y+h*by, z+h*bz];
 }
 
+/* ── DOP853 dense (continuous) output + error estimators ─────────────────────
+   The E5/E3 embedded error weights (order 5 and 3) drive adaptive stepping, and
+   the D coefficients + three extra stages give Hairer & Wanner's 7th-order
+   continuous interpolant. Lorenz is autonomous, so the extra stages need no
+   time argument. This lets DOP853 take large error-controlled steps and then
+   interpolate the state back onto the uniform Δt display grid — the same
+   evenly-sampled orbit (so the equal-Δt method comparison still holds) computed
+   with far fewer right-hand-side evaluations. Constants from the SciPy/Hairer
+   reference (identical to the ivp.html / phase-portrait implementations). */
+var DOP853_E5=[0.01312004499419488,0,0,0,0,-1.225156446376204,-0.4957589496572502,1.664377182454987,-0.350328848749974,0.334179118713017,0.08192320648511571,-0.02235530786388630];
+var DOP853_E3=(function(){var e=DOP853_B.slice();e[0]-=0.244094488188976;e[8]-=0.733846688281612;e[11]-=0.0220588235294118;return e;})();
+var DOP853_CEX=[0.1,0.2,0.7777777777777778];
+var DOP853_AEX=[[0.056167502283047954,0,0,0,0,0,0.25350021021662483,-0.2462390374708025,-0.12419142326381637,0.15329179827876568,0.00820105229563469,0.007567897660545699,-0.008298,0,0,0],[0.03183464816350214,0,0,0,0,0.028300909672366776,0.053541988307438566,-0.05492374857139099,0,0,-0.00010834732869724932,0.0003825710908356584,-0.00034046500868740456,0.1413124436746325,0,0],[-0.42889630158379194,0,0,0,0,-4.697621415361164,7.683421196062599,4.06898981839711,0.3567271874552811,0,0,0,-0.0013990241651590145,2.9475147891527724,-9.15095847217987,0]];
+var DOP853_D=[[-8.428938276109013,0,0,0,0,0.5667149535193777,-3.0689499459498917,2.38466765651207,2.117034582445028,-0.871391583777973,2.2404374302607883,0.6315787787694688,-0.08899033645133331,18.148505520854727,-9.194632392478356,-4.436036387594894],[10.427508642579134,0,0,0,0,242.28349177525817,165.20045171727028,-374.5467547226902,-22.113666853125306,7.733432668472264,-30.674084731089398,-9.332130526430229,15.697238121770845,-31.139403219565178,-9.35292435884448,35.81684148639408],[19.985053242002433,0,0,0,0,-387.0373087493518,-189.17813819516758,527.8081592054236,-11.57390253995963,6.8812326946963,-1.0006050966910838,0.7777137798053443,-2.778205752353508,-60.19669523126412,84.32040550667716,11.99229113618279],[-25.69393346270375,0,0,0,0,-154.18974869023643,-231.5293791760455,357.6391179106141,93.40532418362432,-37.45832313645163,104.0996495089623,29.8402934266605,-43.53345659001114,96.32455395918828,-39.17726167561544,-149.72683625798564]];
+
+/* One DOP853 step: returns the 8th-order endpoint, the twelve stage slopes,
+   and the per-component order-5/order-3 error sums. */
+function dop853LorenzStep(x,y,z,s,r,b,h){
+  var kx=new Array(12),ky=new Array(12),kz=new Array(12),k0=lorenz(x,y,z,s,r,b);
+  kx[0]=k0[0];ky[0]=k0[1];kz[0]=k0[2];
+  for(var i=1;i<12;i++){
+    var ax=0,ay=0,az=0,row=DOP853_A[i],keys=Object.keys(row);
+    for(var ki=0;ki<keys.length;ki++){var j=+keys[ki],a=row[j];ax+=a*kx[j];ay+=a*ky[j];az+=a*kz[j];}
+    var ks=lorenz(x+h*ax,y+h*ay,z+h*az,s,r,b);kx[i]=ks[0];ky[i]=ks[1];kz[i]=ks[2];
+  }
+  var bx=0,by=0,bz=0,e5x=0,e5y=0,e5z=0,e3x=0,e3y=0,e3z=0;
+  for(var i=0;i<12;i++){
+    var B=DOP853_B[i];bx+=B*kx[i];by+=B*ky[i];bz+=B*kz[i];
+    var w5=DOP853_E5[i];e5x+=w5*kx[i];e5y+=w5*ky[i];e5z+=w5*kz[i];
+    var w3=DOP853_E3[i];e3x+=w3*kx[i];e3y+=w3*ky[i];e3z+=w3*kz[i];
+  }
+  return{xN:x+h*bx,yN:y+h*by,zN:z+h*bz,kx:kx,ky:ky,kz:kz,
+         e5x:e5x,e5y:e5y,e5z:e5z,e3x:e3x,e3y:e3y,e3z:e3z};
+}
+/* Build the per-component 7th-order interpolation coefficients for one step. */
+function dop853LorenzDense(x,y,z,s,r,b,h,st){
+  var Kx=new Array(16),Ky=new Array(16),Kz=new Array(16),i,q,a;
+  for(i=0;i<12;i++){Kx[i]=st.kx[i];Ky[i]=st.ky[i];Kz[i]=st.kz[i];}
+  var kEnd=lorenz(st.xN,st.yN,st.zN,s,r,b);Kx[12]=kEnd[0];Ky[12]=kEnd[1];Kz[12]=kEnd[2];
+  for(q=13;q<16;q++){
+    var ax=0,ay=0,az=0,row=DOP853_AEX[q-13];
+    for(i=0;i<q;i++){a=row[i];if(a){ax+=a*Kx[i];ay+=a*Ky[i];az+=a*Kz[i];}}
+    var ke=lorenz(x+h*ax,y+h*ay,z+h*az,s,r,b);Kx[q]=ke[0];Ky[q]=ke[1];Kz[q]=ke[2];
+  }
+  var dx=st.xN-x,dy=st.yN-y,dz=st.zN-z;
+  var Fx=[dx,h*st.kx[0]-dx,2*dx-h*(kEnd[0]+st.kx[0]),0,0,0,0];
+  var Fy=[dy,h*st.ky[0]-dy,2*dy-h*(kEnd[1]+st.ky[0]),0,0,0,0];
+  var Fz=[dz,h*st.kz[0]-dz,2*dz-h*(kEnd[2]+st.kz[0]),0,0,0,0];
+  for(var rr=0;rr<4;rr++){var sx=0,sy=0,sz=0,dr=DOP853_D[rr];
+    for(i=0;i<16;i++){var d=dr[i];if(d){sx+=d*Kx[i];sy+=d*Ky[i];sz+=d*Kz[i];}}
+    Fx[3+rr]=h*sx;Fy[3+rr]=h*sy;Fz[3+rr]=h*sz;}
+  return{Fx:Fx,Fy:Fy,Fz:Fz};
+}
+/* Evaluate a dense component at θ∈[0,1]; θ=0→step start, θ=1→step end. */
+function dop853DenseEval(F,v0,th){var v=0;for(var i=0;i<7;i++){v+=F[6-i];if(i%2===0)v*=th;else v*=(1-th);}return v+v0;}
+
+/* Adaptive DOP853 that fills the uniform Δt grid t_k=k·DT by interpolation, so
+   the output is sampled identically to the fixed-step methods while the order-8
+   integrator strides with error control. Falls back to filling whatever prefix
+   it reached if a step collapses (Lorenz is bounded, so this is a safety net). */
+function solveLorenzDOP853(sigma,rho,beta,x0,y0,z0,N){
+  var xa=new Array(N),ya=new Array(N),za=new Array(N),ta=new Array(N);
+  var norm=N>1?N-1:1,tEnd=(N-1)*DT;
+  xa[0]=x0;ya[0]=y0;za[0]=z0;ta[0]=0;
+  var atol=1e-11,rtol=1e-11,hMin=1e-10,hMax=Math.max(DT*50,0.5);
+  var x=x0,y=y0,z=z0,t=0,h=DT,k=1;
+  var guard=0,maxGuard=N*400;
+  while(k<N&&guard++<maxGuard){
+    if(h<hMin)h=hMin;if(h>hMax)h=hMax;
+    var st=dop853LorenzStep(x,y,z,sigma,rho,beta,h);
+    if(!isFinite(st.xN)||!isFinite(st.yN)||!isFinite(st.zN)){h*=0.25;continue;}
+    var scX=atol+rtol*Math.max(Math.abs(x),Math.abs(st.xN));
+    var scY=atol+rtol*Math.max(Math.abs(y),Math.abs(st.yN));
+    var scZ=atol+rtol*Math.max(Math.abs(z),Math.abs(st.zN));
+    var n5=st.e5x/scX,m5=st.e5y/scY,l5=st.e5z/scZ,n3=st.e3x/scX,m3=st.e3y/scY,l3=st.e3z/scZ;
+    var err5=n5*n5+m5*m5+l5*l5,err3=n3*n3+m3*m3+l3*l3,deno=err5+0.01*err3;
+    var errN=(deno<=0)?0:Math.abs(h)*err5/Math.sqrt(deno*3);
+    if(errN<=1){
+      var dense=dop853LorenzDense(x,y,z,sigma,rho,beta,h,st);
+      var tNext=t+h;
+      while(k<N&&k*DT<=tNext+1e-12){
+        var th=(k*DT-t)/h;if(th>1)th=1;if(th<0)th=0;
+        xa[k]=dop853DenseEval(dense.Fx,x,th);
+        ya[k]=dop853DenseEval(dense.Fy,y,th);
+        za[k]=dop853DenseEval(dense.Fz,z,th);
+        ta[k]=k/norm;k++;
+      }
+      t=tNext;x=st.xN;y=st.yN;z=st.zN;
+      var fac=errN>1e-12?Math.min(6,0.9*Math.pow(errN,-0.125)):6;
+      h=Math.max(hMin,Math.min(hMax,h*Math.max(0.2,fac)));
+      if(t+h>tEnd)h=Math.max(hMin,tEnd-t);
+    }else{
+      h=Math.max(hMin,h*Math.max(0.2,0.9*Math.pow(errN,-0.125)));
+    }
+  }
+  /* If integration stalled early, truncate to the filled prefix. */
+  if(k<N){xa.length=k;ya.length=k;za.length=k;ta.length=k;}
+  return{x:xa,y:ya,z:za,t:ta};
+}
+
 function solveLorenz(sigma,rho,beta,x0,y0,z0,N,method){
   N=N||STATIC_N;
+  if(method==='dop853')return solveLorenzDOP853(sigma,rho,beta,x0,y0,z0,N);
   var step=STEPPERS[method]||stepDP5;
   var xa=new Array(N),ya=new Array(N),za=new Array(N),ta=new Array(N);
   var x=x0,y=y0,z=z0;
