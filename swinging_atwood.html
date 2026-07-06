@@ -489,6 +489,15 @@ canvas{display:block;width:100%;height:auto;}
               </select>
             </div>
           </div>
+          <div class="sl-block">
+            <div class="sl-row">
+              <label class="sl-lbl" for="method">Integrator</label>
+              <select id="method" class="sl-select" aria-label="Numerical integration method">
+                <option value="glrk4" selected>Gauss–Legendre RK4 (symplectic)</option>
+                <option value="dop853">DOP853 (8th order)</option>
+              </select>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -698,6 +707,7 @@ let M=3, m=1, L=5.5;
 let state=[1, 0, Math.PI/2, 0]; /* r, rdot, theta, thetadot */
 let t=0, endTime=60, isRunning=true;
 let trailStyle='speed', bgColor='light', speedFactor=1;
+let method='glrk4';
 const trail=[];
 let prevPos=null;
 let E0=0;
@@ -735,6 +745,44 @@ function glrk4(s,fn,h){
     if(maxDiff<1e-12)break;
   }
   return s.map(function(v,i){return v+0.5*h*(k1[i]+k2[i]);});
+}
+
+/* DOP853 — Dormand–Prince 8(5,3), 12-stage explicit Runge–Kutta, 8th order
+   (Hairer, Nørsett & Wanner; coefficients as in SciPy's dop853). Fixed step.
+   f(t, y) returns the derivative as an array the same length as y; autonomous
+   systems simply ignore t. Returns the advanced state array. */
+function dop853Step(t, y, f, h) {
+  const C = [0, 5.26001519587677319e-2, 7.89002279381515979e-2, 1.183503419072273967e-1,
+             2.816496580927726033e-1, 3.333333333333333333e-1, 0.25, 3.076923076923076923e-1,
+             6.512820512820512821e-1, 0.6, 8.571428571428571429e-1, 1];
+  const n = y.length, k = [];
+  function stage(ci, coeffs) {
+    const r = y.slice();
+    for (let j = 0; j < coeffs.length; j++) {
+      const cf = coeffs[j]; if (!cf) continue; const kj = k[j];
+      for (let m = 0; m < n; m++) r[m] += h * cf * kj[m];
+    }
+    return f(t + ci * h, r);
+  }
+  k[0]  = f(t, y);
+  k[1]  = stage(C[1],  [5.26001519587677319e-2]);
+  k[2]  = stage(C[2],  [1.97250569845379e-2, 5.91751709536137e-2]);
+  k[3]  = stage(C[3],  [2.95875854768068e-2, 0, 8.87627564304205e-2]);
+  k[4]  = stage(C[4],  [2.41365134159267e-1, 0, -8.84549479328286e-1, 9.24834003261792e-1]);
+  k[5]  = stage(C[5],  [3.7037037037037e-2, 0, 0, 1.70828608729474e-1, 1.25467687566822e-1]);
+  k[6]  = stage(C[6],  [3.7109375e-2, 0, 0, 1.70252211019544e-1, 6.0216538980456e-2, -1.7578125e-2]);
+  k[7]  = stage(C[7],  [3.7092000118505e-2, 0, 0, 1.7038392571224e-1, 1.07262030446373e-1, -1.53194377486244e-2, 8.27378916381402e-3]);
+  k[8]  = stage(C[8],  [6.24110958716076e-1, 0, 0, -3.36089262944694, -8.68219346841726e-1, 2.75920996994467e1, 2.01540675504779e1, -4.348988418107e1]);
+  k[9]  = stage(C[9],  [4.77662536438264e-1, 0, 0, -2.48811461997167, -5.90290826836843e-1, 2.12300514481812e1, 1.52792336328824e1, -3.32882109689849e1, -2.03312017085086e-2]);
+  k[10] = stage(C[10], [-9.3714243008599e-1, 0, 0, 5.18637242884406, 1.09143734899673, -8.14978701074693, -1.8520065659997e1, 2.27394870993505e1, 2.49360555267965, -3.04676447189822]);
+  k[11] = stage(C[11], [2.27331014751654, 0, 0, -1.05344954667373e1, -2.00087205822486, -1.79589318631188e1, 2.794888452942e1, -2.85899827713502, -8.87285693353063, 1.23605671757943e1, 6.43392746015764e-1]);
+  const B = [5.42937341165688e-2, 0, 0, 0, 0, 4.45031289275241, 1.8915178993145, -5.80120396001058, 3.1116436695782e-1, -1.52160949662516e-1, 2.01365400804030e-1, 4.47106157277726e-2];
+  const o = y.slice();
+  for (let i = 0; i < 12; i++) {
+    const cf = B[i]; if (!cf) continue; const ki = k[i];
+    for (let m = 0; m < n; m++) o[m] += h * cf * ki[m];
+  }
+  return o;
 }
 
 function energy(s){
@@ -1088,7 +1136,9 @@ function updateReadout(){
 /* ── Physics ── */
 function updatePhysics(){
   if(!isRunning) return;
-  const newState=glrk4(state,deriv,DT);
+  const newState=(method==='dop853')
+    ? dop853Step(0, state, function(t,s){return deriv(s);}, DT)
+    : glrk4(state,deriv,DT);
   /* Safety guards */
   const r=newState[0];
   if(!isFinite(r)||!isFinite(newState[1])||!isFinite(newState[2])||!isFinite(newState[3])){
@@ -1193,6 +1243,7 @@ function resetSimulation(){
     trailStyle=document.getElementById('trailStyle').value;
     bgColor=document.getElementById('bgColor').value;
     speedFactor=parseFloat(document.getElementById('speedFactor').value)||1;
+    method=document.getElementById('method').value;
     state=[r0, rd0, th0, thd0];
     t=0; trail.length=0; prevPos=null;
     E0=energy(state); energyDrift=0;
@@ -1249,6 +1300,9 @@ document.addEventListener('DOMContentLoaded',function(){
   });
   document.getElementById('speedFactor').addEventListener('change',function(){
     speedFactor=parseFloat(this.value)||1;
+  });
+  document.getElementById('method').addEventListener('change',function(){
+    method=this.value;
   });
 
   /* Preset */
