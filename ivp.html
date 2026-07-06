@@ -460,10 +460,10 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       </ul>
 
       <h2>Adaptive step size</h2>
-      <p>Everything above uses a <em>fixed</em> step \(h\). Real solvers instead choose \(h\) automatically to keep the local error near a user-set <strong>tolerance</strong>, taking small steps through sharp transients and large steps where the solution is smooth. Turn on <strong>Adaptive step size</strong> to switch the tool into this mode for <strong>RK4</strong>, <strong>Tsitouras 5(4)</strong> and <strong>Dormand&ndash;Prince 5(4)</strong>; the step-count control is replaced by a tolerance slider and the other methods are disabled.</p>
+      <p>Everything above uses a <em>fixed</em> step \(h\). Real solvers instead choose \(h\) automatically to keep the local error near a user-set <strong>tolerance</strong>, taking small steps through sharp transients and large steps where the solution is smooth. Turn on <strong>Adaptive step size</strong> to switch the tool into this mode for <strong>RK4</strong>, <strong>Tsitouras 5(4)</strong>, <strong>Dormand&ndash;Prince 5(4)</strong>, <strong>Runge&ndash;Kutta&ndash;Fehlberg 4(5)</strong> and <strong>DOP853 8(5,3)</strong>; the step-count control is replaced by a tolerance slider and the other methods are disabled.</p>
       <ul>
-        <li><strong>Tsit5</strong> and <strong>DOPRI5</strong> are <em>embedded</em> pairs: alongside the order-5 step they compute an order-4 estimate, and the difference \(\|y_5-y_4\|\) estimates the local error for free. <strong>RK4</strong> has no embedded estimate, so it uses <strong>step-doubling</strong> &mdash; one step of size \(h\) versus two of \(h/2\), with error \(\approx|y_{h/2}-y_h|/15\).</li>
-        <li>After each trial step the error estimate is compared with the tolerance: the step is <strong>accepted or rejected</strong>, and \(h\) is grown or shrunk by \(0.9\,(\text{tol}/\text{err})^{1/5}\) (growth is held back right after a rejection to keep the controller stable).</li>
+        <li><strong>Tsit5</strong> and <strong>DOPRI5</strong> are <em>embedded</em> pairs: alongside the order-5 step they compute an order-4 estimate, and the difference \(\|y_5-y_4\|\) estimates the local error for free. <strong>RK4</strong> has no embedded estimate, so it uses <strong>step-doubling</strong> &mdash; one step of size \(h\) versus two of \(h/2\), with error \(\approx|y_{h/2}-y_h|/15\). <strong>DOP853</strong> carries <em>two</em> embedded estimators (5th- and 3rd-order): it blends them as \(\text{err}=|h|\,\hat e_5^2/\sqrt{\hat e_5^2+0.01\,\hat e_3^2}\), the 3rd-order term guarding the 5th against the spurious zeros a lone estimator can hit &mdash; and both reuse the twelve stage slopes the order-8 step already evaluated, so the estimate costs no extra work.</li>
+        <li>After each trial step the error estimate is compared with the tolerance: the step is <strong>accepted or rejected</strong>, and \(h\) is grown or shrunk by \(0.9\,(\text{tol}/\text{err})^{1/(\hat p+1)}\) &mdash; exponent \(1/5\) for the order-4 estimators, \(1/8\) for DOP853's order-7 estimator (growth is held back right after a rejection to keep the controller stable).</li>
       </ul>
       <p>Because adaptive stepping has no single \(h\), the tool shows <strong>just three panels</strong> in this mode. The <em>solution</em> plot marks the non-uniform accepted steps; the <em>error growth</em> panel still tracks the error at those nodes; and the <em>convergence</em> panel becomes a <strong>work&ndash;precision</strong> diagram &mdash; achieved error against the number of accepted steps over a sweep of tolerances, so lower-and-to-the-right is more efficient. The <em>stability region</em> panel is hidden, since absolute stability is a fixed-step notion. The results table reports steps accepted, rejected, and the function-evaluation count.</p>
 
@@ -571,7 +571,9 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         <details class="mdesc"><summary><span class="mdot" style="background:#be185d;"></span>Dormand&ndash;Prince 8(5,3) (DOP853) <span class="badge exp">explicit</span><span class="badge">order 8</span></summary>
           <div class="mbody">
             <p>The famous high-order <code>DOP853</code> of Hairer, N&oslash;rsett &amp; Wanner &mdash; a twelve-stage explicit method of <strong>order 8</strong>, with an embedded 5th- and 3rd-order pair for error control (the &ldquo;8(5,3)&rdquo;). It is the workhorse non-stiff integrator behind SciPy&rsquo;s <code>DOP853</code> and the original <code>dop853.f</code>.</p>
-            <p>Here it runs at a <em>fixed</em> step using only its order-8 propagation formula (the embedded 5/3 estimators would drive adaptive stepping). With twelve stages the cost per step is high, but the error drops as \(O(h^8)\): on the convergence panel its slope is the steepest of all the methods, reaching the round-off floor after only a few refinements.</p>
+            <p>At <em>fixed</em> step it uses only its order-8 propagation formula. With twelve stages the cost per step is high, but the error drops as \(O(h^8)\): on the convergence panel its slope is the steepest of all the methods, reaching the round-off floor after only a few refinements.</p>
+            <p>Tick <em>Adaptive step size</em> to run the <strong>full DOP853</strong>: the embedded 5th- and 3rd-order pair (the &ldquo;8(5,3)&rdquo;) now drives error-controlled stepping, exactly as in SciPy&rsquo;s <code>DOP853</code> and the reference <code>dop853.f</code>. Because the two estimators reuse the twelve stage slopes, each step still costs just twelve \(f\) evaluations while automatically shrinking \(h\) through sharp transients and stretching it where the solution is smooth.</p>
+            <p>An order-8 method takes very <em>large</em> steps, so its accepted nodes are sparse. To draw the trajectory faithfully the tool also builds DOP853&rsquo;s <strong>dense output</strong> &mdash; Hairer &amp; Wanner&rsquo;s 7th-order continuous interpolant &mdash; and samples it between steps. The plotted curve then follows the true solution rather than straight chords between nodes, with the <span style="white-space:nowrap;">&#9679;</span> markers showing where the accepted steps actually land. The interpolant costs three extra stage evaluations per step and is the same one used for event location and continuous output in production solvers.</p>
           </div>
         </details>
 
@@ -816,7 +818,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <input type="range" id="tolSlider" min="2" max="12" step="1" value="6" aria-label="Tolerance exponent">
             <span class="sval" id="tolVal" style="min-width:6.5rem;">tol = 10⁻⁶</span>
           </div>
-          <p class="note" style="margin:.3rem 0 0;">Error-controlled stepping to this tolerance. Only RK4, Dormand&ndash;Prince 5(4), Tsitouras 5(4) and Runge&ndash;Kutta&ndash;Fehlberg 4(5) run; other methods are disabled and the stability panel (a fixed-step notion) is hidden.</p>
+          <p class="note" style="margin:.3rem 0 0;">Error-controlled stepping to this tolerance. Only RK4, Dormand&ndash;Prince 5(4), Tsitouras 5(4), Runge&ndash;Kutta&ndash;Fehlberg 4(5) and DOP853 8(5,3) run; other methods are disabled and the stability panel (a fixed-step notion) is hidden.</p>
         </div>
       </div>
 
@@ -1928,7 +1930,7 @@ function selectedIds(){ return MET.map(function(m){return m.id;}).filter(functio
    Adaptive (error-controlled) stepping
    ============================================================ */
 var adaptiveMode=false;
-var ADAPT_IDS=['rk4','dopri5','tsit5','rkf45'];
+var ADAPT_IDS=['rk4','dopri5','tsit5','rkf45','dop853'];
 function adaptiveSupported(id){ return ADAPT_IDS.indexOf(id)>=0; }
 function currentTol(){ var k=parseInt(document.getElementById('tolSlider').value,10); return Math.pow(10,-(isFinite(k)?k:6)); }
 /* 7-stage embedded tableaus; e = b(order 5) − b̂(order 4) gives the local error
@@ -1955,24 +1957,79 @@ var ARK={
     e:[1/360,0,-128/4275,-2197/75240,1/50,2/55] }
 };
 var ADAPT_CAP=50000;
+/* DOP853's own embedded error estimators (Hairer, Nørsett & Wanner; the E3/E5
+   weights used by SciPy's DOP853 and the reference dop853.f). E5 is the 5th-
+   order estimator, E3 the 3rd-order one. Both weight only the twelve stage
+   derivatives the order-8 step already computes, so the error estimate is free
+   of any extra f-evaluation. The step error blends the two as
+   err = |h|·ê5² / √(ê5² + 0.01·ê3²) with ê5, ê3 the tolerance-scaled weighted
+   sums — the 3rd-order term guards the 5th-order measure against the spurious
+   zeros that a lone estimator can hit, which is what makes DOP853 robust. */
+var DOP853E5=[0.01312004499419488073250102996,0,0,0,0,-1.225156446376204440720569753,-0.4957589496572501915214079952,1.664377182454986536961530415,-0.350328848749973681688648729,0.3341791187130174790297318841,0.08192320648511571246570742613,-0.02235530786388629525884427845];
+var DOP853E3=(function(){ var b=RKT.dop853.b.slice();
+  b[0]-=0.244094488188976377952755905512; b[8]-=0.733846688281611857341361741547; b[11]-=0.0220588235294117647058823529412;
+  return b; })();
+/* DOP853 dense (continuous) output — the 7th-order interpolant of Hairer/Wanner,
+   as in SciPy's DOP853. After an accepted step it costs three extra stage
+   evaluations (nodes 0.1, 0.2, 7/9) beyond the twelve of the step plus f at the
+   new point; the D weights then build the interpolation polynomial. Evaluating
+   it fills smooth curve points between the (few, large) accepted steps of an
+   order-8 method, so the plotted trajectory follows the true solution instead
+   of straight chords between nodes. */
+var DOP853_CEX=[0.1,0.2,0.7777777777777778];
+var DOP853_AEX=[[0.056167502283047954,0.0,0.0,0.0,0.0,0.0,0.25350021021662483,-0.2462390374708025,-0.12419142326381637,0.15329179827876568,0.00820105229563469,0.007567897660545699,-0.008298,0.0,0.0,0.0],[0.03183464816350214,0.0,0.0,0.0,0.0,0.028300909672366776,0.053541988307438566,-0.05492374857139099,0.0,0.0,-0.00010834732869724932,0.0003825710908356584,-0.00034046500868740456,0.1413124436746325,0.0,0.0],[-0.42889630158379194,0.0,0.0,0.0,0.0,-4.697621415361164,7.683421196062599,4.06898981839711,0.3567271874552811,0.0,0.0,0.0,-0.0013990241651590145,2.9475147891527724,-9.15095847217987,0.0]];
+var DOP853_D=[[-8.428938276109013,0.0,0.0,0.0,0.0,0.5667149535193777,-3.0689499459498917,2.38466765651207,2.117034582445028,-0.871391583777973,2.2404374302607883,0.6315787787694688,-0.08899033645133331,18.148505520854727,-9.194632392478356,-4.436036387594894],[10.427508642579134,0.0,0.0,0.0,0.0,242.28349177525817,165.20045171727028,-374.5467547226902,-22.113666853125306,7.733432668472264,-30.674084731089398,-9.332130526430229,15.697238121770845,-31.139403219565178,-9.35292435884448,35.81684148639408],[19.985053242002433,0.0,0.0,0.0,0.0,-387.0373087493518,-189.17813819516758,527.8081592054236,-11.57390253995963,6.8812326946963,-1.0006050966910838,0.7777137798053443,-2.778205752353508,-60.19669523126412,84.32040550667716,11.99229113618279],[-25.69393346270375,0.0,0.0,0.0,0.0,-154.18974869023643,-231.5293791760455,357.6391179106141,93.40532418362432,-37.45832313645163,104.0996495089623,29.8402934266605,-43.53345659001114,96.32455395918828,-39.17726167561544,-149.72683625798564]];
+/* Build the interpolation coefficients F[0..6] for one accepted DOP853 step.
+   k holds the twelve stage slopes; fNew = f at the step end and three extra
+   stages extend K to sixteen entries. nfd counts these auxiliary evaluations
+   separately from the integration f-count. */
+function dop853Dense(t,y,h,ynew,k,f,nfd){
+  var K=new Array(16), i, s, a;
+  for (i=0;i<12;i++) K[i]=k[i];
+  var fOld=k[0], fNew=f(t+h,ynew); K[12]=fNew; nfd.n++;
+  for (s=13;s<16;s++){ a=0; for(i=0;i<s;i++) a+=DOP853_AEX[s-13][i]*K[i]; K[s]=f(t+DOP853_CEX[s-13]*h, y+h*a); nfd.n++; }
+  var delta=ynew-y, F=[delta, h*fOld-delta, 2*delta-h*(fNew+fOld), 0,0,0,0];
+  for (var r=0;r<4;r++){ var d=0; for(i=0;i<16;i++) d+=DOP853_D[r][i]*K[i]; F[3+r]=h*d; }
+  return F;
+}
+/* Evaluate the continuous interpolant at x=(t−t_old)/h∈[0,1]; x=0→y_old, x=1→y_new. */
+function dop853DenseEval(F,y0,x){ var y=0; for (var i=0;i<7;i++){ y+=F[6-i]; if(i%2===0) y*=x; else y*=(1-x); } return y+y0; }
 /* Error-controlled integration with a standard step-size controller (safety
-   0.9, exponent 1/(q+1) with q=4, growth limited after a rejected step). RK4
-   has no embedded estimate, so it uses step-doubling (one step h vs. two of
-   h/2, Richardson error ≈ |y₂−y₁|/15). */
-function integrateAdaptive(id,P,tol){
-  var f=P.f, t0=P.t0, tEnd=P.tEnd, est;
+   0.9, exponent 1/(p̂+1) — 1/5 for the order-4 estimators, 1/8 for DOP853's
+   order-7 estimator — growth limited after a rejected step). Each estimator
+   returns the tolerance-normalised error `en` (accept when en ≤ 1). RK4 has no
+   embedded estimate, so it uses step-doubling (one step h vs. two of h/2,
+   Richardson error ≈ |y₂−y₁|/15). */
+function integrateAdaptive(id,P,tol,opts){
+  var f=P.f, t0=P.t0, tEnd=P.tEnd, est, expo=0.2;
+  var wantDense=!!(opts && opts.dense) && id==='dop853';
+  function scaleEn(y,ynew,errAbs){ var sc=tol+tol*Math.max(Math.abs(y),Math.abs(ynew)); var en=errAbs/sc; return isFinite(en)?en:1e30; }
   if (id==='rk4'){
     var st=makeOneStep('rk4',P);
     est=function(t,y,h,nf){ var yb=st(t,y,h), ym=st(t,y,h/2), y2=st(t+h/2,ym,h/2); nf.n+=11;
-      return {ynew:y2+(y2-yb)/15, err:Math.abs(y2-yb)/15}; };
+      var yn=y2+(y2-yb)/15; return {ynew:yn, en:scaleEn(y,yn,Math.abs(y2-yb)/15)}; };
+  } else if (id==='dop853'){
+    /* True DOP853: the order-8 tableau propagates, its embedded 5th/3rd-order
+       pair drives the step size. Estimator order is 7, hence the 1/8 exponent.
+       The stage slopes k are handed back so dense output can reuse them. */
+    expo=0.125;
+    var Td=RKT.dop853, E5=DOP853E5, E3=DOP853E3;
+    est=function(t,y,h,nf){ var s=Td.c.length,k=new Array(s),i,j;
+      for(i=0;i<s;i++){ var yi=y; for(j=0;j<i;j++) yi+=h*Td.A[i][j]*k[j]; k[i]=f(t+Td.c[i]*h,yi); nf.n++; }
+      var yn=y,e5=0,e3=0; for(i=0;i<s;i++){ yn+=h*Td.b[i]*k[i]; e5+=E5[i]*k[i]; e3+=E3[i]*k[i]; }
+      var sc=tol+tol*Math.max(Math.abs(y),Math.abs(yn)); e5/=sc; e3/=sc;
+      var e5n2=e5*e5, deno=e5n2+0.01*e3*e3;
+      var en=(deno<=0)?0:Math.abs(h)*e5n2/Math.sqrt(deno);
+      return {ynew:yn, en:isFinite(en)?en:1e30, k:k}; };
   } else {
     var T=ARK[id];
     est=function(t,y,h,nf){ var s=T.c.length,k=new Array(s),i,j;
       for(i=0;i<s;i++){ var yi=y; for(j=0;j<i;j++) yi+=h*T.A[i][j]*k[j]; k[i]=f(t+T.c[i]*h,yi); nf.n++; }
       var yn=y,ev=0; for(i=0;i<s;i++){ yn+=h*T.b[i]*k[i]; ev+=T.e[i]*k[i]; }
-      return {ynew:yn, err:Math.abs(h*ev)}; };
+      return {ynew:yn, en:scaleEn(y,yn,Math.abs(h*ev))}; };
   }
-  var y=P.y0, t=t0, h=(tEnd-t0)/100, acc=0, rej=0, nf={n:0}, ts=[t0], ys=[P.y0], ok=true, lastRej=false;
+  var y=P.y0, t=t0, h=(tEnd-t0)/100, acc=0, rej=0, nf={n:0}, nfd={n:0}, ts=[t0], ys=[P.y0], ok=true, lastRej=false;
+  var segs = wantDense ? [] : null;
   var hmin=(tEnd-t0)*1e-12;
   function fin(v){ return isFinite(v) && Math.abs(v)<1e12; }
   while (t < tEnd-1e-13){
@@ -1981,13 +2038,25 @@ function integrateAdaptive(id,P,tol){
     if (t+h>tEnd) h=tEnd-t;
     var r=est(t,y,h,nf);
     if (!fin(r.ynew)){ rej++; h*=0.2; lastRej=true; continue; }
-    var sc=tol+tol*Math.max(Math.abs(y),Math.abs(r.ynew));
-    var en=r.err/sc; if(!isFinite(en)) en=1e30;
-    if (en<=1){ t+=h; y=r.ynew; acc++; ts.push(t); ys.push(y);
-      var fac=0.9*Math.pow(Math.max(en,1e-30),-0.2); fac=Math.min(lastRej?1:5, Math.max(0.2,fac)); h*=fac; lastRej=false; }
-    else { rej++; h*=Math.min(1, Math.max(0.2, 0.9*Math.pow(en,-0.2))); lastRej=true; }
+    var en=r.en;
+    if (en<=1){
+      if (segs) segs.push({t0:t, h:h, y0:y, F:dop853Dense(t,y,h,r.ynew,r.k,f,nfd)});
+      t+=h; y=r.ynew; acc++; ts.push(t); ys.push(y);
+      var fac=0.9*Math.pow(Math.max(en,1e-30),-expo); fac=Math.min(lastRej?1:5, Math.max(0.2,fac)); h*=fac; lastRej=false; }
+    else { rej++; h*=Math.min(1, Math.max(0.2, 0.9*Math.pow(en,-expo))); lastRej=true; }
   }
-  return {id:id, ts:ts, ys:ys, N:acc, acc:acc, rej:rej, nfev:nf.n, ok:ok, stable:ok, h:(tEnd-t0)/Math.max(acc,1)};
+  var R={id:id, ts:ts, ys:ys, N:acc, acc:acc, rej:rej, nfev:nf.n, ok:ok, stable:ok, h:(tEnd-t0)/Math.max(acc,1)};
+  /* Sample the interpolant into a smooth plotting curve. Fewer accepted steps
+     get more sub-points (a bigger interval to fill); many steps need fewer, so
+     the total plotted-point count stays bounded. */
+  if (segs && segs.length){
+    var nsub=Math.max(2, Math.min(24, Math.round(3000/Math.max(acc,1))));
+    var tsD=[t0], ysD=[P.y0];
+    for (var s=0;s<segs.length;s++){ var sg=segs[s];
+      for (var q=1;q<=nsub;q++){ var x=q/nsub; tsD.push(sg.t0+x*sg.h); ysD.push(dop853DenseEval(sg.F,sg.y0,x)); } }
+    R.tsDense=tsD; R.ysDense=ysD; R.nfevDense=nfd.n;
+  }
+  return R;
 }
 /* Reflect the adaptive toggle across the controls, method buttons and panels. */
 function updateAdaptiveUI(){
@@ -2246,10 +2315,21 @@ function plotSolution(P,results){
   results.forEach(function(R){
     if(!R) return;
     var m=METBY[R.id];
-    traces.push({x:Array.prototype.slice.call(R.ts), y:Array.prototype.slice.call(R.ys),
+    /* DOP853 in adaptive mode carries a continuous interpolant: plot the smooth
+       curve and mark the (few) accepted steps so both the trajectory and the
+       step placement stay visible. Other methods draw straight through nodes. */
+    var lx = R.tsDense ? R.tsDense : Array.prototype.slice.call(R.ts);
+    var ly = R.tsDense ? R.ysDense : Array.prototype.slice.call(R.ys);
+    traces.push({x:lx, y:ly,
       mode:'lines', name:texName(m.label),
       line:{color:m.color, width:2, dash:m.dash},
       hovertemplate:'t=%{x:.3f}<br>y=%{y:.5f}<extra>'+m.label+'</extra>'});
+    if (R.tsDense){
+      traces.push({x:Array.prototype.slice.call(R.ts), y:Array.prototype.slice.call(R.ys),
+        mode:'markers', name:texName(m.label)+' steps', showlegend:false,
+        marker:{color:m.color, size:5, symbol:'circle', line:{color:'#fff', width:1}},
+        hovertemplate:'accepted step<br>t=%{x:.3f}<br>y=%{y:.5f}<extra>'+m.label+'</extra>'});
+    }
   });
   var layout={
     height:h, margin:{l:55,r:12,t:10,b:42}, dragmode:'pan',
@@ -2592,7 +2672,7 @@ function methodError(R,P){
 /* ----- results table ----- */
 function buildResultTable(P,results){
   var host=document.getElementById('resWrap');
-  if (!results.length){ host.innerHTML='<div class="res-empty">'+(adaptiveMode?'Select RK4, Tsitouras or Dormand–Prince.':'No methods selected.')+'</div>'; return; }
+  if (!results.length){ host.innerHTML='<div class="res-empty">'+(adaptiveMode?'Select an adaptive method: RK4, Dormand–Prince 5(4), Tsitouras 5(4), RKF45 or DOP853.':'No methods selected.')+'</div>'; return; }
   var rows;
   if (adaptiveMode){
     rows='<table class="res-tbl"><thead><tr>'+
@@ -2750,7 +2830,7 @@ function solve(opts){
   var results=[];
   if (adaptiveMode){
     var tol=currentTol();
-    selectedIds().filter(adaptiveSupported).forEach(function(id){ results.push(integrateAdaptive(id,P,tol)); });
+    selectedIds().filter(adaptiveSupported).forEach(function(id){ results.push(integrateAdaptive(id,P,tol,{dense:true})); });
   } else {
     /* current h from numeric field (authoritative) */
     var Nfield=parseInt(document.getElementById('nInput').value,10);
