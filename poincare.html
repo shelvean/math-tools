@@ -287,7 +287,7 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 
 <main id="main" class="card" role="main" tabindex="-1">
   <h1>Poincaré Section Explorer</h1>
-  <p class="subtitle">High-resolution Poincaré sections for forced and autonomous nonlinear systems &mdash; adaptive <strong>Tsit5</strong> integrator running in a dedicated Web Worker.</p>
+  <p class="subtitle">High-resolution Poincaré sections for forced and autonomous nonlinear systems &mdash; selectable adaptive <strong>Tsit5</strong> or <strong>DOP853</strong> integrator running in a dedicated Web Worker.</p>
 
   <div class="info-panel">
     <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
@@ -517,6 +517,11 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
         <div class="row"><label class="lbl" for="rtol">rtol</label><input class="num" id="rtol" type="text" value="1e-9"></div>
         <div class="row"><label class="lbl" for="atol">atol</label><input class="num" id="atol" type="text" value="1e-12"></div>
         <div class="row"><label class="lbl" for="hMax">h_max</label><input class="num" id="hMax" type="number" step="0.1" value="1"></div>
+        <div class="row"><label class="lbl" for="integSel">Integrator</label>
+          <select class="sel" id="integSel" aria-label="Numerical integrator">
+            <option value="tsit5" selected>Tsit5 (5th order)</option>
+            <option value="dop853">DOP853 (8th order)</option>
+          </select></div>
       </div>
     </div>
 
@@ -796,6 +801,54 @@ function tsit5Step(sys, p, t, y, h, k1, k2, k3, k4, k5, k6, k7, yNew, yErr, ytmp
   for(i=0;i<n;i++) yErr[i] = h*(T_e1*k1[i] + T_e2*k2[i] + T_e3*k3[i] + T_e4*k4[i] + T_e5*k5[i] + T_e6*k6[i] + T_e7*k7[i]);
 }
 
+/* ── DOP853 step (Dormand–Prince 8(5,3), 12-stage explicit, 8th order;
+      Hairer, Nørsett & Wanner) ──────────────────────────────────────
+   Same in-place/interface role as tsit5Step: K[0..11] are the stage slopes
+   (K[0] is the incoming FSAL start slope k1start), yNew is the 8th-order
+   solution, yErr is the embedded 5th-order error estimate (feeding the same
+   PI controller and errNorm as Tsit5), and kEnd = f(t+h, yNew) is written so
+   the existing cubic-Hermite dense output / Brent section detection work
+   unchanged and can be reused as the next step's FSAL slope. */
+var DP_C  = [0, 5.26001519587677319e-2, 7.89002279381515979e-2, 1.183503419072273967e-1,
+             2.816496580927726033e-1, 3.333333333333333333e-1, 0.25, 3.076923076923076923e-1,
+             6.512820512820512821e-1, 0.6, 8.571428571428571429e-1, 1];
+var DP_A  = [
+  [],
+  [5.26001519587677319e-2],
+  [1.97250569845379e-2, 5.91751709536137e-2],
+  [2.95875854768068e-2, 0, 8.87627564304205e-2],
+  [2.41365134159267e-1, 0, -8.84549479328286e-1, 9.24834003261792e-1],
+  [3.7037037037037e-2, 0, 0, 1.70828608729474e-1, 1.25467687566822e-1],
+  [3.7109375e-2, 0, 0, 1.70252211019544e-1, 6.0216538980456e-2, -1.7578125e-2],
+  [3.7092000118505e-2, 0, 0, 1.7038392571224e-1, 1.07262030446373e-1, -1.53194377486244e-2, 8.27378916381402e-3],
+  [6.24110958716076e-1, 0, 0, -3.36089262944694, -8.68219346841726e-1, 2.75920996994467e1, 2.01540675504779e1, -4.348988418107e1],
+  [4.77662536438264e-1, 0, 0, -2.48811461997167, -5.90290826836843e-1, 2.12300514481812e1, 1.52792336328824e1, -3.32882109689849e1, -2.03312017085086e-2],
+  [-9.3714243008599e-1, 0, 0, 5.18637242884406, 1.09143734899673, -8.14978701074693, -1.8520065659997e1, 2.27394870993505e1, 2.49360555267965, -3.04676447189822],
+  [2.27331014751654, 0, 0, -1.05344954667373e1, -2.00087205822486, -1.79589318631188e1, 2.794888452942e1, -2.85899827713502, -8.87285693353063, 1.23605671757943e1, 6.43392746015764e-1]
+];
+var DP_B  = [5.42937341165688e-2, 0, 0, 0, 0, 4.45031289275241, 1.8915178993145, -5.80120396001058, 3.1116436695782e-1, -1.52160949662516e-1, 2.01365400804030e-1, 4.47106157277726e-2];
+var DP_E5 = [1.312004499419488e-2, 0, 0, 0, 0, -1.225156446376204, -0.4957589496572502, 1.664377182454987, -0.350328848749974, 0.3341791187130175, 8.192320648511571e-2, -2.235530786388630e-2];
+function dop853StepP(sys, p, t, y, h, K, k1start, yNew, yErr, kEnd, ytmp){
+  var n = y.length, i, s, j;
+  for(i=0;i<n;i++) K[0][i] = k1start[i];
+  for(s=1;s<12;s++){
+    var a = DP_A[s];
+    for(i=0;i<n;i++){
+      var sum = 0;
+      for(j=0;j<a.length;j++){ var c = a[j]; if(c) sum += c*K[j][i]; }
+      ytmp[i] = y[i] + h*sum;
+    }
+    sys.f(t + DP_C[s]*h, ytmp, p, K[s]);
+  }
+  for(i=0;i<n;i++){
+    var b8 = 0, e5 = 0;
+    for(j=0;j<12;j++){ var kb = K[j][i]; b8 += DP_B[j]*kb; e5 += DP_E5[j]*kb; }
+    yNew[i] = y[i] + h*b8;
+    yErr[i] = h*e5;
+  }
+  sys.f(t + h, yNew, p, kEnd);
+}
+
 /* ── Cubic Hermite dense output on a successful step ──────────────────
    Uses (y_n, f_n=k1) and (y_{n+1}, f_{n+1}=k7). 4th-order accurate.
    θ ∈ [0,1], returns interpolated state into out. */
@@ -998,6 +1051,12 @@ function run(opts){
   var ySave = new Float64Array(n), fSave = new Float64Array(n);
 
   var rtol = opts.rtol, atol = opts.atol, hMax = opts.hMax;
+  var useDOP = (opts.method === 'dop853');
+  /* DOP853 stage buffers (K[0] aliases the FSAL start slope each step). */
+  var K = null;
+  if(useDOP){ K = new Array(12); for(var _s=0;_s<12;_s++) K[_s] = new Float64Array(n); }
+  /* PI-controller exponent tied to the estimate order (Tsit5: 5, DOP853's
+     embedded estimator: also 5). */
   var alpha = 0.7/5, beta = 0.4/5;
   var maxFac = 6, minFac = 0.2, safety = 0.9;
 
@@ -1109,7 +1168,8 @@ function run(opts){
       if(modeStrobe){ var d2s = nextStrobe - t; if(d2s > 0 && hUse > d2s) hUse = d2s; }
 
       for(var i=0;i<n;i++){ ySave[i] = y[i]; fSave[i] = k1[i]; }
-      tsit5Step(sys, p, t, y, hUse, k1, k2, k3, k4, k5, k6, k7, yNew, yErr, ytmp);
+      if(useDOP) dop853StepP(sys, p, t, y, hUse, K, k1, yNew, yErr, k7, ytmp);
+      else       tsit5Step(sys, p, t, y, hUse, k1, k2, k3, k4, k5, k6, k7, yNew, yErr, ytmp);
 
       var err = errNorm(yErr, y, yNew, atol, rtol);
       if(!isFinite(err)){ self.postMessage({type:'error',msg:'Solver blew up (NaN/Inf) on IC #'+(icIdx+1)+'. Try smaller h_max or different IC.'}); return; }
@@ -1934,6 +1994,7 @@ function buildOpts(){
   }
   return {
     system: sysName, params: rd.p, icSets: icSets, t0: 0,
+    method: ($('integSel') ? $('integSel').value : 'tsit5'),
     rtol: rtol, atol: atol, hMax: parseFloat($('hMax').value)||1,
     maxPoints: parseInt($('numCrossings').value,10)||10000,
     transient: parseInt($('transient').value,10)||0,
