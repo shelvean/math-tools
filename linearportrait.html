@@ -119,6 +119,9 @@ table.eq-table thead th{background:var(--sect);font-weight:700;color:var(--txt2)
 table.eq-table td.eq-type-cell{font-weight:700;}
 table.eq-table .eq-type-cell svg{vertical-align:middle;margin-right:.3rem;}
 table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
+table.eq-table tr.acc-active td{background:var(--info);}
+.acc-tag{display:inline-block;margin-left:.35rem;padding:.02rem .35rem;border-radius:.5rem;
+  background:var(--green);color:#fff;font-size:.62rem;font-weight:800;vertical-align:middle;letter-spacing:.02em;}
 .solver-active{display:block;margin-top:.2rem;font-size:.7rem;color:var(--muted);font-weight:600;}
 .solver-active #solverActiveName{color:var(--txt);}
 
@@ -420,9 +423,12 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
       <ul>
         <li><strong>RK4</strong> — classical explicit Runge–Kutta, 4th order. Good general default for non-stiff systems.</li>
         <li><strong>Tsit5</strong> — Tsitouras 5(4) explicit Runge–Kutta, 6 stages, 5th-order accuracy. Smoother curves than RK4 at the same step size; same stability footprint (no benefit on stiff problems).</li>
+        <li><strong>DOP853</strong> — Dormand–Prince 8(5,3) explicit Runge–Kutta, 12 stages, 8th order (Hairer, Nørsett &amp; Wanner). The highest-accuracy explicit choice: at the same step it reaches near machine precision on this linear system, as the accuracy panel shows.</li>
         <li><strong>SDIRK2</strong> — singly-diagonally-implicit Runge–Kutta, 2 stages, 2nd order with \(\gamma = 1-\tfrac{1}{\sqrt{2}}\). The method is L-stable, so it remains accurate on stiff linear systems where explicit methods would either blow up or require a tiny step.</li>
       </ul>
       <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
+      <h2>Accuracy panel</h2>
+      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the norm \(\max_i\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\) (maximum in time of the state 2-norm, normalised). The ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision.</p>
       <h2>How to Use</h2>
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
@@ -466,6 +472,7 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
         <option value="auto" selected>Auto (stiffness aware)</option>
         <option value="rk4">RK4 (explicit, 4th order)</option>
         <option value="tsit5">Tsit5 (explicit, 5th order)</option>
+        <option value="dop853">DOP853 (explicit, 8th order)</option>
         <option value="sdirk2">SDIRK2 (implicit, L-stable)</option>
       </select>
       <span id="solverActive" class="solver-active" aria-live="polite">
@@ -647,6 +654,15 @@ table.eq-table td.eq-coord{font-variant-numeric:tabular-nums;color:var(--txt);}
         aria-label="Phase portrait canvas. Click to add trajectories."></canvas>
     </div>
     <div id="classTable" class="eq-table-wrap" role="status" aria-live="polite"></div>
+  </div>
+
+  <!-- ── Accuracy panel: numerical global error vs the exact solution eᴬᵗx₀ ── -->
+  <div class="pwrap" id="accPanel">
+    <div class="phdr">
+      <span class="pdot" style="background:var(--green);" aria-hidden="true"></span>
+      Accuracy &mdash; global error of each method against the exact solution \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\)
+    </div>
+    <div id="accTable" class="eq-table-wrap" role="status" aria-live="polite"></div>
   </div>
 
   <!-- Time series panel -->
@@ -1065,6 +1081,31 @@ function sdirk2(x,y,a,b,c,d,h){
   };
 }
 
+/* ── DOP853 ── Dormand–Prince 8(5,3), 12-stage explicit Runge–Kutta, 8th order
+   (Hairer, Nørsett & Wanner; coefficients as in SciPy's dop853). Fixed-step
+   here, like RK4/Tsit5: the twelve stage slopes are the linear RHS evaluated at
+   the intermediate states, and only the 8th-order propagation weights B are
+   needed (the embedded 5/3 error estimators drive adaptivity elsewhere but are
+   unnecessary for this fixed-step, per-trajectory use). */
+function dop853(x,y,a,b,c,d,h){
+  var kx=new Array(12),ky=new Array(12),X,Y;
+  kx[0]=a*x+b*y;ky[0]=c*x+d*y;
+  X=x+h*5.26001519587677319e-2*kx[0];Y=y+h*5.26001519587677319e-2*ky[0];kx[1]=a*X+b*Y;ky[1]=c*X+d*Y;
+  X=x+h*(1.97250569845379e-2*kx[0]+5.91751709536137e-2*kx[1]);Y=y+h*(1.97250569845379e-2*ky[0]+5.91751709536137e-2*ky[1]);kx[2]=a*X+b*Y;ky[2]=c*X+d*Y;
+  X=x+h*(2.95875854768068e-2*kx[0]+8.87627564304205e-2*kx[2]);Y=y+h*(2.95875854768068e-2*ky[0]+8.87627564304205e-2*ky[2]);kx[3]=a*X+b*Y;ky[3]=c*X+d*Y;
+  X=x+h*(2.41365134159267e-1*kx[0]-8.84549479328286e-1*kx[2]+9.24834003261792e-1*kx[3]);Y=y+h*(2.41365134159267e-1*ky[0]-8.84549479328286e-1*ky[2]+9.24834003261792e-1*ky[3]);kx[4]=a*X+b*Y;ky[4]=c*X+d*Y;
+  X=x+h*(3.7037037037037e-2*kx[0]+1.70828608729474e-1*kx[3]+1.25467687566822e-1*kx[4]);Y=y+h*(3.7037037037037e-2*ky[0]+1.70828608729474e-1*ky[3]+1.25467687566822e-1*ky[4]);kx[5]=a*X+b*Y;ky[5]=c*X+d*Y;
+  X=x+h*(3.7109375e-2*kx[0]+1.70252211019544e-1*kx[3]+6.0216538980456e-2*kx[4]-1.7578125e-2*kx[5]);Y=y+h*(3.7109375e-2*ky[0]+1.70252211019544e-1*ky[3]+6.0216538980456e-2*ky[4]-1.7578125e-2*ky[5]);kx[6]=a*X+b*Y;ky[6]=c*X+d*Y;
+  X=x+h*(3.7092000118505e-2*kx[0]+1.7038392571224e-1*kx[3]+1.07262030446373e-1*kx[4]-1.53194377486244e-2*kx[5]+8.27378916381402e-3*kx[6]);Y=y+h*(3.7092000118505e-2*ky[0]+1.7038392571224e-1*ky[3]+1.07262030446373e-1*ky[4]-1.53194377486244e-2*ky[5]+8.27378916381402e-3*ky[6]);kx[7]=a*X+b*Y;ky[7]=c*X+d*Y;
+  X=x+h*(6.24110958716076e-1*kx[0]-3.36089262944694*kx[3]-8.68219346841726e-1*kx[4]+2.75920996994467e1*kx[5]+2.01540675504779e1*kx[6]-4.348988418107e1*kx[7]);Y=y+h*(6.24110958716076e-1*ky[0]-3.36089262944694*ky[3]-8.68219346841726e-1*ky[4]+2.75920996994467e1*ky[5]+2.01540675504779e1*ky[6]-4.348988418107e1*ky[7]);kx[8]=a*X+b*Y;ky[8]=c*X+d*Y;
+  X=x+h*(4.77662536438264e-1*kx[0]-2.48811461997167*kx[3]-5.90290826836843e-1*kx[4]+2.12300514481812e1*kx[5]+1.52792336328824e1*kx[6]-3.32882109689849e1*kx[7]-2.03312017085086e-2*kx[8]);Y=y+h*(4.77662536438264e-1*ky[0]-2.48811461997167*ky[3]-5.90290826836843e-1*ky[4]+2.12300514481812e1*ky[5]+1.52792336328824e1*ky[6]-3.32882109689849e1*ky[7]-2.03312017085086e-2*ky[8]);kx[9]=a*X+b*Y;ky[9]=c*X+d*Y;
+  X=x+h*(-9.3714243008599e-1*kx[0]+5.18637242884406*kx[3]+1.09143734899673*kx[4]-8.14978701074693*kx[5]-1.8520065659997e1*kx[6]+2.27394870993505e1*kx[7]+2.49360555267965*kx[8]-3.04676447189822*kx[9]);Y=y+h*(-9.3714243008599e-1*ky[0]+5.18637242884406*ky[3]+1.09143734899673*ky[4]-8.14978701074693*ky[5]-1.8520065659997e1*ky[6]+2.27394870993505e1*ky[7]+2.49360555267965*ky[8]-3.04676447189822*ky[9]);kx[10]=a*X+b*Y;ky[10]=c*X+d*Y;
+  X=x+h*(2.27331014751654*kx[0]-1.05344954667373e1*kx[3]-2.00087205822486*kx[4]-1.79589318631188e1*kx[5]+2.794888452942e1*kx[6]-2.85899827713502*kx[7]-8.87285693353063*kx[8]+1.23605671757943e1*kx[9]+6.43392746015764e-1*kx[10]);Y=y+h*(2.27331014751654*ky[0]-1.05344954667373e1*ky[3]-2.00087205822486*ky[4]-1.79589318631188e1*ky[5]+2.794888452942e1*ky[6]-2.85899827713502*ky[7]-8.87285693353063*ky[8]+1.23605671757943e1*ky[9]+6.43392746015764e-1*ky[10]);kx[11]=a*X+b*Y;ky[11]=c*X+d*Y;
+  var B0=5.42937341165688e-2,B5=4.45031289275241,B6=1.8915178993145,B7=-5.80120396001058,B8=3.1116436695782e-1,B9=-1.52160949662516e-1,B10=2.01365400804030e-1,B11=4.47106157277726e-2;
+  return{x:x+h*(B0*kx[0]+B5*kx[5]+B6*kx[6]+B7*kx[7]+B8*kx[8]+B9*kx[9]+B10*kx[10]+B11*kx[11]),
+         y:y+h*(B0*ky[0]+B5*ky[5]+B6*ky[6]+B7*ky[7]+B8*ky[8]+B9*ky[9]+B10*ky[10]+B11*ky[11])};
+}
+
 /* ── Stiffness detector ──
    A 2×2 linear system is "obviously stiff" when the eigenvalues are real,
    the same sign, and their magnitudes are widely separated. Complex
@@ -1081,7 +1122,7 @@ function isStiff(a,b,c,d){
 }
 
 function solverLabel(key){
-  return {auto:'Auto', rk4:'RK4', tsit5:'Tsit5', sdirk2:'SDIRK2'}[key] || key;
+  return {auto:'Auto', rk4:'RK4', tsit5:'Tsit5', dop853:'DOP853', sdirk2:'SDIRK2'}[key] || key;
 }
 
 function pickSolver(a,b,c,d){
@@ -1093,6 +1134,7 @@ function pickSolver(a,b,c,d){
 
 function stepSolver(method,x,y,a,b,c,d,h){
   if (method === 'tsit5')  return tsit5 (x,y,a,b,c,d,h);
+  if (method === 'dop853') return dop853(x,y,a,b,c,d,h);
   if (method === 'sdirk2') return sdirk2(x,y,a,b,c,d,h);
   return rk4(x,y,a,b,c,d,h);
 }
@@ -1108,6 +1150,99 @@ function updateActiveSolver(){
   var label = solverLabel(chosen);
   if (sel.value === 'auto') label += ' (auto' + (isStiff(M.a,M.b,M.c,M.d) ? ', stiff' : '') + ')';
   nameEl.textContent = label;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Exact solution & per-method accuracy panel
+   ══════════════════════════════════════════════════════════════════ */
+/* Exact flow of the constant linear system x' = A x, i.e. x(t) = e^{At} x0.
+   For a 2×2 matrix e^{At} = cI·I + cA·A (a consequence of Cayley–Hamilton),
+   with the scalars cI, cA determined analytically from the eigenvalues in all
+   three regimes — distinct real, complex conjugate, and repeated. This is the
+   closed-form reference the numerical integrators are measured against. */
+function expAtVec(a,b,c,d,t,x0,y0){
+  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, alpha=tr/2;
+  var scale=Math.max(tr*tr, Math.abs(det), 1), tolD=1e-9*scale, cI, cA;
+  if(disc>tolD){                       /* distinct real eigenvalues */
+    var s=Math.sqrt(disc), l1=(tr+s)/2, l2=(tr-s)/2;
+    var e1=Math.exp(l1*t), e2=Math.exp(l2*t), inv=1/(l1-l2);
+    cA=(e1-e2)*inv; cI=(e2*l1-e1*l2)*inv;
+  }else if(disc<-tolD){                 /* complex conjugate eigenvalues */
+    var beta=Math.sqrt(-disc)/2, ea=Math.exp(alpha*t);
+    cA=ea*Math.sin(beta*t)/beta; cI=ea*Math.cos(beta*t)-cA*alpha;
+  }else{                                /* repeated eigenvalue */
+    var el=Math.exp(alpha*t); cA=el*t; cI=el*(1-alpha*t);
+  }
+  var p11=cI+cA*a, p12=cA*b, p21=cA*c, p22=cI+cA*d;
+  return {x:p11*x0+p12*y0, y:p21*x0+p22*y0};
+}
+
+/* The integrators benchmarked in the accuracy panel. */
+var ACC_METHODS=[
+  {key:'rk4',   name:'RK4',    order:4, step:rk4},
+  {key:'tsit5', name:'Tsit5',  order:5, step:tsit5},
+  {key:'dop853',name:'DOP853', order:8, step:dop853},
+  {key:'sdirk2',name:'SDIRK2', order:2, step:sdirk2}
+];
+/* Run every method at a common fixed step over a common horizon and report the
+   discrete max-in-time / 2-in-state global error, normalised by the largest
+   exact state norm on the grid:
+       E = max_i ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_i ‖e^{A t_i}x₀‖₂ .
+   The horizon is chosen so |λ|·T ≈ 6 (moderate growth/decay), and the step is
+   deliberately coarse so the methods' differing orders are visible. Being a
+   linear system, the normalised error is essentially independent of x₀. */
+function computeAccuracy(a,b,c,d){
+  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, rho;
+  if(disc>=0){ var s=Math.sqrt(disc); rho=Math.max(Math.abs((tr+s)/2),Math.abs((tr-s)/2)); }
+  else       { rho=Math.sqrt(Math.max(det,0)); }          /* |λ|=√det when complex */
+  rho=Math.max(rho,1e-6);
+  var T=Math.min(Math.max(6/rho,2),40), N=64, h=T/N, x0=1, y0=1;
+  var results=ACC_METHODS.map(function(mm){
+    var x=x0,y=y0,maxErr=0,maxRef=0,bad=false;
+    for(var i=1;i<=N;i++){
+      var n=mm.step(x,y,a,b,c,d,h); x=n.x; y=n.y;
+      if(!isFinite(x)||!isFinite(y)){bad=true;break;}
+      var ex=expAtVec(a,b,c,d,i*h,x0,y0);
+      var e=Math.hypot(x-ex.x,y-ex.y), r=Math.hypot(ex.x,ex.y);
+      if(e>maxErr)maxErr=e; if(r>maxRef)maxRef=r;
+    }
+    return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:(maxRef>0?maxErr/maxRef:maxErr)};
+  });
+  return {T:T,h:h,N:N,results:results};
+}
+/* Compact scientific formatting with Unicode superscripts, e.g. 3.2×10⁻⁶. */
+function accFmt(v){
+  if(!isFinite(v))return'diverged';
+  if(v<=0)return'0';
+  if(v<1e-15)return'&lt;10⁻¹⁵';
+  var ex=Math.floor(Math.log10(v)), m=v/Math.pow(10,ex);
+  if(m>=9.995){m/=10;ex++;}
+  var sup=String(ex).split('').map(function(ch){
+    return {'-':'⁻','0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹'}[ch]||ch;
+  }).join('');
+  return m.toFixed(1)+'×10'+sup;
+}
+/* Render the accuracy panel for the current matrix A. */
+function updateAccuracyPanel(){
+  var el=document.getElementById('accTable'); if(!el) return;
+  var M=getM(), acc=computeAccuracy(M.a,M.b,M.c,M.d);
+  var active=pickSolver(M.a,M.b,M.c,M.d);
+  var best=Infinity; acc.results.forEach(function(r){ if(isFinite(r.rel)&&r.rel<best)best=r.rel; });
+  var rows=acc.results.map(function(r){
+    var isActive=(r.key===active);
+    var star=(isFinite(r.rel)&&r.rel===best)?' <span title="most accurate">★</span>':'';
+    return '<tr'+(isActive?' class="acc-active"':'')+'>'+
+      '<td class="eq-type-cell">'+r.name+star+(isActive?' <span class="acc-tag">active</span>':'')+'</td>'+
+      '<td class="eq-coord">'+r.order+'</td>'+
+      '<td class="eq-coord">'+accFmt(r.rel)+'</td></tr>';
+  }).join('');
+  el.innerHTML='<table class="eq-table">'+
+    '<caption>Global error vs the exact solution \\(e^{At}\\mathbf{x}_0\\), \\(\\mathbf{x}_0=(1,1)\\), '+
+    'fixed step \\(h='+acc.h.toFixed(3)+'\\) over \\(t\\in[0,'+acc.T.toFixed(1)+']\\) ('+acc.N+' steps). '+
+    'Norm: \\(\\max_i\\lVert \\mathbf{x}_\\text{num}-\\mathbf{x}_\\text{exact}\\rVert_2 / \\max_i\\lVert \\mathbf{x}_\\text{exact}\\rVert_2\\). ★ = most accurate.</caption>'+
+    '<thead><tr><th>Method</th><th>Order</th><th>Rel. error</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table>';
+  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
 }
 
 /* ── Trajectory computation ── */
@@ -1405,7 +1540,7 @@ function drawPortrait(){
     });
   }
 
-  updateClassTable();updateEq();updateActiveSolver();
+  updateClassTable();updateEq();updateActiveSolver();updateAccuracyPanel();
 }
 
 /* ── Bifurcation animation ── */
@@ -1617,6 +1752,7 @@ document.addEventListener('DOMContentLoaded',function(){
     clearComputed();
     drawPortraitAndReset();
     updateActiveSolver();
+    updateAccuracyPanel();
     say('Solver: '+document.getElementById('solverActiveName').textContent);
   });
 
