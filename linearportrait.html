@@ -428,7 +428,7 @@ table.eq-table tr.acc-active td{background:var(--info);}
       </ul>
       <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
       <h2>Accuracy panel</h2>
-      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the norm \(\max_i\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\) (maximum in time of the state 2-norm, normalised). On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff system the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded (though a coarse step still leaves a visible error across the fast transient), so the low-order implicit method becomes the only usable one.</p>
+      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the norm \(\max_i\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\) (maximum in time of the state 2-norm, normalised). On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff <em>stable</em> node the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded (though a coarse step still leaves a visible error across the fast transient), so the low-order implicit method becomes the only usable one. The initial state is deliberately chosen to excite both eigenmodes — otherwise a matrix whose slow eigenvector happens to align with \(\mathbf{x}_0\) would never activate its fast mode and would look non-stiff. A stiff <em>growing</em> node is different: there is no slow-only regime to step over, so the horizon is capped to keep the exact solution finite, and over that short window the high-order explicit methods legitimately win — L-stability buys accuracy only on decaying stiff modes.</p>
       <h2>How to Use</h2>
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
@@ -1203,8 +1203,30 @@ var ACC_METHODS=[
        80+ orders of magnitude and the relative error is pure noise.
    On a stiff *stable* node this drives the explicit methods past their stability
    limit (they diverge) while the L-stable SDIRK2 stays bounded — the point of the
-   panel.  Being a linear system, the normalised error is essentially independent
-   of the direction of x₀. */
+   panel. (On a stiff *growing* node there is no slow-mode-only regime to exploit:
+   any horizon short enough to keep the exact solution finite also resolves the
+   fast mode, so the high-order explicit methods legitimately win — L-stability
+   only buys accuracy on decaying stiff modes.) */
+/* Initial condition for the benchmark. For a genuine stiffness test the
+   trajectory must actually contain the fast mode: if x₀ happens to lie along the
+   slow eigenvector (as (1,1) does for the "slant" stiff matrices) the fast mode
+   is never excited and the system behaves non-stiffly, letting a high-order
+   explicit method win spuriously. So for distinct real eigenvalues we seed with
+   the sum of the two unit eigenvectors, guaranteeing both modes are present with
+   comparable weight; complex/repeated cases keep the neutral (1,1). */
+function accInitCond(a,b,c,d){
+  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det;
+  if(disc<=1e-9*Math.max(tr*tr,Math.abs(det),1)) return {x:1,y:1}; /* complex or repeated */
+  var s=Math.sqrt(disc), l1=(tr+s)/2, l2=(tr-s)/2;
+  function evec(l){                                        /* unit null vector of (A−λI) */
+    var r1x=a-l, r1y=b, r2x=c, r2y=d-l, vx, vy;
+    if(Math.hypot(r1x,r1y)>=Math.hypot(r2x,r2y)){ vx=-r1y; vy=r1x; } else { vx=-r2y; vy=r2x; }
+    var n=Math.hypot(vx,vy)||1; return {x:vx/n, y:vy/n};
+  }
+  var v1=evec(l1), v2=evec(l2), x=v1.x+v2.x, y=v1.y+v2.y;
+  if(Math.hypot(x,y)<1e-6){ x=v1.x-v2.x; y=v1.y-v2.y; }   /* eigenvectors ≈ antiparallel */
+  return {x:x, y:y};
+}
 function computeAccuracy(a,b,c,d){
   var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, reMax, slow;
   if(disc>=0){                                            /* real eigenvalues */
@@ -1219,7 +1241,8 @@ function computeAccuracy(a,b,c,d){
   var T=6/slow;
   if(reMax>1e-9) T=Math.min(T, 6/reMax);                  /* cap growth of fastest mode to ≈e⁶ */
   T=Math.min(Math.max(T,1e-3),40);                        /* keep positive; bound runaway horizons */
-  var N=64, h=T/N, x0=1, y0=1, ref0=Math.hypot(x0,y0);
+  var ic=accInitCond(a,b,c,d), x0=ic.x, y0=ic.y;
+  var N=64, h=T/N, ref0=Math.hypot(x0,y0);
   var results=ACC_METHODS.map(function(mm){
     var x=x0,y=y0,maxErr=0,maxRef=ref0,bad=false;         /* seed ref with ‖x₀‖ (t=0) */
     for(var i=1;i<=N;i++){
@@ -1231,7 +1254,7 @@ function computeAccuracy(a,b,c,d){
     }
     return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:maxErr/maxRef};
   });
-  return {T:T,h:h,N:N,results:results};
+  return {T:T,h:h,N:N,x0:x0,y0:y0,results:results};
 }
 /* Compact scientific formatting with Unicode superscripts, e.g. 3.2×10⁻⁶. */
 function accFmt(v){
@@ -1260,7 +1283,7 @@ function updateAccuracyPanel(){
       '<td class="eq-coord">'+accFmt(r.rel)+'</td></tr>';
   }).join('');
   el.innerHTML='<table class="eq-table">'+
-    '<caption>Global error vs the exact solution \\(e^{At}\\mathbf{x}_0\\), \\(\\mathbf{x}_0=(1,1)\\), '+
+    '<caption>Global error vs the exact solution \\(e^{At}\\mathbf{x}_0\\), \\(\\mathbf{x}_0=('+acc.x0.toFixed(2)+','+acc.y0.toFixed(2)+')\\) (chosen to excite both eigenmodes), '+
     'fixed step \\(h='+acc.h.toFixed(3)+'\\) over \\(t\\in[0,'+acc.T.toFixed(1)+']\\) ('+acc.N+' steps). '+
     'Norm: \\(\\max_i\\lVert \\mathbf{x}_\\text{num}-\\mathbf{x}_\\text{exact}\\rVert_2 / \\max_i\\lVert \\mathbf{x}_\\text{exact}\\rVert_2\\). ★ = most accurate.</caption>'+
     '<thead><tr><th>Method</th><th>Order</th><th>Rel. error</th></tr></thead>'+
