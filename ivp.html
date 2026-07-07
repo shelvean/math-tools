@@ -911,7 +911,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewErrBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Absolute error at each grid point on a logarithmic axis. Higher-order methods sit lower; watch the error explode once a step leaves a method&rsquo;s stability region. For the discontinuous right-hand sides (the staircase, relay, and square-wave examples) the error jumps between adjacent nodes at each discontinuity, so it is drawn as a step curve &mdash; the vertical cliffs are genuine jumps, not a continuous descent.</details>
+          <details class="pnote"><summary>About this plot</summary>Absolute error at each grid point on a logarithmic axis. Higher-order methods sit lower; watch the error explode once a step leaves a method&rsquo;s stability region. For the discontinuous right-hand sides (the staircase, relay, and square-wave examples) the error jumps between adjacent nodes at each discontinuity, so it is drawn as bare dots &mdash; one per grid node &mdash; rather than a connecting line, since there is no continuous curve to draw through the jumps.</details>
         </div>
       </div>
 
@@ -2353,11 +2353,11 @@ function plotSolution(P,results){
 function plotError(P,results){
   var traces=[], allY=[];
   /* Discontinuous-RHS examples (floor staircase, relay, square wave) produce an
-     error that genuinely jumps between adjacent nodes at each discontinuity.
-     Linear interpolation would draw those drops as steep diagonals and read as a
-     smooth curve; a step line ('hv') holds each node value then drops vertically
-     at the next node, so the jumps show as true vertical cliffs. */
-  var stepShape = (currentEx && currentEx.discont) ? 'hv' : 'linear';
+     error that genuinely jumps between adjacent nodes at each discontinuity, so a
+     connecting line would falsely imply a continuous curve. For those examples the
+     error is drawn as bare dots — one per grid node — leaving the jumps as visible
+     gaps between nodes rather than a smooth descent. */
+  var discont = !!(currentEx && currentEx.discont);
   results.forEach(function(R){
     if(!R) return;
     var m=METBY[R.id];
@@ -2367,9 +2367,16 @@ function plotError(P,results){
       if (isFinite(e) && e>0){ x.push(R.ts[i]); y.push(e); }
     }
     allY.push(y);
-    traces.push({x:x, y:y, mode:'lines', name:texName(m.label),
-      line:{color:m.color, width:2, dash:m.dash, shape:stepShape},
-      hovertemplate:'t=%{x:.3f}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'});
+    var tr={x:x, y:y, name:texName(m.label),
+      hovertemplate:'t=%{x:.3f}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'};
+    if (discont){
+      tr.mode='markers';
+      tr.marker={color:m.color, size:5};
+    } else {
+      tr.mode='lines';
+      tr.line={color:m.color, width:2, dash:m.dash};
+    }
+    traces.push(tr);
   });
   var yr=dataRange(allY);
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
