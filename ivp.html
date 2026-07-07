@@ -911,7 +911,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewErrBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Absolute error at each grid point on a logarithmic axis. Higher-order methods sit lower; watch the error explode once a step leaves a method&rsquo;s stability region. For the discontinuous right-hand sides (the staircase, relay, and square-wave examples) the error jumps between adjacent nodes at each discontinuity, so it is drawn as bare dots &mdash; one per grid node &mdash; rather than a connecting line, since there is no continuous curve to draw through the jumps.</details>
+          <details class="pnote"><summary>About this plot</summary>Absolute error at each grid point on a logarithmic axis. Higher-order methods sit lower; watch the error explode once a step leaves a method&rsquo;s stability region. For the discontinuous right-hand sides (the staircase, relay, and square-wave examples) the error jumps at each discontinuity of the equation, so the line is broken there: it stays connected within each smooth stretch but leaves a gap across the step that straddles a jump, rather than drawing a misleading diagonal through it.</details>
         </div>
       </div>
 
@@ -2350,14 +2350,41 @@ function plotSolution(P,results){
   solnInited=true;
 }
 
+/* Locate the discontinuities of the reference solution on [t0,t1]. A genuine
+   jump in f leaves a corner in y(t): the one-sided slopes differ by an O(1)
+   amount that does NOT shrink as the sampling grid refines, whereas smooth
+   curvature contributes only O(dt). So we sample the slope on a fine grid, look
+   at the change in slope between adjacent intervals, and keep only spikes that
+   are extreme outliers against the median (the smooth-curvature baseline). This
+   returns [] for smooth problems and the switching times for discontinuous ones. */
+function findDiscontinuities(ref,t0,t1){
+  var M=2000, dt=(t1-t0)/M, slope=new Array(M);
+  for (var i=0;i<M;i++){ var a=t0+i*dt; slope[i]=(ref(a+dt)-ref(a))/dt; }
+  var jump=new Array(M); jump[0]=0; var pos=[];
+  for (i=1;i<M;i++){ var j=Math.abs(slope[i]-slope[i-1]); jump[i]=isFinite(j)?j:0; if(jump[i]>0) pos.push(jump[i]); }
+  if(!pos.length) return [];
+  var mx=0; for(i=0;i<M;i++) if(jump[i]>mx) mx=jump[i];
+  pos.sort(function(a,b){return a-b;});
+  var med=pos[Math.floor((pos.length-1)/2)];
+  if(!(mx>0) || !(mx>30*med)) return [];         // no jump stands out from the baseline
+  var thr=Math.max(0.25*mx, 30*med), stars=[];
+  for (i=1;i<M-1;i++){
+    if (jump[i]>thr && jump[i]>=jump[i-1] && jump[i]>=jump[i+1]){
+      var t=t0+(i+0.5)*dt;
+      if(!stars.length || t-stars[stars.length-1]>3*dt) stars.push(t);
+    }
+  }
+  return stars;
+}
+
 function plotError(P,results){
   var traces=[], allY=[];
   /* Discontinuous-RHS examples (floor staircase, relay, square wave) produce an
-     error that genuinely jumps between adjacent nodes at each discontinuity, so a
-     connecting line would falsely imply a continuous curve. For those examples the
-     error is drawn as bare dots — one per grid node — leaving the jumps as visible
-     gaps between nodes rather than a smooth descent. */
-  var discont = !!(currentEx && currentEx.discont);
+     error that genuinely jumps at each discontinuity of f. Joining the nodes with
+     one line would draw a diagonal across the jump and read as a smooth descent,
+     so for those examples we keep the thin connecting line within each smooth
+     stretch but break it (insert a gap) on the step that straddles a discontinuity. */
+  var disc = (currentEx && currentEx.discont) ? findDiscontinuities(P.ref, P.t0, P.tEnd) : [];
   results.forEach(function(R){
     if(!R) return;
     var m=METBY[R.id];
@@ -2367,16 +2394,24 @@ function plotError(P,results){
       if (isFinite(e) && e>0){ x.push(R.ts[i]); y.push(e); }
     }
     allY.push(y);
-    var tr={x:x, y:y, name:texName(m.label),
-      hovertemplate:'t=%{x:.3f}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'};
-    if (discont){
-      tr.mode='markers';
-      tr.marker={color:m.color, size:5};
-    } else {
-      tr.mode='lines';
-      tr.line={color:m.color, width:2, dash:m.dash};
+    if (disc.length){
+      /* Re-emit the series, inserting a null wherever a discontinuity time falls
+         inside the step (x[i], x[i+1]] — plotly breaks the line at the null. */
+      var xb=[], yb=[];
+      for (i=0;i<x.length;i++){
+        xb.push(x[i]); yb.push(y[i]);
+        if (i<x.length-1){
+          for (var k=0;k<disc.length;k++){
+            if (disc[k]>x[i] && disc[k]<=x[i+1]){ xb.push((x[i]+x[i+1])/2); yb.push(null); break; }
+          }
+        }
+      }
+      x=xb; y=yb;
     }
-    traces.push(tr);
+    traces.push({x:x, y:y, mode:'lines', name:texName(m.label),
+      line:{color:m.color, width:disc.length?1:2, dash:m.dash},
+      connectgaps:false,
+      hovertemplate:'t=%{x:.3f}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'});
   });
   var yr=dataRange(allY);
   var yTicks=yr?logTicks(yr.lo,yr.hi,'exp'):{dtick:1,exponentformat:'e'};
