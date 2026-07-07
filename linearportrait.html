@@ -426,7 +426,7 @@ table.eq-table tr.acc-active td{background:var(--info);}
         <li><strong>DOP853</strong> — Dormand–Prince 8(5,3) explicit Runge–Kutta, 12 stages, 8th order (Hairer, Nørsett &amp; Wanner). The highest-accuracy explicit choice: at the same step it reaches near machine precision on this linear system, as the accuracy panel shows.</li>
         <li><strong>SDIRK2</strong> — singly-diagonally-implicit Runge–Kutta, 2 stages, 2nd order with \(\gamma = 1-\tfrac{1}{\sqrt{2}}\). The method is L-stable, so on stiff linear systems it stays bounded and usable at step sizes where explicit methods would blow up. It is only 2nd order, so its error is larger than the explicit methods on non-stiff problems, and a coarse step still leaves a visible error across the fast initial transient of a stiff mode — but the solution never diverges.</li>
       </ul>
-      <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
+      <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" <em>and stable</em> — both eigenvalues real and <em>negative</em>, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Growing stiff nodes (both eigenvalues positive) are deliberately <em>not</em> sent to SDIRK2: L-stability damps growing modes, so the implicit method would suppress the fast escape and draw a qualitatively wrong portrait, whereas an explicit method tracks the growth correctly. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
       <h2>Accuracy panel</h2>
       <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the normalised state 2-norm \(\max_{t_i\ge T/2}\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\). The error is maximised over the <em>second half</em> of the interval, i.e. after the startup transient: on a stiff system the coarse step cannot resolve the fast mode (that is what makes it stiff), and an L-stable method needs a few steps to damp the resulting spurious component — so measuring from the start would report that unavoidable first-step overshoot rather than what a stiff solver is actually for, staying stable and tracking the slow manifold. On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff <em>stable</em> node the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded and, once the transient has settled, tracks the slow dynamics accurately — so the low-order implicit method becomes the only usable one. The initial state is deliberately chosen to excite both eigenmodes — otherwise a matrix whose slow eigenvector happens to align with \(\mathbf{x}_0\) would never activate its fast mode and would look non-stiff. A stiff <em>growing</em> node is different: there is no slow-only regime to step over, so the horizon is capped to keep the exact solution finite, and over that short window the high-order explicit methods legitimately win — L-stability buys accuracy only on decaying stiff modes.</p>
       <h2>How to Use</h2>
@@ -478,7 +478,7 @@ table.eq-table tr.acc-active td{background:var(--info);}
       <span id="solverActive" class="solver-active" aria-live="polite">
         Active: <span id="solverActiveName">RK4</span>
       </span>
-      <span id="solverActiveDesc" class="sr-only">Auto picks SDIRK2 for obviously stiff systems; RK4 otherwise.</span>
+      <span id="solverActiveDesc" class="sr-only">Auto picks SDIRK2 for obviously stiff stable systems (both eigenvalues negative); RK4 otherwise.</span>
     </div>
 
     <!-- Arrows per axis -->
@@ -1107,15 +1107,19 @@ function dop853(x,y,a,b,c,d,h){
 }
 
 /* ── Stiffness detector ──
-   A 2×2 linear system is "obviously stiff" when the eigenvalues are real,
-   the same sign, and their magnitudes are widely separated. Complex
-   eigenvalues (spirals, centers) are not classically stiff. */
+   Returns true only for the case where the L-stable implicit solver is the
+   right Auto choice: eigenvalues real, both NEGATIVE (a fast decaying mode over
+   a slow one), and widely separated in magnitude. A growing "stiff" node (both
+   eigenvalues positive) is deliberately excluded — L-stability damps growing
+   modes, so SDIRK2 would suppress the fast escape and draw a qualitatively wrong
+   portrait; those are integrated explicitly instead, which tracks the growth
+   correctly. Complex eigenvalues (spirals, centers) are not classically stiff. */
 function isStiff(a,b,c,d){
   var tr = a+d, det = a*d - b*c, disc = tr*tr - 4*det;
   if (disc <= 1e-12) return false;             /* complex or near-repeated */
   var sq = Math.sqrt(disc);
-  var l1 = (tr + sq)/2, l2 = (tr - sq)/2;
-  if (l1*l2 <= 1e-10) return false;            /* opposite signs or zero (saddle / singular) */
+  var l1 = (tr + sq)/2, l2 = (tr - sq)/2;      /* l1 ≥ l2 (l1 is the most positive) */
+  if (l1 >= 0) return false;                   /* need both negative: saddle, unstable, or growing-stiff excluded */
   var m1 = Math.abs(l1), m2 = Math.abs(l2);
   var hi = Math.max(m1, m2), lo = Math.max(Math.min(m1, m2), 1e-12);
   return hi / lo >= 50;
