@@ -1814,15 +1814,18 @@ function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
   var dS=Math.max(xMax-xMin,yMax-yMin);
   var atol=1e-6*tolScale,rtol=1e-3*tolScale;
   var hMin=1e-14,BLOW=Math.max(1e6,dS*1000),minSep=dS*1e-4;
-  /* maxDisp is now the plotted-chord resolution (not a step cap): the order-8
-     step strides as large as error control allows, then the 7th-order dense
-     output is sampled so consecutive plotted points stay within maxDisp — the
-     same smooth picture as before, at a fraction of the RHS evaluations. A
-     loose maxStepDisp still rejects any single step that would leap across the
-     phase plane (keeping error control reliable in fast regions), and hMaxBig
-     lifts the old tiny dtMax cap so DOP853's large steps are actually allowed. */
+  /* maxDisp caps BOTH the plotted-chord resolution and the accepted step's
+     spatial displacement. An earlier version let the order-8 step stride far
+     (maxStepDisp = dS·0.2) and relied on the dense interpolant for a smooth
+     plot. But error control bounds only the LOCAL error per step; with just a
+     handful of large steps per revolution the small per-step errors accumulate
+     over the many windings a fast centre produces, so the closed orbit slowly
+     drifts and renders as a thick band — visibly worse than Tsit5. Capping the
+     step displacement (as Tsit5 does) forces enough steps per orbit to keep it
+     closed, while a slow, smooth region still strides (small displacement even
+     at large h). hMaxBig keeps that large-h striding available where it is safe. */
   var maxDisp=dS*(meshKey==='coarse'?0.02:meshKey==='fine'?0.005:meshKey==='veryfine'?0.0025:0.01);
-  var maxStepDisp=Math.max(dS*0.2,maxDisp*16);
+  var maxStepDisp=maxDisp;
   var hMaxBig=mesh.dtMax*50;
   var scope={x:0,y:0};
 
@@ -1846,9 +1849,11 @@ function computeTrajectoryDOP853(f,g,x0,y0,xMin,xMax,yMin,yMax){
         if(errN<=1 && disp<=maxStepDisp){
           var fac=errN>1e-12?Math.min(6,0.9*Math.pow(errN,-0.125)):6;
           if(disp>1e-30)fac=Math.min(fac,0.9*maxStepDisp/disp);
-          /* Emit smooth interpolated points along the accepted step. */
-          var dense=dop853Dense2D(f,g,px,py,curH,res.xNext,res.yNext,res.kx,res.ky,scope);
+          /* Sub-sample a long step with the dense interpolant for a smooth curve.
+             With the displacement cap a step rarely exceeds maxDisp, so this is
+             usually a single point (the endpoint) and the interpolant is skipped. */
           var nSub=Math.max(1,Math.min(64,Math.ceil(disp/maxDisp)));
+          var dense=nSub>1?dop853Dense2D(f,g,px,py,curH,res.xNext,res.yNext,res.kx,res.ky,scope):null;
           if(dense){
             for(var q=1;q<=nSub&&pts.length<maxP;q++){
               var th=q/nSub, ix=dop853DenseEval(dense.Fx,px,th), iy=dop853DenseEval(dense.Fy,py,th);
