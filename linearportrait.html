@@ -424,11 +424,11 @@ table.eq-table tr.acc-active td{background:var(--info);}
         <li><strong>RK4</strong> — classical explicit Runge–Kutta, 4th order. Good general default for non-stiff systems.</li>
         <li><strong>Tsit5</strong> — Tsitouras 5(4) explicit Runge–Kutta, 6 stages, 5th-order accuracy. Smoother curves than RK4 at the same step size; same stability footprint (no benefit on stiff problems).</li>
         <li><strong>DOP853</strong> — Dormand–Prince 8(5,3) explicit Runge–Kutta, 12 stages, 8th order (Hairer, Nørsett &amp; Wanner). The highest-accuracy explicit choice: at the same step it reaches near machine precision on this linear system, as the accuracy panel shows.</li>
-        <li><strong>SDIRK2</strong> — singly-diagonally-implicit Runge–Kutta, 2 stages, 2nd order with \(\gamma = 1-\tfrac{1}{\sqrt{2}}\). The method is L-stable, so it remains accurate on stiff linear systems where explicit methods would either blow up or require a tiny step.</li>
+        <li><strong>SDIRK2</strong> — singly-diagonally-implicit Runge–Kutta, 2 stages, 2nd order with \(\gamma = 1-\tfrac{1}{\sqrt{2}}\). The method is L-stable, so on stiff linear systems it stays bounded and usable at step sizes where explicit methods would blow up. It is only 2nd order, so its error is larger than the explicit methods on non-stiff problems, and a coarse step still leaves a visible error across the fast initial transient of a stiff mode — but the solution never diverges.</li>
       </ul>
       <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
       <h2>Accuracy panel</h2>
-      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the norm \(\max_i\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\) (maximum in time of the state 2-norm, normalised). The ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision.</p>
+      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the norm \(\max_i\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\) (maximum in time of the state 2-norm, normalised). On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff system the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded (though a coarse step still leaves a visible error across the fast transient), so the low-order implicit method becomes the only usable one.</p>
       <h2>How to Use</h2>
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
@@ -1186,19 +1186,42 @@ var ACC_METHODS=[
 ];
 /* Run every method at a common fixed step over a common horizon and report the
    discrete max-in-time / 2-in-state global error, normalised by the largest
-   exact state norm on the grid:
-       E = max_i ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_i ‖e^{A t_i}x₀‖₂ .
-   The horizon is chosen so |λ|·T ≈ 6 (moderate growth/decay), and the step is
-   deliberately coarse so the methods' differing orders are visible. Being a
-   linear system, the normalised error is essentially independent of x₀. */
+   exact state norm on the grid (including t=0, so a fully-decaying system is
+   normalised by ‖x₀‖ rather than by a vanishingly small late-time norm):
+       E = max_i ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_{i≥0} ‖e^{A t_i}x₀‖₂ .
+
+   Horizon selection.  The step must be coarse enough that the methods' differing
+   orders — and, on stiff systems, the explicit methods' stability limit — are
+   visible, without letting the exact solution span so many orders of magnitude
+   that the comparison becomes meaningless.  So:
+     • the horizon resolves the SLOWEST timescale, T ≈ 6/|λ_slow|, giving ~6
+       e-foldings of the slow mode (using the fast |λ| here, as before, collapses
+       the horizon on a stiff system so nothing stiff is ever exercised);
+     • if any mode grows (max Re λ > 0) the horizon is additionally capped at
+       6/max(Re λ) so the fastest-growing mode grows by at most ≈ e⁶ — otherwise
+       a stiff growing node blows the exact solution (and every integrator) up by
+       80+ orders of magnitude and the relative error is pure noise.
+   On a stiff *stable* node this drives the explicit methods past their stability
+   limit (they diverge) while the L-stable SDIRK2 stays bounded — the point of the
+   panel.  Being a linear system, the normalised error is essentially independent
+   of the direction of x₀. */
 function computeAccuracy(a,b,c,d){
-  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, rho;
-  if(disc>=0){ var s=Math.sqrt(disc); rho=Math.max(Math.abs((tr+s)/2),Math.abs((tr-s)/2)); }
-  else       { rho=Math.sqrt(Math.max(det,0)); }          /* |λ|=√det when complex */
-  rho=Math.max(rho,1e-6);
-  var T=Math.min(Math.max(6/rho,2),40), N=64, h=T/N, x0=1, y0=1;
+  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, reMax, slow;
+  if(disc>=0){                                            /* real eigenvalues */
+    var s=Math.sqrt(disc), l1=(tr+s)/2, l2=(tr-s)/2;
+    reMax=Math.max(l1,l2);
+    slow=Math.min(Math.abs(l1),Math.abs(l2));
+    if(slow<1e-6) slow=Math.max(Math.abs(l1),Math.abs(l2)); /* one mode ≈0: use the other */
+  }else{                                                  /* complex conjugates */
+    reMax=tr/2; slow=Math.sqrt(Math.max(det,0));          /* |λ|=√det, common timescale */
+  }
+  slow=Math.max(slow,1e-6);
+  var T=6/slow;
+  if(reMax>1e-9) T=Math.min(T, 6/reMax);                  /* cap growth of fastest mode to ≈e⁶ */
+  T=Math.min(Math.max(T,1e-3),40);                        /* keep positive; bound runaway horizons */
+  var N=64, h=T/N, x0=1, y0=1, ref0=Math.hypot(x0,y0);
   var results=ACC_METHODS.map(function(mm){
-    var x=x0,y=y0,maxErr=0,maxRef=0,bad=false;
+    var x=x0,y=y0,maxErr=0,maxRef=ref0,bad=false;         /* seed ref with ‖x₀‖ (t=0) */
     for(var i=1;i<=N;i++){
       var n=mm.step(x,y,a,b,c,d,h); x=n.x; y=n.y;
       if(!isFinite(x)||!isFinite(y)){bad=true;break;}
@@ -1206,7 +1229,7 @@ function computeAccuracy(a,b,c,d){
       var e=Math.hypot(x-ex.x,y-ex.y), r=Math.hypot(ex.x,ex.y);
       if(e>maxErr)maxErr=e; if(r>maxRef)maxRef=r;
     }
-    return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:(maxRef>0?maxErr/maxRef:maxErr)};
+    return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:maxErr/maxRef};
   });
   return {T:T,h:h,N:N,results:results};
 }
