@@ -911,7 +911,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewErrBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Absolute error at each grid point on a logarithmic axis. Higher-order methods sit lower; watch the error explode once a step leaves a method&rsquo;s stability region.</details>
+          <details class="pnote"><summary>About this plot</summary>Absolute error at each grid point on a logarithmic axis. Higher-order methods sit lower; watch the error explode once a step leaves a method&rsquo;s stability region. For the discontinuous right-hand sides (the staircase, relay, and square-wave examples) the error jumps between adjacent nodes at each discontinuity, so it is drawn as a step curve &mdash; the vertical cliffs are genuine jumps, not a continuous descent.</details>
         </div>
       </div>
 
@@ -1331,15 +1331,15 @@ var EXAMPLES = [
   {group:'Non-Lipschitz / discontinuous RHS', id:'floorint', name:"y' = ln3·(y − ⌊y⌋ − 3/2)   (non-Lipschitz)",
     tex:"\\(y' = \\ln 3\\,\\bigl(y - \\lfloor y\\rfloor - \\dfrac{3}{2}\\bigr)\\) &nbsp;<span style=\"font-weight:400;\">(descending staircase)</span>",
     f:'log(3)*(y - floor(y) - 3/2)', exact:'-floor(t) + (1/2)*(1 - 3^(t - floor(t)))',
-    t0:'0', y0:'0', tEnd:'10', h:0.1, lam:null,
+    t0:'0', y0:'0', tEnd:'10', h:0.1, lam:null, discont:true,
     note:'Here ⌊·⌋ is the integer part (floor), so the right-hand side has jump discontinuities and is not Lipschitz in y — the standard existence–uniqueness theorem does not apply. The exact solution is the descending staircase y = −⌊t⌋ + ½(1 − 3^{t−⌊t⌋}). The offset c = 3/2 sets the edge ratio (3/2)/(1/2) = 3, and the rate ln 3 makes each strip take time log₃3 = 1, so y(t+1) = y(t) − 1. Because f is discontinuous, even high-order methods collapse to roughly first order near the integer steps; watch the Convergence panel. (Taylor methods are skipped — floor is not differentiable.)'},
   {group:'Non-Lipschitz / discontinuous RHS', id:'relay', name:"y' = −sign(y),  y(0)=1   (relay / Filippov)",
     tex:"\\(y' = -\\operatorname{sign}(y)\\) &nbsp;<span style=\"font-weight:400;\">(relay — reaches 0 in finite time)</span>",
-    f:'-sign(y)', exact:'max(y0 - t, 0)', t0:'0', y0:'1', tEnd:'3', h:0.1, lam:null,
+    f:'-sign(y)', exact:'max(y0 - t, 0)', t0:'0', y0:'1', tEnd:'3', h:0.1, lam:null, discont:true,
     note:'The signum right-hand side jumps from +1 to −1 across y = 0, so f is discontinuous in y and badly non-Lipschitz there. The solution slides straight down, y = 1 − t, and hits zero in finite time at t = 1; for t > 1 it is pinned at y = 0 (a Filippov sliding mode where the two one-sided fields point at each other). The exact solution is y = max(1 − t, 0). Numerically there is nothing to converge to smoothly: once the trajectory reaches the switching line every fixed-step method chatters by ±h about zero instead of resting on it, and the error stays O(h) no matter the method order — a clean illustration of why discontinuous vector fields defeat high-order convergence. (Taylor methods are skipped — sign is not differentiable.)'},
   {group:'Non-Lipschitz / discontinuous RHS', id:'square', name:"y' = sign(sin t)   (square wave → triangle)",
     tex:"\\(y' = \\operatorname{sign}(\\sin t)\\) &nbsp;<span style=\"font-weight:400;\">(square wave — triangle-wave solution)</span>",
-    f:'sign(sin(t))', exact:'pi - abs(mod(t, 2*pi) - pi)', t0:'0', y0:'0', tEnd:'12.566', h:0.1, lam:null,
+    f:'sign(sin(t))', exact:'pi - abs(mod(t, 2*pi) - pi)', t0:'0', y0:'0', tEnd:'12.566', h:0.1, lam:null, discont:true,
     note:'A square-wave forcing: the right-hand side flips between +1 and −1 every time sin t changes sign, i.e. at t = π, 2π, 3π, …, so f is a genuinely discontinuous — not continuous — function. Integrating it gives a triangle wave that rises with slope +1, turns a sharp corner at each multiple of π, and falls with slope −1 (exact y = π − |t mod 2π − π|). This f depends only on t and is trivially Lipschitz in y, yet the jumps still wreck convergence: because the corners fall at irrational t they never land on a grid node, so on every period some step straddles a jump and integrates the wrong constant slope across part of it. The error therefore spikes at each corner and the global order collapses toward 1 for all methods — RK4 stops behaving like a fourth-order method entirely. Watch the Error-growth panel sawtooth once per half-period and the Convergence panel flatten to slope ≈ 1. (Taylor methods are skipped — sign is not differentiable.)'},
   {group:'Non-Lipschitz / discontinuous RHS', id:'blowup', name:"y' = y²,  y(0)=1   (finite-time blow-up)",
     tex:"\\(y' = y^{2} \\;\\rightarrow\\; \\dfrac{1}{1-t}\\) &nbsp;<span style=\"font-weight:400;\">(blow-up at t = 1)</span>",
@@ -2352,6 +2352,12 @@ function plotSolution(P,results){
 
 function plotError(P,results){
   var traces=[], allY=[];
+  /* Discontinuous-RHS examples (floor staircase, relay, square wave) produce an
+     error that genuinely jumps between adjacent nodes at each discontinuity.
+     Linear interpolation would draw those drops as steep diagonals and read as a
+     smooth curve; a step line ('hv') holds each node value then drops vertically
+     at the next node, so the jumps show as true vertical cliffs. */
+  var stepShape = (currentEx && currentEx.discont) ? 'hv' : 'linear';
   results.forEach(function(R){
     if(!R) return;
     var m=METBY[R.id];
@@ -2362,7 +2368,7 @@ function plotError(P,results){
     }
     allY.push(y);
     traces.push({x:x, y:y, mode:'lines', name:texName(m.label),
-      line:{color:m.color, width:2, dash:m.dash},
+      line:{color:m.color, width:2, dash:m.dash, shape:stepShape},
       hovertemplate:'t=%{x:.3f}<br>error=%{y:.2e}<extra>'+m.label+'</extra>'});
   });
   var yr=dataRange(allY);
