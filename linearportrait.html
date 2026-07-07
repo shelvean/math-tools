@@ -428,7 +428,7 @@ table.eq-table tr.acc-active td{background:var(--info);}
       </ul>
       <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
       <h2>Accuracy panel</h2>
-      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the norm \(\max_i\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\) (maximum in time of the state 2-norm, normalised). On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff <em>stable</em> node the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded (though a coarse step still leaves a visible error across the fast transient), so the low-order implicit method becomes the only usable one. The initial state is deliberately chosen to excite both eigenmodes — otherwise a matrix whose slow eigenvector happens to align with \(\mathbf{x}_0\) would never activate its fast mode and would look non-stiff. A stiff <em>growing</em> node is different: there is no slow-only regime to step over, so the horizon is capped to keep the exact solution finite, and over that short window the high-order explicit methods legitimately win — L-stability buys accuracy only on decaying stiff modes.</p>
+      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the normalised state 2-norm \(\max_{t_i\ge T/2}\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\). The error is maximised over the <em>second half</em> of the interval, i.e. after the startup transient: on a stiff system the coarse step cannot resolve the fast mode (that is what makes it stiff), and an L-stable method needs a few steps to damp the resulting spurious component — so measuring from the start would report that unavoidable first-step overshoot rather than what a stiff solver is actually for, staying stable and tracking the slow manifold. On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff <em>stable</em> node the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded and, once the transient has settled, tracks the slow dynamics accurately — so the low-order implicit method becomes the only usable one. The initial state is deliberately chosen to excite both eigenmodes — otherwise a matrix whose slow eigenvector happens to align with \(\mathbf{x}_0\) would never activate its fast mode and would look non-stiff. A stiff <em>growing</em> node is different: there is no slow-only regime to step over, so the horizon is capped to keep the exact solution finite, and over that short window the high-order explicit methods legitimately win — L-stability buys accuracy only on decaying stiff modes.</p>
       <h2>How to Use</h2>
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
@@ -1184,11 +1184,25 @@ var ACC_METHODS=[
   {key:'dop853',name:'DOP853', order:8, step:dop853},
   {key:'sdirk2',name:'SDIRK2', order:2, step:sdirk2}
 ];
-/* Run every method at a common fixed step over a common horizon and report the
-   discrete max-in-time / 2-in-state global error, normalised by the largest
-   exact state norm on the grid (including t=0, so a fully-decaying system is
-   normalised by ‖x₀‖ rather than by a vanishingly small late-time norm):
-       E = max_i ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_{i≥0} ‖e^{A t_i}x₀‖₂ .
+/* Run every method at a common fixed step over a common horizon and report a
+   discrete 2-in-state global error, normalised by the largest exact state norm
+   on the grid (including t=0, so a fully-decaying system is normalised by ‖x₀‖
+   rather than by a vanishingly small late-time norm).  The error is maximised
+   over the SECOND HALF of the interval only:
+       E = max_{i≥N/2} ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_{i≥0} ‖e^{A t_i}x₀‖₂ .
+
+   Why the second half.  On a stiff system the fixed step is far larger than the
+   fast timescale, so the fast mode cannot be resolved — that IS stiffness. A
+   single step already jumps many fast time-constants, and an L-stable method
+   damps the resulting spurious component over the next few *steps* (not a few
+   fast time-constants). Measuring the max over the whole interval would report
+   that first-step overshoot (~15% for SDIRK2) instead of what a stiff solver is
+   actually for: staying stable and tracking the slow manifold accurately. By
+   t=T/2 the startup transient has fully damped, so the second-half max reports
+   the settled slow-manifold accuracy (~1e-5 for SDIRK2) — while explicit methods,
+   which blow up in the first few steps, are still divergent. It also stays a
+   worst-case (not a single-point endpoint sample), so it is robust for
+   oscillatory systems.
 
    Horizon selection.  The step must be coarse enough that the methods' differing
    orders — and, on stiff systems, the explicit methods' stability limit — are
@@ -1242,15 +1256,17 @@ function computeAccuracy(a,b,c,d){
   if(reMax>1e-9) T=Math.min(T, 6/reMax);                  /* cap growth of fastest mode to ≈e⁶ */
   T=Math.min(Math.max(T,1e-3),40);                        /* keep positive; bound runaway horizons */
   var ic=accInitCond(a,b,c,d), x0=ic.x, y0=ic.y;
-  var N=64, h=T/N, ref0=Math.hypot(x0,y0);
+  var N=64, h=T/N, ref0=Math.hypot(x0,y0), half=N>>1;
   var results=ACC_METHODS.map(function(mm){
     var x=x0,y=y0,maxErr=0,maxRef=ref0,bad=false;         /* seed ref with ‖x₀‖ (t=0) */
     for(var i=1;i<=N;i++){
       var n=mm.step(x,y,a,b,c,d,h); x=n.x; y=n.y;
       if(!isFinite(x)||!isFinite(y)){bad=true;break;}
       var ex=expAtVec(a,b,c,d,i*h,x0,y0);
-      var e=Math.hypot(x-ex.x,y-ex.y), r=Math.hypot(ex.x,ex.y);
-      if(e>maxErr)maxErr=e; if(r>maxRef)maxRef=r;
+      var r=Math.hypot(ex.x,ex.y); if(r>maxRef)maxRef=r;  /* ref norm over the whole grid */
+      if(i>=half){                                        /* error only after the startup transient */
+        var e=Math.hypot(x-ex.x,y-ex.y); if(e>maxErr)maxErr=e;
+      }
     }
     return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:maxErr/maxRef};
   });
@@ -1285,7 +1301,7 @@ function updateAccuracyPanel(){
   el.innerHTML='<table class="eq-table">'+
     '<caption>Global error vs the exact solution \\(e^{At}\\mathbf{x}_0\\), \\(\\mathbf{x}_0=('+acc.x0.toFixed(2)+','+acc.y0.toFixed(2)+')\\) (chosen to excite both eigenmodes), '+
     'fixed step \\(h='+acc.h.toFixed(3)+'\\) over \\(t\\in[0,'+acc.T.toFixed(1)+']\\) ('+acc.N+' steps). '+
-    'Norm: \\(\\max_i\\lVert \\mathbf{x}_\\text{num}-\\mathbf{x}_\\text{exact}\\rVert_2 / \\max_i\\lVert \\mathbf{x}_\\text{exact}\\rVert_2\\). ★ = most accurate.</caption>'+
+    'Norm: \\(\\max_{t_i\\ge T/2}\\lVert \\mathbf{x}_\\text{num}-\\mathbf{x}_\\text{exact}\\rVert_2 / \\max_i\\lVert \\mathbf{x}_\\text{exact}\\rVert_2\\) — measured after the startup transient. ★ = most accurate.</caption>'+
     '<thead><tr><th>Method</th><th>Order</th><th>Rel. error</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table>';
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
