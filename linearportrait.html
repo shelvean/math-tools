@@ -426,9 +426,9 @@ table.eq-table tr.acc-active td{background:var(--info);}
         <li><strong>DOP853</strong> — Dormand–Prince 8(5,3) explicit Runge–Kutta, 12 stages, 8th order (Hairer, Nørsett &amp; Wanner). The highest-accuracy explicit choice: at the same step it reaches near machine precision on this linear system, as the accuracy panel shows.</li>
         <li><strong>SDIRK2</strong> — singly-diagonally-implicit Runge–Kutta, 2 stages, 2nd order with \(\gamma = 1-\tfrac{1}{\sqrt{2}}\). The method is L-stable, so on stiff linear systems it stays bounded and usable at step sizes where explicit methods would blow up. It is only 2nd order, so its error is larger than the explicit methods on non-stiff problems, and a coarse step still leaves a visible error across the fast initial transient of a stiff mode — but the solution never diverges.</li>
       </ul>
-      <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" <em>and stable</em> — both eigenvalues real and <em>negative</em>, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — and falls back to RK4 otherwise. Growing stiff nodes (both eigenvalues positive) are deliberately <em>not</em> sent to SDIRK2: L-stability damps growing modes, so the implicit method would suppress the fast escape and draw a qualitatively wrong portrait, whereas an explicit method tracks the growth correctly. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
+      <p>In <strong>Auto</strong> mode the page picks SDIRK2 whenever the linear system is "obviously stiff" — both eigenvalues real, the same sign, with a magnitude ratio \(|\lambda_\text{fast}/\lambda_\text{slow}|\ge 50\) — for stable and unstable nodes alike, and falls back to RK4 otherwise. Tracing a trajectory means integrating toward the fixed point (forward for a stable node, backward for an unstable one), and in that direction the fast mode is a stiff <em>decay</em>: a coarse explicit step oscillates or blows up on it — the backward branch of a stiff unstable node is where RK4/Tsit5/DOP853 visibly go haywire — while the L-stable SDIRK2 stays smooth. Centers are integrated separately with a fixed-step explicit scheme to keep closed orbits closed (an implicit method would introduce numerical damping).</p>
       <h2>Accuracy panel</h2>
-      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the normalised state 2-norm \(\max_{t_i\ge T/2}\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\). The error is maximised over the <em>second half</em> of the interval, i.e. after the startup transient: on a stiff system the coarse step cannot resolve the fast mode (that is what makes it stiff), and an L-stable method needs a few steps to damp the resulting spurious component — so measuring from the start would report that unavoidable first-step overshoot rather than what a stiff solver is actually for, staying stable and tracking the slow manifold. On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff <em>stable</em> node the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded and, once the transient has settled, tracks the slow dynamics accurately — so the low-order implicit method becomes the only usable one. The initial state is deliberately chosen to excite both eigenmodes — otherwise a matrix whose slow eigenvector happens to align with \(\mathbf{x}_0\) would never activate its fast mode and would look non-stiff. A stiff <em>growing</em> node is different: there is no slow-only regime to step over, so the horizon is capped to keep the exact solution finite, and over that short window the high-order explicit methods legitimately win — L-stability buys accuracy only on decaying stiff modes.</p>
+      <p>Because the system is linear with constant coefficients, its solution is known exactly: \(\mathbf{x}(t)=e^{At}\mathbf{x}_0\), where the matrix exponential is evaluated in closed form from the eigenvalues (handling distinct-real, complex, and repeated cases). The <strong>Accuracy</strong> panel runs every method at a common, deliberately coarse fixed step and reports each one's global error against this exact reference in the normalised state 2-norm \(\max_{t_i\ge T/2}\lVert \mathbf{x}_\text{num}(t_i)-\mathbf{x}_\text{exact}(t_i)\rVert_2 \big/ \max_i\lVert \mathbf{x}_\text{exact}(t_i)\rVert_2\). The error is maximised over the <em>second half</em> of the interval, i.e. after the startup transient: on a stiff system the coarse step cannot resolve the fast mode (that is what makes it stiff), and an L-stable method needs a few steps to damp the resulting spurious component — so measuring from the start would report that unavoidable first-step overshoot rather than what a stiff solver is actually for, staying stable and tracking the slow manifold. On non-stiff systems the ordering of the errors reflects the methods' orders of accuracy — SDIRK2 (2) &gt; RK4 (4) &gt; Tsit5 (5) &gt; DOP853 (8) — with DOP853 typically at machine precision. On a stiff node the picture inverts: the explicit methods cross their stability limit and diverge, while SDIRK2 stays bounded and, once the transient has settled, tracks the dynamics accurately — so the low-order implicit method becomes the only usable one. This holds for both <em>stable</em> and <em>unstable</em> stiff nodes, because the panel integrates toward the fixed point — backward in time for an unstable node, the contracting direction a phase portrait actually traces — so in both cases the fast mode it must resolve is a stiff decay, exactly the regime where the explicit methods oscillate and SDIRK2 does not. The initial state is deliberately chosen to excite both eigenmodes — otherwise a matrix whose slow eigenvector happens to align with \(\mathbf{x}_0\) would never activate its fast mode and would look non-stiff.</p>
       <h2>How to Use</h2>
       <ul>
         <li>Enter the matrix entries \(a,b,c,d\) in the matrix cells. The direction field and classification update automatically after a short pause.</li>
@@ -1107,19 +1107,22 @@ function dop853(x,y,a,b,c,d,h){
 }
 
 /* ── Stiffness detector ──
-   Returns true only for the case where the L-stable implicit solver is the
-   right Auto choice: eigenvalues real, both NEGATIVE (a fast decaying mode over
-   a slow one), and widely separated in magnitude. A growing "stiff" node (both
-   eigenvalues positive) is deliberately excluded — L-stability damps growing
-   modes, so SDIRK2 would suppress the fast escape and draw a qualitatively wrong
-   portrait; those are integrated explicitly instead, which tracks the growth
-   correctly. Complex eigenvalues (spirals, centers) are not classically stiff. */
+   True when the eigenvalues are real, the SAME sign, and widely separated in
+   magnitude — a fast mode alongside a slow one. Both stable (both negative) and
+   unstable (both positive) nodes qualify. Tracing a trajectory means integrating
+   toward the fixed point — forward for a stable node, backward for an unstable
+   one — and in THAT direction the fast mode is a stiff decay. A coarse explicit
+   step oscillates or blows up on that decay (the backward branch of an unstable
+   node is where RK4/Tsit5/DOP853 visibly go haywire), while the L-stable SDIRK2
+   stays smooth, so it is the right Auto choice for both. Complex eigenvalues
+   (spirals, centers) are not classically stiff; saddles (opposite signs) have no
+   contracting-only direction and are excluded. */
 function isStiff(a,b,c,d){
   var tr = a+d, det = a*d - b*c, disc = tr*tr - 4*det;
   if (disc <= 1e-12) return false;             /* complex or near-repeated */
   var sq = Math.sqrt(disc);
-  var l1 = (tr + sq)/2, l2 = (tr - sq)/2;      /* l1 ≥ l2 (l1 is the most positive) */
-  if (l1 >= 0) return false;                   /* need both negative: saddle, unstable, or growing-stiff excluded */
+  var l1 = (tr + sq)/2, l2 = (tr - sq)/2;
+  if (l1*l2 <= 1e-10) return false;            /* opposite signs or zero (saddle / singular) */
   var m1 = Math.abs(l1), m2 = Math.abs(l2);
   var hi = Math.max(m1, m2), lo = Math.max(Math.min(m1, m2), 1e-12);
   return hi / lo >= 50;
@@ -1208,23 +1211,26 @@ var ACC_METHODS=[
    worst-case (not a single-point endpoint sample), so it is robust for
    oscillatory systems.
 
-   Horizon selection.  The step must be coarse enough that the methods' differing
-   orders — and, on stiff systems, the explicit methods' stability limit — are
-   visible, without letting the exact solution span so many orders of magnitude
-   that the comparison becomes meaningless.  So:
-     • the horizon resolves the SLOWEST timescale, T ≈ 6/|λ_slow|, giving ~6
-       e-foldings of the slow mode (using the fast |λ| here, as before, collapses
-       the horizon on a stiff system so nothing stiff is ever exercised);
-     • if any mode grows (max Re λ > 0) the horizon is additionally capped at
-       6/max(Re λ) so the fastest-growing mode grows by at most ≈ e⁶ — otherwise
-       a stiff growing node blows the exact solution (and every integrator) up by
-       80+ orders of magnitude and the relative error is pure noise.
-   On a stiff *stable* node this drives the explicit methods past their stability
-   limit (they diverge) while the L-stable SDIRK2 stays bounded — the point of the
-   panel. (On a stiff *growing* node there is no slow-mode-only regime to exploit:
-   any horizon short enough to keep the exact solution finite also resolves the
-   fast mode, so the high-order explicit methods legitimately win — L-stability
-   only buys accuracy on decaying stiff modes.) */
+   Integration direction.  A phase portrait traces trajectories toward the fixed
+   point — forward in time for a stable node, BACKWARD for an unstable one — and
+   in that contracting direction the fast mode is a stiff *decay*, whichever the
+   node's sign. That backward branch is exactly where the explicit methods go
+   haywire on an unstable node (oscillating, blowing up) while SDIRK2 stays
+   smooth, so to measure what actually governs the picture the panel integrates
+   the SAME way: forward when the spectrum decays, backward (dir=−1, step −h) when
+   it is a growing node. Integrating toward contraction also keeps the exact
+   solution bounded, so there is no exponential-overflow / catastrophic-
+   cancellation regime to special-case.
+
+   Horizon selection.  T ≈ 6/|λ_slow| resolves the slowest timescale (~6
+   e-foldings); using the fast |λ| would collapse the horizon so nothing stiff is
+   ever exercised. In the chosen direction the growing-mode overflow is gone, but
+   a saddle (mixed signs) still grows either way, so if the dir-scaled spectrum
+   has a positive real part the horizon is capped at 6/max(Re λ_dir) to bound it.
+   With a coarse step this drives the explicit methods past their stability limit
+   on the stiff decay (they diverge) while the L-stable SDIRK2 stays bounded and,
+   after the startup transient, accurate — the point of the panel, and it now
+   holds for stiff *stable* and stiff *unstable* nodes alike. */
 /* Initial condition for the benchmark. For a genuine stiffness test the
    trajectory must actually contain the fast mode: if x₀ happens to lie along the
    slow eigenvector (as (1,1) does for the "slant" stiff matrices) the fast mode
@@ -1246,27 +1252,29 @@ function accInitCond(a,b,c,d){
   return {x:x, y:y};
 }
 function computeAccuracy(a,b,c,d){
-  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, reMax, slow;
+  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, dir=1, slow, reMaxDir;
   if(disc>=0){                                            /* real eigenvalues */
-    var s=Math.sqrt(disc), l1=(tr+s)/2, l2=(tr-s)/2;
-    reMax=Math.max(l1,l2);
+    var s=Math.sqrt(disc), l1=(tr+s)/2, l2=(tr-s)/2;      /* l1 ≥ l2 */
     slow=Math.min(Math.abs(l1),Math.abs(l2));
     if(slow<1e-6) slow=Math.max(Math.abs(l1),Math.abs(l2)); /* one mode ≈0: use the other */
+    if(l2>1e-9) dir=-1;                                   /* growing node: integrate toward the fixed point (backward) */
+    reMaxDir=dir>0?l1:-l2;                                /* max real part of the direction-scaled dynamics */
   }else{                                                  /* complex conjugates */
-    reMax=tr/2; slow=Math.sqrt(Math.max(det,0));          /* |λ|=√det, common timescale */
+    slow=Math.sqrt(Math.max(det,0));                      /* |λ|=√det, common timescale */
+    reMaxDir=tr/2;                                        /* spirals kept forward; |Re λ|≤|λ| so no overflow */
   }
   slow=Math.max(slow,1e-6);
   var T=6/slow;
-  if(reMax>1e-9) T=Math.min(T, 6/reMax);                  /* cap growth of fastest mode to ≈e⁶ */
+  if(reMaxDir>1e-9) T=Math.min(T, 6/reMaxDir);            /* saddle still grows either way: bound it */
   T=Math.min(Math.max(T,1e-3),40);                        /* keep positive; bound runaway horizons */
   var ic=accInitCond(a,b,c,d), x0=ic.x, y0=ic.y;
-  var N=64, h=T/N, ref0=Math.hypot(x0,y0), half=N>>1;
+  var N=64, h=T/N, dh=dir*h, ref0=Math.hypot(x0,y0), half=N>>1;
   var results=ACC_METHODS.map(function(mm){
     var x=x0,y=y0,maxErr=0,maxRef=ref0,bad=false;         /* seed ref with ‖x₀‖ (t=0) */
     for(var i=1;i<=N;i++){
-      var n=mm.step(x,y,a,b,c,d,h); x=n.x; y=n.y;
+      var n=mm.step(x,y,a,b,c,d,dh); x=n.x; y=n.y;        /* step ±h toward contraction */
       if(!isFinite(x)||!isFinite(y)){bad=true;break;}
-      var ex=expAtVec(a,b,c,d,i*h,x0,y0);
+      var ex=expAtVec(a,b,c,d,dir*i*h,x0,y0);
       var r=Math.hypot(ex.x,ex.y); if(r>maxRef)maxRef=r;  /* ref norm over the whole grid */
       if(i>=half){                                        /* error only after the startup transient */
         var e=Math.hypot(x-ex.x,y-ex.y); if(e>maxErr)maxErr=e;
@@ -1274,7 +1282,7 @@ function computeAccuracy(a,b,c,d){
     }
     return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:maxErr/maxRef};
   });
-  return {T:T,h:h,N:N,x0:x0,y0:y0,results:results};
+  return {T:T,h:h,N:N,x0:x0,y0:y0,dir:dir,results:results};
 }
 /* Compact scientific formatting with Unicode superscripts, e.g. 3.2×10⁻⁶. */
 function accFmt(v){
@@ -1304,8 +1312,8 @@ function updateAccuracyPanel(){
   }).join('');
   el.innerHTML='<table class="eq-table">'+
     '<caption>Global error vs the exact solution \\(e^{At}\\mathbf{x}_0\\), \\(\\mathbf{x}_0=('+acc.x0.toFixed(2)+','+acc.y0.toFixed(2)+')\\) (chosen to excite both eigenmodes), '+
-    'fixed step \\(h='+acc.h.toFixed(3)+'\\) over \\(t\\in[0,'+acc.T.toFixed(1)+']\\) ('+acc.N+' steps). '+
-    'Norm: \\(\\max_{t_i\\ge T/2}\\lVert \\mathbf{x}_\\text{num}-\\mathbf{x}_\\text{exact}\\rVert_2 / \\max_i\\lVert \\mathbf{x}_\\text{exact}\\rVert_2\\) — measured after the startup transient. ★ = most accurate.</caption>'+
+    'fixed step \\(|h|='+acc.h.toFixed(3)+'\\) over \\(t\\in'+(acc.dir<0?'[-'+acc.T.toFixed(1)+',0]':'[0,'+acc.T.toFixed(1)+']')+'\\) ('+acc.N+' steps'+(acc.dir<0?', integrated backward toward the fixed point':'')+'). '+
+    'Norm: \\(\\max_{|t_i|\\ge T/2}\\lVert \\mathbf{x}_\\text{num}-\\mathbf{x}_\\text{exact}\\rVert_2 / \\max_i\\lVert \\mathbf{x}_\\text{exact}\\rVert_2\\) — measured after the startup transient. ★ = most accurate.</caption>'+
     '<thead><tr><th>Method</th><th>Order</th><th>Rel. error</th></tr></thead>'+
     '<tbody>'+rows+'</tbody></table>';
   if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
