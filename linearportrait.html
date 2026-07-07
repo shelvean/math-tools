@@ -1186,19 +1186,42 @@ var ACC_METHODS=[
 ];
 /* Run every method at a common fixed step over a common horizon and report the
    discrete max-in-time / 2-in-state global error, normalised by the largest
-   exact state norm on the grid:
-       E = max_i ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_i ‖e^{A t_i}x₀‖₂ .
-   The horizon is chosen so |λ|·T ≈ 6 (moderate growth/decay), and the step is
-   deliberately coarse so the methods' differing orders are visible. Being a
-   linear system, the normalised error is essentially independent of x₀. */
+   exact state norm on the grid (including t=0, so a fully-decaying system is
+   normalised by ‖x₀‖ rather than by a vanishingly small late-time norm):
+       E = max_i ‖x_num(t_i) − e^{A t_i}x₀‖₂  /  max_{i≥0} ‖e^{A t_i}x₀‖₂ .
+
+   Horizon selection.  The step must be coarse enough that the methods' differing
+   orders — and, on stiff systems, the explicit methods' stability limit — are
+   visible, without letting the exact solution span so many orders of magnitude
+   that the comparison becomes meaningless.  So:
+     • the horizon resolves the SLOWEST timescale, T ≈ 6/|λ_slow|, giving ~6
+       e-foldings of the slow mode (using the fast |λ| here, as before, collapses
+       the horizon on a stiff system so nothing stiff is ever exercised);
+     • if any mode grows (max Re λ > 0) the horizon is additionally capped at
+       6/max(Re λ) so the fastest-growing mode grows by at most ≈ e⁶ — otherwise
+       a stiff growing node blows the exact solution (and every integrator) up by
+       80+ orders of magnitude and the relative error is pure noise.
+   On a stiff *stable* node this drives the explicit methods past their stability
+   limit (they diverge) while the L-stable SDIRK2 stays bounded — the point of the
+   panel.  Being a linear system, the normalised error is essentially independent
+   of the direction of x₀. */
 function computeAccuracy(a,b,c,d){
-  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, rho;
-  if(disc>=0){ var s=Math.sqrt(disc); rho=Math.max(Math.abs((tr+s)/2),Math.abs((tr-s)/2)); }
-  else       { rho=Math.sqrt(Math.max(det,0)); }          /* |λ|=√det when complex */
-  rho=Math.max(rho,1e-6);
-  var T=Math.min(Math.max(6/rho,2),40), N=64, h=T/N, x0=1, y0=1;
+  var tr=a+d, det=a*d-b*c, disc=tr*tr-4*det, reMax, slow;
+  if(disc>=0){                                            /* real eigenvalues */
+    var s=Math.sqrt(disc), l1=(tr+s)/2, l2=(tr-s)/2;
+    reMax=Math.max(l1,l2);
+    slow=Math.min(Math.abs(l1),Math.abs(l2));
+    if(slow<1e-6) slow=Math.max(Math.abs(l1),Math.abs(l2)); /* one mode ≈0: use the other */
+  }else{                                                  /* complex conjugates */
+    reMax=tr/2; slow=Math.sqrt(Math.max(det,0));          /* |λ|=√det, common timescale */
+  }
+  slow=Math.max(slow,1e-6);
+  var T=6/slow;
+  if(reMax>1e-9) T=Math.min(T, 6/reMax);                  /* cap growth of fastest mode to ≈e⁶ */
+  T=Math.min(Math.max(T,1e-3),40);                        /* keep positive; bound runaway horizons */
+  var N=64, h=T/N, x0=1, y0=1, ref0=Math.hypot(x0,y0);
   var results=ACC_METHODS.map(function(mm){
-    var x=x0,y=y0,maxErr=0,maxRef=0,bad=false;
+    var x=x0,y=y0,maxErr=0,maxRef=ref0,bad=false;         /* seed ref with ‖x₀‖ (t=0) */
     for(var i=1;i<=N;i++){
       var n=mm.step(x,y,a,b,c,d,h); x=n.x; y=n.y;
       if(!isFinite(x)||!isFinite(y)){bad=true;break;}
@@ -1206,7 +1229,7 @@ function computeAccuracy(a,b,c,d){
       var e=Math.hypot(x-ex.x,y-ex.y), r=Math.hypot(ex.x,ex.y);
       if(e>maxErr)maxErr=e; if(r>maxRef)maxRef=r;
     }
-    return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:(maxRef>0?maxErr/maxRef:maxErr)};
+    return {name:mm.name, key:mm.key, order:mm.order, rel:bad?Infinity:maxErr/maxRef};
   });
   return {T:T,h:h,N:N,results:results};
 }
