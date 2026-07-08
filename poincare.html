@@ -1756,7 +1756,8 @@ function onKeySlide(recompute){
   keyVal.textContent = (+keyRange.value).toFixed(keyDecimals(+keyRange.step));
   document.querySelectorAll('.pbtn[data-preset]').forEach(function(b){ b.setAttribute('aria-pressed','false'); });
   updateEqDisplay();
-  if(recompute) startRun();
+  /* finalOnly=true: reveal only the completed section, no build-up animation. */
+  if(recompute) startRun(true);
 }
 
 function readParams(sysName){
@@ -2639,7 +2640,7 @@ function buildOpts(){
   };
 }
 
-function startRun(){
+function startRun(finalOnly){
   if(worker){ worker.terminate(); worker = null; }
   ptsCount = 0; pathCount = 0;
   ptsN = SYS_META[systemSel.value].compLabels.length;
@@ -2665,7 +2666,9 @@ function startRun(){
       }
       pointCount.textContent = ptsCount.toLocaleString() + ' points';
       simT = Math.max(simT, d.t);
-      scheduleDraw();
+      /* When the slider triggers the run we only reveal the finished section,
+         not the build-up — so skip intermediate repaints and draw on 'done'. */
+      if(!finalOnly) scheduleDraw();
     } else if(d.type === 'path'){
       var parr = d.pts; if(!parr || !parr.length) return;
       var pstep = ptsN + 1;                 /* [t, y0 … y_{n-1}] per sample */
@@ -2677,7 +2680,7 @@ function startRun(){
         for(var j=0;j<ptsN;j++) pathY[pathCount*ptsN + j] = parr[po + 1 + j];
         pathCount++;
       }
-      scheduleDraw();
+      if(!finalOnly) scheduleDraw();
     } else if(d.type === 'progress'){
       var pct = Math.min(100, 100*d.total/(parseInt($('numCrossings').value,10)||1));
       tpFill.style.width = pct.toFixed(1)+'%';
@@ -2713,7 +2716,7 @@ function stopRun(){
   if(worker) worker.postMessage({type:'stop'});
 }
 
-runBtn.addEventListener('click', startRun);
+runBtn.addEventListener('click', function(){ startRun(false); });
 stopBtn.addEventListener('click', stopRun);
 clearBtn.addEventListener('click', clearPlot);
 downloadBtn.addEventListener('click', downloadPNG);
