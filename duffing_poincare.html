@@ -542,12 +542,24 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     var r=Math.round(29+(109-29)*f), g=Math.round(78+(40-78)*f), bl=Math.round(216+(217-216)*f);
     return "rgb("+r+","+g+","+bl+")";
   }
-  function drawSectionDots(ctx, m, pts, upto){
-    var n=upto, i, r = n>4000?1.0 : n>1500?1.3 : 1.8;
+  function drawSectionDots(ctx, m, pts, upto, radius){
+    // For a finite-period orbit the section collapses to just a few points, so
+    // the caller passes a larger radius to keep those dots clearly visible;
+    // otherwise scale down as the (chaotic) cloud fills in.
+    var n=upto, i, r = radius || (n>4000?1.0 : n>1500?1.3 : 1.8);
     for(i=0;i<n;i++){
       ctx.fillStyle=dotColor(i,n);
       ctx.beginPath(); ctx.arc(m.X(pts[i][0]), m.Y(pts[i][1]), r, 0, 6.2832); ctx.fill();
     }
+  }
+  // Radius for the section dots given the periodicity verdict: big, crisp dots
+  // for a finite period; the density-dependent default for chaos.
+  function dotRadiusFor(v){
+    if(v && v.kind==="periodic"){
+      var p = v.p || 1;
+      return p<=2 ? 5.0 : p<=4 ? 4.0 : 3.2;   // fewer points → bigger dots
+    }
+    return 0;   // 0 → drawSectionDots uses its density-based default
   }
 
   // ── the forcing clock ───────────────────────────────────────────────
@@ -583,7 +595,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
         var dx=tail[i][0]-tail[i-p][0], dy=tail[i][1]-tail[i-p][1];
         if(dx*dx+dy*dy > tol*tol){ ok=false; break; }
       }
-      if(ok) return {kind:"periodic", text:"period-"+p+" orbit"};
+      if(ok) return {kind:"periodic", text:"period-"+p+" orbit", p:p};
     }
     return {kind:"chaotic", text:"chaotic (no repeat)"};
   }
@@ -639,11 +651,13 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     var mFlow=drawFrame(fctx, res.bounds, flowCv.width, flowCv.height, "flow");
     var mSec =drawFrame(sctx, res.bounds, secCv.width,  secCv.height,  "section");
     drawFlowTrail(fctx, mFlow, res.flowTrail);
-    drawSectionDots(fctx, mFlow, res.pts, res.pts.length);
-    drawSectionDots(sctx, mSec,  res.pts, res.pts.length);
+    var v=classify(res.pts, res.bounds);
+    var rad=dotRadiusFor(v);
+    drawSectionDots(fctx, mFlow, res.pts, res.pts.length, rad);
+    drawSectionDots(sctx, mSec,  res.pts, res.pts.length, rad);
     dotCount.textContent=res.pts.length.toLocaleString();
     tpFill.style.width="100%";
-    var v=classify(res.pts, res.bounds); setVerdict(v);
+    setVerdict(v);
     drawClock(0,0);
     last={pts:res.pts, bounds:res.bounds, map:mSec, P:P};
     pngBtn.disabled=false;
@@ -663,7 +677,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     for(k=0;k<P.transient;k++) t=stepPeriod(st, t, P, T, null); // skip transient silently
 
     run={ P:P, T:T, st:st, t:t, k:0, total:P.collect, pts:[], trail:[],
-          bounds:b, mFlow:mFlow, mSec:mSec, flash:0, raf:0 };
+          bounds:b, mFlow:mFlow, mSec:mSec, flash:0, raf:0, verdict:null };
     setRunning(true);
     pngBtn.disabled=false;
     live.textContent="Strobing the Duffing oscillator at γ = "+P.gamma.toFixed(2)+".";
@@ -694,7 +708,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
         fctx.stroke();
       }
     }
-    drawSectionDots(fctx, m, run.pts, run.pts.length);
+    drawSectionDots(fctx, m, run.pts, run.pts.length, dotRadiusFor(run.verdict));
     // moving point (head of trail)
     if(tr.length){
       var hx=tr[tr.length-1][0], hy=tr[tr.length-1][1];
@@ -709,7 +723,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     }
     // ── redraw section panel: just the accumulated dots
     drawFrame(sctx, run.bounds, secCv.width, secCv.height, "section");
-    drawSectionDots(sctx, run.mSec, run.pts, run.pts.length);
+    drawSectionDots(sctx, run.mSec, run.pts, run.pts.length, dotRadiusFor(run.verdict));
     if(run.flash>0 && run.pts.length){
       var lp2=run.pts[run.pts.length-1];
       sctx.strokeStyle="rgba(180,83,9,"+(0.7*run.flash)+")"; sctx.lineWidth=2;
@@ -721,11 +735,11 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     run.flash=Math.max(0, run.flash-0.14);
     dotCount.textContent=run.pts.length.toLocaleString();
     tpFill.style.width=(100*run.k/run.total).toFixed(1)+"%";
-    if(run.pts.length%16===0 || run.k>=run.total) setVerdict(classify(run.pts, run.bounds));
+    if(run.pts.length%16===0 || run.k>=run.total){ run.verdict=classify(run.pts, run.bounds); setVerdict(run.verdict); }
 
     if(run.k>=run.total){
       last={pts:run.pts, bounds:run.bounds, map:run.mSec, P:run.P};
-      var v=classify(run.pts, run.bounds); setVerdict(v);
+      run.verdict=classify(run.pts, run.bounds); var v=run.verdict; setVerdict(v);
       live.textContent="Done — "+run.pts.length+" strobe flashes — "+v.text+".";
       stopRun();
       return;
