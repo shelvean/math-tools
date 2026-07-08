@@ -1319,8 +1319,15 @@ function runImplicitMidpoint(opts){
   var totalPts = 0, icIdx = 0;
   var batchSize = 500, batch = [];
   function emitBatch(){ if(!batch.length) return; self.postMessage({type:'batch', pts:batch, total:totalPts, n:n, accepted:totalPts, rejected:0, h:h, t:0}); batch = []; }
-  var PATH_CAP = 5000, pathTotal = 0, pathBatch = [], pathEvery = 5;
-  function emitPath(){ if(!pathBatch.length) return; self.postMessage({type:'path', pts:pathBatch, n:n}); pathBatch = []; }
+  /* Path panel shows one representative trajectory. With multiple ICs (Atwood)
+     the first one can be culled early by the r>0 guard, so we don't lock to
+     IC 0: buffer each IC's path and commit the first that runs long enough,
+     keeping the longest as a fallback. The chosen IC is reported so the main
+     thread overlays that trajectory's own section points. */
+  var PATH_CAP = 5000, MIN_PATH = 250, pathEvery = 5;
+  var pathIC = -1, pathBuf = [], pathBufN = 0;      // current candidate
+  var bestBuf = null, bestN = 0, bestIC = -1;       // longest seen so far
+  function emitPath(buf, ic){ if(buf && buf.length) self.postMessage({type:'path', pts:buf, n:n, ic:ic}); }
 
   var stopRequested = false;
   self.onmessage = function(ev){ if(ev.data && ev.data.type === 'stop') stopRequested = true; };
@@ -1386,7 +1393,8 @@ function runImplicitMidpoint(opts){
        wanders for a long stretch without returning to the section) so a few
        pathological chaotic ICs can't dominate the run. */
     var recordCountThisIC = 0, tAcc = 0, step = 0, lastCrossStep = 0, maxSteps = 1.2e7, STALL = 300000;
-    var recPath = (icIdx === 0), pathTick = 0;
+    var recPath = (pathIC === -1), pathTick = 0;
+    if(recPath){ pathBuf = []; pathBufN = 0; }
     while(step < maxSteps && !stopRequested && (recordCountThisIC - transient) < perIC && totalPts < maxPts){
       step++;
       for(var j=0;j<n;j++) ySave[j] = y[j];
@@ -1418,9 +1426,8 @@ function runImplicitMidpoint(opts){
       }
       for(var jn=0;jn<n;jn++) y[jn] = yNew[jn];
       tAcc += h;
-      if(recPath && pathTotal < PATH_CAP && (++pathTick % pathEvery === 0)){
-        pathTotal++; pathBatch.push(tAcc); for(var jp=0;jp<n;jp++) pathBatch.push(y[jp]);
-        if(pathBatch.length >= 400*(n+1)) emitPath();
+      if(recPath && pathBufN < PATH_CAP && (++pathTick % pathEvery === 0)){
+        pathBufN++; pathBuf.push(tAcc); for(var jp=0;jp<n;jp++) pathBuf.push(y[jp]);
       }
       var now = performance.now();
       if(now - lastProgress > 100){
@@ -1428,12 +1435,19 @@ function runImplicitMidpoint(opts){
         self.postMessage({type:'progress', total:totalPts, target:maxPts, accepted:step, rejected:0, h:h, tSim:tAcc, ic:icIdx, nIC:nIC});
       }
     }
+    /* Decide this IC's path contribution: commit the first long-enough run,
+       otherwise remember it as the longest fallback. */
+    if(recPath){
+      if(pathBufN > bestN){ bestBuf = pathBuf; bestN = pathBufN; bestIC = icIdx; }
+      if(pathBufN >= MIN_PATH){ emitPath(pathBuf, icIdx); pathIC = icIdx; }
+    }
     if(recordCountThisIC === 0 && !stopRequested){
       self.postMessage({type:'error', msg:'No section crossings on IC #'+(icIdx+1)+'. The orbit may not reach the section — check the energy/parameters.'});
       return;
     }
   }
-  emitBatch(); emitPath();
+  if(pathIC === -1 && bestBuf) emitPath(bestBuf, bestIC);   // no IC hit MIN_PATH → use the longest
+  emitBatch();
   self.postMessage({type:'done', total:totalPts, accepted:totalPts, rejected:0, tSim:0, stopped:stopRequested, nIC:nIC});
 }
 
@@ -2308,7 +2322,7 @@ var simT = 0;
 
 /* Continuous-trajectory store for the "path" panel (first IC only). Each
    sample is (t, y0, …, y_{n-1}); components share ptsN with the section. */
-var pathT = null, pathY = null, pathCount = 0, pathCap = 0;
+var pathT = null, pathY = null, pathCount = 0, pathCap = 0, pathSourceIC = 0;
 function ensurePathCap(extra){
   if(pathCount + extra <= pathCap) return;
   var newCap = Math.max(pathCap*2, pathCount + extra, 4096);
@@ -2527,11 +2541,11 @@ function drawPath(b, ax, ay){
     px0=x; py0=y;
   }
   pctx.stroke();
-  /* Overlay the first trajectory's own section points so the strobe/crossing
+  /* Overlay the path trajectory's own section points so the strobe/crossing
      relationship between the two panels is clear. */
   pctx.fillStyle='rgba(29,78,216,0.9)';
   for(i=0;i<ptsCount;i++){
-    if(ptsIC[i] !== 0) continue;
+    if(ptsIC[i] !== pathSourceIC) continue;
     var sx=projectAxis(ax,i), sy=projectAxis(ay,i);
     var scx=toPx(sx,b.xMin,b.xMax,pad.l,iw), scy=H-pad.b-(sy-b.yMin)/(b.yMax-b.yMin)*ih;
     pctx.beginPath(); pctx.arc(scx,scy,1.3,0,6.283185307); pctx.fill();
@@ -2642,7 +2656,7 @@ function buildOpts(){
 
 function startRun(finalOnly){
   if(worker){ worker.terminate(); worker = null; }
-  ptsCount = 0; pathCount = 0;
+  ptsCount = 0; pathCount = 0; pathSourceIC = 0;
   ptsN = SYS_META[systemSel.value].compLabels.length;
   ensureCap(8192);
   ensurePathCap(4096);
@@ -2671,6 +2685,7 @@ function startRun(finalOnly){
       if(!finalOnly) scheduleDraw();
     } else if(d.type === 'path'){
       var parr = d.pts; if(!parr || !parr.length) return;
+      if(typeof d.ic !== 'undefined') pathSourceIC = d.ic|0;
       var pstep = ptsN + 1;                 /* [t, y0 … y_{n-1}] per sample */
       var newP = (parr.length / pstep)|0;
       ensurePathCap(newP);
