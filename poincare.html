@@ -85,6 +85,14 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 .params-group{display:none;}
 .params-group.active{display:block;}
 
+/* Key-parameter slider (the one knob that most changes the section). */
+.key-panel{background:var(--info);border:2px solid var(--inf-b);}
+.key-top{display:flex;align-items:baseline;justify-content:space-between;gap:.4rem;}
+.key-name{font-size:.82rem;font-weight:700;color:var(--inf-hd);}
+.key-val{font-size:1.15rem;font-weight:800;color:var(--blue);font-family:'Menlo','Monaco','Courier New',monospace;}
+.range{width:100%;margin:.45rem 0 .1rem;accent-color:var(--blue);height:26px;cursor:pointer;}
+.key-hint{font-size:.72rem;color:var(--muted);margin:.15rem 0 0;}
+
 .abar{display:flex;align-items:center;justify-content:flex-start;gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem;padding:.4rem .55rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
 .abtn{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .85rem;min-height:36px;border:2px solid transparent;border-radius:.45rem;font-size:.875rem;font-weight:700;cursor:pointer;}
 .abtn-go{background:var(--teal);color:#fff;border-color:var(--teal);}.abtn-go:hover{background:#0d5f5a;}
@@ -426,6 +434,16 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
             </optgroup>
           </select>
         </div>
+      </div>
+
+      <div class="panel key-panel">
+        <div class="key-top">
+          <span class="key-name" id="keyName">γ (forcing)</span>
+          <span class="key-val" id="keyVal">0.500</span>
+        </div>
+        <input class="range" id="keyRange" type="range" min="0" max="1" step="0.005" value="0.5"
+               aria-label="Key parameter slider">
+        <p class="key-hint" id="keyHint">Drag to sweep the drive strength; release to recompute the section.</p>
       </div>
 
       <div class="panel">
@@ -1290,6 +1308,7 @@ var pathWrap = $('pathWrap'), plotDual = $('plotDual'), pathTitle = $('pathTitle
 var xAxisSel = $('xAxis'), yAxisSel = $('yAxis'), colorSel = $('colorMode');
 var pointCount = $('pointCount'), tpStats = $('tpStats'), tpFill = $('tpFill'), tpCard = $('tpCard');
 var eqDisplay = $('eqDisplay'), plotTitle = $('plotTitle'), boundsLegend = $('boundsLegend');
+var keyRange = $('keyRange'), keyName = $('keyName'), keyVal = $('keyVal'), keyHint = $('keyHint');
 
 /* Systems that are already discrete maps have no continuous flow, so the
    path panel is hidden for them and the section panel spans full width. */
@@ -1308,6 +1327,55 @@ var SYS_META = {
   henonmap:   {compLabels:['x','y'],           defaultAxes:[0,1], paramInputs:['hm-a','hm-b'], paramKeys:['a','b'], icInputs:[]},
   ikedamap:   {compLabels:['x','y'],           defaultAxes:[0,1], paramInputs:['ik-u','ik-c1','ik-c2'], paramKeys:['u','c1','c2'], icInputs:[]}
 };
+
+/* ── Key-parameter slider: for each system, the single knob that most
+   changes the Poincaré section. The slider is bound to the matching
+   parameter input; sweeping it re-computes the section on release. ── */
+var SLIDER_META = {
+  duffing:    {input:'duf-gamma', name:'γ (forcing)',    min:0,    max:1,      step:0.005, hint:'Drive strength — the period-doubling route to chaos.'},
+  pendulum:   {input:'pen-A',     name:'A (forcing)',    min:0,    max:2,      step:0.005, hint:'Drive amplitude — sweep into the chaotic regime.'},
+  lorenz:     {input:'lor-rho',   name:'ρ (Rayleigh)',   min:0,    max:220,    step:0.5,   hint:'Rayleigh number — chaos sets in near ρ ≈ 24.7.'},
+  henon:      {input:'hen-E',     name:'E (energy)',     min:0.02, max:0.1667, step:0.002, hint:'Energy shell — tori (low) → mixed → global chaos at 1/6.'},
+  doublepend: {input:'dp-th1',    name:'θ₁₀ (release)',  min:0,    max:3.14159,step:0.02,  hint:'Initial swing of the upper arm — sets the energy.'},
+  atwood:     {input:'aw-mu',     name:'μ = M/m',        min:1.1,  max:8,      step:0.05,  hint:'Mass ratio — integrable at μ = 3 (Tufillaro).'},
+  standardmap:{input:'sm-K',      name:'K (kick)',       min:0,    max:6,      step:0.02,  hint:'Kick strength — golden torus breaks at K ≈ 0.9716.'},
+  henonmap:   {input:'hm-a',      name:'a',              min:0,    max:1.45,   step:0.005, hint:'Nonlinearity — period-doubling cascade to the attractor.'},
+  ikedamap:   {input:'ik-u',      name:'u',              min:0,    max:1,      step:0.005, hint:'Dissipation — folded-crescent attractor near u = 0.9.'}
+};
+
+/* Decimals to show for a given slider step. */
+function keyDecimals(step){ return step < 0.01 ? 3 : step < 1 ? 2 : 1; }
+
+/* Point the slider at the current system's key parameter and load its value
+   from the bound input (clamped to the slider range). */
+function configureSlider(sysName){
+  var m = SLIDER_META[sysName]; if(!m) return;
+  keyRange.min = m.min; keyRange.max = m.max; keyRange.step = m.step;
+  keyName.textContent = m.name;
+  keyHint.textContent = m.hint;
+  syncSliderValue();
+}
+
+/* Reflect the bound input's current value onto the slider + readout. */
+function syncSliderValue(){
+  var m = SLIDER_META[systemSel.value]; if(!m) return;
+  var v = parseFloat($(m.input).value);
+  if(!isFinite(v)) v = +keyRange.min;
+  v = Math.max(+keyRange.min, Math.min(+keyRange.max, v));
+  keyRange.value = v;
+  keyVal.textContent = (+keyRange.value).toFixed(keyDecimals(+keyRange.step));
+}
+
+/* Slider moved: push the value into the bound input, refresh the readout and
+   equation. Optionally recompute the section (on release). */
+function onKeySlide(recompute){
+  var m = SLIDER_META[systemSel.value]; if(!m) return;
+  $(m.input).value = keyRange.value;
+  keyVal.textContent = (+keyRange.value).toFixed(keyDecimals(+keyRange.step));
+  document.querySelectorAll('.pbtn[data-preset]').forEach(function(b){ b.setAttribute('aria-pressed','false'); });
+  updateEqDisplay();
+  if(recompute) startRun();
+}
 
 function readParams(sysName){
   var m = SYS_META[sysName], p = {};
@@ -1597,6 +1665,7 @@ function onSystemChange(){
   var s = systemSel.value;
   showParamsGroup(s);
   showPresetGroup(s);
+  configureSlider(s);
   updatePlotLayout(s);
   rebuildAxisOptions(s);
   rebuildHpVar(s);
@@ -1814,9 +1883,15 @@ document.querySelectorAll('.pbtn[data-preset]').forEach(function(btn){
     document.querySelectorAll('.pbtn[data-preset]').forEach(function(b){ b.setAttribute('aria-pressed','false'); });
     btn.setAttribute('aria-pressed','true');
     PRESETS[btn.dataset.preset]();
+    syncSliderValue();
     clearPlot();
   });
 });
+
+/* Key-parameter slider: live readout/equation while dragging; recompute the
+   section when released (change) so you can sweep it and watch it evolve. */
+keyRange.addEventListener('input',  function(){ onKeySlide(false); });
+keyRange.addEventListener('change', function(){ onKeySlide(true); });
 
 /* ── HiDPI canvas sizing (fits each canvas to its container so it never
    overflows its .pwrap and gets clipped on the right edge). ──────── */
@@ -2262,10 +2337,17 @@ sectionMode.addEventListener('change', updateSectionUI);
  'hen-E','dp-g','sm-K'].forEach(function(id){
   $(id).addEventListener('input', updateEqDisplay);
 });
+/* Editing a key parameter by hand keeps the slider in step. */
+Object.keys(SLIDER_META).forEach(function(sys){
+  $(SLIDER_META[sys].input).addEventListener('input', function(){
+    if(systemSel.value === sys) syncSliderValue();
+  });
+});
 
 /* ── Init ─────────────────────────────────────────────────────────── */
 showParamsGroup('duffing');
 showPresetGroup('duffing');
+configureSlider('duffing');
 updatePlotLayout('duffing');
 rebuildAxisOptions('duffing');
 rebuildHpVar('duffing');
@@ -2280,6 +2362,7 @@ if(initialBtn && PRESETS[initialBtn.dataset.preset]){
 } else {
   updateEqDisplay();
 }
+syncSliderValue();
 draw();
 </script>
 
