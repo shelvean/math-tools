@@ -202,6 +202,60 @@
       outline: 3px solid var(--border-focus); outline-offset: 1px;
     }
 
+    /* ===== Custom LaTeX dropdown for U(x) ===== */
+    .udrop { position: relative; }
+    .udrop-btn {
+      width: 5rem; min-height: 44px; padding: 0.5rem 1.15rem 0.5rem 0.45rem;
+      border: 1px solid var(--border-color); border-radius: 0.375rem;
+      background: var(--bg-card); color: var(--text-primary);
+      cursor: pointer; position: relative; overflow: hidden;
+      display: inline-flex; align-items: center; justify-content: flex-start;
+    }
+    .udrop-btn:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 1px; }
+    .udrop-current { font-size: 0.8rem; line-height: 1; white-space: nowrap; }
+    /* fade the right edge so a clipped long formula doesn't look cut off hard */
+    .udrop-btn::after {
+      content: ''; position: absolute; right: 1rem; top: 0; bottom: 0; width: 0.9rem;
+      background: linear-gradient(to right, transparent, var(--bg-card)); pointer-events: none;
+    }
+    .udrop-caret {
+      position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%);
+      font-size: 0.7rem; color: var(--text-secondary); pointer-events: none;
+    }
+    .udrop-list {
+      position: absolute; z-index: 60; top: calc(100% + 4px); left: 50%;
+      transform: translateX(-50%); min-width: 17rem; max-height: 340px; overflow-y: auto;
+      margin: 0; padding: 0.3rem; list-style: none; text-align: left;
+      background: var(--bg-card); border: 1px solid var(--border-color);
+      border-radius: 0.5rem; box-shadow: 0 10px 28px rgba(0,0,0,0.20);
+    }
+    .udrop-group {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-secondary); padding: 0.45rem 0.55rem 0.2rem;
+    }
+    .udrop-opt {
+      display: flex; align-items: baseline; gap: 0.55rem; padding: 0.45rem 0.55rem;
+      border-radius: 0.35rem; cursor: pointer; color: var(--text-primary);
+    }
+    .udrop-opt:hover, .udrop-opt.active { background: var(--bg-section); }
+    .udrop-opt[aria-selected="true"] { background: #e8efff; }
+    .udrop-name { font-weight: 600; font-size: 0.82rem; color: var(--text-secondary); min-width: 7.5rem; }
+    .udrop-formula { font-size: 0.95rem; }
+
+    /* ===== Speed control slider ===== */
+    .speed-control {
+      display: flex; align-items: center; justify-content: center; gap: 0.75rem;
+      max-width: 900px; margin: -0.5rem auto 1.5rem; padding: 0.6rem 1rem;
+      background: var(--bg-section); border: 1px solid var(--border-color); border-radius: 0.5rem;
+    }
+    .speed-control label { font-weight: 600; color: var(--text-secondary); font-size: 0.9rem; white-space: nowrap; }
+    .speed-control input[type="range"] { width: 220px; max-width: 55vw; accent-color: var(--btn-primary-bg); height: 28px; cursor: pointer; }
+    .speed-val {
+      font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums;
+      min-width: 2.4rem; text-align: center;
+      font-family: 'Menlo','Monaco','Courier New',monospace; font-size: 1rem;
+    }
+
     /* ===== Buttons ===== */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
@@ -490,27 +544,15 @@ if(document.referrer.includes('dynamical.html')){
       <legend class="sr-only">Simulation Parameters</legend>
       <div class="controls-row">
         <div class="control-group">
-          <label for="potentialSelect">Potential \( U(x) \):</label>
-          <select id="potentialSelect" aria-label="Choose the potential well">
-            <optgroup label="Single wells">
-              <option value="harmonic">Harmonic — ½x²</option>
-              <option value="anharmonic">Anharmonic — ½x² + ¼x⁴</option>
-            </optgroup>
-            <optgroup label="Barrier / escape">
-              <option value="cubic" selected>Cubic (metastable) — x − ⅓x³</option>
-            </optgroup>
-            <optgroup label="Multiple wells">
-              <option value="doublewell">Double well — x⁴ − 2x²</option>
-              <option value="tilted">Tilted double well — x⁴ − 2x² + ½x</option>
-              <option value="triple">Triple well — x⁶ − 2.1x⁴ + x²</option>
-              <option value="pendulum">Pendulum (periodic) — 1 − cos x</option>
-            </optgroup>
-            <optgroup label="Asymmetric / localized">
-              <option value="morse">Morse bond — 3(1 − e⁻ˣ)²</option>
-              <option value="gaussian">Gaussian well — −2e⁻ˣ²</option>
-              <option value="poschl">Pöschl–Teller — −2 sech²x</option>
-            </optgroup>
-          </select>
+          <label for="uDropBtn" id="uDropLabelText">Potential \( U(x) \):</label>
+          <div class="udrop" id="uDrop">
+            <button type="button" class="udrop-btn" id="uDropBtn" aria-haspopup="listbox"
+                    aria-expanded="false" aria-labelledby="uDropLabelText uDropBtn">
+              <span class="udrop-current" id="uDropCurrent"></span>
+              <span class="udrop-caret" aria-hidden="true">&#9662;</span>
+            </button>
+            <ul class="udrop-list" id="uDropList" role="listbox" aria-label="Potential U(x)" hidden></ul>
+          </div>
         </div>
         <div class="control-group">
           <label for="x0">Initial Position (\( x_0 \)):</label>
@@ -542,6 +584,14 @@ if(document.referrer.includes('dynamical.html')){
         <canvas id="phaseCanvas" width="500" height="500" aria-hidden="true"></canvas>
         <div class="plot-label">Phase Space Trajectory</div>
       </div>
+    </div>
+
+    <!-- Speed control -->
+    <div class="speed-control" role="group" aria-label="Animation speed">
+      <label for="speedRange">Ball speed:</label>
+      <input type="range" id="speedRange" min="0" max="3" step="1" value="2"
+             aria-label="Animation speed" aria-valuetext="1 times">
+      <span class="speed-val" id="speedVal">1&times;</span>
     </div>
 
         <!-- cite-mark:start -->
@@ -1278,7 +1328,8 @@ if(document.referrer.includes('dynamical.html')){
     let animationFrameId = null;
     let yHistory = [];
     let useStiffSolver = false;
-    const stepsPerFrame = 5;
+    const BASE_STEPS = 5;      // integration sub-steps per animation frame at 1× speed
+    let speedFactor = 1;       // set by the speed slider (¼, ½, 1, 2)
     const dt = 0.01;
     let totalTime = 0;
 
@@ -1345,20 +1396,109 @@ if(document.referrer.includes('dynamical.html')){
     function selectPotential(id) {
         if (!POTENTIALS[id]) return;
         stopSimulation();
+        currentId = id;
         current = POTENTIALS[id];
         var x0i = document.getElementById('x0');
         x0i.min = current.xMin; x0i.max = current.xMax; x0i.value = String(current.x0);
         document.getElementById('v0').value = String(current.v0);
         needsRedrawCurveBackground = true;
         needsRedrawPhaseBackground = true;
+        updateUDropButton();
         updateEquationTeX();
-        announce('Potential changed. Now showing the ' + id + ' well.');
+        announce('Potential changed. Now showing the ' + (UNAMES[id] || id) + ' well.');
         startSimulation();
     }
 
+    /* ===== Custom LaTeX dropdown for U(x) ===== */
+    const UNAMES = {
+        harmonic:'Harmonic', anharmonic:'Anharmonic', cubic:'Cubic (metastable)',
+        doublewell:'Double well', tilted:'Tilted double well', triple:'Triple well',
+        pendulum:'Pendulum', morse:'Morse bond', gaussian:'Gaussian well', poschl:'Pöschl–Teller'
+    };
+    const UGROUPS = [
+        { label:'Single wells',            ids:['harmonic','anharmonic'] },
+        { label:'Barrier / escape',        ids:['cubic'] },
+        { label:'Multiple wells',          ids:['doublewell','tilted','triple','pendulum'] },
+        { label:'Asymmetric / localized',  ids:['morse','gaussian','poschl'] }
+    ];
+    let currentId = 'cubic';
+
+    function updateUDropButton() {
+        var cur = document.getElementById('uDropCurrent');
+        if (cur) cur.innerHTML = '\\(' + current.latex + '\\)';
+        document.querySelectorAll('#uDropList .udrop-opt').forEach(function(li){
+            li.setAttribute('aria-selected', li.dataset.id === currentId ? 'true' : 'false');
+        });
+        if (window.MathJax && MathJax.typesetPromise) {
+            MathJax.typesetPromise([document.getElementById('uDrop')]).catch(function(){});
+        }
+    }
+
+    (function buildUDrop(){
+        var list = document.getElementById('uDropList');
+        var btn  = document.getElementById('uDropBtn');
+        var wrap = document.getElementById('uDrop');
+        UGROUPS.forEach(function(g){
+            var head = document.createElement('li');
+            head.className = 'udrop-group'; head.setAttribute('aria-hidden','true');
+            head.textContent = g.label; list.appendChild(head);
+            g.ids.forEach(function(id){
+                var li = document.createElement('li');
+                li.className = 'udrop-opt'; li.setAttribute('role','option');
+                li.dataset.id = id;
+                li.setAttribute('aria-selected', id === currentId ? 'true' : 'false');
+                li.innerHTML = '<span class="udrop-name">' + UNAMES[id] +
+                               '</span><span class="udrop-formula">\\(U(x)=' + POTENTIALS[id].latex + '\\)</span>';
+                li.addEventListener('click', function(){ closeUDrop(); selectPotential(id); });
+                list.appendChild(li);
+            });
+        });
+
+        var opts = function(){ return Array.prototype.slice.call(list.querySelectorAll('.udrop-opt')); };
+        var listTypeset = false;
+        function openUDrop(){
+            list.hidden = false; btn.setAttribute('aria-expanded','true');
+            if (!listTypeset && window.MathJax && MathJax.typesetPromise) {
+                MathJax.typesetPromise([list]).catch(function(){});
+                listTypeset = true;
+            }
+            var sel = list.querySelector('.udrop-opt[aria-selected="true"]') || opts()[0];
+            opts().forEach(function(o){ o.classList.remove('active'); });
+            if (sel){ sel.classList.add('active'); sel.scrollIntoView({block:'nearest'}); }
+        }
+        window.closeUDrop = function(){ list.hidden = true; btn.setAttribute('aria-expanded','false'); };
+        function toggle(){ list.hidden ? openUDrop() : closeUDrop(); }
+        function activeIndex(){ return opts().findIndex(function(o){ return o.classList.contains('active'); }); }
+        function setActive(i){
+            var o = opts(); if (!o.length) return;
+            i = (i + o.length) % o.length;
+            o.forEach(function(x){ x.classList.remove('active'); });
+            o[i].classList.add('active'); o[i].scrollIntoView({block:'nearest'});
+        }
+        btn.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
+        btn.addEventListener('keydown', function(e){
+            if (e.key === 'Escape') { closeUDrop(); return; }
+            if (list.hidden) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault(); openUDrop();
+                }
+                return;
+            }
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive(activeIndex() + 1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIndex() - 1); }
+            else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                var i = activeIndex();
+                if (i >= 0) { var id = opts()[i].dataset.id; closeUDrop(); selectPotential(id); }
+            }
+        });
+        document.addEventListener('click', function(e){ if (!wrap.contains(e.target)) closeUDrop(); });
+    })();
+
     function animate() {
         if (!running) return;
-        for (let i = 0; i < stepsPerFrame; i++) {
+        const stepsThisFrame = Math.max(1, Math.round(BASE_STEPS * speedFactor));
+        for (let i = 0; i < stepsThisFrame; i++) {
             simulateStep();
             totalTime += dt;
             if (totalTime >= 600 || x < current.xMin || x > current.xMax) {
@@ -1381,7 +1521,23 @@ if(document.referrer.includes('dynamical.html')){
     document.getElementById('startBtn').addEventListener('click', startSimulation);
     document.getElementById('stopBtn').addEventListener('click', stopSimulation);
     document.getElementById('resetBtn').addEventListener('click', resetSimulation);
-    document.getElementById('potentialSelect').addEventListener('change', function(e){ selectPotential(e.target.value); });
+
+    // Speed slider: index 0..3 → ¼×, ½×, 1×, 2×
+    const SPEEDS = [0.25, 0.5, 1, 2];
+    const SPEED_LABELS = ['¼×', '½×', '1×', '2×'];
+    const SPEED_TEXT = ['one quarter', 'one half', 'one', 'two'];
+    (function initSpeed(){
+        var sr = document.getElementById('speedRange');
+        var sv = document.getElementById('speedVal');
+        function apply(){
+            var idx = parseInt(sr.value, 10) || 0;
+            speedFactor = SPEEDS[idx];
+            sv.textContent = SPEED_LABELS[idx];
+            sr.setAttribute('aria-valuetext', SPEED_TEXT[idx] + ' times');
+        }
+        sr.addEventListener('input', apply);
+        apply();
+    })();
 
     // Initial setup: sync the inputs and equation to the default (cubic) well.
     (function initDefaults(){
@@ -1389,6 +1545,7 @@ if(document.referrer.includes('dynamical.html')){
         x0i.min = current.xMin; x0i.max = current.xMax; x0i.value = String(current.x0);
         document.getElementById('v0').value = String(current.v0);
     })();
+    updateUDropButton();
     updateEquationTeX();
     drawPotentialCurve();
     drawPhasePlot();
