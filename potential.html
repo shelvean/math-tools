@@ -795,8 +795,8 @@ if(document.referrer.includes('dynamical.html')){
       },
       pendulum: {
         U: x => 1 - Math.cos(x), dU: x => Math.sin(x), d2U: x => Math.cos(x),
-        latex: '1 - \\cos x', force: '\\sin x',
-        xMin:-6.5, xMax:6.5, Umin:-0.3, Umax:2.6, x0:-3.0, v0:0, tick:2
+        latex: '1 - \\cos x', force: '\\sin x', period: 2*Math.PI,
+        xMin:-3.3, xMax:3.3, Umin:-0.3, Umax:2.6, x0:-3.0, v0:0, tick:1.5
       },
       morse: {
         U: x => 3*Math.pow(1 - Math.exp(-x), 2),
@@ -850,6 +850,27 @@ if(document.referrer.includes('dynamical.html')){
 
     function derivatives(y, c) {
         return [y[1], -c * y[1] - current.dU(y[0])];
+    }
+
+    /* For periodic potentials, fold the position into one period centred on 0
+       so a circulating particle re-enters the window from the other side. */
+    function wrapX(x) {
+        if (!current.period) return x;
+        const P = current.period;
+        let w = (x + P / 2) % P;
+        if (w < 0) w += P;
+        return w - P / 2;
+    }
+
+    /* Genuine escape: the ball is outside the drawn window, moving outward,
+       and the force is not pulling it back — so it will never return. A ball
+       that merely overshoots (decelerating) is not escaping and keeps going,
+       naturally returning to view. Periodic wells never escape (they wrap). */
+    function hasEscaped() {
+        if (current.period) return false;
+        if (x > current.xMax && v > 0 && current.dU(x) <= 1e-6) return true;   // force = -U' >= 0 (outward)
+        if (x < current.xMin && v < 0 && current.dU(x) >= -1e-6) return true;  // force = -U' <= 0 (outward)
+        return false;
     }
 
     // RK4 solver
@@ -1191,10 +1212,16 @@ if(document.referrer.includes('dynamical.html')){
             phaseCtx.lineWidth = 2;
             phaseCtx.lineCap = 'round';
             phaseCtx.lineJoin = 'round';
+            const seam = current.period ? current.period / 2 : Infinity;
             phaseCtx.beginPath();
             phaseCtx.moveTo(xToPhase(phaseData[0].x), vToPhase(phaseData[0].y));
             for (let i = 1; i < phaseData.length; i++) {
-                phaseCtx.lineTo(xToPhase(phaseData[i].x), vToPhase(phaseData[i].y));
+                // break the stroke where a wrapped angle jumps the ±π seam
+                if (Math.abs(phaseData[i].x - phaseData[i - 1].x) > seam) {
+                    phaseCtx.moveTo(xToPhase(phaseData[i].x), vToPhase(phaseData[i].y));
+                } else {
+                    phaseCtx.lineTo(xToPhase(phaseData[i].x), vToPhase(phaseData[i].y));
+                }
             }
             phaseCtx.stroke();
         }
@@ -1252,10 +1279,11 @@ if(document.referrer.includes('dynamical.html')){
 
     // Draw 3D ball on potential curve
     function drawBall() {
-        const canvasX = xToCurve(x);
-        const canvasY = yToCurve(potential(x));
+        const xd = wrapX(x);              // folded position for periodic wells
+        const canvasX = xToCurve(xd);
+        const canvasY = yToCurve(potential(xd));
 
-        const du_dx = current.dU(x);
+        const du_dx = current.dU(xd);
         const scale_x = (curveCanvas.width - leftMargin - rightMargin) / (current.xMax - current.xMin);
         const scale_y = (curveCanvas.height - bottomMargin) / (current.Umax - current.Umin);
         const m = -du_dx * scale_y / scale_x;
@@ -1381,8 +1409,8 @@ if(document.referrer.includes('dynamical.html')){
             simulateStep();
             totalTime += dt;
         }
-        phaseData.push({x, y: v});
-        updatePhaseBounds(x, v);
+        phaseData.push({x: wrapX(x), y: v});
+        updatePhaseBounds(wrapX(x), v);
         announce('Simulation started.');
         animate();
     }
@@ -1525,15 +1553,15 @@ if(document.referrer.includes('dynamical.html')){
         for (let i = 0; i < stepsThisFrame; i++) {
             simulateStep();
             totalTime += dt;
-            if (totalTime >= 600 || x < current.xMin || x > current.xMax) {
+            if (totalTime >= 600 || hasEscaped()) {
                 running = false;
                 if (animationFrameId) {
                     cancelAnimationFrame(animationFrameId);
                 }
                 return;
             }
-            phaseData.push({x, y: v});
-            updatePhaseBounds(x, v);
+            phaseData.push({x: wrapX(x), y: v});
+            updatePhaseBounds(wrapX(x), v);
         }
         drawPotentialCurve();
         drawBall();
