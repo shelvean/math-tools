@@ -558,10 +558,17 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 
       <div class="panel">
         <h3>Run settings</h3>
+        <div class="row"><label class="lbl" for="qualitySel">Quality</label>
+          <select class="sel" id="qualitySel" aria-label="Integration quality">
+            <option value="fast">Fast</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="accurate">Accurate</option>
+          </select></div>
+        <p class="help" id="qualityHint">Fast = looser tolerances / larger steps — near-identical sections for chaotic systems, much quicker.</p>
         <div class="row"><label class="lbl" for="numCrossings">Max points</label><input class="num" id="numCrossings" type="number" step="1000" min="100" value="20000"></div>
         <div class="row"><label class="lbl" for="transient">Transient</label><input class="num" id="transient" type="number" step="10" min="0" value="50"><span class="help" style="margin-left:.3rem;">discard first N</span></div>
-        <div class="row"><label class="lbl" for="rtol">rtol</label><input class="num" id="rtol" type="text" value="1e-9"></div>
-        <div class="row"><label class="lbl" for="atol">atol</label><input class="num" id="atol" type="text" value="1e-12"></div>
+        <div class="row"><label class="lbl" for="rtol">rtol</label><input class="num" id="rtol" type="text" value="1e-8"></div>
+        <div class="row"><label class="lbl" for="atol">atol</label><input class="num" id="atol" type="text" value="1e-11"></div>
         <div class="row"><label class="lbl" for="hMax">h_max</label><input class="num" id="hMax" type="number" step="0.1" value="1"></div>
         <div class="row"><label class="lbl" for="integSel">Integrator</label>
           <select class="sel" id="integSel" aria-label="Numerical integrator">
@@ -1085,6 +1092,171 @@ function runIkedaMap(opts){
   self.postMessage({type:'done', total:totalPts, accepted:totalPts, rejected:0, tSim:0, stopped:stopRequested});
 }
 
+/* ── Fixed-step stroboscopic driver (forced / autonomous strobe) ─────
+   Classical RK4 with N substeps per forcing period T, so every sample
+   lands exactly on t = kT — no adaptive control, no step rejection, no
+   root-finding. Cheaper than adaptive RK and, for dissipative forced
+   systems, just as sharp (the orbit settles onto its attractor). ──── */
+function runStrobeFixed(opts){
+  var sys = SYS[opts.system];
+  if(!sys){ self.postMessage({type:'error',msg:'Unknown system: '+opts.system}); return; }
+  var p = opts.params, n = sys.n;
+  var T = opts.section.period;
+  if(!(T > 0)){ self.postMessage({type:'error',msg:'Stroboscopic period must be > 0.'}); return; }
+  var N = Math.max(20, opts.substeps|0 || 250), h = T/N;
+  var y = new Float64Array(n), ytmp = new Float64Array(n);
+  var k1 = new Float64Array(n), k2 = new Float64Array(n), k3 = new Float64Array(n), k4 = new Float64Array(n);
+  var icSets = opts.icSets || [opts.y0], nIC = icSets.length;
+  var maxPts = opts.maxPoints|0, transient = opts.transient|0;
+  var perIC = Math.ceil(maxPts / nIC);
+  var totalPts = 0, t = 0, icIdx = 0;
+
+  var batchSize = 500, batch = [];
+  function emitBatch(){ if(!batch.length) return; self.postMessage({type:'batch', pts:batch, total:totalPts, n:n, accepted:totalPts, rejected:0, h:h, t:0}); batch = []; }
+  var PATH_CAP = 5000, pathTotal = 0, pathBatch = [];
+  function emitPath(){ if(!pathBatch.length) return; self.postMessage({type:'path', pts:pathBatch, n:n}); pathBatch = []; }
+  var everyP = Math.max(1, Math.ceil(N/120));
+
+  var stopRequested = false;
+  self.onmessage = function(ev){ if(ev.data && ev.data.type === 'stop') stopRequested = true; };
+  var lastProgress = performance.now();
+
+  /* Advance exactly one forcing period; optionally sample the path (IC 0). */
+  function stepPeriod(recordPathThis){
+    for(var i=0;i<N;i++){
+      var j;
+      sys.f(t, y, p, k1);
+      for(j=0;j<n;j++) ytmp[j] = y[j] + 0.5*h*k1[j];
+      sys.f(t+0.5*h, ytmp, p, k2);
+      for(j=0;j<n;j++) ytmp[j] = y[j] + 0.5*h*k2[j];
+      sys.f(t+0.5*h, ytmp, p, k3);
+      for(j=0;j<n;j++) ytmp[j] = y[j] + h*k3[j];
+      sys.f(t+h, ytmp, p, k4);
+      for(j=0;j<n;j++) y[j] = y[j] + h/6*(k1[j] + 2*k2[j] + 2*k3[j] + k4[j]);
+      t += h;
+      if(recordPathThis && pathTotal < PATH_CAP && (i % everyP === 0)){
+        pathTotal++; pathBatch.push(t); for(j=0;j<n;j++) pathBatch.push(y[j]);
+        if(pathBatch.length >= 400*(n+1)) emitPath();
+      }
+    }
+  }
+
+  for(icIdx=0; icIdx<nIC && !stopRequested && totalPts<maxPts; icIdx++){
+    for(var j=0;j<n;j++) y[j] = icSets[icIdx][j];
+    t = 0;
+    var recPath = (icIdx === 0);
+    var k;
+    for(k=0;k<transient && !stopRequested;k++) stepPeriod(recPath);
+    for(k=0;k<perIC && !stopRequested && totalPts<maxPts;k++){
+      stepPeriod(recPath);
+      totalPts++;
+      batch.push(t); for(var jj=0;jj<n;jj++) batch.push(y[jj]); batch.push(icIdx);
+      if(batch.length >= batchSize*(n+2)) emitBatch();
+      var now = performance.now();
+      if(now - lastProgress > 100){
+        lastProgress = now; emitBatch();
+        self.postMessage({type:'progress', total:totalPts, target:maxPts, accepted:totalPts, rejected:0, h:h, tSim:t, ic:icIdx, nIC:nIC});
+      }
+    }
+  }
+  emitBatch(); emitPath();
+  self.postMessage({type:'done', total:totalPts, accepted:totalPts, rejected:0, tSim:t, stopped:stopRequested, nIC:nIC});
+}
+
+/* ── Symplectic driver for Hénon–Heiles (separable Hamiltonian) ──────
+   H = ½(p_x²+p_y²) + ½(x²+y²) + x²y − y³/3, so the flow splits into a
+   momentum "kick" F = −∇V and a position "drift". A 4th-order Yoshida
+   composition of Störmer–Verlet leapfrog steps is symplectic: energy
+   error stays bounded over exponentially long times, so KAM tori stay
+   sharp at a large step instead of slowly smearing from RK energy drift.
+   Section x=0 crossings are located by Brent + cubic-Hermite dense output,
+   exactly as in the adaptive driver. State [x, y, p_x, p_y]. ────────── */
+function henonDeriv(s, out){
+  out[0] = s[2]; out[1] = s[3];
+  out[2] = -s[0] - 2*s[0]*s[1];
+  out[3] = -s[1] - s[0]*s[0] + s[1]*s[1];
+}
+function henonLeapfrog(y, h){
+  var Fx = -y[0] - 2*y[0]*y[1], Fy = -y[1] - y[0]*y[0] + y[1]*y[1];
+  y[2] += 0.5*h*Fx; y[3] += 0.5*h*Fy;
+  y[0] += h*y[2];    y[1] += h*y[3];
+  Fx = -y[0] - 2*y[0]*y[1]; Fy = -y[1] - y[0]*y[0] + y[1]*y[1];
+  y[2] += 0.5*h*Fx; y[3] += 0.5*h*Fy;
+}
+var HEN_C = Math.cbrt(2), HEN_W1 = 1/(2 - HEN_C), HEN_W0 = -HEN_C/(2 - HEN_C);
+function henonYoshida4(y, h){
+  henonLeapfrog(y, HEN_W1*h); henonLeapfrog(y, HEN_W0*h); henonLeapfrog(y, HEN_W1*h);
+}
+function runHenonSymplectic(opts){
+  var n = 4;
+  var hMac = opts.henonH > 0 ? opts.henonH : 0.04;
+  var icSets = opts.icSets || [opts.y0], nIC = icSets.length;
+  var maxPts = opts.maxPoints|0, transient = opts.transient|0;
+  var perIC = Math.ceil(maxPts / nIC);
+  var hpIdx = opts.section.varIdx|0, hpVal = +opts.section.value, hpDir = opts.section.direction || 'up';
+
+  var y = new Float64Array(n), ySave = new Float64Array(n), f0 = new Float64Array(n), f1 = new Float64Array(n), outp = new Float64Array(n);
+  var totalPts = 0, icIdx = 0;
+  var batchSize = 500, batch = [];
+  function emitBatch(){ if(!batch.length) return; self.postMessage({type:'batch', pts:batch, total:totalPts, n:n, accepted:totalPts, rejected:0, h:hMac, t:0}); batch = []; }
+  var PATH_CAP = 5000, pathTotal = 0, pathBatch = [], pathEvery = 6;
+  function emitPath(){ if(!pathBatch.length) return; self.postMessage({type:'path', pts:pathBatch, n:n}); pathBatch = []; }
+
+  var stopRequested = false;
+  self.onmessage = function(ev){ if(ev.data && ev.data.type === 'stop') stopRequested = true; };
+  var lastProgress = performance.now();
+
+  for(icIdx=0; icIdx<nIC && !stopRequested && totalPts<maxPts; icIdx++){
+    var ic = icSets[icIdx];
+    for(var i=0;i<n;i++) y[i] = ic[i];
+    var recordCountThisIC = 0, tAcc = 0, step = 0, maxSteps = 8e6;
+    var recPath = (icIdx === 0), pathTick = 0;
+    while(step < maxSteps && !stopRequested && (recordCountThisIC - transient) < perIC && totalPts < maxPts){
+      step++;
+      henonDeriv(y, f0);
+      for(var j=0;j<n;j++) ySave[j] = y[j];
+      henonYoshida4(y, hMac);
+      var g0 = ySave[hpIdx] - hpVal, g1 = y[hpIdx] - hpVal;
+      if(g0*g1 <= 0 && !(g0 === 0 && g1 === 0)){
+        var dirSign = g1 - g0;
+        var ok = (hpDir === 'up') ? dirSign > 0 : (hpDir === 'down') ? dirSign < 0 : true;
+        if(ok){
+          henonDeriv(y, f1);
+          var a0 = ySave[hpIdx], fa0 = f0[hpIdx], a1 = y[hpIdx], fa1 = f1[hpIdx];
+          var theta = brentRoot(function(th){ return hermiteScalar(a0, fa0, a1, fa1, hMac, th) - hpVal; }, 0, 1, g0, g1, 1e-12);
+          if(theta != null){
+            hermite(ySave, f0, y, f1, hMac, theta, outp);
+            recordCountThisIC++;
+            if(recordCountThisIC > transient){
+              totalPts++;
+              batch.push(tAcc + theta*hMac);
+              for(var jj=0;jj<n;jj++) batch.push(outp[jj]);
+              batch.push(icIdx);
+              if(batch.length >= batchSize*(n+2)) emitBatch();
+            }
+          }
+        }
+      }
+      tAcc += hMac;
+      if(recPath && pathTotal < PATH_CAP && (++pathTick % pathEvery === 0)){
+        pathTotal++; pathBatch.push(tAcc); for(var jp=0;jp<n;jp++) pathBatch.push(y[jp]);
+        if(pathBatch.length >= 400*(n+1)) emitPath();
+      }
+      var now = performance.now();
+      if(now - lastProgress > 100){
+        lastProgress = now; emitBatch();
+        self.postMessage({type:'progress', total:totalPts, target:maxPts, accepted:step, rejected:0, h:hMac, tSim:tAcc, ic:icIdx, nIC:nIC});
+      }
+    }
+    if(recordCountThisIC === 0 && !stopRequested){
+      self.postMessage({type:'error', msg:'No section crossings on IC #'+(icIdx+1)+'. Check the energy/section.'});
+      return;
+    }
+  }
+  emitBatch(); emitPath();
+  self.postMessage({type:'done', total:totalPts, accepted:totalPts, rejected:0, tSim:0, stopped:stopRequested, nIC:nIC});
+}
+
 /* ── Driver: integrate, detect crossings, stream batches ────────────
    Supports multiple initial conditions (opts.icSets), one integrated
    after the other, with each section point tagged by its IC index so
@@ -1093,6 +1265,13 @@ function run(opts){
   if(opts.system === 'standardmap'){ runStandardMap(opts); return; }
   if(opts.system === 'henonmap'){ runHenonMap(opts); return; }
   if(opts.system === 'ikedamap'){ runIkedaMap(opts); return; }
+  /* Lighter paths: stroboscopic sections don't need adaptive control — a
+     fixed-step RK4 with an integer number of substeps per period lands the
+     samples exactly on t=kT. Hénon–Heiles is a separable Hamiltonian, so a
+     symplectic (Yoshida-4) integrator keeps energy error bounded over long
+     trajectories, giving sharp tori far more cheaply than tight-tol RK. */
+  if(opts.section && opts.section.mode === 'strobe'){ runStrobeFixed(opts); return; }
+  if(opts.system === 'henon'){ runHenonSymplectic(opts); return; }
   var sys = SYS[opts.system]; if(!sys){ self.postMessage({type:'error',msg:'Unknown system: '+opts.system}); return; }
   var p = opts.params, n = sys.n;
 
@@ -1342,6 +1521,24 @@ var SLIDER_META = {
   henonmap:   {input:'hm-a',      name:'a',              min:0,    max:1.45,   step:0.005, hint:'Nonlinearity — period-doubling cascade to the attractor.'},
   ikedamap:   {input:'ik-u',      name:'u',              min:0,    max:1,      step:0.005, hint:'Dissipation — folded-crescent attractor near u = 0.9.'}
 };
+
+/* ── Integration quality: one knob trading speed for accuracy. Sets the
+   adaptive tolerances (Tsit5/DOP853 hyperplane driver), the RK4 substeps
+   per period (fixed-step strobe driver), and the symplectic step for
+   Hénon–Heiles. Fast is near-identical for chaotic/dissipative systems
+   (shadowing) and much quicker. ──────────────────────────────────────── */
+var QUALITY = {
+  fast:     {rtol:'1e-7', atol:'1e-9',  substeps:150, henonH:0.06,  label:'Fast — looser tolerances / larger steps; near-identical sections for chaotic systems, much quicker.'},
+  balanced: {rtol:'1e-8', atol:'1e-11', substeps:250, henonH:0.04,  label:'Balanced — a good speed/accuracy trade-off for most explorations.'},
+  accurate: {rtol:'1e-9', atol:'1e-12', substeps:400, henonH:0.025, label:'Accurate — tight tolerances / small steps for publication-quality detail.'}
+};
+function currentQuality(){ return QUALITY[$('qualitySel') ? $('qualitySel').value : 'balanced'] || QUALITY.balanced; }
+/* Apply the preset's tolerances to the (still user-editable) rtol/atol fields. */
+function applyQuality(){
+  var q = currentQuality();
+  $('rtol').value = q.rtol; $('atol').value = q.atol;
+  if($('qualityHint')) $('qualityHint').textContent = q.label;
+}
 
 /* Decimals to show for a given slider step. */
 function keyDecimals(step){ return step < 0.01 ? 3 : step < 1 ? 2 : 1; }
@@ -2168,6 +2365,18 @@ function draw(){
   if(downloadBtn) downloadBtn.disabled = (ptsCount === 0);
 }
 
+/* Coalesce the many streamed batches into one repaint per animation frame.
+   Redrawing every point on both canvases for each batch was the real cost at
+   30k–60k points; at one repaint per frame the run tracks the (now lighter)
+   integrator instead of the renderer. */
+var _drawPending = false;
+function scheduleDraw(){
+  if(_drawPending) return;
+  _drawPending = true;
+  requestAnimationFrame(function(){ _drawPending = false; draw(); });
+}
+function drawNow(){ _drawPending = false; draw(); }
+
 function axisLabel(v){
   if(v === 't') return 't';
   var labels = SYS_META[systemSel.value].compLabels;
@@ -2228,10 +2437,12 @@ function buildOpts(){
     if(sysName === 'doublepend' && (section.varIdx === 0 || section.varIdx === 1)) section.modular = true;
     if(sysName === 'atwood' && section.varIdx === 1) section.modular = true;
   }
+  var q = currentQuality();
   return {
     system: sysName, params: rd.p, icSets: icSets, t0: 0,
     method: ($('integSel') ? $('integSel').value : 'tsit5'),
     rtol: rtol, atol: atol, hMax: parseFloat($('hMax').value)||1,
+    substeps: q.substeps, henonH: q.henonH,
     maxPoints: parseInt($('numCrossings').value,10)||10000,
     transient: parseInt($('transient').value,10)||0,
     section: section
@@ -2264,7 +2475,7 @@ function startRun(){
       }
       pointCount.textContent = ptsCount.toLocaleString() + ' points';
       simT = Math.max(simT, d.t);
-      draw();
+      scheduleDraw();
     } else if(d.type === 'path'){
       var parr = d.pts; if(!parr || !parr.length) return;
       var pstep = ptsN + 1;                 /* [t, y0 … y_{n-1}] per sample */
@@ -2276,7 +2487,7 @@ function startRun(){
         for(var j=0;j<ptsN;j++) pathY[pathCount*ptsN + j] = parr[po + 1 + j];
         pathCount++;
       }
-      draw();
+      scheduleDraw();
     } else if(d.type === 'progress'){
       var pct = Math.min(100, 100*d.total/(parseInt($('numCrossings').value,10)||1));
       tpFill.style.width = pct.toFixed(1)+'%';
@@ -2289,7 +2500,7 @@ function startRun(){
       tpStats.textContent = (d.stopped ? 'Stopped. ' : 'Done. ') + d.total.toLocaleString()+' pts'+(d.nIC?(' over '+d.nIC+' trajectories'):'')+' • sim t = '+(+d.tSim).toFixed(2)+' • '+(d.accepted||0).toLocaleString()+' acc / '+(d.rejected||0).toLocaleString()+' rej';
       runBtn.disabled = false; stopBtn.disabled = true;
       $('live').textContent = 'Run complete. '+d.total+' Poincaré points.';
-      draw();
+      drawNow();
     } else if(d.type === 'error'){
       tpStats.textContent = 'Error: '+d.msg;
       runBtn.disabled = false; stopBtn.disabled = true;
@@ -2328,6 +2539,7 @@ $('infoBtn').addEventListener('click', function(){
 /* ── Wire up reactive UI updates ─────────────────────────────────── */
 systemSel.addEventListener('change', onSystemChange);
 sectionMode.addEventListener('change', updateSectionUI);
+if($('qualitySel')) $('qualitySel').addEventListener('change', applyQuality);
 ['duf-omega','pen-omega'].forEach(function(id){
   $(id).addEventListener('input', function(){ if(sectionMode.value==='strobe') updateSectionUI(); updateEqDisplay(); });
 });
@@ -2345,6 +2557,7 @@ Object.keys(SLIDER_META).forEach(function(sys){
 });
 
 /* ── Init ─────────────────────────────────────────────────────────── */
+applyQuality();
 showParamsGroup('duffing');
 showPresetGroup('duffing');
 configureSlider('duffing');
