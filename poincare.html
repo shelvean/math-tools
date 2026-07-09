@@ -99,6 +99,7 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 .abtn-stop{background:var(--red);color:#fff;border-color:var(--red);}.abtn-stop:hover{background:#b91c1c;}
 .abtn-clear{background:var(--muted);color:#fff;border-color:var(--muted);}.abtn-clear:hover{background:#374151;}
 .abtn-download{background:var(--blue);color:#fff;border-color:var(--blue);}.abtn-download:hover{background:var(--bl2);}
+.abtn-play{background:var(--vio);color:#fff;border-color:var(--vio);}.abtn-play:hover{background:#5b21b6;}
 .abtn:disabled{opacity:.45;cursor:not-allowed;}
 .abtn:disabled,.abtn[aria-disabled=true]{opacity:.55;cursor:not-allowed;}
 
@@ -583,6 +584,7 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
       <div class="abar">
         <button id="runBtn" class="abtn abtn-go" type="button">▶ Run</button>
         <button id="stopBtn" class="abtn abtn-stop" type="button" disabled>■ Stop</button>
+        <button id="playBtn" class="abtn abtn-play" type="button" disabled aria-label="Play the trajectory trace and watch the section build up">▷ Play trace</button>
         <button id="clearBtn" class="abtn abtn-clear" type="button">Clear plot</button>
         <button id="downloadBtn" class="abtn abtn-download" type="button" disabled aria-label="Download Poincaré section as PNG">⬇ PNG</button>
         <span id="pointCount" class="legend" style="margin-left:auto;">0 points</span>
@@ -1146,7 +1148,9 @@ function runStrobeFixed(opts){
     t = 0;
     var recPath = (icIdx === 0);
     var k;
-    for(k=0;k<transient && !stopRequested;k++) stepPeriod(recPath);
+    /* Skip the transient for the path too, so it traces the same settled
+       region the section is sampled from (not the initial spiral-in). */
+    for(k=0;k<transient && !stopRequested;k++) stepPeriod(false);
     for(k=0;k<perIC && !stopRequested && totalPts<maxPts;k++){
       stepPeriod(recPath);
       totalPts++;
@@ -1238,7 +1242,7 @@ function runHenonSymplectic(opts){
         }
       }
       tAcc += hMac;
-      if(recPath && pathTotal < PATH_CAP && (++pathTick % pathEvery === 0)){
+      if(recPath && recordCountThisIC >= transient && pathTotal < PATH_CAP && (++pathTick % pathEvery === 0)){
         pathTotal++; pathBatch.push(tAcc); for(var jp=0;jp<n;jp++) pathBatch.push(y[jp]);
         if(pathBatch.length >= 400*(n+1)) emitPath();
       }
@@ -1426,7 +1430,7 @@ function runImplicitMidpoint(opts){
       }
       for(var jn=0;jn<n;jn++) y[jn] = yNew[jn];
       tAcc += h;
-      if(recPath && pathBufN < PATH_CAP && (++pathTick % pathEvery === 0)){
+      if(recPath && recordCountThisIC >= transient && pathBufN < PATH_CAP && (++pathTick % pathEvery === 0)){
         pathBufN++; pathBuf.push(tAcc); for(var jp=0;jp<n;jp++) pathBuf.push(y[jp]);
       }
       var now = performance.now();
@@ -1523,7 +1527,9 @@ function run(opts){
     pathBatch = [];
   }
   function recordPath(tt, state){
-    if(icIdx !== 0 || pathTotal >= PATH_CAP) return;
+    /* First IC only, and only past the transient so the path traces the same
+       settled region the section is sampled from. */
+    if(icIdx !== 0 || pathTotal >= PATH_CAP || recordCountThisIC < transientThisIC) return;
     pathTotal++;
     pathBatch.push(tt);
     for(var j=0;j<n;j++) pathBatch.push(state[j]);
@@ -1679,7 +1685,7 @@ var worker = null;
 /* ── DOM refs ────────────────────────────────────────────────────── */
 var $ = function(id){ return document.getElementById(id); };
 var systemSel = $('systemSel'), sectionMode = $('sectionMode');
-var runBtn = $('runBtn'), stopBtn = $('stopBtn'), clearBtn = $('clearBtn'), downloadBtn = $('downloadBtn');
+var runBtn = $('runBtn'), stopBtn = $('stopBtn'), clearBtn = $('clearBtn'), downloadBtn = $('downloadBtn'), playBtn = $('playBtn');
 var canvas = $('poincareCanvas'), ctx = canvas.getContext('2d');
 var pathCanvas = $('pathCanvas'), pctx = pathCanvas.getContext('2d');
 var pathWrap = $('pathWrap'), plotDual = $('plotDual'), pathTitle = $('pathTitle');
@@ -2344,11 +2350,13 @@ function ensureCap(extra){
 }
 
 function clearPlot(){
+  if(typeof stopTraceRaf === 'function') stopTraceRaf();
   ptsCount = 0; simT = 0; ptsNIC = 1; pathCount = 0;
   pointCount.textContent = '0 points';
   tpFill.style.width = '0%'; tpStats.textContent = 'Idle.';
   tpCard.classList.remove('is-done');
   if(downloadBtn) downloadBtn.disabled = true;
+  if(playBtn){ playBtn.disabled = true; playBtn.textContent = '▷ Play trace'; playBtn.classList.add('abtn-play'); playBtn.classList.remove('abtn-stop'); }
   draw();
 }
 
@@ -2578,6 +2586,105 @@ function scheduleDraw(){
 }
 function drawNow(){ _drawPending = false; draw(); }
 
+/* ── Live trace animation ────────────────────────────────────────────
+   Replay the representative trajectory (the path IC) and drop a section
+   dot each time it crosses, so the continuous flow and the Poincaré map
+   build up in sync. Pure replay of the already-computed run data. ───── */
+var trace = null;                 // active animation state, or null
+function traceReady(){ return pathPanelVisible() && pathCount > 1 && ptsCount > 0; }
+
+function pxX(v, b, pad, iw){ return pad.l + (v - b.xMin)/(b.xMax - b.xMin)*iw; }
+function pxY(v, b, pad, ih, H){ return H - pad.b - (v - b.yMin)/(b.yMax - b.yMin)*ih; }
+
+function startTrace(){
+  if(!traceReady()){ return; }
+  stopTraceRaf();
+  var repSec = [];
+  for(var i=0;i<ptsCount;i++) if(ptsIC[i] === pathSourceIC) repSec.push(i);
+  /* Normalise duration to ~15 s regardless of how many samples were kept. */
+  var step = Math.max(1, Math.round(pathCount / 900));
+  trace = { head: 0, repSec: repSec, secPtr: 0, step: step, flash: 0, raf: 0 };
+  playBtn.textContent = '■ Stop trace';
+  playBtn.classList.remove('abtn-play'); playBtn.classList.add('abtn-stop');
+  runBtn.disabled = true;
+  $('live').textContent = 'Playing the trajectory trace.';
+  trace.raf = requestAnimationFrame(traceFrame);
+}
+function stopTraceRaf(){ if(trace){ cancelAnimationFrame(trace.raf); trace = null; } }
+function stopTrace(){
+  stopTraceRaf();
+  playBtn.textContent = '▷ Play trace';
+  playBtn.classList.add('abtn-play'); playBtn.classList.remove('abtn-stop');
+  runBtn.disabled = false;
+  playBtn.disabled = !traceReady();
+  draw();                          // settle on the full, final picture
+}
+function traceFrame(){
+  if(!trace) return;
+  trace.head = Math.min(pathCount - 1, trace.head + trace.step);
+  var headT = pathT[trace.head], dropped = false;
+  while(trace.secPtr < trace.repSec.length && ptsT[trace.repSec[trace.secPtr]] <= headT){ trace.secPtr++; dropped = true; }
+  if(dropped) trace.flash = 1;
+  drawTrace(trace.head, trace.secPtr, trace.flash);
+  trace.flash = Math.max(0, trace.flash - 0.12);
+  if(trace.head >= pathCount - 1){ stopTrace(); return; }
+  trace.raf = requestAnimationFrame(traceFrame);
+}
+
+function drawTrace(head, secPtr, flash){
+  var ax = xAxisSel.value, ay = yAxisSel.value;
+  var b = computeBounds();
+  var repSec = trace.repSec, i, idx;
+
+  /* ── Section panel: faint full map for context, revealed dots bright ── */
+  var Ws = canvas._logW, Hs = canvas._logH;
+  var gs = paintAxes(ctx, Ws, Hs, b, ax, ay);
+  if(gs){
+    ctx.save(); ctx.beginPath(); ctx.rect(gs.pad.l, gs.pad.t, gs.iw, gs.ih); ctx.clip();
+    ctx.fillStyle = 'rgba(100,116,139,0.13)';
+    for(i=0;i<ptsCount;i++){
+      ctx.beginPath(); ctx.arc(pxX(projectAxis(ax,i),b,gs.pad,gs.iw), pxY(projectAxis(ay,i),b,gs.pad,gs.ih,Hs), 0.7, 0, 6.2832); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(29,78,216,0.95)';
+    for(i=0;i<secPtr;i++){ idx = repSec[i];
+      ctx.beginPath(); ctx.arc(pxX(projectAxis(ax,idx),b,gs.pad,gs.iw), pxY(projectAxis(ay,idx),b,gs.pad,gs.ih,Hs), 1.8, 0, 6.2832); ctx.fill();
+    }
+    if(flash > 0 && secPtr > 0){ idx = repSec[secPtr-1];
+      ctx.strokeStyle = 'rgba(180,83,9,'+(0.85*flash)+')'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(pxX(projectAxis(ax,idx),b,gs.pad,gs.iw), pxY(projectAxis(ay,idx),b,gs.pad,gs.ih,Hs), 3+8*(1-flash), 0, 6.2832); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* ── Path panel: trajectory up to the head + moving point + its dots ── */
+  var Wp = pathCanvas._logW, Hp = pathCanvas._logH;
+  var gp = paintAxes(pctx, Wp, Hp, b, ax, ay);
+  if(gp){
+    pctx.save(); pctx.beginPath(); pctx.rect(gp.pad.l, gp.pad.t, gp.iw, gp.ih); pctx.clip();
+    var jumpX = 0.5*(b.xMax-b.xMin), jumpY = 0.5*(b.yMax-b.yMin);
+    var wrapped = (ax==='wrap0'||ax==='wrap1'||ay==='wrap0'||ay==='wrap1');
+    pctx.strokeStyle = 'rgba(15,118,110,0.75)'; pctx.lineWidth = 1.2; pctx.lineJoin = 'round';
+    pctx.beginPath();
+    var started = false, px0 = 0, py0 = 0;
+    for(i=0;i<=head;i++){
+      var x = projectPath(ax,i), y = projectPath(ay,i);
+      var cx = pxX(x,b,gp.pad,gp.iw), cy = pxY(y,b,gp.pad,gp.ih,Hp);
+      if(started && wrapped && (Math.abs(x-px0)>jumpX || Math.abs(y-py0)>jumpY)){ pctx.stroke(); pctx.beginPath(); started = false; }
+      if(!started){ pctx.moveTo(cx,cy); started = true; } else pctx.lineTo(cx,cy);
+      px0 = x; py0 = y;
+    }
+    pctx.stroke();
+    pctx.fillStyle = 'rgba(29,78,216,0.9)';
+    for(i=0;i<secPtr;i++){ idx = repSec[i];
+      pctx.beginPath(); pctx.arc(pxX(projectAxis(ax,idx),b,gp.pad,gp.iw), pxY(projectAxis(ay,idx),b,gp.pad,gp.ih,Hp), 1.7, 0, 6.2832); pctx.fill();
+    }
+    pctx.fillStyle = '#b45309';
+    pctx.beginPath(); pctx.arc(pxX(projectPath(ax,head),b,gp.pad,gp.iw), pxY(projectPath(ay,head),b,gp.pad,gp.ih,Hp), 3.6, 0, 6.2832); pctx.fill();
+    pctx.restore();
+  }
+  boundsLegend.textContent = 'tracing… ' + secPtr + ' / ' + repSec.length + ' crossings';
+}
+
 function axisLabel(v){
   if(v === 't') return 't';
   var labels = SYS_META[systemSel.value].compLabels;
@@ -2655,6 +2762,8 @@ function buildOpts(){
 }
 
 function startRun(finalOnly){
+  stopTraceRaf();
+  if(playBtn){ playBtn.disabled = true; playBtn.textContent = '▷ Play trace'; playBtn.classList.add('abtn-play'); playBtn.classList.remove('abtn-stop'); }
   if(worker){ worker.terminate(); worker = null; }
   ptsCount = 0; pathCount = 0; pathSourceIC = 0;
   ptsN = SYS_META[systemSel.value].compLabels.length;
@@ -2707,6 +2816,7 @@ function startRun(finalOnly){
       tpFill.style.width = '100%'; tpCard.classList.add('is-done');
       tpStats.textContent = (d.stopped ? 'Stopped. ' : 'Done. ') + d.total.toLocaleString()+' pts'+(d.nIC?(' over '+d.nIC+' trajectories'):'')+' • sim t = '+(+d.tSim).toFixed(2)+' • '+(d.accepted||0).toLocaleString()+' acc / '+(d.rejected||0).toLocaleString()+' rej';
       runBtn.disabled = false; stopBtn.disabled = true;
+      if(playBtn) playBtn.disabled = !traceReady();
       $('live').textContent = 'Run complete. '+d.total+' Poincaré points.';
       drawNow();
     } else if(d.type === 'error'){
@@ -2735,6 +2845,7 @@ runBtn.addEventListener('click', function(){ startRun(false); });
 stopBtn.addEventListener('click', stopRun);
 clearBtn.addEventListener('click', clearPlot);
 downloadBtn.addEventListener('click', downloadPNG);
+playBtn.addEventListener('click', function(){ if(trace) stopTrace(); else startTrace(); });
 
 /* ── Info panel toggle ───────────────────────────────────────────── */
 $('infoBtn').addEventListener('click', function(){
