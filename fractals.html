@@ -531,7 +531,7 @@ var Fern=(function(){
 var Tree=(function(){
   var cv=$('treeCv'), ctx=fitCanvas(cv), W=cv._W, H=cv._H;
   var angle=24*Math.PI/180, maxDepth=10, ratio=0.72, palette='verdant';
-  var grow=0, wind=0, phase='grow', anim;
+  var grow=0, wind=0, phase='grow', rafId=null, playing=false;
   var PAL={
     verdant:{trunk:[28,45,26], leaf:[120,60,45]},
     autumn: {trunk:[24,50,28], leaf:[32,85,52]},
@@ -568,35 +568,37 @@ var Tree=(function(){
     }
   }
   function redraw(){ clearBg(); branch(W/2,H-8,0,H*0.24,0,grow); }
-  function reset(){ if(anim)anim.stop(); grow=0; phase='grow'; wind=0; clearBg(); $('treeStat').textContent='Ready.'; }
-  applyBgFns.push(redraw);   /* repaint current tree onto the new background */
-  function frame(){
+  function setBtn(p){ $('treePlay').innerHTML = p ? '&#10073;&#10073; Pause' : '&#9654; Grow'; }
+  /* One frame of the growth/breeze animation. */
+  function step(){
     if(phase==='grow'){
       grow+=0.06; redraw();
       $('treeStat').textContent='Generation '+Math.min(maxDepth,Math.floor(grow))+' / '+maxDepth;
       if(grow>=maxDepth){ grow=maxDepth; phase='breeze'; $('treeStat').textContent='Grown - swaying in the breeze'; }
-      return false;
     } else {
       wind=0.05*Math.sin(Date.now()/900);   // gentle continuous sway
       redraw();
-      return false;                          // breeze runs until paused/reset
     }
   }
-  function play(){
-    if(anim&&anim.running){ anim.stop(); $('treePlay').innerHTML='&#9654; Grow'; return; }
-    if(grow>=maxDepth && phase==='breeze'){ reset(); }
-    if(REDUCED){ grow=maxDepth; phase='static'; redraw(); $('treeStat').textContent='Grown ('+maxDepth+' generations)'; return; }
-    $('treePlay').innerHTML='&#10073;&#10073; Pause';
-    anim=new Anim(frame); anim.start();
+  /* Single rAF loop - exactly one may run at a time, so pause is reliable. */
+  function loop(){ if(!playing)return; step(); rafId=requestAnimationFrame(loop); }
+  function startAnim(){
+    if(playing) return;                     // idempotent: safe to call from autostart
+    if(REDUCED){ grow=maxDepth; phase='static'; redraw(); $('treeStat').textContent='Grown ('+maxDepth+' generations)'; setBtn(false); return; }
+    playing=true; setBtn(true); loop();
   }
+  function stopAnim(){ playing=false; if(rafId)cancelAnimationFrame(rafId); rafId=null; setBtn(false); }
+  function toggle(){ if(playing) stopAnim(); else startAnim(); }
+  function reset(){ stopAnim(); grow=0; phase='grow'; wind=0; clearBg(); $('treeStat').textContent='Ready.'; }
+  applyBgFns.push(redraw);   /* repaint current tree onto the new background */
   clearBg();
-  $('treePlay').addEventListener('click',play);
-  $('treeReset').addEventListener('click',function(){ reset(); $('treePlay').innerHTML='&#9654; Grow'; });
+  $('treePlay').addEventListener('click',toggle);
+  $('treeReset').addEventListener('click',reset);
   $('treeAngle').addEventListener('input',function(){ angle=(+this.value)*Math.PI/180; $('treeAngleV').textContent=this.value+'°'; if(phase!=='grow')redraw(); });
   $('treeDepth').addEventListener('input',function(){ maxDepth=+this.value; $('treeDepthV').textContent=this.value; reset(); });
   $('treeRatio').addEventListener('input',function(){ ratio=+this.value; $('treeRatioV').textContent=(+this.value).toFixed(2); if(phase!=='grow')redraw(); });
   $('treePal').addEventListener('change',function(){ palette=this.value; if(grow>0)redraw(); });
-  return {grow:play, reset:reset, el:cv};
+  return {grow:startAnim, reset:reset, el:cv};
 })();
 
 /* ================================================================
