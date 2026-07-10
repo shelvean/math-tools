@@ -1337,8 +1337,9 @@ canvas.addEventListener('click', function(e){
   var cx = e.clientX - rect.left;
   var cy = e.clientY - rect.top;
   var wx = c2w(cx, cy)[0];
-  var ex = EX[ST.exId];
-  wx = clamp(wx, ex.domain[0], ex.domain[1]);
+  /* Honour wherever the user clicks (within the visible view), not just the
+     display domain - so a start point can be set in the margins too. */
+  wx = clamp(wx, ST.view.xMin, ST.view.xMax);
   ST.x0 = parseFloat(wx.toFixed(4));
   document.getElementById('x0Num').value = ST.x0;
   stopAnim();
@@ -2010,12 +2011,27 @@ document.getElementById('x0Num').addEventListener('change',function(){
   var v=parseMathInput(this.value);
   var ex=getEx();
   if(!isFinite(v))return;
-  v=clamp(v,ex.domain[0],ex.domain[1]);
+  /* Honour any finite x0 - do NOT clamp to the display domain. Some examples
+     explicitly invite starting just outside a fixed point (e.g. to watch an
+     orbit escape to infinity), so clamping would silently reject those. */
   this.value=v;
   ST.x0=v;
+  ensureStartVisible(v,ex);
   stopAnim(); buildOrbit(); ST.nDraw=0;
   render(); drawOrbit(); updateReadout(); updateFormula();
 });
+
+/* Keep the starting point (x0,x0) on-screen. If x0 falls outside the current
+   view, reframe to a square window spanning the example's domain together with
+   x0 (plus a margin). If x0 is already visible, leave the user's zoom/pan alone. */
+function ensureStartVisible(x0,ex){
+  var v=ST.view;
+  if(x0>=v.xMin && x0<=v.xMax) return;
+  var lo=Math.min(ex.domain[0],x0), hi=Math.max(ex.domain[1],x0);
+  var margin=(hi-lo)*0.1 || 0.1;
+  var mn=lo-margin, mx=hi+margin;
+  ST.view={xMin:mn,xMax:mx,yMin:mn,yMax:mx};
+}
 
 /* ── N iterations ── */
 document.getElementById('nIterNum').addEventListener('change',function(){
