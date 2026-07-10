@@ -397,7 +397,7 @@ h1{font-size:1.85rem;font-weight:800;text-align:center;margin:.2rem 0 .3rem;colo
             <option value="sanmarco">San Marco</option>
             <option value="galaxy">Siegel disk</option>
           </select></div>
-        <div class="ctrl-row"><label for="julDetail">Detail</label><input type="range" id="julDetail" min="40" max="160" step="10" value="90"><span class="val" id="julDetailV">90</span></div>
+        <div class="ctrl-row"><label for="julDetail">Detail</label><input type="range" id="julDetail" min="60" max="320" step="20" value="140"><span class="val" id="julDetailV">140</span></div>
       </div>
     </div>
   </div>
@@ -686,11 +686,16 @@ var DLA=(function(){
 ================================================================ */
 var Julia=(function(){
   var cv=$('julCv'), ctx=fitCanvas(cv), W=cv._W, H=cv._H;
-  var BUF=200;                                     // render buffer resolution
-  var off=document.createElement('canvas'); off.width=BUF; off.height=BUF;
-  var octx=off.getContext('2d');
-  var img=octx.createImageData(BUF,BUF);
-  var maxIt=90, cRe=-0.4, cIm=0.6, theta=0, morphing=false, anim;
+  /* Two buffers: a light one for a smooth morph animation, and a
+     supersampled high-resolution one for the crisp static view. HRES is
+     ~1.5x the device-pixel backing store so the downscale anti-aliases. */
+  var MRES=200;                                    // light buffer: smooth morph
+  var HRES=Math.min(1400, Math.round(W*cv._dpr*1.6)); // supersampled: crisp static
+  var moff=document.createElement('canvas'); moff.width=MRES; moff.height=MRES;
+  var mctx=moff.getContext('2d'), mimg=mctx.createImageData(MRES,MRES);
+  var hoff=document.createElement('canvas'); hoff.width=HRES; hoff.height=HRES;
+  var hctx=hoff.getContext('2d'), himg=hctx.createImageData(HRES,HRES);
+  var maxIt=140, cRe=-0.4, cIm=0.6, curRe=-0.4, curIm=0.6, theta=0, morphing=false, anim;
   var PRESETS={
     rabbit:[-0.123,0.745], dendrite:[0,1], spiral:[-0.4,0.6],
     sanmarco:[-0.75,0.0], galaxy:[-0.391,-0.587]
@@ -704,69 +709,76 @@ var Julia=(function(){
     if(isHC()){ var g=Math.round(255*frac); return [g,g,g]; }
     return hsl2rgb(200+m*9, 85, darkBg()? 20+58*frac : 90-60*frac);
   }
-  function render(cr,ci){
-    var d=img.data, span=3.0;
-    for(var py=0;py<BUF;py++){
-      var y0=(py/BUF-0.5)*span;
-      for(var px=0;px<BUF;px++){
-        var x=(px/BUF-0.5)*span, y=y0, it=0;
-        while(x*x+y*y<=16 && it<maxIt){ var xt=x*x-y*y+cr; y=2*x*y+ci; x=xt; it++; }
-        var o=(py*BUF+px)*4, rgb=pix(it, x*x+y*y, maxIt);
+  /* Render the escape-time field into an offscreen buffer of size RES, then
+     draw it (smoothed) to the display canvas. */
+  function paint(offc, offx, offimg, RES, cr, ci, cap){
+    var d=offimg.data, span=3.0;
+    for(var py=0;py<RES;py++){
+      var y0=(py/RES-0.5)*span;
+      for(var px=0;px<RES;px++){
+        var x=(px/RES-0.5)*span, y=y0, it=0;
+        while(x*x+y*y<=16 && it<cap){ var xt=x*x-y*y+cr; y=2*x*y+ci; x=xt; it++; }
+        var o=(py*RES+px)*4, rgb=pix(it, x*x+y*y, cap);
         d[o]=rgb[0]; d[o+1]=rgb[1]; d[o+2]=rgb[2]; d[o+3]=255;
       }
     }
-    octx.putImageData(img,0,0);
+    offx.putImageData(offimg,0,0);
+    cv.style.background=bgColor();
     ctx.setTransform(cv._dpr,0,0,cv._dpr,0,0);
-    ctx.imageSmoothingEnabled=true;
-    ctx.drawImage(off,0,0,BUF,BUF,0,0,W,H);
+    ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+    ctx.clearRect(0,0,W,H);
+    ctx.drawImage(offc,0,0,RES,RES,0,0,W,H);
   }
+  function renderHi(cr,ci){ curRe=cr; curIm=ci; paint(hoff,hctx,himg,HRES,cr,ci,maxIt); }
+  function renderLo(cr,ci){ curRe=cr; curIm=ci; paint(moff,mctx,mimg,MRES,cr,ci,maxIt); }
+  function stat(cr,ci){ $('julStat').textContent='c = '+cr.toFixed(3)+' + '+ci.toFixed(3)+'i'; }
   function reset(){
     if(anim)anim.stop(); morphing=false; $('julPlay').innerHTML='&#9654; Morph';
-    render(cRe,cIm); $('julStat').textContent='c = '+cRe.toFixed(3)+' + '+cIm.toFixed(3)+'i';
+    renderHi(cRe,cIm); stat(cRe,cIm);
   }
-  function applyBg(){ cv.style.background=bgColor(); if(!morphing) render(cRe,cIm); }
+  function applyBg(){ cv.style.background=bgColor(); if(!morphing) renderHi(curRe,curIm); }
   applyBgFns.push(applyBg);
   function frame(){
     theta+=0.02;
     var R=Math.hypot(cRe,cIm)||0.7885, base=Math.atan2(cIm,cRe);
     var cr=R*Math.cos(base+theta), ci=R*Math.sin(base+theta);
-    render(cr,ci);
-    $('julStat').textContent='c = '+cr.toFixed(3)+' + '+ci.toFixed(3)+'i';
+    renderLo(cr,ci); stat(cr,ci);
     return false;                                  // loops until paused
   }
   function morph(){
-    if(anim&&anim.running){ anim.stop(); morphing=false; $('julPlay').innerHTML='&#9654; Morph'; return; }
-    if(REDUCED){ render(cRe,cIm); $('julStat').textContent='Morph disabled (reduced motion)'; return; }
+    if(anim&&anim.running){ anim.stop(); morphing=false; $('julPlay').innerHTML='&#9654; Morph'; renderHi(curRe,curIm); stat(curRe,curIm); return; }
+    if(REDUCED){ renderHi(cRe,cIm); $('julStat').textContent='Morph disabled (reduced motion)'; return; }
     morphing=true; theta=0; $('julPlay').innerHTML='&#10073;&#10073; Pause';
     anim=new Anim(frame); anim.start();
   }
+  /* Extra-detailed render at max buffer size and iteration count. */
   function snapshot(){
     if(anim)anim.stop(); morphing=false; $('julPlay').innerHTML='&#9654; Morph';
-    var HB=Math.min(720, Math.round(W*cv._dpr));
-    var hc=document.createElement('canvas'); hc.width=HB; hc.height=HB;
-    var hx=hc.getContext('2d'), im=hx.createImageData(HB,HB), d=im.data, span=3.0;
-    var hi=Math.round(maxIt*1.6);
-    for(var py=0;py<HB;py++){ var y0=(py/HB-0.5)*span;
-      for(var px=0;px<HB;px++){ var x=(px/HB-0.5)*span, y=y0, it=0;
-        while(x*x+y*y<=16 && it<hi){ var xt=x*x-y*y+cRe; y=2*x*y+cIm; x=xt; it++; }
-        var o=(py*HB+px)*4, rgb=pix(it, x*x+y*y, hi);
+    var SB=Math.min(2000, Math.round(W*cv._dpr*2.6));
+    var sc=document.createElement('canvas'); sc.width=SB; sc.height=SB;
+    var sx=sc.getContext('2d'), sim=sx.createImageData(SB,SB), d=sim.data, span=3.0, hi=Math.round(maxIt*1.8);
+    for(var py=0;py<SB;py++){ var y0=(py/SB-0.5)*span;
+      for(var px=0;px<SB;px++){ var x=(px/SB-0.5)*span, y=y0, it=0;
+        while(x*x+y*y<=16 && it<hi){ var xt=x*x-y*y+curRe; y=2*x*y+curIm; x=xt; it++; }
+        var o=(py*SB+px)*4, rgb=pix(it, x*x+y*y, hi);
         d[o]=rgb[0]; d[o+1]=rgb[1]; d[o+2]=rgb[2]; d[o+3]=255;
       }
     }
-    hx.putImageData(im,0,0);
-    ctx.setTransform(cv._dpr,0,0,cv._dpr,0,0); ctx.imageSmoothingEnabled=true;
-    ctx.drawImage(hc,0,0,HB,HB,0,0,W,H);
-    $('julStat').textContent='High-res snapshot at c = '+cRe.toFixed(3)+' + '+cIm.toFixed(3)+'i';
+    sx.putImageData(sim,0,0);
+    cv.style.background=bgColor();
+    ctx.setTransform(cv._dpr,0,0,cv._dpr,0,0); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+    ctx.clearRect(0,0,W,H); ctx.drawImage(sc,0,0,SB,SB,0,0,W,H);
+    $('julStat').textContent='High-res snapshot ('+SB+'×'+SB+') at c = '+curRe.toFixed(3)+' + '+curIm.toFixed(3)+'i';
     say('High-resolution Julia snapshot rendered.');
   }
   function setPreset(name){ var p=PRESETS[name]||PRESETS.spiral; cRe=p[0]; cIm=p[1]; reset(); }
-  render(cRe,cIm); $('julStat').textContent='c = '+cRe.toFixed(3)+' + '+cIm.toFixed(3)+'i';
+  renderLo(cRe,cIm); stat(cRe,cIm);   // instant preview on load; hi-res on first view
   $('julPlay').addEventListener('click',morph);
   $('julReset').addEventListener('click',reset);
   $('julSnap').addEventListener('click',snapshot);
   $('julPreset').addEventListener('change',function(){ setPreset(this.value); });
-  $('julDetail').addEventListener('input',function(){ maxIt=+this.value; $('julDetailV').textContent=this.value; if(!morphing)render(cRe,cIm); });
-  return {grow:morph, reset:reset, el:cv};
+  $('julDetail').addEventListener('input',function(){ maxIt=+this.value; $('julDetailV').textContent=this.value; if(!morphing)renderHi(curRe,curIm); });
+  return {grow:morph, reset:reset, el:cv, showHi:function(){ if(!morphing) renderHi(curRe,curIm); }};
 })();
 
 /* ================================================================
@@ -854,7 +866,9 @@ function miniBg(m){ m.cv.style.background=bgColor(); m.ctx.setTransform(m.cv._dp
 /* ================================================================
    Autostart feature fractals when scrolled into view
 ================================================================ */
-[Fern,Tree,DLA,Julia].forEach(function(mod){ onVisible(mod.el, function(){ mod.grow(); }); });
+[Fern,Tree,DLA].forEach(function(mod){ onVisible(mod.el, function(){ mod.grow(); }); });
+/* Julia shows a crisp high-resolution static set on first view; press Morph to animate. */
+onVisible(Julia.el, Julia.showHi);
 
 /* Collapsible "About" panel (matches the info panels on the other tools). */
 (function(){
