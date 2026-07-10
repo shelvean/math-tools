@@ -339,7 +339,7 @@ h1{font-size:1.85rem;font-weight:800;text-align:center;margin:.2rem 0 .3rem;colo
       <span class="frac-kind">Recursive branching</span>
       <h3>Fractal tree</h3>
       <p class="frac-like">Physical analogues: a <b>tree</b>, the <b>bronchial tree</b> of a lung, a <b>river network</b>, and neuronal <b>dendrites</b>.</p>
-      <p class="frac-principle">A single rule applied recursively: each branch bifurcates into two shorter branches at a fixed angle. Line width and colour encode the recursion depth, from brown at the trunk to green (or autumn tones) at the twigs. The tree is drawn one generation at a time; a small periodic perturbation is then applied to the branch angles.</p>
+      <p class="frac-principle">A single rule applied recursively: each branch bifurcates into two shorter branches at a fixed angle. Line width and colour encode the recursion depth, from brown at the trunk to green (or autumn tones) at the twigs. The tree is drawn one generation at a time and stops once the selected depth is reached.</p>
       <div class="ctrls">
         <div class="ctrl-row"><label for="treeAngle">Branch angle</label><input type="range" id="treeAngle" min="8" max="45" step="1" value="24"><span class="val" id="treeAngleV">24&deg;</span></div>
         <div class="ctrl-row"><label for="treeDepth">Depth</label><input type="range" id="treeDepth" min="4" max="12" step="1" value="10"><span class="val" id="treeDepthV">10</span></div>
@@ -531,7 +531,7 @@ var Fern=(function(){
 var Tree=(function(){
   var cv=$('treeCv'), ctx=fitCanvas(cv), W=cv._W, H=cv._H;
   var angle=24*Math.PI/180, maxDepth=10, ratio=0.72, palette='verdant';
-  var grow=0, wind=0, phase='grow', rafId=null, playing=false;
+  var grow=0, rafId=null, playing=false;
   var PAL={
     verdant:{trunk:[28,45,26], leaf:[120,60,45]},
     autumn: {trunk:[24,50,28], leaf:[32,85,52]},
@@ -549,8 +549,7 @@ var Tree=(function(){
     var vis=budget-depth;                 // how much of this generation to show (0..1+)
     if(vis<=0) return;
     var drawLen=len*Math.min(1,vis);
-    var sway=(phase==='breeze')? wind*Math.sin(0.9*depth+wind*3)*(depth/maxDepth) : 0;
-    var a=ang+sway;
+    var a=ang;
     var x2=x+Math.sin(a)*drawLen, y2=y-Math.cos(a)*drawLen;
     ctx.strokeStyle=colorFor(depth);
     ctx.lineWidth=Math.max(0.8,(maxDepth-depth)*0.9);
@@ -569,34 +568,37 @@ var Tree=(function(){
   }
   function redraw(){ clearBg(); branch(W/2,H-8,0,H*0.24,0,grow); }
   function setBtn(p){ $('treePlay').innerHTML = p ? '&#10073;&#10073; Pause' : '&#9654; Grow'; }
-  /* One frame of the growth/breeze animation. */
+  /* One frame of growth. Returns true once the tree is fully grown. */
   function step(){
-    if(phase==='grow'){
-      grow+=0.06; redraw();
-      $('treeStat').textContent='Generation '+Math.min(maxDepth,Math.floor(grow))+' / '+maxDepth;
-      if(grow>=maxDepth){ grow=maxDepth; phase='breeze'; $('treeStat').textContent='Grown - swaying in the breeze'; }
-    } else {
-      wind=0.05*Math.sin(Date.now()/900);   // gentle continuous sway
-      redraw();
+    grow+=0.06;
+    if(grow>=maxDepth){
+      grow=maxDepth; redraw();
+      $('treeStat').textContent='Grown ('+maxDepth+' generations)';
+      return true;                          // growth complete
     }
-  }
-  /* Single rAF loop - exactly one may run at a time, so pause is reliable. */
-  function loop(){ if(!playing)return; step(); rafId=requestAnimationFrame(loop); }
-  function startAnim(){
-    if(playing) return;                     // idempotent: safe to call from autostart
-    if(REDUCED){ grow=maxDepth; phase='static'; redraw(); $('treeStat').textContent='Grown ('+maxDepth+' generations)'; setBtn(false); return; }
-    playing=true; setBtn(true); loop();
+    redraw();
+    $('treeStat').textContent='Generation '+Math.floor(grow)+' / '+maxDepth;
+    return false;
   }
   function stopAnim(){ playing=false; if(rafId)cancelAnimationFrame(rafId); rafId=null; setBtn(false); }
+  /* Single rAF loop - exactly one runs at a time. It halts itself (back to
+     the Grow state) as soon as the tree reaches full depth. */
+  function loop(){ if(!playing)return; if(step()){ stopAnim(); return; } rafId=requestAnimationFrame(loop); }
+  function startAnim(){
+    if(playing) return;                     // idempotent: safe to call from autostart
+    if(grow>=maxDepth) grow=0;              // fully grown: replay from the start
+    if(REDUCED){ grow=maxDepth; redraw(); $('treeStat').textContent='Grown ('+maxDepth+' generations)'; setBtn(false); return; }
+    playing=true; setBtn(true); loop();
+  }
   function toggle(){ if(playing) stopAnim(); else startAnim(); }
-  function reset(){ stopAnim(); grow=0; phase='grow'; wind=0; clearBg(); $('treeStat').textContent='Ready.'; }
+  function reset(){ stopAnim(); grow=0; clearBg(); $('treeStat').textContent='Ready.'; }
   applyBgFns.push(redraw);   /* repaint current tree onto the new background */
   clearBg();
   $('treePlay').addEventListener('click',toggle);
   $('treeReset').addEventListener('click',reset);
-  $('treeAngle').addEventListener('input',function(){ angle=(+this.value)*Math.PI/180; $('treeAngleV').textContent=this.value+'°'; if(phase!=='grow')redraw(); });
+  $('treeAngle').addEventListener('input',function(){ angle=(+this.value)*Math.PI/180; $('treeAngleV').textContent=this.value+'°'; if(!playing)redraw(); });
   $('treeDepth').addEventListener('input',function(){ maxDepth=+this.value; $('treeDepthV').textContent=this.value; reset(); });
-  $('treeRatio').addEventListener('input',function(){ ratio=+this.value; $('treeRatioV').textContent=(+this.value).toFixed(2); if(phase!=='grow')redraw(); });
+  $('treeRatio').addEventListener('input',function(){ ratio=+this.value; $('treeRatioV').textContent=(+this.value).toFixed(2); if(!playing)redraw(); });
   $('treePal').addEventListener('change',function(){ palette=this.value; if(grow>0)redraw(); });
   return {grow:startAnim, reset:reset, el:cv};
 })();
