@@ -273,6 +273,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
 
       <h2>The route to chaos</h2>
       <p>Turn \(\gamma\) up slowly and the section changes in a famous, orderly way - the <strong>period-doubling cascade</strong>. A single dot splits into two, two into four, four into eight&hellip; the doublings pile up faster and faster (with these settings, \(\gamma\approx0.26\to0.27\to0.29\)) and, past a threshold near \(\gamma\approx0.30\), give way to the fractal dust of a strange attractor. But chaos is not the end of the story: scattered through the chaotic range are narrow <strong>periodic windows</strong> where order briefly returns - the \(\gamma=0.37\) preset lands in a period-5 window, and nudging the slider to \(\gamma\approx0.52\) finds a period-3 one - before chaos resumes. This same cascade appears in dripping faucets, heart arrhythmias, and electronic circuits - the Duffing oscillator is just the cleanest place to see it.</p>
+      <p>The <strong>Ueda attractor</strong> preset is a different regime: it drops the linear term (\(\alpha=0\)), so the restoring force is purely cubic, with light damping \(\delta=0.05\) and a strong drive \(\gamma=7.5,\ \omega=1\). Yoshisuke Ueda found this "Japanese attractor" in 1961, one of the earliest documented strange attractors; 6000 strobe samples reveal its folded, layered sheets.</p>
 
       <h2>How to use this tool</h2>
       <ul>
@@ -292,6 +293,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     <button class="pbtn" type="button" data-preset="p4"    aria-pressed="false">γ = 0.29 · period-4</button>
     <button class="pbtn" type="button" data-preset="p5"    aria-pressed="false">γ = 0.37 · period-5 window</button>
     <button class="pbtn" type="button" data-preset="chaos" aria-pressed="true">γ = 0.50 · strange attractor</button>
+    <button class="pbtn" type="button" data-preset="ueda"  aria-pressed="false">γ = 7.5 · Ueda attractor</button>
   </div>
 
   <div id="eqDisplay" class="eq-display" aria-live="polite">
@@ -396,12 +398,18 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
 
   var N_SUB = 400;                 // RK4 sub-steps per forcing period
   var TRAIL_MAX = 1400;            // fine trajectory points kept for the "flow" trail
+  /* Presets carry the full parameter set so switching is self-consistent.
+     p1..chaos are the classic double-well Duffing; ueda is the Ueda (Japanese)
+     attractor, a pure-cubic oscillator with no linear term. */
+  var CLASSIC = {delta:0.3, alpha:-1, beta:1, omega:1.2, collect:2000};
+  function P(gamma,label,extra){ var o={gamma:gamma,label:label}; for(var k in CLASSIC)o[k]=CLASSIC[k]; if(extra)for(var j in extra)o[j]=extra[j]; return o; }
   var PRESETS = {
-    p1:    {gamma:0.20, label:"period-1"},
-    p2:    {gamma:0.28, label:"period-2"},
-    p4:    {gamma:0.29, label:"period-4"},
-    p5:    {gamma:0.37, label:"period-5"},
-    chaos: {gamma:0.50, label:"strange attractor"}
+    p1:    P(0.20,"period-1"),
+    p2:    P(0.28,"period-2"),
+    p4:    P(0.29,"period-4"),
+    p5:    P(0.37,"period-5"),
+    chaos: P(0.50,"strange attractor"),
+    ueda:  P(7.5, "Ueda attractor", {delta:0.05, alpha:0, beta:1, omega:1, collect:6000})
   };
 
   // ── element handles ────────────────────────────────────────────────
@@ -769,21 +777,22 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
   }
 
   // ── presets ─────────────────────────────────────────────────────────
+  var PRESET_FIELDS={delta:"p-delta",alpha:"p-alpha",beta:"p-beta",omega:"p-omega",x0:"p-x0",v0:"p-v0",transient:"p-transient",collect:"p-collect"};
   function applyPreset(key){
     var pr=PRESETS[key]; if(!pr) return;
     gammaNum.value=pr.gamma;
     gammaRange.value=Math.min(SLIDER_MAX, pr.gamma);
-    refreshGamma();
-    document.querySelectorAll(".pbtn").forEach(function(btn){
-      btn.setAttribute("aria-pressed", btn.dataset.preset===key ? "true":"false");
-    });
+    Object.keys(PRESET_FIELDS).forEach(function(k){ if(k in pr) $(PRESET_FIELDS[k]).value=pr[k]; });
+    refreshGamma();   // marks the matching preset pressed + updates the equation
     fillIn();
   }
   function syncPresetPressed(){
-    var g=currentGamma(), match=null;
+    var cur=readParams(), match=null;
     document.querySelectorAll(".pbtn").forEach(function(btn){
-      var pg=PRESETS[btn.dataset.preset].gamma;
-      var on=Math.abs(pg-g)<1e-6;
+      var pr=PRESETS[btn.dataset.preset];
+      var on=Object.keys(pr).every(function(k){
+        return k==="label" || Math.abs((+pr[k])-(+cur[k]))<1e-6;
+      });
       btn.setAttribute("aria-pressed", on?"true":"false");
       if(on) match=btn.dataset.preset;
     });
