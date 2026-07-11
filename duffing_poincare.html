@@ -83,7 +83,10 @@ h1{font-size:1.45rem;font-weight:800;text-align:center;margin:0 0 .15rem;letter-
 .gamma-box{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);padding:.55rem .7rem;margin-bottom:.5rem;}
 .gamma-top{display:flex;align-items:baseline;justify-content:space-between;gap:.4rem;}
 .gamma-name{font-size:.8rem;font-weight:700;color:var(--inf-hd);}
-.gamma-val{font-size:1.15rem;font-weight:800;color:var(--blue);font-family:'Menlo','Monaco','Courier New',monospace;}
+.gamma-num{width:5.4rem;text-align:right;font-size:1.05rem;font-weight:800;color:var(--blue);
+  font-family:'Menlo','Monaco','Courier New',monospace;background:var(--card);
+  border:2px solid var(--bdr2);border-radius:.35rem;padding:.1rem .35rem;min-height:34px;}
+.gamma-num:focus-visible{outline:3px solid var(--focus);outline-offset:1px;}
 .range{width:100%;margin:.45rem 0 .1rem;accent-color:var(--blue);height:26px;cursor:pointer;}
 .gamma-hint{font-size:.72rem;color:var(--muted);margin:.1rem 0 0;}
 
@@ -301,11 +304,12 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
       <div class="gamma-box">
         <div class="gamma-top">
           <span class="gamma-name">Drive strength γ</span>
-          <span class="gamma-val" id="gammaVal">0.50</span>
+          <input class="gamma-num" id="gammaNum" type="number" min="0" max="10" step="0.005" value="0.5"
+                 inputmode="decimal" aria-label="Drive strength gamma (numeric, up to 10)">
         </div>
         <input class="range" id="gammaRange" type="range" min="0" max="0.7" step="0.005" value="0.5"
-               aria-label="Drive strength gamma">
-        <p class="gamma-hint">The one knob that drives the period-doubling route to chaos.</p>
+               aria-label="Drive strength gamma slider (0 to 0.7)">
+        <p class="gamma-hint">The one knob that drives the period-doubling route to chaos. The slider spans 0&ndash;0.7; type into the box to push γ higher (up to 10).</p>
       </div>
 
       <div class="panel">
@@ -404,7 +408,15 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
   var $ = function(id){ return document.getElementById(id); };
   var flowCv=$("flowCanvas"), secCv=$("sectionCanvas"), clockCv=$("driveClock");
   var fctx=flowCv.getContext("2d"), sctx=secCv.getContext("2d"), cctx=clockCv.getContext("2d");
-  var gammaRange=$("gammaRange"), gammaVal=$("gammaVal");
+  var gammaRange=$("gammaRange"), gammaNum=$("gammaNum");
+  var GAMMA_MAX=10, SLIDER_MAX=+gammaRange.max;   // box extends past the slider
+  /* Authoritative gamma comes from the numeric box (which can exceed the
+     slider's range); fall back to the slider if the box is empty/invalid. */
+  function currentGamma(){
+    var g=parseFloat(gammaNum.value);
+    if(!isFinite(g)) g=+gammaRange.value;
+    return Math.max(0, Math.min(GAMMA_MAX, g));
+  }
   var runBtn=$("runBtn"), fillBtn=$("fillBtn"), stopBtn=$("stopBtn"),
       clearBtn=$("clearBtn"), pngBtn=$("pngBtn"), speedSel=$("speedSel");
   var dotCount=$("dotCount"), verdictEl=$("verdict"), tpFill=$("tpFill"),
@@ -415,7 +427,7 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     return {
       delta:+$("p-delta").value, alpha:+$("p-alpha").value,
       beta:+$("p-beta").value,   omega:+$("p-omega").value,
-      gamma:+gammaRange.value,
+      gamma:currentGamma(),
       x0:+$("p-x0").value, v0:+$("p-v0").value,
       transient:Math.max(0, Math.round(+$("p-transient").value)||0),
       collect:Math.max(1, Math.round(+$("p-collect").value)||1)
@@ -759,15 +771,16 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
   // ── presets ─────────────────────────────────────────────────────────
   function applyPreset(key){
     var pr=PRESETS[key]; if(!pr) return;
-    gammaRange.value=pr.gamma;
-    onGammaInput();
+    gammaNum.value=pr.gamma;
+    gammaRange.value=Math.min(SLIDER_MAX, pr.gamma);
+    refreshGamma();
     document.querySelectorAll(".pbtn").forEach(function(btn){
       btn.setAttribute("aria-pressed", btn.dataset.preset===key ? "true":"false");
     });
     fillIn();
   }
   function syncPresetPressed(){
-    var g=+gammaRange.value, match=null;
+    var g=currentGamma(), match=null;
     document.querySelectorAll(".pbtn").forEach(function(btn){
       var pg=PRESETS[btn.dataset.preset].gamma;
       var on=Math.abs(pg-g)<1e-6;
@@ -776,11 +789,17 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
     });
     return match;
   }
+  /* Reflect the current gamma in the presets/equation (no recompute). */
+  function refreshGamma(){ syncPresetPressed(); updateEq(readParams()); }
+  /* Slider moved: mirror into the box (clamped to the slider's own range). */
   function onGammaInput(){
-    var g=+gammaRange.value;
-    gammaVal.textContent=g.toFixed(3);
-    syncPresetPressed();
-    updateEq(readParams());
+    gammaNum.value=(+gammaRange.value).toFixed(3);
+    refreshGamma();
+  }
+  /* Box edited: move the slider thumb to the clamped position and reflect. */
+  function onGammaNum(){
+    gammaRange.value=Math.max(0, Math.min(SLIDER_MAX, currentGamma()));
+    refreshGamma();
   }
 
   // ── wiring ──────────────────────────────────────────────────────────
@@ -791,6 +810,10 @@ canvas.plot{display:block;width:100%;height:auto;background:#fbfcfe;}
   });
   gammaRange.addEventListener("input", onGammaInput);
   gammaRange.addEventListener("change", function(){ fillIn(); });
+  gammaNum.addEventListener("input", onGammaNum);            // live: move thumb + refresh
+  function commitGamma(){ gammaNum.value=currentGamma(); onGammaNum(); fillIn(); }  // clamp box + recompute
+  gammaNum.addEventListener("change", commitGamma);
+  gammaNum.addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); commitGamma(); } });
   document.querySelectorAll(".pbtn").forEach(function(btn){
     btn.addEventListener("click", function(){ applyPreset(btn.dataset.preset); });
   });
