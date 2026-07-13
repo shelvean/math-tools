@@ -10,6 +10,9 @@
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
   <script src="vendor/plotly@2.35.2/plotly.min.js" charset="utf-8"></script>
+  <!-- Arbitrary-precision decimals: lets the error column resolve past the
+       float64 floor (~1e-16) down to 1e-40 and below. -->
+  <script src="vendor/decimal.js@10.4.3/decimal.js"></script>
   <script>
     window.MathJax = {
       tex: {inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
@@ -666,6 +669,92 @@ function fmt(v,d){if(!isFinite(v))return '\u2014';d=d||4;var a=Math.abs(v);if(a<
 function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
 function eio(t){return t<0.5?2*t*t:-1+(4-2*t)*t;}
 
+/* ── High-precision (arbitrary-precision decimal) engine ──
+   Newton's iterate x_{n+1}=x_n-m f/f' and the error |x_n-x*| are carried in
+   ~100-digit Decimal so the error column resolves far past the float64 floor
+   (~1e-16), down to 1e-40 and below. Values are converted back to Number only
+   for display and drawing (pixel/16-digit precision is all those need). */
+var HP_ON = (typeof Decimal !== 'undefined');
+var PI_D, E_D, SQRT2_D, HFLOOR;
+if(HP_ON){
+  Decimal.set({precision:110});
+  PI_D=new Decimal(-1).acos(); E_D=new Decimal(1).exp(); SQRT2_D=new Decimal(2).sqrt();
+  HFLOOR=new Decimal('1e-100');           /* stop once the error hits the precision floor */
+}
+function D(v){return new Decimal(v);}
+
+/* Compile an expression string into fn(Decimal x)->Decimal (for custom f). */
+function compileDecimal(src){
+  var re=/\s*([0-9]*\.?[0-9]+(?:[eE][+\-]?[0-9]+)?|[A-Za-z_][A-Za-z0-9_]*|\*\*|[+\-*/^(),])/g;
+  var toks=[],m,last=0;
+  while((m=re.exec(src))){ if(m.index!==last) throw new Error('unexpected character'); last=re.lastIndex; toks.push(m[1]); }
+  if(last!==src.length) throw new Error('unexpected character');
+  var FN={sin:1,cos:1,tan:1,asin:1,acos:1,atan:1,sinh:1,cosh:1,tanh:1,exp:1,log:1,ln:1,log10:1,sqrt:1,cbrt:1,abs:1,ceil:1,floor:1,round:1,max:2,min:2};
+  var p=0; function peek(){return toks[p];} function nx(){return toks[p++];}
+  function atom(){
+    var t=nx();
+    if(t==='('){ var e=expr(); if(nx()!==')') throw new Error('missing )'); return e; }
+    if(t==='-'){ var u=atom(); return function(x){return u(x).neg();}; }
+    if(t!==undefined && /^[0-9.]/.test(t)){ var d=D(t); return function(){return d;}; }
+    if(t==='x') return function(x){return x;};
+    if(t==='pi'||t==='PI') return function(){return PI_D;};
+    if(t==='e'||t==='E') return function(){return E_D;};
+    if(t!==undefined && FN[t.toLowerCase()]!==undefined){
+      var nm=t.toLowerCase();
+      if(nx()!=='(') throw new Error('missing ( after '+t);
+      var args=[expr()];
+      while(peek()===','){ nx(); args.push(expr()); }
+      if(nx()!==')') throw new Error('missing )');
+      return function(x){var a=[]; for(var i=0;i<args.length;i++)a.push(args[i](x)); return applyFnD(nm,a);};
+    }
+    throw new Error('unexpected token '+t);
+  }
+  function powf(){ var b=atom(); if(peek()==='^'||peek()==='**'){ nx(); var e=unary(); return function(x){return b(x).pow(e(x));}; } return b; }
+  function unary(){ if(peek()==='-'){ nx(); var u=unary(); return function(x){return u(x).neg();}; } return powf(); }
+  function term(){ var l=unary(); while(peek()==='*'||peek()==='/'){ var op=nx(),r=unary(),L=l; l=op==='*'?(function(L,r){return function(x){return L(x).times(r(x));};})(L,r):(function(L,r){return function(x){return L(x).div(r(x));};})(L,r); } return l; }
+  function expr(){ var l=term(); while(peek()==='+'||peek()==='-'){ var op=nx(),r=term(),L=l; l=op==='+'?(function(L,r){return function(x){return L(x).plus(r(x));};})(L,r):(function(L,r){return function(x){return L(x).minus(r(x));};})(L,r); } return l; }
+  var f=expr(); if(p!==toks.length) throw new Error('unexpected trailing tokens');
+  return f;
+}
+function applyFnD(name,a){
+  var z=a[0];
+  switch(name){
+    case 'sin':return z.sin(); case 'cos':return z.cos(); case 'tan':return z.tan();
+    case 'asin':return z.asin(); case 'acos':return z.acos(); case 'atan':return z.atan();
+    case 'sinh':return z.sinh(); case 'cosh':return z.cosh(); case 'tanh':return z.tanh();
+    case 'exp':return z.exp(); case 'ln': case 'log':return z.ln(); case 'log10':return z.log(10);
+    case 'sqrt':return z.sqrt(); case 'cbrt':return z.cbrt(); case 'abs':return z.abs();
+    case 'ceil':return z.ceil(); case 'floor':return z.floor(); case 'round':return z.round();
+    case 'max':return Decimal.max(a[0],a[1]); case 'min':return Decimal.min(a[0],a[1]);
+  }
+  throw new Error('unknown function '+name);
+}
+/* High-precision central-difference derivative (for custom functions). */
+function hpDeriv(hf){var h=D('1e-30');return function(x){return hf(x.plus(h)).minus(hf(x.minus(h))).div(h.times(2));};}
+/* Newton in Decimal to convergence -> the true root to full precision. */
+function hpNewtonRoot(hf,hdf,x0){
+  var x=D(x0);
+  for(var i=0;i<300;i++){
+    var f=hf(x),d=hdf(x);
+    if(!f.isFinite()||!d.isFinite()||d.isZero())break;
+    var s=f.div(d),xn=x.minus(s); x=xn;
+    if(s.abs().lt(HFLOOR))break;
+  }
+  return x;
+}
+var HROOT_CACHE={};
+function getHRoot(ex,id){
+  if(!HP_ON) return null;
+  if(HROOT_CACHE[id]!==undefined) return HROOT_CACHE[id];
+  var r=null;
+  try{
+    if(typeof ex.hr==='function') r=ex.hr();
+    else if(ex.hr==='newton' && ex.hf && ex.hdf && isFinite(ex.root)) r=hpNewtonRoot(ex.hf,ex.hdf,ex.root);
+    else if(ex.hr==='newton' && ex.hf && ex.hdf){ var c=hpNewtonRoot(ex.hf,ex.hdf,ex.x0); r=(ex.hf(c).abs().lt('1e-40'))?c:null; }
+  }catch(e){r=null;}
+  HROOT_CACHE[id]=r; return r;
+}
+
 /* ── Example Registry ──
    dl  = plain-text dropdown label (Unicode math, no HTML/MathJax)
    lf  = LaTeX for f(x),  ldf = LaTeX for f'(x)
@@ -695,6 +784,29 @@ var EX={
   oscillate:{dl:'x\u00b3 \u2212 2x + 2,  x\u2080=2.26  \u2014  oscillation',lf:'x^3-2x+2',ldf:'3x^2-2',f:function(x){return x*x*x-2*x+2;},df:function(x){return 3*x*x-2;},x0:2.26,m:1,root:-1.7692923542386315,view:{xMin:-3.0,xMax:3.5,yMin:-3,yMax:12},desc:'Only real root at \\(x^*\\approx-1.769\\). From \\(x_0=2.26\\) there is no root nearby \u2014 iterates wander and fail to converge. For a perfect 2-cycle, set \\(x_0=0\\): Newton gives \\(0\\to1\\to0\\to1\\cdots\\)',cat:'oscillate'},
   noroot:{dl:'x\u00b2 + 1,  x\u2080=2  \u2014  no real root',lf:'x^2+1',ldf:'2x',f:function(x){return x*x+1;},df:function(x){return 2*x;},x0:2,m:1,root:NaN,view:{xMin:-3.5,xMax:3.5,yMin:-0.5,yMax:10},desc:'\\(x^2+1=0\\) has no real solutions (roots are \\(\\pm i\\)). Newton\'s iterates oscillate wildly. <strong>Divergence.</strong>',cat:'divergent'}
 };
+
+/* High-precision Decimal versions of each preset's f, f' and true root, merged
+   into EX so buildOrbit can iterate in ~100-digit precision. hr: a function
+   returning the exact root as a Decimal, 'newton' to solve for it in high
+   precision, or absent (divergent) to fall back to |f(x_n)|. */
+if(HP_ON){
+  var HP_FNS={
+    x2m2:{hf:function(x){return x.times(x).minus(2);},hdf:function(x){return x.times(2);},hr:function(){return SQRT2_D;}},
+    cub2r:{hf:function(x){return x.pow(3).minus(x.times(2)).plus(2);},hdf:function(x){return x.pow(2).times(3).minus(2);},hr:'newton'},
+    cosxx:{hf:function(x){return x.cos().minus(x);},hdf:function(x){return x.sin().neg().minus(1);},hr:'newton'},
+    expm2:{hf:function(x){return x.exp().minus(2);},hdf:function(x){return x.exp();},hr:function(){return D(2).ln();}},
+    lnx1:{hf:function(x){return x.gt(0)?x.ln().minus(1):D(NaN);},hdf:function(x){return x.gt(0)?D(1).div(x):D(NaN);},hr:function(){return E_D;}},
+    tan2x:{hf:function(x){return x.minus(x.div(4).cosh().times(2));},hdf:function(x){return D(1).minus(x.div(4).sinh().times(D('0.5')));},hr:'newton'},
+    dbl_slow:{hf:function(x){return x.minus(2).pow(2);},hdf:function(x){return x.minus(2).times(2);},hr:function(){return D(2);}},
+    dbl_fast:{hf:function(x){return x.minus(2).pow(2);},hdf:function(x){return x.minus(2).times(2);},hr:function(){return D(2);}},
+    dbl_cubic:{hf:function(x){return x.minus(1).pow(2).times(x.plus(2));},hdf:function(x){return x.minus(1).times(x.plus(1)).times(3);},hr:function(){return D(1);}},
+    dbl_exp:{hf:function(x){var t=x.minus(1).exp().minus(1);return t.times(t);},hdf:function(x){var e=x.minus(1).exp();return e.minus(1).times(e).times(2);},hr:function(){return D(1);}},
+    triple:{hf:function(x){return x.minus(SQRT2_D).pow(3);},hdf:function(x){return x.minus(SQRT2_D).pow(2).times(3);},hr:function(){return SQRT2_D;}},
+    oscillate:{hf:function(x){return x.pow(3).minus(x.times(2)).plus(2);},hdf:function(x){return x.pow(2).times(3).minus(2);},hr:'newton'},
+    noroot:{hf:function(x){return x.times(x).plus(1);},hdf:function(x){return x.times(2);}}
+  };
+  for(var _k in HP_FNS){ if(EX[_k]){ EX[_k].hf=HP_FNS[_k].hf; EX[_k].hdf=HP_FNS[_k].hdf; EX[_k].hr=HP_FNS[_k].hr; } }
+}
 
 var CSEL_GROUPS=[
   {label:'Simple Roots \u2014 Quadratic Convergence (6)',
@@ -770,7 +882,36 @@ document.getElementById('zoomRoot').addEventListener('click',function(){
 /* ── Orbit ── */
 function getEx(){return EX[ST.exId]||EX.x2m2;}
 function buildOrbit(){
-  var ex=getEx();var o=[];var x=ST.x0;
+  var ex=getEx();
+  if(HP_ON && ex.hf && ex.hdf){ buildOrbitHP(ex); return; }
+  buildOrbitF64(ex);
+}
+/* High-precision iteration: x_n, f, f' and the error |x_n-x*| are Decimal, so
+   the error keeps shrinking past the float64 floor (~1e-16) down to ~1e-100.
+   Only the values needed for drawing/tables are cast back to Number. */
+function buildOrbitHP(ex){
+  var o=[], m=D(ST.m), hroot=getHRoot(ex,ST.exId), x=D(ST.x0), prevErr=null;
+  for(var i=0;i<=ST.N;i++){
+    var fx,dx;
+    try{fx=ex.hf(x); dx=ex.hdf(x);}catch(e){break;}
+    if(!fx||!dx||!fx.isFinite()||!dx.isFinite())break;
+    var errD=hroot?x.minus(hroot).abs():fx.abs();
+    var ent={x:x.toNumber(),fx:fx.toNumber(),dx:dx.toNumber(),err:Number(errD.toString()),xn:NaN,lr:NaN,qr:NaN};
+    if(prevErr&&prevErr.gt(0)){ ent.lr=Number(errD.div(prevErr).toString()); ent.qr=Number(errD.div(prevErr.times(prevErr)).toString()); }
+    if(dx.abs().lt(HFLOOR)){o.push(ent);break;}
+    var xn=x.minus(m.times(fx).div(dx)); ent.xn=xn.toNumber(); o.push(ent);
+    if(errD.lt(HFLOOR)&&i>0){
+      try{var f2=ex.hf(xn),d2=ex.hdf(xn);if(f2.isFinite()){var e2=hroot?xn.minus(hroot).abs():f2.abs();o.push({x:xn.toNumber(),fx:f2.toNumber(),dx:d2.toNumber(),err:Number(e2.toString()),xn:NaN,lr:Number(e2.div(errD).toString()),qr:Number(e2.div(errD.times(errD)).toString())});}}catch(e2){}
+      break;
+    }
+    if(!xn.isFinite()||xn.abs().gt('1e8'))break;
+    prevErr=errD; x=xn;
+  }
+  ST.orbit=o;
+}
+/* Float64 fallback (used only if Decimal failed to load). */
+function buildOrbitF64(ex){
+  var o=[];var x=ST.x0;
   for(var i=0;i<=ST.N;i++){
     var fx,dx;
     try{fx=ex.f(x);}catch(err){break;}
@@ -1062,6 +1203,16 @@ document.getElementById('btnCFn').addEventListener('click',function(){
   var fn;try{fn=new Function('x','return '+preproc(expr)+';');var tv=fn((dMin+dMax)/2);if(typeof tv!=='number')throw new Error('Not a number');}catch(e){errEl.textContent='Error: '+e.message;return;}
   var fFn=function(x){try{return fn(x);}catch(e){return NaN;}};
   EX.custom={dl:'Custom: '+expr,lf:expr,ldf:null,f:fFn,df:function(x){return numDeriv(fFn,x);},x0:clamp(0,dMin,dMax),m:1,root:NaN,view:{xMin:dMin,xMax:dMax,yMin:-3,yMax:5},desc:'Custom function. Derivative computed numerically.',cat:'custom'};
+  /* High-precision version (Decimal): errors resolve below 1e-16. If the
+     expression parses, iterate in high precision; otherwise fall back to f64. */
+  delete HROOT_CACHE.custom;
+  if(HP_ON){
+    try{
+      var hf=compileDecimal(expr);
+      hf(D((dMin+dMax)/2));                 /* smoke-test the compiled fn */
+      EX.custom.hf=hf; EX.custom.hdf=hpDeriv(hf); EX.custom.hr='newton';
+    }catch(e){ /* leave custom on the float64 path */ }
+  }
   stopAnim();ST.exId='custom';ST.x0=EX.custom.x0;ST.m=1;ST.N=30;
   document.getElementById('x0Num').value=ST.x0;document.getElementById('multSel').value=1;
   ST.view=JSON.parse(JSON.stringify(EX.custom.view));ST.defV=JSON.parse(JSON.stringify(EX.custom.view));
