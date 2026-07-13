@@ -297,6 +297,23 @@
       padding: 16px;
     }
 
+    .solution-bar {
+      text-align: center;
+      background: var(--bg, #f8fafc);
+      border: 1px solid var(--border);
+      border-left: 3px solid #f59e0b;
+      border-radius: var(--radius);
+      padding: 8px 14px;
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      color: var(--text);
+      overflow-x: auto;
+    }
+    .solution-bar .sol-label {
+      font-weight: 700; color: var(--muted, #64748b);
+      margin-right: 6px; font-size: 0.82rem;
+    }
+
     .graph-legend {
       display: flex; align-items: center; justify-content: center;
       gap: 20px; padding: 10px 0 2px;
@@ -710,6 +727,7 @@
 
         <!-- Graph -->
         <div class="graph-card" role="region" aria-label="Temperature vs time plot">
+          <div class="solution-bar" id="solutionBar" role="math" aria-label="Exact solution of Newton's law of cooling for the current values"><span class="sol-label">Exact solution</span><span id="solutionEq"></span></div>
           <div id="plotDiv" style="width:100%;height:380px;" aria-label="Interactive graph showing numerical and analytical temperature curves over time"></div>
           <div class="graph-legend" aria-label="Graph legend">
             <span class="legend-item"><span class="legend-line" style="background:#2563eb;" aria-hidden="true"></span> Numerical (Improved Euler<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>)</span>
@@ -972,6 +990,8 @@
     document.getElementById('infoCurrentTemp').textContent = T.toFixed(1) + '°C';
     const rate = -getK() * (T - Tamb);
     document.getElementById('infoRate').textContent = rate.toFixed(2) + '°C/min';
+
+    renderSolution();
   }
 
   // ===== PLOTLY GRAPH =====
@@ -1242,15 +1262,37 @@
     }
   }
 
+  // Format a number for display: integers without decimals, else up to 3 dp.
+  function fmtNum(v) {
+    if (!isFinite(v)) return '?';
+    return (Math.round(v) === v) ? String(v) : String(parseFloat(v.toFixed(3)));
+  }
+  // The exact (analytical) solution with the current parameter values substituted.
+  function renderSolution() {
+    const el = document.getElementById('solutionEq');
+    if (!el) return;
+    const T0 = getT0(), Tamb = getAmbient(), k = getK();
+    if (![T0, Tamb, k].every(isFinite)) { el.textContent = ''; return; }
+    el.innerHTML = '\\( u(t) = ' + fmtNum(Tamb) + ' + (' + fmtNum(T0) + ' - ' + fmtNum(Tamb) +
+                   ')\\,e^{-' + fmtNum(k) + '\\,t} \\)';
+    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(function(){});
+  }
+
   // ===== INIT =====
   window.addEventListener('DOMContentLoaded', () => {
     buildPresetPills();
 
     const tryRender = () => {
-      if (window.MathJax && MathJax.typesetPromise) renderEquation();
+      if (window.MathJax && MathJax.typesetPromise) { renderEquation(); renderSolution(); }
       else setTimeout(tryRender, 100);
     };
     tryRender();
+
+    // Keep the exact-solution display in sync as the parameters are edited.
+    ['initTemp', 'ambientTemp', 'kConstant'].forEach(function(id) {
+      const inp = document.getElementById(id);
+      if (inp) inp.addEventListener('input', renderSolution);
+    });
 
     updateVisuals(getT0(), getAmbient());
     initPlot();
