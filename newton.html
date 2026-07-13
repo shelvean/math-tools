@@ -682,6 +682,12 @@ if(HP_ON){
   PI_D=new Decimal(-1).acos(); E_D=new Decimal(1).exp(); SQRT2_D=new Decimal(2).sqrt();
   HFLOOR=new Decimal('1e-100');           /* stop once the error hits the precision floor */
 }
+/* Report the convergence rate only while the errors stay well above the
+   precision floor: e_n above RATE_NF, and (for the quadratic ratio) e_{n-1}
+   above RATE_NQ so that e_{n-1}^2 is still meaningful. Below these, the ratio
+   is numerical noise and is shown as a dash. */
+var RATE_NF = HP_ON ? new Decimal('1e-80') : null;
+var RATE_NQ = HP_ON ? new Decimal('1e-40') : null;
 function D(v){return new Decimal(v);}
 
 /* Compile an expression string into fn(Decimal x)->Decimal (for custom f). */
@@ -918,11 +924,18 @@ function buildOrbitHP(ex){
     if(!fx||!dx||!fx.isFinite()||!dx.isFinite())break;
     var errD=hroot?x.minus(hroot).abs():fx.abs();
     var ent={x:x.toNumber(),fx:fx.toNumber(),dx:dx.toNumber(),err:Number(errD.toString()),xn:NaN,lr:NaN,qr:NaN};
-    if(prevErr&&prevErr.gt(0)){ ent.lr=Number(errD.div(prevErr).toString()); ent.qr=Number(errD.div(prevErr.times(prevErr)).toString()); }
+    /* Only report a rate while both errors are safely above the precision
+       floor. Once e_n reaches the ~1e-100 Decimal floor it is cancellation
+       noise, and e_n/e_{n-1}^2 would blow up (denominator keeps shrinking) -
+       leave lr/qr as NaN so the readout shows a dash instead. */
+    if(prevErr){
+      if(prevErr.gt(RATE_NF)&&errD.gt(RATE_NF)) ent.lr=Number(errD.div(prevErr).toString());
+      if(prevErr.gt(RATE_NQ)&&errD.gt(RATE_NF)) ent.qr=Number(errD.div(prevErr.times(prevErr)).toString());
+    }
     if(dx.abs().lt(HFLOOR)){o.push(ent);break;}
     var xn=x.minus(m.times(fx).div(dx)); ent.xn=xn.toNumber(); o.push(ent);
     if(errD.lt(HFLOOR)&&i>0){
-      try{var f2=ex.hf(xn),d2=ex.hdf(xn);if(f2.isFinite()){var e2=hroot?xn.minus(hroot).abs():f2.abs();o.push({x:xn.toNumber(),fx:f2.toNumber(),dx:d2.toNumber(),err:Number(e2.toString()),xn:NaN,lr:Number(e2.div(errD).toString()),qr:Number(e2.div(errD.times(errD)).toString())});}}catch(e2){}
+      try{var f2=ex.hf(xn),d2=ex.hdf(xn);if(f2.isFinite()){var e2=hroot?xn.minus(hroot).abs():f2.abs();o.push({x:xn.toNumber(),fx:f2.toNumber(),dx:d2.toNumber(),err:Number(e2.toString()),xn:NaN,lr:NaN,qr:NaN});}}catch(e2){}
       break;
     }
     if(!xn.isFinite()||xn.abs().gt('1e8'))break;
