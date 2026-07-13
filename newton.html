@@ -439,6 +439,7 @@ table.it{border-collapse:collapse;width:100%;font-size:.8125rem;}
     <div class="rcell"><dt class="rlbl">\(f(x_n)\)</dt><dd class="rval" id="rv-fx">-</dd></div>
     <div class="rcell"><dt class="rlbl">Error \(|e_n|\)</dt><dd class="rval" id="rv-err" aria-live="polite" aria-atomic="true">-</dd></div>
     <div class="rcell"><dt class="rlbl">Conv. rate</dt><dd class="rval" id="rv-rate" aria-live="polite" aria-atomic="true">-</dd></div>
+    <div class="rcell"><dt class="rlbl" title="Theoretical limit the convergence rate approaches: |f''|/2|f'| for a simple root, or the linear rate for a multiple root">Rate \(\to C\)</dt><dd class="rval" id="rv-climit" aria-live="polite" aria-atomic="true">-</dd></div>
     <div class="rcell"><dt class="rlbl">Status</dt><dd class="rval" id="rv-stat" aria-live="polite" aria-atomic="true">-</dd></div>
   </dl>
 
@@ -754,6 +755,26 @@ function getHRoot(ex,id){
   }catch(e){r=null;}
   HROOT_CACHE[id]=r; return r;
 }
+/* Theoretical limit the per-step convergence rate approaches, from the Newton
+   map g(x)=x - m f/f' near the root x*. Since g(x*)=x* and g(x*+h)=x*+g'(x*)h
+   + (g''(x*)/2)h^2 + ..., a single evaluation at x*+h recovers both regimes:
+   |g'(x*)| (linear rate for a multiple root) or |g''(x*)|/2 = |f''|/2|f'| (the
+   quadratic error constant for a simple root). Returns null when not
+   converging (divergent/oscillating examples). */
+function rateLimit(ex,id){
+  if(!HP_ON||!ex.hf||!ex.hdf) return null;
+  if(ex.cat==='divergent'||ex.cat==='oscillate') return null;
+  var xr=getHRoot(ex,id); if(!xr) return null;
+  try{
+    var m=D(ST.m), h=D('1e-25'), xp=xr.plus(h), d=ex.hdf(xp);
+    if(!d||!d.isFinite()||d.isZero()) return null;
+    var g=xp.minus(m.times(ex.hf(xp)).div(d));
+    if(!g||!g.isFinite()) return null;
+    var diff=g.minus(xr), slope=diff.div(h).abs();
+    if(slope.gt('1e-6')) return {type:'lin', v:Number(slope.toString())};   /* linear rate |g'| */
+    return {type:'quad', v:Number(diff.abs().div(h.times(h)).toString())};   /* |g''|/2 */
+  }catch(e){ return null; }
+}
 
 /* ── Example Registry ──
    dl  = plain-text dropdown label (Unicode math, no HTML/MathJax)
@@ -1044,6 +1065,8 @@ function updateReadout(){
   document.getElementById('rv-fx').textContent=fmt(ent.fx,4);
   var ee=document.getElementById('rv-err');ee.textContent=isFinite(ent.err)?ent.err.toExponential(3):'\u2014';ee.className='rval'+(isFinite(ent.err)?ent.err<1e-8?' rval-s':ent.err<1e-3?' rval-n':' rval-u':'');
   var re=document.getElementById('rv-rate');var ex=getEx();var rate=(ST.m>1||ex.cat==='simple')?ent.qr:ent.lr;re.textContent=isFinite(rate)&&rate>0?rate.toExponential(2):'\u2014';re.className='rval'+(isFinite(rate)&&rate<5?' rval-q':'');
+  var cle=document.getElementById('rv-climit');var rl=rateLimit(ex,ST.exId);
+  if(cle){ if(rl){cle.textContent=(rl.v<1e-90?'0':rl.v.toExponential(3));cle.className='rval rval-q';} else {cle.textContent='\u2014';cle.className='rval';} }
   var se=document.getElementById('rv-stat');
   if(!isFinite(ent.err)){se.textContent='Diverging';se.className='rval rval-u';}
   else if(ent.err<1e-8){se.textContent='Converged \u2713';se.className='rval rval-s';}
