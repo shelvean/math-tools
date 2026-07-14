@@ -1964,36 +1964,58 @@ document.addEventListener('DOMContentLoaded',function(){
     return false;
   }
 
-  canvas.addEventListener('click',function(e){
+  /* Map a mouse event to canvas-pixel coordinates plus the current axis scales. */
+  function canvasHitCtx(e){
     var rect=canvas.getBoundingClientRect();
     var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
-    var cx=(e.clientX-rect.left)*sx;
-    var cy=(e.clientY-rect.top)*sy;
-    var tMin=+document.getElementById('tMin').value;
-    var tMax=+document.getElementById('tMax').value;
-    var yMin=+document.getElementById('yMin').value;
-    var yMax=+document.getElementById('yMax').value;
-    var xScale=(canvas.width-2*PADDING)/(tMax-tMin);
-    var yScale=(canvas.height-2*PADDING)/(yMax-yMin);
-    /* Toggle: clicking on an existing initial-point dot removes that curve;
-       clicking empty space adds one. (~14 CSS-px hit radius.) */
-    var hitR=14*sx;
+    var tMin=+document.getElementById('tMin').value,tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value,yMax=+document.getElementById('yMax').value;
+    return {
+      cx:(e.clientX-rect.left)*sx,
+      cy:(e.clientY-rect.top)*sy,
+      tMin:tMin,yMin:yMin,
+      xScale:(canvas.width-2*PADDING)/(tMax-tMin),
+      yScale:(canvas.height-2*PADDING)/(yMax-yMin),
+      /* Generous, finger-friendly hit radius (~18 CSS px) so a slightly-off
+         click on an initial-point dot still removes the curve instead of
+         quietly drawing another one on top of it. */
+      hitR:18*sx
+    };
+  }
+  /* Index of the top-most solution whose initial-point dot is under (cx,cy), or -1. */
+  function dotHitIndex(h){
     for(var i=solutions.length-1;i>=0;i--){
       var ip=solutions[i].initialPoint; if(!ip)continue;
-      var ix=PADDING+(ip.t-tMin)*xScale, iy=canvas.height-PADDING-(ip.y-yMin)*yScale;
-      var dx=cx-ix, dy=cy-iy;
-      if(dx*dx+dy*dy<=hitR*hitR){
-        solutions.splice(i,1);
-        drawDirectionField();
-        document.getElementById('rv-click').textContent='t='+ip.t.toFixed(3)+', y='+ip.y.toFixed(3);
-        setStatus('Curve removed','rval-b');
-        say('Solution curve removed');
-        return;
-      }
+      var ix=PADDING+(ip.t-h.tMin)*h.xScale, iy=canvas.height-PADDING-(ip.y-h.yMin)*h.yScale;
+      var dx=h.cx-ix, dy=h.cy-iy;
+      if(dx*dx+dy*dy<=h.hitR*h.hitR)return i;
     }
-    var t=tMin+(cx-PADDING)/xScale;
-    var yVal=yMin+(canvas.height-PADDING-cy)/yScale;
+    return -1;
+  }
+
+  canvas.addEventListener('click',function(e){
+    var h=canvasHitCtx(e);
+    /* Toggle: clicking on an existing initial-point dot removes that curve;
+       clicking empty space draws a new one. */
+    var hit=dotHitIndex(h);
+    if(hit>=0){
+      var ip=solutions[hit].initialPoint;
+      solutions.splice(hit,1);
+      drawDirectionField();
+      document.getElementById('rv-click').textContent='t='+ip.t.toFixed(3)+', y='+ip.y.toFixed(3);
+      setStatus('Curve removed','rval-b');
+      say('Solution curve removed');
+      return;
+    }
+    var t=h.tMin+(h.cx-PADDING)/h.xScale;
+    var yVal=h.yMin+(canvas.height-PADDING-h.cy)/h.yScale;
     addCurveAt(t,yVal);
+  });
+
+  /* Cursor feedback: show a pointer over a removable initial-point dot so the
+     click-to-remove affordance is discoverable; crosshair everywhere else. */
+  canvas.addEventListener('mousemove',function(e){
+    canvas.style.cursor=dotHitIndex(canvasHitCtx(e))>=0?'pointer':'crosshair';
   });
 
   /* Parse a number or simple expression (pi, sqrt, etc.) for the IC inputs. */
