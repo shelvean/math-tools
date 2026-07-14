@@ -397,6 +397,13 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
 #solnPlot{width:100%;height:380px;} #errPlot{width:100%;height:320px;}
 #discPlot{width:100%;height:340px;} #convPlot{width:100%;height:320px;}
 #basisPlot{width:100%;height:360px;}
+.conv-scale{display:flex;align-items:center;gap:.4rem;margin:.5rem .1rem .3rem;flex-wrap:wrap;}
+.conv-scale-lbl{font-size:.78rem;font-weight:700;color:var(--txt2);}
+.cscale-btn{font-size:.78rem;font-weight:600;padding:.2rem .55rem;border:1.5px solid var(--bdr2);
+  border-radius:.3rem;background:var(--card);color:var(--txt);cursor:pointer;transition:background .15s,border-color .15s;}
+.cscale-btn:hover{background:var(--info);border-color:var(--blue);color:var(--blue);}
+.cscale-btn[aria-pressed=true]{background:var(--blue);color:#fff;border-color:var(--blue);}
+.cscale-btn:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
 .disc-formula{padding:.5rem .8rem .7rem;font-size:.9rem;color:var(--txt2);line-height:1.6;overflow-x:auto;}
 .disc-formula .defn-box{margin:.4rem 0;}
 .stencil-tag{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -808,12 +815,18 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
         </button>
         <div id="convSecBody" class="heavy-body">
           <div class="busy-badge" id="convBusy" role="status" aria-live="polite">Computing…</div>
+          <div class="conv-scale" id="convScale" role="radiogroup" aria-label="Convergence plot axis scale">
+            <span class="conv-scale-lbl">Axes:</span>
+            <button type="button" class="cscale-btn" data-scale="loglog"   role="radio" aria-checked="true"  aria-pressed="true">log&ndash;log</button>
+            <button type="button" class="cscale-btn" data-scale="semilogy" role="radio" aria-checked="false" aria-pressed="false">semi&ndash;log&nbsp;y</button>
+            <span class="conv-scale-lbl" style="font-weight:500;">- log&ndash;log: straight &rArr; \(O(h^{p})\); semi&ndash;log&nbsp;y (vs \(N\)): straight &rArr; \(e^{-\alpha N}\) (spectral)</span>
+          </div>
           <div id="convPlot"></div>
           <div class="plot-foot">
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewConvBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Log&ndash;log plot of the error against \(h=(b-a)/N\) as the mesh is refined. The fitted slope is the empirical order \(p\), shown in the legend; a straight line of slope \(p\) confirms \(O(h^p)\). Spectral collocation converges faster than any fixed power (exponential for smooth solutions), so it curves steeply and is labelled accordingly rather than by a slope. Levels that hit machine precision are dropped from the fit.</details>
+          <details class="pnote"><summary>About this plot</summary>Error against resolution as the mesh is refined. In <strong>log&ndash;log</strong> the error is plotted against \(h=(b-a)/N\): the fitted slope is the empirical order \(p\) (shown in the legend), and a straight line of slope \(p\) confirms \(O(h^p)\); the dashed slate guide is that reference order. Only <strong>spectral collocation</strong> converges faster than any fixed power - <em>spectral (exponential)</em> accuracy for smooth solutions - so it curves steeply here instead of following a fixed slope. Switch to <strong>semi&ndash;log&nbsp;y</strong> (error vs \(N\) on a linear axis) to see that exponential decay \(e^{-\alpha N}\) straighten into a line; the dashed slate guide there is the fitted \(Ce^{-\alpha N}\) rate for the spectral method, while the algebraic methods bend. Levels that hit machine precision are dropped from the fit.</details>
         </div>
       </div>
     </div>
@@ -1209,7 +1222,7 @@ function baseLayout(extra){
 function isHC(){ return document.body.classList.contains('hc'); }
 
 /* =================== global state =================== */
-var STATE={ mode:'steady', results:{}, P:null, opts:null, timeField:null };
+var STATE={ mode:'steady', results:{}, P:null, opts:null, timeField:null, convScale:'loglog' };
 
 function readUI(){
   var ex=EXBY[$('exSelect').value]||EXAMPLES[0];
@@ -1402,13 +1415,14 @@ function computeConvergence(cfg){
   var P=cfg.P,sel=cfg.sel,o=cfg.opts,traces=[];
   var Nfd=[4,8,16,32,64,128], Ndg=[2,4,8,16,32], Nspl=[2,4,8,16,32], Nspec=[4,8,12,16,20,24];
   function series(id){
-    var m=METBY[id],errs=[],hs=[];
-    if(id==='fd'||id==='fem'){ Nfd.forEach(function(N){ var R=(id==='fd')?solveFD(P,N):solveFEM(P,N,o.femDeg); errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); }); }
-    else if(id==='shoot'){ [4,8,16,32,64].forEach(function(N){ var R=solveShoot(P,N); errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); }); }
-    else if(id==='dg'){ Ndg.forEach(function(N){ var R=solveDG(P,N,o.dgDeg,cfg.sigma!=null?cfg.sigma:parseFloat($('sigSlider').value)); errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); }); }
-    else if(id==='spl'){ Nspl.forEach(function(N){ var R=solveSpline(P,N,o.splDeg); errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); }); }
-    else if(id==='spec'){ Nspec.forEach(function(N){ var R=solveSpectral(P,N); errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); }); }
-    return {errs:errs,hs:hs,m:m};
+    var m=METBY[id],errs=[],hs=[],ns=[];
+    function add(N,R){ errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); ns.push(N); }
+    if(id==='fd'||id==='fem'){ Nfd.forEach(function(N){ add(N,(id==='fd')?solveFD(P,N):solveFEM(P,N,o.femDeg)); }); }
+    else if(id==='shoot'){ [4,8,16,32,64].forEach(function(N){ add(N,solveShoot(P,N)); }); }
+    else if(id==='dg'){ Ndg.forEach(function(N){ add(N,solveDG(P,N,o.dgDeg,cfg.sigma!=null?cfg.sigma:parseFloat($('sigSlider').value))); }); }
+    else if(id==='spl'){ Nspl.forEach(function(N){ add(N,solveSpline(P,N,o.splDeg)); }); }
+    else if(id==='spec'){ Nspec.forEach(function(N){ add(N,solveSpectral(P,N)); }); }
+    return {errs:errs,hs:hs,ns:ns,m:m};
   }
   // theoretical order p of each (non-spectral) method - used to anchor the reference line
   function theoryOrder(id){
@@ -1419,31 +1433,55 @@ function computeConvergence(cfg){
     if(id==='shoot')return 4;
     return null; // spectral - no fixed algebraic order
   }
+  var semilog=(STATE.convScale==='semilogy');
   var computed={};
   sel.forEach(function(id){
     var s=series(id), name; computed[id]=s;
     if(id==='spec'){ name=s.m.label+' (exponential)'; }
     else { var pr=slope(s.errs,s.hs); name=s.m.label+(isFinite(pr)?'  (p≈'+pr.toFixed(2)+')':''); }
-    traces.push({x:s.hs,y:s.errs.map(function(e){return Math.max(e,1e-16);}),mode:'lines+markers',
+    traces.push({x:(semilog?s.ns:s.hs),y:s.errs.map(function(e){return Math.max(e,1e-16);}),mode:'lines+markers',
       name:name,line:{color:s.m.color,width:2},marker:{color:s.m.color,size:6}});
   });
-  // reference slope line - O(h^p) anchored to the first non-spectral method's
-  // error curve at that method's theoretical order (same design as integration.html:
-  // a single red dashed guide rather than fixed floating slope-2/4 triangles)
-  var refId=null; sel.forEach(function(id){ if(refId===null&&id!=='spec')refId=id; });
-  if(refId!==null){
-    var rs=computed[refId], order=theoryOrder(refId);
-    if(order&&rs.hs.length>=2){
-      var ri=Math.min(2,rs.hs.length-1), h0=rs.hs[ri], e0=Math.max(rs.errs[ri],1e-16);
-      var refY=rs.hs.map(function(h){return e0*Math.pow(h/h0,order);});
-      traces.push({x:rs.hs,y:refY,mode:'lines',name:'O(h^'+order+')',
-        line:{color:'#dc2626',dash:'dash',width:2},
-        hovertemplate:'O(h^'+order+')<br>h=%{x:.2e}, %{y:.2e}<extra></extra>'});
+  if(semilog){
+    // semi-log y (vs N): exponential convergence e^{-alpha N} reads as a straight
+    // line. Fit Ce^{-alpha N} to the spectral method (the one that is actually
+    // exponential) and draw it as a red dashed guide - same design as integration.html.
+    if(computed.spec){
+      var sp=computed.spec, fx=[],fy=[];
+      for(var i2=0;i2<sp.ns.length;i2++){ var ev=sp.errs[i2]; if(ev>1e-15&&isFinite(ev)){ fx.push(sp.ns[i2]); fy.push(Math.log(ev)); } }
+      if(fx.length>=2){
+        var nP=fx.length,sx=0,sy=0,sxx=0,sxy=0;
+        for(i2=0;i2<nP;i2++){ sx+=fx[i2]; sy+=fy[i2]; sxx+=fx[i2]*fx[i2]; sxy+=fx[i2]*fy[i2]; }
+        var den=nP*sxx-sx*sx, mslope=den!==0?(nP*sxy-sx*sy)/den:0, icpt=(sy-mslope*sx)/nP, alpha=-mslope;
+        var fitY=sp.ns.map(function(N){return Math.exp(icpt+mslope*N);});
+        traces.push({x:sp.ns,y:fitY,mode:'lines',
+          name:(alpha>0&&isFinite(alpha))?('Ce^(−'+alpha.toFixed(2)+'N)'):'exp. fit',
+          line:{color:'#334155',dash:'dash',width:2},
+          hovertemplate:'fit Ce^(−αN)<br>N=%{x}, %{y:.2e}<extra></extra>'});
+      }
+    }
+  } else {
+    // reference slope line - O(h^p) anchored to the first non-spectral method's
+    // error curve at that method's theoretical order (same design as integration.html:
+    // a single red dashed guide rather than fixed floating slope-2/4 triangles)
+    var refId=null; sel.forEach(function(id){ if(refId===null&&id!=='spec')refId=id; });
+    if(refId!==null){
+      var rs=computed[refId], order=theoryOrder(refId);
+      if(order&&rs.hs.length>=2){
+        var ri=Math.min(2,rs.hs.length-1), h0=rs.hs[ri], e0=Math.max(rs.errs[ri],1e-16);
+        var refY=rs.hs.map(function(h){return e0*Math.pow(h/h0,order);});
+        traces.push({x:rs.hs,y:refY,mode:'lines',name:'O(h^'+order+')',
+          line:{color:'#334155',dash:'dash',width:2},
+          hovertemplate:'O(h^'+order+')<br>h=%{x:.2e}, %{y:.2e}<extra></extra>'});
+      }
     }
   }
   var h=parseInt($('sizeSlider').value,10)||360;
+  var xaxis=semilog
+    ? {type:'linear',title:{text:'N (subintervals / points)'},gridcolor:'#e5e7eb',rangemode:'tozero'}
+    : {type:'log',title:{text:'h = (b−a)/N'},gridcolor:'#e5e7eb',exponentformat:'power',autorange:'reversed'};
   Plotly.react('convPlot',traces,baseLayout({height:Math.max(300,h),
-    xaxis:{type:'log',title:{text:'h = (b−a)/N'},gridcolor:'#e5e7eb',exponentformat:'power',autorange:'reversed'},
+    xaxis:xaxis,
     yaxis:{type:'log',title:{text:'L² error'},gridcolor:'#e5e7eb',exponentformat:'power'}}),PCONFIG);
 }
 function scheduleConvergence(cfg){
@@ -1819,6 +1857,17 @@ function init(){
   $('basisModeBasis').addEventListener('click',function(){ setBasisMode('basis'); });
   wireSection('discSecBtn','discSecBody','discSecIcon',function(){ if(window._cfg)plotDiscretization(window._cfg); });
   wireSection('convSecBtn','convSecBody','convSecIcon',function(){ if(window._cfg)scheduleConvergence(window._cfg); });
+  // convergence axis-scale toggle (log-log vs semi-log y)
+  document.querySelectorAll('#convScale .cscale-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(STATE.convScale===btn.dataset.scale)return;
+      STATE.convScale=btn.dataset.scale;
+      document.querySelectorAll('#convScale .cscale-btn').forEach(function(b){
+        var on=b.dataset.scale===STATE.convScale;
+        b.setAttribute('aria-pressed',String(on)); b.setAttribute('aria-checked',String(on)); });
+      if(window._cfg)scheduleConvergence(window._cfg);
+    });
+  });
   // reset-view buttons
   [['resetViewBtn','solnPlot'],['resetViewErrBtn','errPlot'],['resetViewConvBtn','convPlot']].forEach(function(pr){
     var b=$(pr[0]); if(b)b.addEventListener('click',function(){ try{ Plotly.relayout(pr[1],{'xaxis.autorange':true,'yaxis.autorange':true}); }catch(e){} }); });
