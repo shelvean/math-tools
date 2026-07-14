@@ -827,12 +827,16 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <button type="button" class="cscale-btn" data-scale="semilogy" role="radio" aria-checked="false" aria-pressed="false">semi&ndash;log&nbsp;y</button>
             <span class="conv-scale-lbl" style="font-weight:500;">- log&ndash;log: straight &rArr; \(O(h^{p})\); semi&ndash;log&nbsp;y (vs \(N\)): straight &rArr; \(e^{-\alpha N}\) (spectral)</span>
           </div>
+          <div class="conv-scale" style="margin-top:.1rem;">
+            <label class="ck" style="font-weight:600;"><input type="checkbox" id="convPostChk"> Postprocess (Richardson extrapolation)</label>
+            <span class="conv-scale-lbl" style="font-weight:500;">- overlays \(u_{\mathrm{ext}}=\dfrac{2^{p}u_{h/2}-u_h}{2^{p}-1}\), a dotted diamond curve of steeper order</span>
+          </div>
           <div id="convPlot"></div>
           <div class="plot-foot">
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewConvBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Error against resolution as the mesh is refined. In <strong>log&ndash;log</strong> the error is plotted against \(h=(b-a)/N\): the fitted slope is the empirical order \(p\) (shown in the legend), and a straight line of slope \(p\) confirms \(O(h^p)\); the dashed slate guide is that reference order. Only <strong>spectral collocation</strong> converges faster than any fixed power - <em>spectral (exponential)</em> accuracy for smooth solutions - so it curves steeply here instead of following a fixed slope. Switch to <strong>semi&ndash;log&nbsp;y</strong> (error vs \(N\) on a linear axis) to see that exponential decay \(e^{-\alpha N}\) straighten into a line; the dashed slate guide there is the fitted \(Ce^{-\alpha N}\) rate for the spectral method, while the algebraic methods bend. Levels that hit machine precision are dropped from the fit.</details>
+          <details class="pnote"><summary>About this plot</summary>Error against resolution as the mesh is refined. In <strong>log&ndash;log</strong> the error is plotted against \(h=(b-a)/N\): the fitted slope is the empirical order \(p\) (shown in the legend), and a straight line of slope \(p\) confirms \(O(h^p)\); the dashed slate guide is that reference order. Only <strong>spectral collocation</strong> converges faster than any fixed power - <em>spectral (exponential)</em> accuracy for smooth solutions - so it curves steeply here instead of following a fixed slope. Switch to <strong>semi&ndash;log&nbsp;y</strong> (error vs \(N\) on a linear axis) to see that exponential decay \(e^{-\alpha N}\) straighten into a line; the dashed slate guide there is the fitted \(Ce^{-\alpha N}\) rate for the spectral method, while the algebraic methods bend. Levels that hit machine precision are dropped from the fit. Tick <strong>Postprocess (Richardson extrapolation)</strong> to overlay, for each non-spectral method, the extrapolated solution \(u_{\mathrm{ext}}=(2^{p}u_{h/2}-u_h)/(2^{p}-1)\) built from each consecutive grid pair - a dotted diamond curve. Because Richardson sharpens the <em>nodal</em> values, this overlay is measured at the shared grid nodes (the between-node interpolant error would otherwise mask the gain), and its slope is visibly steeper - e.g. centred FD lifts from 2 to 4, RK4 shooting from 4 to 6, and P\(_1\) FEM on pure diffusion drops straight to machine precision (its nodal values are already exact).</details>
         </div>
       </div>
     </div>
@@ -1228,7 +1232,7 @@ function baseLayout(extra){
 function isHC(){ return document.body.classList.contains('hc'); }
 
 /* =================== global state =================== */
-var STATE={ mode:'steady', results:{}, P:null, opts:null, timeField:null, convScale:'loglog' };
+var STATE={ mode:'steady', results:{}, P:null, opts:null, timeField:null, convScale:'loglog', convPost:false };
 
 function readUI(){
   var ex=EXBY[$('exSelect').value]||EXAMPLES[0];
@@ -1421,14 +1425,28 @@ function computeConvergence(cfg){
   var P=cfg.P,sel=cfg.sel,o=cfg.opts,traces=[];
   var Nfd=[4,8,16,32,64,128], Ndg=[2,4,8,16,32], Nspl=[2,4,8,16,32], Nspec=[4,8,12,16,20,24];
   function series(id){
-    var m=METBY[id],errs=[],hs=[],ns=[];
-    function add(N,R){ errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); ns.push(N); }
+    var m=METBY[id],errs=[],hs=[],ns=[],conts=[];
+    function add(N,R){ errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); ns.push(N); conts.push(R.cont); }
     if(id==='fd'||id==='fem'){ Nfd.forEach(function(N){ add(N,(id==='fd')?solveFD(P,N):solveFEM(P,N,o.femDeg)); }); }
     else if(id==='shoot'){ [4,8,16,32,64].forEach(function(N){ add(N,solveShoot(P,N)); }); }
     else if(id==='dg'){ Ndg.forEach(function(N){ add(N,solveDG(P,N,o.dgDeg,cfg.sigma!=null?cfg.sigma:parseFloat($('sigSlider').value))); }); }
     else if(id==='spl'){ Nspl.forEach(function(N){ add(N,solveSpline(P,N,o.splDeg)); }); }
     else if(id==='spec'){ Nspec.forEach(function(N){ add(N,solveSpectral(P,N)); }); }
-    return {errs:errs,hs:hs,ns:ns,m:m};
+    return {errs:errs,hs:hs,ns:ns,conts:conts,m:m};
+  }
+  // Richardson extrapolation postprocessing: each consecutive grid pair (ratio 2)
+  // is combined u_ext = (2^p u_{h/2} - u_h)/(2^p - 1) to cancel the leading O(h^p)
+  // error term. Richardson sharpens the NODAL values, so the error is measured at
+  // the shared (coarser-grid) nodes - the between-node interpolant error would
+  // otherwise cap the gain. Same RMS*sqrt(L) scaling as l2errCont for comparability.
+  function richardson(s,p){
+    var e=[],hh=[],nn=[],f=Math.pow(2,p),a=P.a,b=P.b;
+    for(var i=0;i+1<s.conts.length;i++){
+      var cH=s.conts[i],cF=s.conts[i+1],Nc=s.ns[i],sum=0;
+      for(var j=0;j<=Nc;j++){ var x=a+(b-a)*j/Nc, ue=(f*cF(x)-cH(x))/(f-1), er=ue-P.u(x); sum+=er*er; }
+      e.push(Math.sqrt(sum/(Nc+1))*Math.sqrt(b-a)); hh.push(s.hs[i+1]); nn.push(s.ns[i+1]);
+    }
+    return {errs:e,hs:hh,ns:nn};
   }
   // theoretical order p of each (non-spectral) method - used to anchor the reference line
   function theoryOrder(id){
@@ -1440,6 +1458,7 @@ function computeConvergence(cfg){
     return null; // spectral - no fixed algebraic order
   }
   var semilog=(STATE.convScale==='semilogy');
+  var post=STATE.convPost;
   var computed={};
   sel.forEach(function(id){
     var s=series(id), name; computed[id]=s;
@@ -1448,6 +1467,18 @@ function computeConvergence(cfg){
     traces.push({x:(semilog?s.ns:s.hs),y:s.errs.map(function(e){return Math.max(e,1e-16);}),mode:'lines+markers',
       name:name,line:{color:s.m.color,width:2},marker:{color:s.m.color,size:6}});
   });
+  // postprocessing: Richardson-extrapolate each non-spectral method's grid sweep
+  // and overlay the postprocessed error (dashed, open diamonds, same colour).
+  if(post){ sel.forEach(function(id){
+    var ord=theoryOrder(id); if(ord===null)return;  // spectral has no algebraic order
+    var pp=richardson(computed[id],ord); if(pp.errs.length<2)return;
+    var pmin=Math.min.apply(null,pp.errs.filter(function(v){return v>0&&isFinite(v);}));
+    var ps=slope(pp.errs,pp.hs);
+    var plabel=(pmin<1e-12)?' · Richardson (→ machine precision)':(' · Richardson'+(isFinite(ps)?' (p≈'+ps.toFixed(2)+')':''));
+    traces.push({x:(semilog?pp.ns:pp.hs),y:pp.errs.map(function(e){return Math.max(e,1e-16);}),
+      mode:'lines+markers',name:computed[id].m.label+plabel,
+      line:{color:computed[id].m.color,width:2,dash:'dot'},marker:{color:computed[id].m.color,size:7,symbol:'diamond-open'}});
+  }); }
   if(semilog){
     // semi-log y (vs N): exponential convergence e^{-alpha N} reads as a straight
     // line. Fit Ce^{-alpha N} to the spectral method (the one that is actually
@@ -1874,6 +1905,9 @@ function init(){
       if(window._cfg)scheduleConvergence(window._cfg);
     });
   });
+  // postprocessing toggle (Richardson extrapolation overlay)
+  $('convPostChk')&&$('convPostChk').addEventListener('change',function(){
+    STATE.convPost=this.checked; if(window._cfg)scheduleConvergence(window._cfg); });
   // reset-view buttons
   [['resetViewBtn','solnPlot'],['resetViewErrBtn','errPlot'],['resetViewConvBtn','convPlot']].forEach(function(pr){
     var b=$(pr[0]); if(b)b.addEventListener('click',function(){ try{ Plotly.relayout(pr[1],{'xaxis.autorange':true,'yaxis.autorange':true}); }catch(e){} }); });
