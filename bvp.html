@@ -529,8 +529,14 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
       <div class="ex-panel">
         <h3>Problem</h3>
         <div class="cfield cfield-lg">
-          <label for="exSelect" class="sr-only">Choose a built-in problem</label>
-          <select id="exSelect" style="width:100%;min-height:40px;padding:.4rem .5rem;font-size:.9rem;font-weight:600;border:2px solid var(--inf-b);border-radius:.375rem;background:var(--card);color:var(--txt);"></select>
+          <div class="ex-combobox" id="exCombo">
+            <button type="button" class="ex-trigger" id="exTrigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="exListbox" aria-label="Choose a built-in problem">
+              <span class="ex-current" id="exCurrent"></span>
+              <span class="ex-arrow" aria-hidden="true">&#9660;</span>
+            </button>
+            <div class="ex-listbox" id="exListbox" role="listbox" aria-label="Built-in problems" hidden></div>
+            <input type="hidden" id="exSelect">
+          </div>
         </div>
         <p class="note" style="margin:.4rem 0 0;">Each problem is a manufactured solution: \(f\) and the boundary data are derived from a known \(u(x)\), so the error is measured against truth for any coefficients.</p>
       </div>
@@ -1669,9 +1675,66 @@ function wireInfoPanel(btnId,bodyId,iconId){
 var liveTimer=null;
 function liveKick(){ if(!$('liveChk')||!$('liveChk').checked)return; if(liveTimer)clearTimeout(liveTimer); liveTimer=setTimeout(run,180); }
 
+/* ---- LaTeX-rendered problem combobox (replaces native <select>) ---- */
+function selectExample(id,fire){
+  var e=EXBY[id]||EXAMPLES[0];
+  $('exSelect').value=e.id;
+  var cur=$('exCurrent'); cur.innerHTML='\\('+e.tex+'\\)'; typeset([cur]);
+  var opts=$('exListbox').querySelectorAll('.ex-option');
+  for(var i=0;i<opts.length;i++){ opts[i].setAttribute('aria-selected', opts[i].dataset.id===e.id?'true':'false'); }
+  if(fire){ $('exSelect').dispatchEvent(new Event('change')); }
+}
+function buildExampleCombo(){
+  var combo=$('exCombo'), trigger=$('exTrigger'), list=$('exListbox');
+  list.innerHTML='';
+  EXAMPLES.forEach(function(e){
+    var o=document.createElement('div');
+    o.className='ex-option'; o.setAttribute('role','option'); o.id='exopt-'+e.id;
+    o.dataset.id=e.id; o.tabIndex=-1;
+    o.setAttribute('aria-selected','false');
+    o.setAttribute('aria-label',e.name);
+    o.innerHTML='\\('+e.tex+'\\)';
+    o.addEventListener('click',function(){ selectExample(e.id,true); closeExList(true); });
+    list.appendChild(o);
+  });
+  selectExample(EXAMPLES[0].id,false);
+  typeset([list]);
+  function openList(){
+    if(combo.classList.contains('open'))return;
+    combo.classList.add('open'); list.hidden=false; trigger.setAttribute('aria-expanded','true');
+    var cur=list.querySelector('.ex-option[aria-selected=true]')||list.querySelector('.ex-option');
+    setActive(cur); if(cur)cur.focus();
+  }
+  function setActive(o){
+    var opts=list.querySelectorAll('.ex-option');
+    for(var i=0;i<opts.length;i++)opts[i].classList.remove('active');
+    if(o){ o.classList.add('active'); o.scrollIntoView({block:'nearest'}); }
+  }
+  window.closeExList=function(focusTrigger){
+    if(!combo.classList.contains('open'))return;
+    combo.classList.remove('open'); list.hidden=true; trigger.setAttribute('aria-expanded','false');
+    if(focusTrigger)trigger.focus();
+  };
+  trigger.addEventListener('click',function(){ combo.classList.contains('open')?closeExList(false):openList(); });
+  trigger.addEventListener('keydown',function(ev){
+    if(ev.key==='ArrowDown'||ev.key==='Enter'||ev.key===' '||ev.key==='ArrowUp'){ ev.preventDefault(); openList(); }
+  });
+  list.addEventListener('keydown',function(ev){
+    var opts=Array.prototype.slice.call(list.querySelectorAll('.ex-option'));
+    var cur=list.querySelector('.ex-option.active'); var idx=opts.indexOf(cur);
+    if(ev.key==='ArrowDown'){ ev.preventDefault(); var n=opts[Math.min(opts.length-1,idx+1)]; setActive(n); n&&n.focus(); }
+    else if(ev.key==='ArrowUp'){ ev.preventDefault(); var p=opts[Math.max(0,idx-1)]; setActive(p); p&&p.focus(); }
+    else if(ev.key==='Home'){ ev.preventDefault(); setActive(opts[0]); opts[0].focus(); }
+    else if(ev.key==='End'){ ev.preventDefault(); setActive(opts[opts.length-1]); opts[opts.length-1].focus(); }
+    else if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); if(cur){ selectExample(cur.dataset.id,true); closeExList(true); } }
+    else if(ev.key==='Escape'||ev.key==='Tab'){ closeExList(ev.key==='Escape'); }
+  });
+  document.addEventListener('click',function(ev){ if(!combo.contains(ev.target))closeExList(false); });
+}
+
 function init(){
-  // populate example select
-  var es=$('exSelect'); EXAMPLES.forEach(function(e){ var o=document.createElement('option'); o.value=e.id; o.textContent=e.name; es.appendChild(o); });
+  // populate example combobox (LaTeX-rendered options)
+  buildExampleCombo();
   buildMethodGrid(); toggleMethodBlocks();
   // sliders read-outs
   ['pSlider','bSlider','cSlider','sigSlider','nSlider'].forEach(function(id){
@@ -1688,7 +1751,7 @@ function init(){
   $('resetBtn').addEventListener('click',function(){
     $('pSlider').value=1; $('bSlider').value=0; $('cSlider').value=0; $('sigSlider').value=10; $('nSlider').value=16;
     $('aInput').value=0; $('bbInput').value=1; $('bcLeft').value='D'; $('bcRight').value='D';
-    $('exSelect').value='sin'; $('femDeg').value=1; $('dgDeg').value=2; $('splDeg').value=3;
+    selectExample('sin',false); $('femDeg').value=1; $('dgDeg').value=2; $('splDeg').value=3;
     MET.forEach(function(m){ var cb=$('mck_'+m.id); if(cb)cb.checked=(m.id==='fd'||m.id==='fem'); });
     setMode('steady'); toggleMethodBlocks(); refreshReadouts(); run();
   });
