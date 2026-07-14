@@ -345,9 +345,12 @@
   <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
   <p class="footer-modified">Last modified: November 12, 2025.</p>
 </footer>
-  <script src="vendor/pdfjs-dist@2.11.338/build/pdf.min.js"></script>
+  <script src="vendor/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <script src="vendor/pdf-lib@1.17.1/pdf-lib.min.js"></script>
   <script>
+    // pdf.js needs its worker configured; without this getDocument() fails to
+    // set up a worker and no pages render.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
     let pdfDocs = [];
     let pages = [];
     let currentDraggedItem = null;
@@ -358,7 +361,9 @@
       const renderPromises = [];
       for (const file of files) {
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        // Hand pdf.js a copy - it transfers (detaches) the buffer to the worker,
+        // and we keep the original intact for pdf-lib when saving.
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
         pdfDocs.push({ pdf, arrayBuffer });
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
