@@ -378,7 +378,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 </div>
 <main id="main" class="card" role="main">
   <h1>Direction Field Visualizer</h1>
-  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) with an adaptive Tsit5 solver and automatic stiffness switching to BDF5 - click anywhere on the field to draw a solution curve through that point.</p>
+  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) with an adaptive Tsit5 solver and automatic stiffness switching to BDF5 - click anywhere on the field to draw a solution curve through that point, or click an existing initial-point dot to remove it.</p>
 
   <!-- ── About panel ── -->
   <div class="info-panel">
@@ -1966,14 +1966,31 @@ document.addEventListener('DOMContentLoaded',function(){
 
   canvas.addEventListener('click',function(e){
     var rect=canvas.getBoundingClientRect();
-    var cx=(e.clientX-rect.left)*(canvas.width/rect.width);
-    var cy=(e.clientY-rect.top)*(canvas.height/rect.height);
+    var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    var cx=(e.clientX-rect.left)*sx;
+    var cy=(e.clientY-rect.top)*sy;
     var tMin=+document.getElementById('tMin').value;
     var tMax=+document.getElementById('tMax').value;
     var yMin=+document.getElementById('yMin').value;
     var yMax=+document.getElementById('yMax').value;
     var xScale=(canvas.width-2*PADDING)/(tMax-tMin);
     var yScale=(canvas.height-2*PADDING)/(yMax-yMin);
+    /* Toggle: clicking on an existing initial-point dot removes that curve;
+       clicking empty space adds one. (~14 CSS-px hit radius.) */
+    var hitR=14*sx;
+    for(var i=solutions.length-1;i>=0;i--){
+      var ip=solutions[i].initialPoint; if(!ip)continue;
+      var ix=PADDING+(ip.t-tMin)*xScale, iy=canvas.height-PADDING-(ip.y-yMin)*yScale;
+      var dx=cx-ix, dy=cy-iy;
+      if(dx*dx+dy*dy<=hitR*hitR){
+        solutions.splice(i,1);
+        drawDirectionField();
+        document.getElementById('rv-click').textContent='t='+ip.t.toFixed(3)+', y='+ip.y.toFixed(3);
+        setStatus('Curve removed','rval-b');
+        say('Solution curve removed');
+        return;
+      }
+    }
     var t=tMin+(cx-PADDING)/xScale;
     var yVal=yMin+(canvas.height-PADDING-cy)/yScale;
     addCurveAt(t,yVal);
