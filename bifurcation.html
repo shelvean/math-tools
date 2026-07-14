@@ -3517,18 +3517,18 @@ function applyCustomMap(){
   var exprRaw=document.getElementById('customFnInput').value.trim();
   var errEl=document.getElementById('customFnError');
   errEl.textContent='';
-  if(!exprRaw){errEl.textContent='Please enter a function expression.';return;}
+  if(!exprRaw){errEl.textContent='Please enter a function expression.';return false;}
 
   var xMin=parseMathInput(document.getElementById('customXMin').value); if(!isFinite(xMin)) xMin=0;
   var xMax=parseMathInput(document.getElementById('customXMax').value); if(!isFinite(xMax)) xMax=1;
-  if(xMin>=xMax){errEl.textContent='x domain min must be less than max.';return;}
+  if(xMin>=xMax){errEl.textContent='x domain min must be less than max.';return false;}
 
   var fRaw;
   try{
     fRaw=new Function('x','r','return '+preprocess2(exprRaw)+';');
     var tv=fRaw(0.5, (function(){var p=parseMathInput(document.getElementById('pMinNum').value); return isFinite(p)?p:2.5;})());
     if(typeof tv!=='number')throw new Error('Did not return a number.');
-  }catch(e){errEl.textContent='Error: '+e.message;return;}
+  }catch(e){errEl.textContent='Error: '+e.message;return false;}
 
   var fFn=function(x,r){try{return fRaw(x,r);}catch(e){return NaN;}};
   var dfFn=function(x,r){
@@ -3621,6 +3621,7 @@ function applyCustomMap(){
     latex_p:'r',
     f:fFn, df:dfFn,
     customSrc: preprocess2(exprRaw),
+    rawSrc: exprRaw,
     x0:x0c,
     xMin:stateLo, xMax:stateHi,
     pMin:vMin, pMax:vMax,
@@ -3639,6 +3640,7 @@ function applyCustomMap(){
   if(copt){copt.innerHTML=MAPS.custom.dropLatex; mj([copt]);}
   updateCustomLatex();
   say((win?('Custom map plotted; auto-ranged to r in ['+(+vMin.toFixed(3))+', '+(+vMax.toFixed(3))+']'+(yr?(', state y-axis fit to ['+(+stateLo.toFixed(2))+', '+(+stateHi.toFixed(2))+']'):'')+'.'):'Custom map plotted.')+(feigOn?(' Period-doubling cascade detected ('+onsets.length+' doublings).'):''));
+  return true;
 }
 
 /* Default placeholder so the Custom option is selectable before the user
@@ -3652,6 +3654,7 @@ MAPS['custom']={
   f:function(x,r){return r*x*(1-x);},
   df:function(x,r){return r*(1-2*x);},
   customSrc:'r*x*(1-x)',
+  rawSrc:'r*x*(1-x)',
   x0:0.5, xMin:0, xMax:1,
   pMin:2.5, pMax:4, pMinFull:0, pMaxFull:4,
   pLabel:'r', viewPMin:2.5, viewPMax:4,
@@ -3961,6 +3964,16 @@ document.getElementById('paletteSel').addEventListener('change',function(){
 });
 
 document.getElementById('btnCompute').addEventListener('click',function(){
+  /* If the custom map is selected and its expression box has been edited but
+     not yet applied via Plot, apply it first - otherwise Compute would run the
+     previously-applied (or default logistic) function, silently ignoring what
+     the user typed. */
+  if(ST.mapId==='custom'){
+    var raw=(document.getElementById('customFnInput').value||'').trim();
+    if(raw && (!MAPS.custom || raw!==MAPS.custom.rawSrc)){
+      if(applyCustomMap()===false) return;   /* invalid expression: error already shown */
+    }
+  }
   var _p1=parseMathInput(document.getElementById('pMinNum').value); ST.pMin=isFinite(_p1)?_p1:ST.pMin;
   var _p2=parseMathInput(document.getElementById('pMaxNum').value); ST.pMax=isFinite(_p2)?_p2:ST.pMax;
   var _x0=parseMathInput(document.getElementById('x0Num').value);   ST.x0  =isFinite(_x0)?_x0:ST.x0;
