@@ -1410,18 +1410,37 @@ function computeConvergence(cfg){
     else if(id==='spec'){ Nspec.forEach(function(N){ var R=solveSpectral(P,N); errs.push(l2errCont(P,R.cont)); hs.push((P.b-P.a)/N); }); }
     return {errs:errs,hs:hs,m:m};
   }
+  // theoretical order p of each (non-spectral) method - used to anchor the reference line
+  function theoryOrder(id){
+    if(id==='fd')return 2;
+    if(id==='fem')return (o.femDeg||1)+1;
+    if(id==='dg')return (o.dgDeg||2)+1;
+    if(id==='spl')return (o.splDeg||3)+1;
+    if(id==='shoot')return 4;
+    return null; // spectral - no fixed algebraic order
+  }
+  var computed={};
   sel.forEach(function(id){
-    var s=series(id), name;
+    var s=series(id), name; computed[id]=s;
     if(id==='spec'){ name=s.m.label+' (exponential)'; }
     else { var pr=slope(s.errs,s.hs); name=s.m.label+(isFinite(pr)?'  (p≈'+pr.toFixed(2)+')':''); }
     traces.push({x:s.hs,y:s.errs.map(function(e){return Math.max(e,1e-16);}),mode:'lines+markers',
       name:name,line:{color:s.m.color,width:2},marker:{color:s.m.color,size:6}});
   });
-  // reference triangle slopes 2 and 4
-  if(sel.length){ var hh=[Nfd[Nfd.length-1],Nfd[0]].map(function(N){return (P.b-P.a)/N;});
-    [[2,'#9ca3af'],[4,'#d1d5db']].forEach(function(pr){ var p=pr[0],x0=hh[0],x1=hh[1],y0=1e-8;
-      traces.push({x:[x0,x1],y:[y0,y0*Math.pow(x1/x0,p)],mode:'lines',name:'slope '+p,
-        line:{color:pr[1],width:1,dash:'dot'},hoverinfo:'skip'}); }); }
+  // reference slope line - O(h^p) anchored to the first non-spectral method's
+  // error curve at that method's theoretical order (same design as integration.html:
+  // a single red dashed guide rather than fixed floating slope-2/4 triangles)
+  var refId=null; sel.forEach(function(id){ if(refId===null&&id!=='spec')refId=id; });
+  if(refId!==null){
+    var rs=computed[refId], order=theoryOrder(refId);
+    if(order&&rs.hs.length>=2){
+      var ri=Math.min(2,rs.hs.length-1), h0=rs.hs[ri], e0=Math.max(rs.errs[ri],1e-16);
+      var refY=rs.hs.map(function(h){return e0*Math.pow(h/h0,order);});
+      traces.push({x:rs.hs,y:refY,mode:'lines',name:'O(h^'+order+')',
+        line:{color:'#dc2626',dash:'dash',width:2},
+        hovertemplate:'O(h^'+order+')<br>h=%{x:.2e}, %{y:.2e}<extra></extra>'});
+    }
+  }
   var h=parseInt($('sizeSlider').value,10)||360;
   Plotly.react('convPlot',traces,baseLayout({height:Math.max(300,h),
     xaxis:{type:'log',title:{text:'h = (b−a)/N'},gridcolor:'#e5e7eb',exponentformat:'power',autorange:'reversed'},
