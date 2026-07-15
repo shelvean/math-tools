@@ -793,7 +793,7 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewErrBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Absolute error against the exact solution on a logarithmic axis. Lower is better; higher-order methods sit further down. For DG and spline the error is sampled inside each element, not only at nodes.</details>
+          <details class="pnote"><summary>About this plot</summary>Absolute error against the exact solution on a logarithmic axis. Lower is better; higher-order methods sit further down. For DG and spline the error is sampled inside each element, not only at nodes. When a <strong>Postprocess</strong> mode is chosen in the Convergence panel, the postprocessed pointwise error is overlaid in the same colour (Richardson dotted, Bramble&ndash;Schatz dash-dot) - the Bramble&ndash;Schatz curve is drawn only on the interior where its symmetric kernel is fully supported, and drops well below the raw error there.</details>
         </div>
       </div>
 
@@ -1273,6 +1273,19 @@ function runMethod(id,P,opts){
   if(id==='shoot')return solveShoot(P,opts.N);
   return null;
 }
+// helpers shared by the convergence sweep and the pointwise-error postprocessing
+function curNof(id,opts){ return id==='dg'?opts.Ndg:(id==='spl'?opts.Nspl:(id==='spec'?opts.Nspec:opts.N)); }
+function theoryOrderOf(id,opts){ if(id==='fd')return 2; if(id==='fem')return (opts.femDeg||1)+1;
+  if(id==='dg')return (opts.dgDeg||2)+1; if(id==='spl')return (opts.splDeg||3)+1; if(id==='shoot')return 4; return null; }
+function solveAtN(id,P,N,opts){
+  if(id==='fd')return solveFD(P,N);
+  if(id==='fem')return solveFEM(P,N,opts.femDeg);
+  if(id==='dg')return solveDG(P,N,opts.dgDeg,opts.sigma);
+  if(id==='spl')return solveSpline(P,N,opts.splDeg);
+  if(id==='shoot')return solveShoot(P,N);
+  if(id==='spec')return solveSpectral(P,N);
+  return null;
+}
 
 /* =================== Plotly =================== */
 var PCONFIG={responsive:true,scrollZoom:true,displaylogo:false,
@@ -1369,6 +1382,25 @@ function plotError(cfg){
     for(var i=0;i<=M;i++){ var x=a+(b-a)*i/M,e=Math.abs(R.cont(x)-P.u(x)); xs.push(x); ys.push(Math.max(e,1e-16)); }
     traces.push({x:xs,y:ys,mode:'lines',name:m.label,line:{color:m.color,width:1.8}});
   });
+  // postprocessed pointwise error, following the Postprocess selector
+  var post=STATE.convPost;
+  if(post==='siac'){ cfg.sel.forEach(function(id){
+    if(!(id==='fem'||id==='dg'||id==='spl'))return;               // Galerkin methods only
+    var R=STATE.results[id]; if(!R)return; var m=METBY[id];
+    var k=(id==='fem'?cfg.opts.femDeg:(id==='dg'?cfg.opts.dgDeg:cfg.opts.splDeg));
+    var H=(b-a)/curNof(id,cfg.opts), Ry=H*(k+(k+1)/2); if(2*Ry>=(b-a))return; // too coarse for an interior
+    var up=siacPost(R.cont,H,a,b,k), lo=a+Ry,hi=b-Ry,xs=[],ys=[];
+    for(var i=0;i<=M;i++){ var x=lo+(hi-lo)*i/M,e=Math.abs(up(x)-P.u(x)); xs.push(x); ys.push(Math.max(e,1e-16)); }
+    traces.push({x:xs,y:ys,mode:'lines',name:m.label+' · Bramble–Schatz',line:{color:m.color,width:2,dash:'dashdot'}});
+  }); }
+  else if(post==='richardson'){ cfg.sel.forEach(function(id){
+    var ord=theoryOrderOf(id,cfg.opts); if(ord===null)return;      // spectral excluded
+    var R=STATE.results[id]; if(!R)return; var m=METBY[id];
+    var Rf=solveAtN(id,P,2*curNof(id,cfg.opts),cfg.opts); if(!Rf)return;
+    var f=Math.pow(2,ord),cN=R.cont,cF=Rf.cont,xs=[],ys=[];
+    for(var i=0;i<=M;i++){ var x=a+(b-a)*i/M,ue=(f*cF(x)-cN(x))/(f-1),e=Math.abs(ue-P.u(x)); xs.push(x); ys.push(Math.max(e,1e-16)); }
+    traces.push({x:xs,y:ys,mode:'lines',name:m.label+' · Richardson',line:{color:m.color,width:2,dash:'dot'}});
+  }); }
   var h=parseInt($('sizeSlider').value,10)||360;
   Plotly.react('errPlot',traces,baseLayout({height:Math.max(240,h-40),
     yaxis:{type:'log',gridcolor:'#e5e7eb',title:{text:'|u_h − u|'},exponentformat:'power'}}),PCONFIG);
@@ -1993,7 +2025,7 @@ function init(){
       document.querySelectorAll('#convPost .cscale-btn').forEach(function(b){
         var on=b.dataset.post===STATE.convPost;
         b.setAttribute('aria-pressed',String(on)); b.setAttribute('aria-checked',String(on)); });
-      if(window._cfg)scheduleConvergence(window._cfg);
+      if(window._cfg){ scheduleConvergence(window._cfg); if(STATE.mode==='steady')plotError(window._cfg); }
     });
   });
   // reset-view buttons
