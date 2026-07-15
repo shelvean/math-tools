@@ -1566,12 +1566,23 @@ function computeConvergence(cfg){
   });
   // Bramble-Schatz / SIAC interior error series for a Galerkin method of degree k.
   // The symmetric kernel needs its full support inside the domain, so the error is
-  // measured on a fixed interior [a+m, b-m] and coarse levels (support > margin) skip.
-  function siacSeries(s,k){
-    var a=P.a,b=P.b,L=b-a,margin=0.25*L,R=(k+1)/2,e=[],hh=[],nn=[];
-    for(var i=0;i<s.conts.length;i++){ var N=s.ns[i],H=L/N,Ry=H*(k+R);
+  // measured on a fixed interior window [a+m, b-m]. The coarse convergence meshes are
+  // too few once the kernel-support constraint removes the coarsest levels, so the
+  // filtered method is re-solved here on a dedicated finer mesh ladder - otherwise the
+  // overlay collapses to one point and vanishes.
+  function siacSolve(id,N){
+    if(id==='fem')return solveFEM(P,N,o.femDeg);
+    if(id==='dg') return solveDG(P,N,o.dgDeg,cfg.sigma!=null?cfg.sigma:parseFloat($('sigSlider').value));
+    if(id==='spl')return solveSpline(P,N,o.splDeg);
+    return null;
+  }
+  function siacSeries(id,k){
+    var a=P.a,b=P.b,L=b-a,margin=0.33*L,R=(k+1)/2,e=[],hh=[],nn=[];
+    var Ns=[16,24,32,48,64,96];
+    for(var i=0;i<Ns.length;i++){ var N=Ns[i],H=L/N,Ry=H*(k+R);
       if(Ry>margin)continue;
-      var up=siacPost(s.conts[i],H,a,b,k),M=500,lo=a+margin,hi=b-margin,sum=0;
+      var Rsol=siacSolve(id,N); if(!Rsol)continue;
+      var up=siacPost(Rsol.cont,H,a,b,k),M=500,lo=a+margin,hi=b-margin,sum=0;
       for(var q=0;q<=M;q++){ var x=lo+(hi-lo)*q/M,er=up(x)-P.u(x); sum+=er*er; }
       e.push(Math.sqrt(sum/(M+1))*Math.sqrt(hi-lo)); hh.push(H); nn.push(N);
     }
@@ -1591,7 +1602,7 @@ function computeConvergence(cfg){
   else if(post==='siac'){ sel.forEach(function(id){
     if(!(id==='fem'||id==='dg'||id==='spl'))return;   // Galerkin methods only
     var k=(id==='fem'?o.femDeg:(id==='dg'?o.dgDeg:o.splDeg));
-    var pp=siacSeries(computed[id],k); if(pp.errs.length<2)return;
+    var pp=siacSeries(id,k); if(pp.errs.length<2)return;
     var pmin=Math.min.apply(null,pp.errs.filter(function(v){return v>0&&isFinite(v);}));
     var ps=slope(pp.errs,pp.hs);
     var plabel=(pmin<1e-12)?' · Bramble–Schatz (→ machine precision)':(' · Bramble–Schatz'+(isFinite(ps)?' (p≈'+ps.toFixed(2)+')':''));
