@@ -1396,10 +1396,17 @@ function plotError(cfg){
     if(!(id==='fem'||id==='dg'||id==='spl'))return;               // Galerkin methods only
     var R=STATE.results[id]; if(!R)return; var m=METBY[id];
     var k=(id==='fem'?cfg.opts.femDeg:(id==='dg'?cfg.opts.dgDeg:cfg.opts.splDeg));
-    var H=(b-a)/curNof(id,cfg.opts), Ry=H*(k+(k+1)/2); if(2*Ry>=(b-a))return; // too coarse for an interior
-    var up=siacPost(R.cont,H,a,b,k), lo=a+Ry,hi=b-Ry,xs=[],ys=[];
+    // The SIAC kernel spans 2*Ry = 2*H*(k+(k+1)/2). On the current mesh - DG in particular
+    // runs only ~N/4 elements - that support can exceed the whole domain, leaving no interior
+    // and hiding the overlay entirely. Re-solve on a mesh with enough elements for a usable
+    // interior so the post-processed curve is actually visible.
+    var cur=curNof(id,cfg.opts), minEl=Math.ceil(3.3*(k+(k+1)/2)), nel=Math.max(cur,minEl);
+    var Rs=(nel===cur)?R:solveAtN(id,P,nel,cfg.opts); if(!Rs)return;
+    var H=(b-a)/nel, Ry=H*(k+(k+1)/2); if(2*Ry>=(b-a))return;      // still too coarse - skip
+    var up=siacPost(Rs.cont,H,a,b,k), lo=a+Ry,hi=b-Ry,xs=[],ys=[];
     for(var i=0;i<=M;i++){ var x=lo+(hi-lo)*i/M,e=Math.abs(up(x)-P.u(x)); xs.push(x); ys.push(Math.max(e,1e-16)); }
-    traces.push({x:xs,y:ys,mode:'lines',name:m.label+' · Bramble–Schatz',line:{color:m.color,width:2,dash:'dashdot'}});
+    var lbl=(nel===cur)?' · Bramble–Schatz':(' · Bramble–Schatz ('+nel+' elts)');
+    traces.push({x:xs,y:ys,mode:'lines',name:m.label+lbl,line:{color:m.color,width:2,dash:'dashdot'}});
   }); }
   else if(post==='richardson'){ cfg.sel.forEach(function(id){
     var ord=theoryOrderOf(id,cfg.opts); if(ord===null)return;      // spectral excluded
