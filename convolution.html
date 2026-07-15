@@ -121,6 +121,18 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .param-field{flex:0 1 90px;}
 /* t and T fields */
 .cbar-scalar{flex:0 1 80px;}
+/* custom-function inputs */
+.cbar-custom{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;flex:2 1 320px;min-width:240px;}
+.cfield-fn{flex:1 1 150px;min-width:130px;}
+.cfield-fn input[type=text]{
+  width:100%;min-height:36px;padding:.2rem .5rem;
+  font-size:.9375rem;font-weight:600;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);
+}
+.cfield-fn input[type=text]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.fn-err{flex:1 1 100%;font-size:.8125rem;font-weight:600;color:#b91c1c;margin-top:.1rem;}
+.hc .fn-err{color:#7a0000;}
 
 /* shared field style */
 .cfield{display:flex;flex-direction:column;gap:.18rem;}
@@ -515,6 +527,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
         <option value="sin_cos">sin_cos</option><option value="ea_sin">ea_sin</option>
         <option value="ea_cos">ea_cos</option><option value="ua_ub">ua_ub</option>
         <option value="ua_1" selected>ua_1</option>
+        <option value="custom">custom</option>
       </select>
       <div class="csel-wrap" id="cselWrap">
         <button type="button" id="cselBtn" class="csel-btn"
@@ -529,6 +542,21 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 
     <!-- Dynamic parameter inputs (filled by JS) -->
     <div id="paramSlots" role="group" aria-label="Function parameters"></div>
+
+    <!-- Custom function inputs (shown only for the Custom pair) -->
+    <div id="customRow" class="cbar-custom" role="group" aria-label="Custom functions" style="display:none;">
+      <div class="cfield cfield-fn">
+        <label for="fnF">\(f(t)=\)</label>
+        <input type="text" id="fnF" value="sin(t)" autocomplete="off" spellcheck="false"
+               inputmode="text" aria-label="Function f of t">
+      </div>
+      <div class="cfield cfield-fn">
+        <label for="fnG">\(g(t)=\)</label>
+        <input type="text" id="fnG" value="exp(-t)" autocomplete="off" spellcheck="false"
+               inputmode="text" aria-label="Function g of t">
+      </div>
+      <div id="fnErr" class="fn-err" role="alert" aria-live="assertive" style="display:none;"></div>
+    </div>
 
     <!-- Current t -->
     <div class="cbar-scalar cfield">
@@ -938,6 +966,167 @@ function quadrature(fn,a,b,nsub){
 }
 
 /* ---------------------------------------------------
+   Custom-function parser - same list of functions and
+   syntax as slope.html (sin cos tan cot sec csc sinh
+   cosh tanh asin acos atan exp log log10 sqrt cbrt abs
+   ceil floor round max min, pi, e, and ^ powers). A
+   user expression in t (x is accepted as an alias) is
+   compiled to a numeric evaluator and rendered to LaTeX.
+--------------------------------------------------- */
+if(typeof Math.cot!=='function')Math.cot=function(x){return 1/Math.tan(x);};
+if(typeof Math.sec!=='function')Math.sec=function(x){return 1/Math.cos(x);};
+if(typeof Math.csc!=='function')Math.csc=function(x){return 1/Math.sin(x);};
+
+function powRewrite(eq){
+  var i;
+  while((i=eq.lastIndexOf('^'))>=0){
+    var bs=i,be=i;
+    while(bs>0&&/\s/.test(eq[bs-1]))bs--;
+    be=bs;
+    if(bs>0&&eq[bs-1]===')'){
+      var d=1,p=bs-2;
+      while(p>=0&&d>0){var c=eq[p];if(c===')')d++;else if(c==='(')d--;if(d>0)p--;}
+      if(p<0)return eq;
+      bs=p;
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }else{
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }
+    var base=eq.substring(bs,be);
+    var es=i+1,ee=es;
+    while(ee<eq.length&&/\s/.test(eq[ee]))ee++;
+    es=ee;
+    if(eq[ee]==='+'||eq[ee]==='-')ee++;
+    if(eq[ee]==='('){
+      var d2=1;ee++;
+      while(ee<eq.length&&d2>0){var c2=eq[ee];if(c2==='(')d2++;else if(c2===')')d2--;ee++;}
+    }else{
+      while(ee<eq.length&&/[\w$.]/.test(eq[ee]))ee++;
+      if(eq[ee]==='('){
+        var d3=1;ee++;
+        while(ee<eq.length&&d3>0){var c3=eq[ee];if(c3==='(')d3++;else if(c3===')')d3--;ee++;}
+      }
+    }
+    var expn=eq.substring(es,ee);
+    if(!base||!expn)return eq;
+    eq=eq.substring(0,bs)+'Math.pow('+base+','+expn+')'+eq.substring(ee);
+  }
+  return eq;
+}
+function preprocess(eq){
+  eq=eq.replace(/\bx\b/g,'t');
+  eq=powRewrite(eq);
+  eq=eq
+    .replace(/\b(sin|cos|tan|cot|sec|csc|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<!Math\.)e(?!\w)/g,'Math.E');
+  return eq;
+}
+function exprToLatex(s){
+  if(!s)return '';
+  var t=String(s);
+  t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+    if((l==='e'||l==='E')&&o+2<=str.length){var c=str.charAt(o+2);if((c>='0'&&c<='9')||c==='+'||c==='-')return m;}
+    return d+'*'+l;
+  });
+  function wrapPow(str){
+    var out='',i=0,n=str.length;
+    while(i<n){
+      if(str.charAt(i)==='^'){
+        if(i+1<n&&str.charAt(i+1)==='{'){out+='^';i++;continue;}
+        i++;var sign='';
+        if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+        var body='';
+        if(i<n&&str.charAt(i)==='('){
+          var depth=1,j=i+1;
+          while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+          body=str.slice(i+1,j);i=(j<n)?j+1:j;
+        }else{var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));if(mm){body=mm[0];i+=mm[0].length;}}
+        out+='^{'+sign+body+'}';
+      }else{out+=str.charAt(i);i++;}
+    }
+    return out;
+  }
+  t=wrapPow(t);
+  function callMap(str,name,mapper){
+    var i=0,nlen=name.length;
+    while((i=str.indexOf(name+'(',i))!==-1){
+      if(i>0&&/[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+      var depth=1,j=i+nlen+1,len=str.length;
+      while(j<len){var c=str.charAt(j);if(c==='(')depth++;else if(c===')'){depth--;if(depth===0)break;}j++;}
+      if(depth!==0)break;
+      var inner=str.slice(i+nlen+1,j),rep=mapper(exprToLatex(inner));
+      str=str.slice(0,i)+rep+str.slice(j+1);i+=rep.length;
+    }
+    return str;
+  }
+  t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+  t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+  t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+  t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+  t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+  t=callMap(t,'floor',function(x){return '\\lfloor '+x+'\\rfloor';});
+  t=callMap(t,'ceil', function(x){return '\\lceil '+x+'\\rceil';});
+  t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+  t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cot',  function(x){return '\\cot\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sec',  function(x){return '\\sec\\!\\left('+x+'\\right)';});
+  t=callMap(t,'csc',  function(x){return '\\csc\\!\\left('+x+'\\right)';});
+  t=t.replace(/([^\\]|^)\bpi\b/gi,'$1\\pi ');
+  t=t.replace(/\*/g,'\\cdot ');
+  return t;
+}
+
+/* compiled custom functions + their display LaTeX */
+var CF={
+  f:function(t){return Math.sin(t);},
+  g:function(t){return Math.exp(-t);},
+  fSrc:'sin(t)', gSrc:'exp(-t)',
+  fTauLatex:'\\sin(\\tau)', gTTauLatex:'e^{-(t-\\tau)}',
+  ok:true
+};
+function cvCompile(expr){
+  var fn=new Function('t','return ('+preprocess(expr)+');');
+  var probe=fn(0.5);                        /* reject non-numeric expressions */
+  if(typeof probe!=='number')throw new Error('non-numeric');
+  return fn;
+}
+/* substitute the variable t (or x) in a raw source expression with a marker,
+   render to LaTeX, then swap the marker for a LaTeX token. Lets f(tau) and
+   g(t-tau) be displayed without corrupting function names that contain "t". */
+function cvArgLatex(src,repl){
+  var marked=src.replace(/\bt\b/g,'@').replace(/\bx\b/g,'@');
+  return exprToLatex(marked).replace(/@/g,repl);
+}
+function cvParseCustom(){
+  var fSrc=(document.getElementById('fnF').value||'').trim()||'0';
+  var gSrc=(document.getElementById('fnG').value||'').trim()||'0';
+  var errEl=document.getElementById('fnErr');
+  try{
+    var f=cvCompile(fSrc), g=cvCompile(gSrc);
+    CF.f=f; CF.g=g; CF.fSrc=fSrc; CF.gSrc=gSrc;
+    CF.fTauLatex=cvArgLatex(fSrc,'\\tau');
+    CF.gTTauLatex=cvArgLatex(gSrc,'(t-\\tau)');
+    CF.ok=true;
+    errEl.textContent=''; errEl.style.display='none';
+    return true;
+  }catch(e){
+    CF.ok=false;
+    errEl.textContent='Could not read f or g. Write them in t, e.g. sin(t), exp(-t), t^2, 1/(1+t^2).';
+    errEl.style.display='block';
+    return false;
+  }
+}
+
+/* ---------------------------------------------------
    Example Registry
 --------------------------------------------------- */
 var EX = {
@@ -1187,6 +1376,27 @@ var EX = {
   }
 };
 
+/* Custom pair: two arbitrary user functions, convolved numerically.
+   No closed form exists in general, so only the graph is shown - the
+   formula box is replaced by a note (see updateFormula). */
+EX.custom = {
+  custom:true,
+  dropLatex:'\\(\\text{Custom }f * g\\)',
+  lf:'f', lg:'g', lh:'(f*g)(t)',
+  lf_tau:'f(\\tau)', lg_ttau:'g(t-\\tau)',
+  desc:'',
+  ft:function(tau,t){ return (tau>=0&&tau<=t)?CF.f(tau):null; },
+  gt:function(tau,t){ return (tau>=0&&tau<=t)?CF.g(t-tau):null; },
+  h:function(t){
+    if(t<=0)return 0;
+    return quadrature(function(tau){
+      var a=CF.f(tau), b=CF.g(t-tau);
+      return (isFinite(a)&&isFinite(b))?a*b:0;
+    }, 0, t);
+  },
+  params:[], tMax:8
+};
+
 /* ---------------------------------------------------
    State
 --------------------------------------------------- */
@@ -1405,6 +1615,20 @@ function drawH(){
 var fmPending=false;
 function updateFormula(){
   var ex=EX[ST.exId], p=ST.p;
+  var box=document.getElementById('formulaBox');
+  if(ex.custom){
+    /* No closed form for arbitrary functions: show only the definition and a
+       note that the convolution is evaluated numerically - no result formula. */
+    box.innerHTML=
+      '<div style="text-align:center">\\[ (f*g)(t) \\;=\\; \\int_0^t f(\\tau)\\,g(t-\\tau)\\,d\\tau \\]</div>'+
+      '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+
+      'Custom \\(f,g\\) - convolution evaluated numerically; no closed-form formula is shown.</div>';
+    if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
+      fmPending=true;
+      MathJax.typesetPromise([box]).then(function(){fmPending=false;}).catch(function(){fmPending=false;});
+    }
+    return;
+  }
   var lf_tau=substParams(ex.lf_tau,p);
   var lg_ttau=substParams(ex.lg_ttau,p);
   var lh=substParams(ex.lh,p);
@@ -1413,7 +1637,6 @@ function updateFormula(){
     '<div style="text-align:center">\\[ (f*g)(t) \\;=\\; \\int_0^t '+
     lf_tau+'\\cdot '+lg_ttau+'\\,d\\tau \\;=\\; '+lh+' \\]</div>'+
     '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+desc+'</div>';
-  var box=document.getElementById('formulaBox');
   box.innerHTML=html;
   if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
     fmPending=true;
@@ -1433,9 +1656,15 @@ function legendChip(color, tex, dot){
 }
 function updateLegends(){
   var ex=EX[ST.exId], p=ST.p;
-  var lf_tau=substParams(ex.lf_tau,p);
-  var lg_ttau=substParams(ex.lg_ttau,p);
-  var lh=substParams(ex.lh,p);
+  var lf_tau, lg_ttau, lh;
+  if(ex.custom){
+    /* built from the user's expressions; h has no closed form */
+    lf_tau=CF.fTauLatex; lg_ttau=CF.gTTauLatex; lh='(f*g)(t)';
+  } else {
+    lf_tau=substParams(ex.lf_tau,p);
+    lg_ttau=substParams(ex.lg_ttau,p);
+    lh=substParams(ex.lh,p);
+  }
 
   document.getElementById('legFG').innerHTML=
     legendChip('#1d4ed8','f(\\tau)='+lf_tau)+
@@ -1506,6 +1735,22 @@ document.getElementById('tmaxNum').addEventListener('keydown',function(e){
 });
 
 /* ---------------------------------------------------
+   Custom function inputs
+--------------------------------------------------- */
+function applyCustom(){
+  stopAnim();
+  if(cvParseCustom()){ precompute(); redrawAll(); say('Custom functions updated'); }
+}
+['fnF','fnG'].forEach(function(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.addEventListener('change',applyCustom);
+  el.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();applyCustom();}
+  });
+});
+
+/* ---------------------------------------------------
    Animation
 --------------------------------------------------- */
 function stopAnim(){
@@ -1543,6 +1788,7 @@ document.getElementById('btnReset').addEventListener('click',function(){
    Custom LaTeX listbox for example selector
 --------------------------------------------------- */
 var CSEL_GROUPS=[
+  {label:'Custom (any \u0192, g)',   ids:['custom']},
   {label:'Heaviside Step',          ids:['ua_ub','ua_1']},
   {label:'Trigonometric',           ids:['sin_1','cos_1','sin_sin','sin_cos']},
   {label:'Exponential \u00d7 Trig', ids:['ea_sin','ea_cos']},
@@ -1640,6 +1886,10 @@ function switchEx(id){
   ST.exId=id; ST.t=0;
   resetParams(id);
   buildParams(id);
+  var custom=!!EX[id].custom;
+  document.getElementById('customRow').style.display=custom?'':'none';
+  document.getElementById('paramSlots').style.display=custom?'none':'';
+  if(custom)cvParseCustom();
   var dT=EX[id].tMax;
   ST.tMax=dT;
   document.getElementById('tNum').value=0;
