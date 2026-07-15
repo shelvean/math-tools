@@ -828,16 +828,19 @@ details.mdesc .mbody .defn-box{margin:.45rem 0;}
             <button type="button" class="cscale-btn" data-scale="semilogy" role="radio" aria-checked="false" aria-pressed="false">semi&ndash;log&nbsp;y</button>
             <span class="conv-scale-lbl" style="font-weight:500;">- log&ndash;log: straight &rArr; \(O(h^{p})\); semi&ndash;log&nbsp;y (vs \(N\)): straight &rArr; \(e^{-\alpha N}\) (spectral)</span>
           </div>
-          <div class="conv-scale" style="margin-top:.1rem;">
-            <label class="ck" style="font-weight:600;"><input type="checkbox" id="convPostChk"> Postprocess (Richardson extrapolation)</label>
-            <span class="conv-scale-lbl" style="font-weight:500;">- overlays \(u_{\mathrm{ext}}=\dfrac{2^{p}u_{h/2}-u_h}{2^{p}-1}\), a dotted diamond curve of steeper order</span>
+          <div class="conv-scale" id="convPost" role="radiogroup" aria-label="Convergence postprocessing" style="margin-top:.1rem;">
+            <span class="conv-scale-lbl">Postprocess:</span>
+            <button type="button" class="cscale-btn" data-post="none" role="radio" aria-checked="true" aria-pressed="true">none</button>
+            <button type="button" class="cscale-btn" data-post="richardson" role="radio" aria-checked="false" aria-pressed="false">Richardson</button>
+            <button type="button" class="cscale-btn" data-post="siac" role="radio" aria-checked="false" aria-pressed="false">Bramble&ndash;Schatz</button>
+            <span class="conv-scale-lbl" style="font-weight:500;">- Richardson: \(u_{\mathrm{ext}}=\dfrac{2^{p}u_{h/2}-u_h}{2^{p}-1}\) (nodal); Bramble&ndash;Schatz: B-spline kernel convolution \(u^\ast=\tfrac1H\!\int K(\tfrac{x-y}{H})u_h\,dy\) (interior, Galerkin methods)</span>
           </div>
           <div id="convPlot"></div>
           <div class="plot-foot">
             <span class="view-hint" aria-hidden="true">Scroll: zoom &middot; Drag: pan &middot; Box-zoom &amp; more in the toolbar</span>
             <button class="view-btn" id="resetViewConvBtn" type="button" aria-label="Reset view">Reset view</button>
           </div>
-          <details class="pnote"><summary>About this plot</summary>Error against resolution as the mesh is refined. In <strong>log&ndash;log</strong> the error is plotted against \(h=(b-a)/N\): the fitted slope is the empirical order \(p\) (shown in the legend), and a straight line of slope \(p\) confirms \(O(h^p)\); the dashed slate guide is that reference order. Only <strong>spectral collocation</strong> converges faster than any fixed power - <em>spectral (exponential)</em> accuracy for smooth solutions - so it curves steeply here instead of following a fixed slope. Switch to <strong>semi&ndash;log&nbsp;y</strong> (error vs \(N\) on a linear axis) to see that exponential decay \(e^{-\alpha N}\) straighten into a line; the dashed slate guide there is the fitted \(Ce^{-\alpha N}\) rate for the spectral method, while the algebraic methods bend. Levels that hit machine precision are dropped from the fit. Tick <strong>Postprocess (Richardson extrapolation)</strong> to overlay, for each non-spectral method, the extrapolated solution \(u_{\mathrm{ext}}=(2^{p}u_{h/2}-u_h)/(2^{p}-1)\) built from each consecutive grid pair - a dotted diamond curve. Because Richardson sharpens the <em>nodal</em> values, this overlay is measured at the shared grid nodes (the between-node interpolant error would otherwise mask the gain), and its slope is visibly steeper - e.g. centred FD lifts from 2 to 4, RK4 shooting from 4 to 6, and P\(_1\) FEM on pure diffusion drops straight to machine precision (its nodal values are already exact).</details>
+          <details class="pnote"><summary>About this plot</summary>Error against resolution as the mesh is refined. In <strong>log&ndash;log</strong> the error is plotted against \(h=(b-a)/N\): the fitted slope is the empirical order \(p\) (shown in the legend), and a straight line of slope \(p\) confirms \(O(h^p)\); the dashed slate guide is that reference order. Only <strong>spectral collocation</strong> converges faster than any fixed power - <em>spectral (exponential)</em> accuracy for smooth solutions - so it curves steeply here instead of following a fixed slope. Switch to <strong>semi&ndash;log&nbsp;y</strong> (error vs \(N\) on a linear axis) to see that exponential decay \(e^{-\alpha N}\) straighten into a line; the dashed slate guide there is the fitted \(Ce^{-\alpha N}\) rate for the spectral method, while the algebraic methods bend. Levels that hit machine precision are dropped from the fit. The <strong>Postprocess</strong> selector overlays a postprocessed error curve. <strong>Richardson</strong> (dotted diamonds) extrapolates each consecutive grid pair, \(u_{\mathrm{ext}}=(2^{p}u_{h/2}-u_h)/(2^{p}-1)\); because it sharpens the <em>nodal</em> values it is measured at the shared grid nodes (the between-node interpolant error would otherwise mask the gain), and its slope is visibly steeper - e.g. centred FD lifts from 2 to 4, RK4 shooting from 4 to 6, and P\(_1\) FEM on pure diffusion drops straight to machine precision (its nodal values are already exact). <strong>Bramble&ndash;Schatz</strong> (dash-dot stars) is the genuine averaging post-processor of Bramble &amp; Schatz (1977): it convolves a Galerkin solution against a kernel \(K\) built from \(2k{+}1\) B-splines of order \(k{+}1\) whose coefficients reproduce polynomials up to degree \(2k\), \(u^{\ast}(x)=\tfrac1H\!\int K(\tfrac{x-y}{H})\,u_h(y)\,dy\). This converts negative-order-norm superconvergence into interior accuracy of order \(2k\) - so continuous P\(_2\) FEM lifts from 3 to 4 while P\(_1\) (\(2k{=}2\)) shows no gain; the DG version is the SIAC filter. Because the symmetric kernel needs its full support inside \([a,b]\), it is measured on the interior \([a+\tfrac{L}{4},b-\tfrac{L}{4}]\) and only meshes fine enough for the support to fit are shown.</details>
         </div>
       </div>
     </div>
@@ -1207,6 +1210,59 @@ function slope(errs,hs){ var pts=[]; for(var i=0;i<errs.length;i++)if(isFinite(e
   for(i=0;i<n;i++){ sx+=pts[i][0]; sy+=pts[i][1]; sxx+=pts[i][0]*pts[i][0]; sxy+=pts[i][0]*pts[i][1]; }
   return (n*sxy-sx*sy)/(n*sxx-sx*sx); }
 
+/* ============ Bramble-Schatz / SIAC convolution post-processing ============
+   u*(x) = (1/H) integral K((x-y)/H) u_h(y) dy, with the kernel a linear
+   combination of 2k+1 central B-splines of order k+1 whose coefficients
+   reproduce polynomials up to degree 2k (vanishing moments). Applied to a
+   Galerkin solution this converts negative-order-norm superconvergence into
+   higher-order pointwise accuracy in the interior (Bramble & Schatz 1977;
+   the DG form is the SIAC filter of Cockburn-Luskin-Shu-Sueli). */
+// central B-spline of order n (degree n-1), support [-n/2, n/2]
+function bsplineN(n,t){
+  var fac=1; for(var q=2;q<n;q++)fac*=q;          // (n-1)!
+  var s=0,C=1;                                     // C(n,0)=1
+  for(var i=0;i<=n;i++){ var arg=t+n/2-i;
+    if(arg>0)s+=((i&1)?-1:1)*C*Math.pow(arg,n-1);
+    C=C*(n-i)/(i+1); }
+  return s/fac;
+}
+// kernel coefficients c_gamma (gamma=-k..k) reproducing polynomials up to deg 2k
+function siacCoeffs(k){
+  var n=k+1,R=n/2,G=[]; for(var g=-k;g<=k;g++)G.push(g);
+  var nb=G.length,q6=GL[6],A=mat(nb,nb),rhs=zeros(nb);
+  for(var m=0;m<nb;m++){                            // moment order m = 0..2k
+    for(var j=0;j<nb;j++){ var val=0;
+      // B_n is piecewise polynomial with knots at integers offset from -R, so
+      // integrate over each unit knot-interval separately (a single rule across
+      // the knots would be inexact and corrupt the coefficients).
+      for(var seg=0;seg<n;seg++){ var t0=-R+seg,mid=t0+0.5;
+        for(var gp=0;gp<q6.x.length;gp++){ var t=mid+0.5*q6.x[gp];
+          val+=q6.w[gp]*0.5*bsplineN(n,t)*Math.pow(t+G[j],m); } }
+      A[m][j]=val; }
+    rhs[m]=(m===0)?1:0;
+  }
+  return {c:solveDense(A,rhs),G:G,n:n,R:R};
+}
+// post-processed solution as a function x -> u*(x); H = uniform element size
+function siacPost(uh,H,a,b,k){
+  var K=siacCoeffs(k),c=K.c,G=K.G,n=K.n,R=K.R,q6=GL[6],Ry=H*(k+R);
+  function kern(xi){ var s=0; for(var j=0;j<G.length;j++){ var t=xi-G[j]; if(t>-R&&t<R)s+=c[j]*bsplineN(n,t); } return s; }
+  return function(x){
+    var lo=x-Ry,hi=x+Ry; if(lo<a)lo=a; if(hi>b)hi=b;
+    var set={}; set[lo]=1; set[hi]=1;                // panel breakpoints
+    var m0=Math.ceil((lo-a)/H-1e-9),m1=Math.floor((hi-a)/H+1e-9);
+    for(var m=m0;m<=m1;m++){ var yn=a+m*H; if(yn>lo&&yn<hi)set[yn]=1; }   // mesh nodes
+    var smax=Math.round(2*(k+R));
+    for(var s2=-smax;s2<=smax;s2++){ var yk=x-H*(s2/2); if(yk>lo&&yk<hi)set[yk]=1; } // kernel knots
+    var pts=Object.keys(set).map(Number).sort(function(p,r){return p-r;}),val=0;
+    for(var p=0;p+1<pts.length;p++){ var y0=pts[p],y1=pts[p+1]; if(y1-y0<1e-13)continue;
+      var mid=0.5*(y0+y1),hw=0.5*(y1-y0);
+      for(var gp=0;gp<q6.x.length;gp++){ var yy=mid+hw*q6.x[gp];
+        val+=q6.w[gp]*hw*(1/H)*kern((x-yy)/H)*uh(yy); } }
+    return val;
+  };
+}
+
 /* =================== dispatch =================== */
 function runMethod(id,P,opts){
   if(id==='fd')   return solveFD(P,opts.N,opts.keepA);
@@ -1233,7 +1289,7 @@ function baseLayout(extra){
 function isHC(){ return document.body.classList.contains('hc'); }
 
 /* =================== global state =================== */
-var STATE={ mode:'steady', results:{}, P:null, opts:null, timeField:null, convScale:'loglog', convPost:false };
+var STATE={ mode:'steady', results:{}, P:null, opts:null, timeField:null, convScale:'loglog', convPost:'none' };
 
 function readUI(){
   var ex=EXBY[$('exSelect').value]||EXAMPLES[0];
@@ -1468,9 +1524,21 @@ function computeConvergence(cfg){
     traces.push({x:(semilog?s.ns:s.hs),y:s.errs.map(function(e){return Math.max(e,1e-16);}),mode:'lines+markers',
       name:name,line:{color:s.m.color,width:2},marker:{color:s.m.color,size:6}});
   });
-  // postprocessing: Richardson-extrapolate each non-spectral method's grid sweep
-  // and overlay the postprocessed error (dashed, open diamonds, same colour).
-  if(post){ sel.forEach(function(id){
+  // Bramble-Schatz / SIAC interior error series for a Galerkin method of degree k.
+  // The symmetric kernel needs its full support inside the domain, so the error is
+  // measured on a fixed interior [a+m, b-m] and coarse levels (support > margin) skip.
+  function siacSeries(s,k){
+    var a=P.a,b=P.b,L=b-a,margin=0.25*L,R=(k+1)/2,e=[],hh=[],nn=[];
+    for(var i=0;i<s.conts.length;i++){ var N=s.ns[i],H=L/N,Ry=H*(k+R);
+      if(Ry>margin)continue;
+      var up=siacPost(s.conts[i],H,a,b,k),M=500,lo=a+margin,hi=b-margin,sum=0;
+      for(var q=0;q<=M;q++){ var x=lo+(hi-lo)*q/M,er=up(x)-P.u(x); sum+=er*er; }
+      e.push(Math.sqrt(sum/(M+1))*Math.sqrt(hi-lo)); hh.push(H); nn.push(N);
+    }
+    return {errs:e,hs:hh,ns:nn};
+  }
+  // postprocessing overlay: dotted diamonds (Richardson) or dash-dot stars (SIAC).
+  if(post==='richardson'){ sel.forEach(function(id){
     var ord=theoryOrder(id); if(ord===null)return;  // spectral has no algebraic order
     var pp=richardson(computed[id],ord); if(pp.errs.length<2)return;
     var pmin=Math.min.apply(null,pp.errs.filter(function(v){return v>0&&isFinite(v);}));
@@ -1479,6 +1547,17 @@ function computeConvergence(cfg){
     traces.push({x:(semilog?pp.ns:pp.hs),y:pp.errs.map(function(e){return Math.max(e,1e-16);}),
       mode:'lines+markers',name:computed[id].m.label+plabel,
       line:{color:computed[id].m.color,width:2,dash:'dot'},marker:{color:computed[id].m.color,size:7,symbol:'diamond-open'}});
+  }); }
+  else if(post==='siac'){ sel.forEach(function(id){
+    if(!(id==='fem'||id==='dg'||id==='spl'))return;   // Galerkin methods only
+    var k=(id==='fem'?o.femDeg:(id==='dg'?o.dgDeg:o.splDeg));
+    var pp=siacSeries(computed[id],k); if(pp.errs.length<2)return;
+    var pmin=Math.min.apply(null,pp.errs.filter(function(v){return v>0&&isFinite(v);}));
+    var ps=slope(pp.errs,pp.hs);
+    var plabel=(pmin<1e-12)?' · Bramble–Schatz (→ machine precision)':(' · Bramble–Schatz'+(isFinite(ps)?' (p≈'+ps.toFixed(2)+')':''));
+    traces.push({x:(semilog?pp.ns:pp.hs),y:pp.errs.map(function(e){return Math.max(e,1e-16);}),
+      mode:'lines+markers',name:computed[id].m.label+plabel,
+      line:{color:computed[id].m.color,width:2,dash:'dashdot'},marker:{color:computed[id].m.color,size:9,symbol:'star-open'}});
   }); }
   if(semilog){
     // semi-log y (vs N): exponential convergence e^{-alpha N} reads as a straight
@@ -1906,9 +1985,17 @@ function init(){
       if(window._cfg)scheduleConvergence(window._cfg);
     });
   });
-  // postprocessing toggle (Richardson extrapolation overlay)
-  $('convPostChk')&&$('convPostChk').addEventListener('change',function(){
-    STATE.convPost=this.checked; if(window._cfg)scheduleConvergence(window._cfg); });
+  // postprocessing selector (none / Richardson / Bramble-Schatz overlay)
+  document.querySelectorAll('#convPost .cscale-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      if(STATE.convPost===btn.dataset.post)return;
+      STATE.convPost=btn.dataset.post;
+      document.querySelectorAll('#convPost .cscale-btn').forEach(function(b){
+        var on=b.dataset.post===STATE.convPost;
+        b.setAttribute('aria-pressed',String(on)); b.setAttribute('aria-checked',String(on)); });
+      if(window._cfg)scheduleConvergence(window._cfg);
+    });
+  });
   // reset-view buttons
   [['resetViewBtn','solnPlot'],['resetViewErrBtn','errPlot'],['resetViewConvBtn','convPlot']].forEach(function(pr){
     var b=$(pr[0]); if(b)b.addEventListener('click',function(){ try{ Plotly.relayout(pr[1],{'xaxis.autorange':true,'yaxis.autorange':true}); }catch(e){} }); });
