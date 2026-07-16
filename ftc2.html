@@ -123,6 +123,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
   min-width:3.3rem;text-align:right;color:var(--blue);}
 .sfield.sfield-a input[type=range]{accent-color:var(--cF);}
 .sfield.sfield-a .sval{color:var(--cF);}
+.sfield input.sinp{width:5rem;min-height:34px;padding:.15rem .35rem;
+  font-size:.9rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;
+  text-align:center;border:2px solid var(--bdr);border-radius:.35rem;
+  background:var(--card);color:var(--blue);}
+.sfield input.sinp:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.sfield.sfield-a input.sinp{color:var(--cF);}
+.sfield input.sinp.bad{border-color:#dc2626;color:#dc2626;background:#fef2f2;}
+.hc .sfield input.sinp.bad{border-color:#cc0000;color:#cc0000;}
 
 /* animation row */
 .abar{display:flex;align-items:center;justify-content:center;gap:.75rem;flex-wrap:wrap;
@@ -364,9 +372,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <div class="sfield sfield-a cfield">
       <label for="aRange">Lower limit \(a\)</label>
       <div class="srow">
-        <input type="range" id="aRange" min="-3" max="3" step="0.05" value="-1"
+        <input type="range" id="aRange" min="-4" max="4" step="0.02" value="-1"
                aria-label="Lower limit a">
-        <span class="sval" id="aVal">-1.00</span>
+        <input type="text" class="sinp" id="aInp" value="-1" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Lower limit a - accepts decimals, fractions, and constants like pi">
       </div>
     </div>
 
@@ -375,7 +383,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
       <div class="srow">
         <input type="range" id="bRange" min="-4" max="4" step="0.02" value="-4"
                aria-label="Upper limit x">
-        <span class="sval" id="bVal">-4.00</span>
+        <input type="text" class="sinp" id="bInp" value="-4" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Upper limit x - accepts decimals, fractions, and constants like pi">
       </div>
     </div>
   </div>
@@ -533,6 +541,34 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
 function linspace(a,b,n){var r=[];for(var i=0;i<n;i++)r.push(a+(b-a)*i/(n-1));return r;}
 function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+/* parse a constant expression: decimals, fractions (1/2), and math
+   constants/functions (pi, e, tau, phi, sqrt, sin, cos, ...) */
+function evalConst(str){
+  if(str==null)return NaN;
+  var s=String(str).trim().toLowerCase().replace(/π/g,'pi').replace(/τ/g,'tau').replace(/√/g,'sqrt').replace(/×/g,'*').replace(/÷/g,'/');
+  if(!s)return NaN;
+  var i=0;
+  function ws(){while(i<s.length&&s.charAt(i)===' ')i++;}
+  function expr(){var v=term();for(;;){ws();var c=s.charAt(i);if(c==='+'){i++;v+=term();}else if(c==='-'){i++;v-=term();}else return v;}}
+  function term(){var v=fac();for(;;){ws();var c=s.charAt(i);if(c==='*'){i++;v*=fac();}else if(c==='/'){i++;v/=fac();}else if(c==='('||/[a-z]/.test(c)){v*=fac();}else return v;}}
+  function fac(){ws();var c=s.charAt(i);if(c==='+'){i++;return fac();}if(c==='-'){i++;return -fac();}var v=base();ws();if(s.charAt(i)==='^'){i++;v=Math.pow(v,fac());}return v;}
+  function base(){
+    ws();var c=s.charAt(i);
+    if(c==='('){i++;var v=expr();ws();if(s.charAt(i)===')')i++;return v;}
+    if(/[0-9.]/.test(c)){var st=i;while(i<s.length&&/[0-9.]/.test(s.charAt(i)))i++;return parseFloat(s.substring(st,i));}
+    if(/[a-z]/.test(c)){
+      var st=i;while(i<s.length&&/[a-z0-9]/.test(s.charAt(i)))i++;var nm=s.substring(st,i);ws();
+      var K={pi:Math.PI,e:Math.E,tau:2*Math.PI,phi:(1+Math.sqrt(5))/2};
+      if(s.charAt(i)==='('){i++;var arg=expr();ws();if(s.charAt(i)===')')i++;
+        var Fn={sqrt:Math.sqrt,cbrt:Math.cbrt,sin:Math.sin,cos:Math.cos,tan:Math.tan,asin:Math.asin,acos:Math.acos,atan:Math.atan,ln:Math.log,log:function(x){return Math.log(x)/Math.LN10;},exp:Math.exp,abs:Math.abs};
+        if(Fn[nm])return Fn[nm](arg);throw 0;}
+      if(nm in K)return K[nm];throw 0;
+    }
+    throw 0;
+  }
+  try{var r=expr();ws();if(i<s.length)return NaN;return isFinite(r)?r:NaN;}catch(e){return NaN;}
+}
+function fmtInp(v){if(!isFinite(v))return '0';return (Math.round(v*1e6)/1e6).toString();}
 function fmt(v,d){d=d==null?5:d;if(!isFinite(v))return 'undef.';if(Math.abs(v)<1e-9)v=0;return v.toFixed(d);}
 function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
 
@@ -598,7 +634,7 @@ function precompute(){
   for(var m=0;m<NGRID;m++){
     var c=GRID.cumF[m];
     if(c<cLo)cLo=c; if(c>cHi)cHi=c;
-    if(GRID.X[m]>=-3&&GRID.X[m]<=3){ if(c<caLo)caLo=c; if(c>caHi)caHi=c; }
+    if(GRID.X[m]>=-4&&GRID.X[m]<=4){ if(c<caLo)caLo=c; if(c>caHi)caHi=c; }
   }
   GRID.Frange=yRange([[cLo-caHi, cHi-caLo]],0.8);
 }
@@ -815,18 +851,30 @@ function redrawShift(){ /* a changed */
 /* ==================================================
    Controls
 ================================================== */
-var aRange=document.getElementById('aRange'), aVal=document.getElementById('aVal');
-var bRange=document.getElementById('bRange'), bVal=document.getElementById('bVal');
+var aRange=document.getElementById('aRange'), aInp=document.getElementById('aInp');
+var bRange=document.getElementById('bRange'), bInp=document.getElementById('bInp');
 
 aRange.addEventListener('input',function(){
-  ST.a=parseFloat(this.value); aVal.textContent=ST.a.toFixed(2);
+  ST.a=parseFloat(this.value); aInp.value=fmtInp(ST.a); aInp.classList.remove('bad');
   redrawShift();
 });
 bRange.addEventListener('input',function(){
   stopAnim();
-  ST.b=parseFloat(this.value); bVal.textContent=ST.b.toFixed(2);
+  ST.b=parseFloat(this.value); bInp.value=fmtInp(ST.b); bInp.classList.remove('bad');
   redrawB();
 });
+/* type an exact value: decimals, fractions, or constants (pi, e, sqrt(2), ...) */
+function commitLimit(inp,rng,set,redraw){
+  var v=evalConst(inp.value);
+  if(isNaN(v)){inp.classList.add('bad');return;}
+  inp.classList.remove('bad');
+  var cl=clamp(v,XMIN,XMAX); set(cl); rng.value=cl;
+  inp.value=fmtInp(cl); redraw();
+}
+aInp.addEventListener('change',function(){commitLimit(aInp,aRange,function(v){ST.a=v;},redrawShift);});
+aInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();aInp.blur();}});
+bInp.addEventListener('change',function(){stopAnim();commitLimit(bInp,bRange,function(v){ST.b=v;},redrawB);});
+bInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();bInp.blur();}});
 
 /* Animation: sweep b across the domain */
 function stopAnim(){ST.animating=false;if(animTimer){clearInterval(animTimer);animTimer=null;}}
@@ -838,7 +886,7 @@ function startAnim(){
   animTimer=setInterval(function(){
     if(!ST.animating){clearInterval(animTimer);return;}
     ST.b=Math.min(ST.b+step,XMAX);
-    bRange.value=ST.b; bVal.textContent=ST.b.toFixed(2);
+    bRange.value=ST.b; bInp.value=fmtInp(ST.b);
     redrawB();
     if(ST.b>=XMAX-1e-9){stopAnim();say('Animation complete');}
   },28);
@@ -847,7 +895,7 @@ function startAnim(){
 document.getElementById('btnPlay').addEventListener('click',startAnim);
 document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Animation stopped');});
 document.getElementById('btnReset').addEventListener('click',function(){
-  stopAnim(); ST.b=ST.a; bRange.value=ST.b; bVal.textContent=ST.b.toFixed(2); redrawB();
+  stopAnim(); ST.b=ST.a; bRange.value=ST.b; bInp.value=fmtInp(ST.b); redrawB();
   say('Reset b to a');
 });
 
@@ -926,8 +974,8 @@ document.getElementById('ctog').addEventListener('click',function(){
    Init
 ================================================== */
 function init(){
-  aRange.value=ST.a; aVal.textContent=ST.a.toFixed(2);
-  bRange.value=ST.b; bVal.textContent=ST.b.toFixed(2);
+  aRange.value=ST.a; aInp.value=fmtInp(ST.a);
+  bRange.value=ST.b; bInp.value=fmtInp(ST.b);
   precompute(); initCsel(); redrawAll(); updateLegends();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
