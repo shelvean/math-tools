@@ -133,6 +133,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .sfield.sfield-a input.sinp{color:var(--cF);}
 .sfield input.sinp.bad{border-color:#dc2626;color:#dc2626;background:#fef2f2;}
 .hc .sfield input.sinp.bad{border-color:#cc0000;color:#cc0000;}
+.asweep{display:flex;align-items:center;gap:.6rem;flex:1 1 340px;min-width:280px;
+  padding:.2rem .6rem;border-left:2px solid var(--bdr2);}
+.asweep .sweeplbl{font-size:.9rem;font-weight:700;color:var(--cpos);white-space:nowrap;}
+.asweep input[type=range]{flex:1 1 auto;min-width:120px;height:28px;accent-color:var(--cpos);cursor:pointer;}
+.asweep .sval{font-size:1rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;
+  min-width:3.4rem;text-align:right;color:var(--cpos);}
 
 /* animation row */
 .abar{display:flex;align-items:center;justify-content:center;gap:.75rem;flex-wrap:wrap;
@@ -383,11 +389,11 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     </div>
 
     <div class="sfield cfield">
-      <label for="xRange">Upper limit \(x\)</label>
+      <label for="bRange">Upper limit \(b\)</label>
       <div class="srow">
-        <input type="range" id="xRange" min="-4" max="4" step="0.02" value="1.5"
-               aria-label="Upper limit x">
-        <input type="text" class="sinp" id="xInp" value="1.5" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Upper limit x - accepts decimals, fractions, and constants like pi">
+        <input type="range" id="bRange" min="-4" max="4" step="0.02" value="3"
+               aria-label="Upper limit b (the fixed endpoint)">
+        <input type="text" class="sinp" id="bInp" value="3" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Upper limit b - the fixed endpoint; accepts decimals, fractions, and constants like pi">
       </div>
     </div>
   </div>
@@ -403,6 +409,12 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset x to the lower limit a">
       <span aria-hidden="true">&#8635;</span> Reset
     </button>
+    <div class="asweep">
+      <label for="xRange" class="sweeplbl">Sweep \(x\)</label>
+      <input type="range" id="xRange" min="0" max="3" step="0.02" value="1.5"
+             aria-label="Intermediate upper limit x, sweeps from a to b">
+      <span class="sval" id="xVal">1.50</span>
+    </div>
   </div>
 
   <!-- Readout -->
@@ -612,7 +624,7 @@ var FUN_ORDER=['x','x2','sin','cos','fres'];
    State + precompute (function-level, a-independent)
 ================================================== */
 var XMIN=-4, XMAX=4, NGRID=401;
-var ST={fId:'sin', a:0, x:1.5, animating:false};
+var ST={fId:'sin', a:0, b:3, x:1.5, animating:false};   /* b fixed; x sweeps a->b */
 var GRID={X:[], f:[], cumF:[], dF:[], dx:(XMAX-XMIN)/(NGRID-1)};
 var animTimer=null;
 
@@ -687,7 +699,7 @@ function yRange(arrays,minSpan){
    Panel 1 - f(t) with signed shaded area a..x
 ================================================== */
 function drawArea(){
-  var f=FUN[ST.fId].f, a=ST.a, x=ST.x;
+  var f=FUN[ST.fId].f, a=ST.a, x=ST.x, b=ST.b;
   var lo=Math.min(a,x), hi=Math.max(a,x);
   var sN=Math.max(30,Math.round((hi-lo)/GRID.dx));
   var sg=linspace(lo,hi,sN);
@@ -700,6 +712,7 @@ function drawArea(){
   var yr=yRange([GRID.f],0.5);
   var layout=lay('$t$','$f(t)$'); layout.yaxis.range=yr;
   layout.shapes=[
+    {type:'line',x0:b,x1:b,y0:yr[0],y1:yr[1],line:{color:'rgba(120,120,120,.55)',width:1.4,dash:'dot'}},
     {type:'line',x0:a,x1:a,y0:yr[0],y1:yr[1],line:{color:'rgba(109,40,217,.55)',width:1.6,dash:'dash'}},
     {type:'line',x0:x,x1:x,y0:yr[0],y1:yr[1],line:{color:'rgba(29,78,216,.6)',width:1.8,dash:'dot'}}
   ];
@@ -707,7 +720,8 @@ function drawArea(){
     {x:a,y:yr[1],yanchor:'top',xanchor:(a<=x?'right':'left'),text:'a',showarrow:false,
      font:{size:14,color:'#6d28d9'},bgcolor:'rgba(255,255,255,.8)'},
     {x:x,y:yr[1],yanchor:'top',xanchor:(x<a?'right':'left'),text:'x',showarrow:false,
-     font:{size:14,color:'#1d4ed8'},bgcolor:'rgba(255,255,255,.8)'}
+     font:{size:14,color:'#1d4ed8'},bgcolor:'rgba(255,255,255,.8)'},
+    {x:b,y:yr[0],yanchor:'bottom',xanchor:'center',text:'b',showarrow:false,font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}
   ];
   Plotly.react('plotArea',[
     {x:sg,y:pos,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(15,118,110,.30)',hoverinfo:'skip'},
@@ -723,7 +737,7 @@ function drawArea(){
    Panel 2 - accumulation F(x) with tangent line
 ================================================== */
 function drawF(){
-  var a=ST.a, x=ST.x, cA=quad(FUN[ST.fId].f,XMIN,a);
+  var a=ST.a, x=ST.x, b=ST.b, cA=quad(FUN[ST.fId].f,XMIN,a);
   var Fa=GRID.cumF.map(function(c){return c-cA;});
   /* traced portion from a up to x */
   var Fx=Fval(x);
@@ -733,8 +747,10 @@ function drawF(){
   var dxT=Math.min(1.1,(XMAX-XMIN)*0.16);
   var tx=[x-dxT,x+dxT], ty=[Fx-slope*dxT,Fx+slope*dxT];
   layout.shapes=[
+    {type:'line',x0:b,x1:b,y0:yr[0],y1:yr[1],line:{color:'rgba(120,120,120,.55)',width:1.4,dash:'dot'}},
     {type:'line',x0:x,x1:x,y0:yr[0],y1:yr[1],line:{color:'rgba(29,78,216,.4)',width:1.4,dash:'dot'}}
   ];
+  layout.annotations=[{x:b,y:yr[0],yanchor:'bottom',xanchor:'center',text:'b',showarrow:false,font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}];
   /* highlight [a,x] traced sub-curve */
   var tgX=[],tgY=[];
   for(var i=0;i<NGRID;i++){
@@ -760,9 +776,12 @@ function fRange(){ return yRange([GRID.f],0.5); }
    Panel 3 - derivative F'(x), traced out on its own (a-independent)
 ================================================== */
 function drawD(){
-  var x=ST.x;
+  var x=ST.x, b=ST.b;
   var yr=fRange(); var layout=lay('$x$','$F\\,\'(x)$');layout.yaxis.range=yr;
-  layout.shapes=[{type:'line',x0:x,x1:x,y0:yr[0],y1:yr[1],line:{color:'rgba(15,118,110,.35)',width:1.3,dash:'dot'}}];
+  layout.shapes=[
+    {type:'line',x0:b,x1:b,y0:yr[0],y1:yr[1],line:{color:'rgba(120,120,120,.55)',width:1.4,dash:'dot'}},
+    {type:'line',x0:x,x1:x,y0:yr[0],y1:yr[1],line:{color:'rgba(15,118,110,.35)',width:1.3,dash:'dot'}}];
+  layout.annotations=[{x:b,y:yr[0],yanchor:'bottom',xanchor:'center',text:'b',showarrow:false,font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}];
   /* reveal F'(x) only up to the current x, with a leading dot */
   var rx=[],ry=[];
   for(var i=0;i<NGRID;i++){
@@ -783,9 +802,12 @@ function drawD(){
    Panel 4 - the integrand f(x), same scale, with a leading dot
 ================================================== */
 function drawf(){
-  var x=ST.x, f=FUN[ST.fId].f;
+  var x=ST.x, f=FUN[ST.fId].f, b=ST.b;
   var yr=fRange(); var layout=lay('$x$','$f(x)$');layout.yaxis.range=yr;
-  layout.shapes=[{type:'line',x0:x,x1:x,y0:yr[0],y1:yr[1],line:{color:'rgba(29,78,216,.35)',width:1.3,dash:'dot'}}];
+  layout.shapes=[
+    {type:'line',x0:b,x1:b,y0:yr[0],y1:yr[1],line:{color:'rgba(120,120,120,.55)',width:1.4,dash:'dot'}},
+    {type:'line',x0:x,x1:x,y0:yr[0],y1:yr[1],line:{color:'rgba(29,78,216,.35)',width:1.3,dash:'dot'}}];
+  layout.annotations=[{x:b,y:yr[0],yanchor:'bottom',xanchor:'center',text:'b',showarrow:false,font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}];
   Plotly.react('plotf',[
     {x:GRID.X,y:GRID.f,type:'scatter',mode:'lines',name:'f',
      line:{color:'#1d4ed8',width:2.6},
@@ -840,9 +862,9 @@ function redrawAll(){
   if(pend)return; pend=true;
   requestAnimationFrame(function(){pend=false;drawArea();drawF();drawD();drawf();updateReadout();});
 }
-function redrawShift(){ /* a changed: panels 1,2 + readout; F' and f panels unchanged */
+function redrawShift(){ /* a or b changed: every panel updates (b marker, clamped x) */
   if(pend)return; pend=true;
-  requestAnimationFrame(function(){pend=false;drawArea();drawF();updateReadout();});
+  requestAnimationFrame(function(){pend=false;drawArea();drawF();drawD();drawf();updateReadout();});
 }
 function redrawX(){ /* x changed: every panel tracks the new x */
   if(pend)return; pend=true;
@@ -853,50 +875,71 @@ function redrawX(){ /* x changed: every panel tracks the new x */
    Controls
 ================================================== */
 var aRange=document.getElementById('aRange'), aInp=document.getElementById('aInp');
-var xRange=document.getElementById('xRange'), xInp=document.getElementById('xInp');
+var bRange=document.getElementById('bRange'), bInp=document.getElementById('bInp');
+var xRange=document.getElementById('xRange'), xVal=document.getElementById('xVal');
+
+/* keep the sweep slider bounded by [a,b]; clamp x into that interval */
+function syncXRange(){
+  var lo=Math.min(ST.a,ST.b), hi=Math.max(ST.a,ST.b);
+  xRange.min=lo; xRange.max=hi;
+  ST.x=clamp(ST.x,lo,hi);
+  xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2);
+}
 
 aRange.addEventListener('input',function(){
+  stopAnim();
   ST.a=parseFloat(this.value); aInp.value=fmtInp(ST.a); aInp.classList.remove('bad');
-  redrawShift();
+  syncXRange(); redrawShift();
+});
+bRange.addEventListener('input',function(){
+  stopAnim();
+  ST.b=parseFloat(this.value); bInp.value=fmtInp(ST.b); bInp.classList.remove('bad');
+  syncXRange(); redrawShift();
 });
 xRange.addEventListener('input',function(){
   stopAnim();
-  ST.x=parseFloat(this.value); xInp.value=fmtInp(ST.x); xInp.classList.remove('bad');
+  ST.x=parseFloat(this.value); xVal.textContent=ST.x.toFixed(2);
   redrawX();
 });
+
 /* type an exact value: decimals, fractions, or constants (pi, e, sqrt(2), ...) */
 function commitLimit(inp,rng,set,redraw){
+  stopAnim();
   var v=evalConst(inp.value);
   if(isNaN(v)){inp.classList.add('bad');return;}
   inp.classList.remove('bad');
   var cl=clamp(v,XMIN,XMAX); set(cl); rng.value=cl;
-  inp.value=fmtInp(cl); redraw();
+  inp.value=fmtInp(cl); syncXRange(); redraw();
 }
 aInp.addEventListener('change',function(){commitLimit(aInp,aRange,function(v){ST.a=v;},redrawShift);});
 aInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();aInp.blur();}});
-xInp.addEventListener('change',function(){stopAnim();commitLimit(xInp,xRange,function(v){ST.x=v;},redrawX);});
-xInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();xInp.blur();}});
+bInp.addEventListener('change',function(){commitLimit(bInp,bRange,function(v){ST.b=v;},redrawShift);});
+bInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();bInp.blur();}});
 
-/* Animation: sweep x across the domain */
+/* Animation: sweep the intermediate x from a to b (b stays fixed) */
 function stopAnim(){ST.animating=false;if(animTimer){clearInterval(animTimer);animTimer=null;}}
 function startAnim(){
   if(ST.animating)return;
-  if(ST.x>=XMAX-1e-6){ST.x=XMIN;}
+  if(Math.abs(ST.x-ST.b)<1e-6){ST.x=ST.a;}          /* restart from a if already at b */
+  var hi=Math.max(ST.a,ST.b), lo=Math.min(ST.a,ST.b);
+  if(hi-lo<1e-9)return;
   ST.animating=true;
-  var step=(XMAX-XMIN)/240;
+  var dirn=(ST.b>=ST.a)?1:-1;
+  var step=(hi-lo)/200;
   animTimer=setInterval(function(){
     if(!ST.animating){clearInterval(animTimer);return;}
-    ST.x=Math.min(ST.x+step,XMAX);
-    xRange.value=ST.x; xInp.value=fmtInp(ST.x);
+    ST.x+=dirn*step;
+    if((dirn>0&&ST.x>=ST.b)||(dirn<0&&ST.x<=ST.b)){ST.x=ST.b;}
+    xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2);
     redrawX();
-    if(ST.x>=XMAX-1e-9){stopAnim();say('Animation complete');}
+    if(Math.abs(ST.x-ST.b)<1e-9){stopAnim();say('Sweep complete');}
   },28);
-  say('Animation started');
+  say('Sweep started');
 }
 document.getElementById('btnPlay').addEventListener('click',startAnim);
-document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Animation stopped');});
+document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Sweep stopped');});
 document.getElementById('btnReset').addEventListener('click',function(){
-  stopAnim(); ST.x=ST.a; xRange.value=ST.x; xInp.value=fmtInp(ST.x); redrawX();
+  stopAnim(); ST.x=ST.a; xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2); redrawX();
   say('Reset x to a');
 });
 
@@ -976,7 +1019,8 @@ document.getElementById('ctog').addEventListener('click',function(){
 ================================================== */
 function init(){
   aRange.value=ST.a; aInp.value=fmtInp(ST.a);
-  xRange.value=ST.x; xInp.value=fmtInp(ST.x);
+  bRange.value=ST.b; bInp.value=fmtInp(ST.b);
+  syncXRange();
   precompute(); initCsel(); redrawAll(); updateLegends();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
