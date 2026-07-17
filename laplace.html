@@ -580,11 +580,12 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
       <h2>Convolution pairs</h2>
       <p>When a convolution pair \(f * g\) is selected, the visualized function is \(h(t)=(f*g)(t)\) and the transform shown is \(H(s)=F(s)\cdot G(s)\), illustrating the Convolution Theorem.</p>
 
-      <h2>Numerical method - composite Gaussian quadrature</h2>
-      <p>The integral is computed with <strong>composite 10-point Gauss–Legendre quadrature</strong>:</p>
+      <h2>Numerical method - Gauss–Laguerre quadrature</h2>
+      <p>The transform value \(F(s)\) is computed directly on the half-line with <strong>Gauss–Laguerre quadrature</strong>, which builds the \(e^{-st}\) weight into the rule. The substitution \(t=u/s\) places the nodes correctly for every \(s\):</p>
       <div class="quad-formula">
-        \[\int_a^b g(t)\,dt \;\approx\; \tfrac{b-a}{2}\sum_{k=1}^{10} w_k\,g\!\Bigl(\tfrac{a+b}{2}+\tfrac{b-a}{2}\xi_k\Bigr)\]
+        \[F(s)=\int_0^{\infty}\! f(t)\,e^{-st}\,dt \;=\; \tfrac{1}{s}\int_0^{\infty}\! e^{-u} f\!\bigl(\tfrac{u}{s}\bigr)\,du \;\approx\; \tfrac{1}{s}\sum_{k=1}^{n} w_k\,f\!\Bigl(\tfrac{x_k}{s}\Bigr)\]
       </div>
+      <p>There is no upper limit to choose: the infinite tail is handled analytically by the weight, so no truncation is involved. The running accumulation \(A(T)\) plotted below still sweeps a finite window with composite 10-point Gauss–Legendre panels to show the integrand piling up.</p>
 
       <h2>Shifting theorems</h2>
       <ul>
@@ -643,19 +644,19 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
   <!-- Area bar -->
   <div class="abar" role="region" aria-label="Integral area breakdown" aria-live="polite" aria-atomic="true">
     <div class="acell ap">
-      <div class="albl">\(\displaystyle\int_0^T\!\max\!\bigl(f(t)\,e^{-st},\,0\bigr)\,dt\)</div>
+      <div class="albl">\(\displaystyle\int_0^\infty\!\max\!\bigl(f(t)\,e^{-st},\,0\bigr)\,dt\)</div>
       <div class="aval vp" id="aPos">-</div>
       <div class="asub">positive contribution</div>
     </div>
     <div class="aop">\(-\)</div>
     <div class="acell an">
-      <div class="albl">\(\displaystyle\int_0^T\!\bigl|\min\!\bigl(f(t)\,e^{-st},\,0\bigr)\bigr|\,dt\)</div>
+      <div class="albl">\(\displaystyle\int_0^\infty\!\bigl|\min\!\bigl(f(t)\,e^{-st},\,0\bigr)\bigr|\,dt\)</div>
       <div class="aval vn" id="aNeg">-</div>
       <div class="asub">negative contribution</div>
     </div>
     <div class="aop">\(=\)</div>
     <div class="acell am">
-      <div class="albl">\(\displaystyle\int_0^T\!f(t)e^{-st}\,dt\)</div>
+      <div class="albl">\(\displaystyle\int_0^\infty\!f(t)e^{-st}\,dt\)</div>
       <div class="aval vm" id="aNet">-</div>
       <div class="asub">numerical net area</div>
     </div>
@@ -1411,6 +1412,43 @@ function quadrature(f, a, b, nsub) {
 }
 
 /* ═══════════════════════════════════════════════════
+   Gauss-Laguerre  (for the half-line integral directly)
+   Nodes/weights (x_k,w_k) for  ∫₀^∞ e^{-u} g(u) du ≈ Σ w_k g(x_k),
+   generated once by Newton iteration on the Laguerre polynomial.
+═══════════════════════════════════════════════════ */
+function gaussLaguerre(n) {
+  var EPS = 1e-14, MAXIT = 100;
+  var x = new Array(n), w = new Array(n);
+  var z = 0, z1, p1, p2, p3, pp;
+  for (var i = 0; i < n; i++) {
+    if (i === 0)      z  = 3.0 / (1.0 + 2.4 * n);
+    else if (i === 1) z += 15.0 / (1.0 + 2.5 * n);
+    else { var ai = i - 1; z += (1.0 + 2.55 * ai) / (1.9 * ai) * (z - x[i - 2]); }
+    for (var its = 0; its < MAXIT; its++) {
+      p1 = 1.0; p2 = 0.0;
+      for (var j = 1; j <= n; j++) { p3 = p2; p2 = p1; p1 = ((2*j - 1 - z)*p2 - (j - 1)*p3) / j; }
+      pp = (n*p1 - n*p2) / z;            /* L_n'(z) */
+      z1 = z; z = z1 - p1 / pp;          /* Newton step */
+      if (Math.abs(z - z1) <= EPS) break;
+    }
+    x[i] = z; w[i] = -1.0 / (pp * n * p2);
+  }
+  return { x: x, w: w };
+}
+var LAG = gaussLaguerre(32);
+
+/* Half-line Laplace integral  ∫₀^∞ e^{-s t} g(t) dt  via the
+   substitution t = u/s:  (1/s) Σ w_k g(x_k/s).  Nodes move with s. */
+function laplaceGL(g, s) {
+  var sum = 0;
+  for (var k = 0; k < LAG.x.length; k++) {
+    var gv = g(LAG.x[k] / s);
+    if (isFinite(gv)) sum += LAG.w[k] * gv;
+  }
+  return sum / s;
+}
+
+/* ═══════════════════════════════════════════════════
    Data computation
 ═══════════════════════════════════════════════════ */
 function computeData(N) {
@@ -1445,29 +1483,16 @@ function computeData(N) {
     cum.push(runSum);
   }
 
-  /* ── Area-bar values: integrate to T_eff, not just T ──
-     The integrand decays as e^{-s_eff*t}. We probe it to find
-     T_eff where |integrand| < 1e-8 * peak, then integrate there.
-     This eliminates truncation error as the dominant source. ── */
-  var T_eff = T;
-  var peakAbs = 0;
-  for (var pi=0; pi<50; pi++) {
-    var pv = Math.abs(integrand(pi * T / 49));
-    if (pv > peakAbs) peakAbs = pv;
-  }
-  if (peakAbs > 0) {
-    /* Probe beyond T in steps of T until integrand is tiny or we hit 300 */
-    var probe = T;
-    while (probe < 300) {
-      probe += Math.max(1, T * 0.5);
-      if (Math.abs(integrand(probe)) < peakAbs * 1e-8) { T_eff = probe; break; }
-      T_eff = probe;
-    }
-  }
-  var nsub = Math.max(80, Math.ceil(T_eff * 12));
-  var netArea = quadrature(integrand, 0, T_eff, nsub);
-  var posArea = quadrature(function(t){ return Math.max(integrand(t), 0); }, 0, T_eff, nsub);
-  var negArea = quadrature(function(t){ return Math.max(-integrand(t), 0); }, 0, T_eff, nsub);
+  /* ── Area-bar values: the full half-line integral, directly ──
+     Compute ∫₀^∞ f(t)e^{-st} dt with Gauss-Laguerre. The e^{-st}
+     weight is handled analytically, so there is no upper limit to
+     choose and no truncation error to reason about. The e^{-st}
+     factor being positive, the positive/negative parts reduce to
+     splitting f itself. ── */
+  var fEval = function(t){ var v = fn.f(t, ST.p); return isFinite(v) ? v : 0; };
+  var netArea = laplaceGL(fEval, s);
+  var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s);
+  var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s);
 
   return {
     tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
