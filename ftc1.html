@@ -444,9 +444,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     </button>
     <div class="asweep">
       <label for="xRange" class="sweeplbl">Sweep \(x\)</label>
-      <input type="range" id="xRange" min="0" max="3" step="0.02" value="1.5"
-             aria-label="Intermediate upper limit x, sweeps from a to b">
-      <span class="sval" id="xVal">1.50</span>
+      <input type="range" id="xRange" min="-4" max="3" step="0.02" value="-4"
+             aria-label="Intermediate upper limit x, sweeps from the left endpoint to b">
+      <span class="sval" id="xVal">-4.00</span>
     </div>
   </div>
 
@@ -778,7 +778,7 @@ var FUN_ORDER=['x','x2','sin','cos','fres','custom'];
    State + precompute (function-level, a-independent)
 ================================================== */
 var XMIN=-4, XMAX=4, NGRID=401;
-var ST={fId:'sin', a:0, b:3, x:1.5, animating:false};   /* b fixed; x sweeps a->b */
+var ST={fId:'sin', a:0, b:3, x:-4, animating:false};   /* b fixed; x sweeps from the left endpoint to b */
 var GRID={X:[], f:[], cumF:[], dF:[], dx:(XMAX-XMIN)/(NGRID-1)};
 var animTimer=null;
 
@@ -1035,7 +1035,8 @@ var xRange=document.getElementById('xRange'), xVal=document.getElementById('xVal
 
 /* keep the sweep slider bounded by [a,b]; clamp x into that interval */
 function syncXRange(){
-  var lo=Math.min(ST.a,ST.b), hi=Math.max(ST.a,ST.b);
+  /* x sweeps from the domain's left endpoint (XMIN) to the upper limit b */
+  var lo=Math.min(XMIN,ST.b), hi=Math.max(XMIN,ST.b);
   xRange.min=lo; xRange.max=hi;
   ST.x=clamp(ST.x,lo,hi);
   xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2);
@@ -1075,27 +1076,24 @@ bInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault
 function stopAnim(){ST.animating=false;if(animTimer){clearInterval(animTimer);animTimer=null;}}
 function startAnim(){
   if(ST.animating)return;
-  if(Math.abs(ST.x-ST.b)<1e-6){ST.x=ST.a;}          /* restart from a if already at b */
-  var hi=Math.max(ST.a,ST.b), lo=Math.min(ST.a,ST.b);
-  if(hi-lo<1e-9)return;
+  if(Math.abs(ST.x-ST.b)<1e-6){ST.x=XMIN;}          /* restart from the left endpoint */
+  if(ST.b-XMIN<1e-9)return;
   ST.animating=true;
-  var dirn=(ST.b>=ST.a)?1:-1;
-  var step=(hi-lo)/200;
+  var step=(ST.b-XMIN)/200;                          /* sweep left-to-right, ending at b */
   animTimer=setInterval(function(){
     if(!ST.animating){clearInterval(animTimer);return;}
-    ST.x+=dirn*step;
-    if((dirn>0&&ST.x>=ST.b)||(dirn<0&&ST.x<=ST.b)){ST.x=ST.b;}
+    ST.x=Math.min(ST.x+step,ST.b);
     xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2);
     redrawX();
-    if(Math.abs(ST.x-ST.b)<1e-9){stopAnim();say('Sweep complete');}
+    if(ST.x>=ST.b-1e-9){stopAnim();say('Sweep complete');}
   },28);
   say('Sweep started');
 }
 document.getElementById('btnPlay').addEventListener('click',startAnim);
 document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Sweep stopped');});
 document.getElementById('btnReset').addEventListener('click',function(){
-  stopAnim(); ST.x=ST.a; xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2); redrawX();
-  say('Reset x to a');
+  stopAnim(); ST.x=XMIN; xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2); redrawX();
+  say('Reset x to the left endpoint');
 });
 
 /* ==================================================
