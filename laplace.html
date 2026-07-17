@@ -1099,7 +1099,7 @@ function exprToLatex(s){
 }
 
 /* compiled custom f(t) + its display LaTeX */
-var CF = { f:function(t){ return 1/(1+t*t); }, src:'1/(1+t^2)', latex:'', ok:true };
+var CF = { f:function(t){ return 1/(1+t*t); }, src:'1/(1+t^2)', latex:'', ok:true, osc:null };
 CF.latex = exprToLatex(CF.src);
 function lpCompile(expr){
   var fn=new Function('t','return ('+preprocess(expr)+');');
@@ -1107,6 +1107,53 @@ function lpCompile(expr){
   if(typeof probe!=='number')throw new Error('non-numeric');
   return fn;
 }
+
+/* If f is a single sinusoid times a non-oscillatory envelope,
+   e.g.  exp(-t)*sin(3t)  or  t*cos(2t)  or  sin(4t),  pull out the
+   frequency ω and the envelope so the transform can go through
+   Ooura-Mori instead of plain Gauss-Laguerre. Returns null when f
+   is not of that form (no trig, several trig factors, a non-linear
+   argument like sin(t^2), or a phase like sin(3t+1)). */
+function detectOsc(src){
+  var calls=[];
+  for(var i=0;i<src.length;i++){
+    var t4=src.substr(i,4).toLowerCase();
+    if(t4==='sin('||t4==='cos('){
+      if(i>0 && /[A-Za-z0-9_]/.test(src[i-1])) continue;   /* skip asin(, acos(, ... */
+      var depth=1,j=i+4;
+      while(j<src.length&&depth>0){ if(src[j]==='(')depth++; else if(src[j]===')')depth--; if(depth>0)j++; }
+      calls.push({kind:t4.substr(0,3), start:i, end:j+1, arg:src.substring(i+4,j)});
+      i=j;
+    }
+  }
+  if(calls.length!==1) return null;
+  var c=calls[0], af;
+  try{ af=lpCompile(c.arg); }catch(e){ return null; }
+  var a0,a1,a2; try{ a0=af(0); a1=af(1); a2=af(2); }catch(e){ return null; }
+  if(!(isFinite(a0)&&isFinite(a1)&&isFinite(a2))) return null;
+  if(Math.abs(a0)>1e-9) return null;                          /* has a phase/shift */
+  if(Math.abs(a1*2-a2)>1e-7*(1+Math.abs(a2))) return null;    /* argument not linear in t */
+  var omega=a1; if(Math.abs(omega)<1e-6) return null;         /* ω≈0: not oscillatory */
+  var sign=1, kind=c.kind;
+  if(omega<0){ omega=-omega; if(kind==='sin') sign=-1; }      /* sin odd, cos even */
+  var envSrc=src.substring(0,c.start)+'(1)'+src.substring(c.end), env;
+  try{ env=lpCompile(envSrc); }catch(e){ return null; }
+  var pv=env(0.7); if(typeof pv!=='number'||!isFinite(pv)) return null;
+  return { omega:omega, kind:kind, sign:sign, env:env };
+}
+
+/* Numerical Laplace transform of the custom f: Ooura-Mori when f is a
+   detected sinusoid×envelope, otherwise Gauss-Laguerre. */
+function customTransform(s){
+  if(!CF.ok) return 0;
+  var o=CF.osc;
+  if(o){
+    var g=function(x){ var e=o.env(x); return isFinite(e)?e*Math.exp(-s*x):0; };
+    return o.sign*omFourier(g, o.omega, o.kind);
+  }
+  return laplaceGL(function(t){ return CF.ok?CF.f(t):0; }, s);
+}
+
 function lpParseCustom(){
   var src=(document.getElementById('fnCustom').value||'').trim()||'0';
   var errEl=document.getElementById('fnErr');
@@ -1115,11 +1162,12 @@ function lpParseCustom(){
     CF.f=f; CF.src=src;
     var lx=exprToLatex(src);
     CF.latex=(lx&&lx.length)?lx:'f(t)';
+    CF.osc=detectOsc(src);
     CF.ok=true;
     if(errEl){ errEl.textContent=''; errEl.style.display='none'; }
     return true;
   }catch(e){
-    CF.ok=false;
+    CF.ok=false; CF.osc=null;
     if(errEl){ errEl.textContent='Could not read f(t). Write it in t, e.g. sin(t), exp(-t), t^2, 1/(1+t^2).'; errEl.style.display='block'; }
     return false;
   }
@@ -1487,9 +1535,10 @@ var FUNCS = {
     latex_F:function(){ return '\\text{(numerical)}'; },
     tRow:'f(t)', FRow:'\\text{numerical}', roc:'s>0',
     f:function(t){ return CF.ok ? CF.f(t) : NaN; },
-    /* No closed form - F(s) is the numerical transform itself, so the
-       F(s) plot shows the computed curve. */
-    F:function(s){ return laplaceGL(function(t){ return CF.ok ? CF.f(t) : 0; }, s); },
+    /* No closed form - F(s) is the numerical transform itself (Ooura-Mori
+       when f is a detected sinusoid, else Gauss-Laguerre), so the F(s)
+       plot shows the computed curve. */
+    F:function(s){ return customTransform(s); },
     rocStr:function(){ return 's > 0'; },
     params:[], tMax:8, thm:null
   }
@@ -1798,7 +1847,8 @@ function computeData(N) {
      Ooura-Mori DE-Fourier rule instead. The positive/negative lobe cells
      stay on the plain rule - they are the auxiliary breakdown. */
   var osc = OSC[ST.id];
-  var netArea = osc ? laplaceOsc(osc, s, ST.p) : laplaceGL(fEval, s, brk);
+  var netArea = osc ? laplaceOsc(osc, s, ST.p)
+              : (fn.custom ? customTransform(s) : laplaceGL(fEval, s, brk));
   var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
   var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
 
@@ -2000,11 +2050,14 @@ function updateFormula(d) {
     var box0=document.getElementById('formulaBox');
     var num=(d&&isFinite(d.netArea))?d.netArea.toFixed(6):'\\text{—}';
     var lf0=CF.ok?CF.latex:'f(t)';
+    var method=(CF.ok&&CF.osc)
+      ? 'a detected sinusoid, so \\(F(s)\\) uses the <strong>Ooura–Mori</strong> DE-Fourier rule at \\(\\omega='+(+CF.osc.omega.toFixed(3))+'\\)'
+      : '\\(F(s)\\) is computed by <strong>Gauss–Laguerre</strong> quadrature';
     box0.innerHTML=
       '<div class="fm-main">\\[ \\mathcal{L}\\{f(t)\\}\\;=\\;\\int_0^{\\infty} f(t)\\,e^{-st}\\,dt \\]</div>'+
       '<div class="fm-params">\\( f(t)='+lf0+' \\)</div>'+
       '<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')\\approx '+num+' \\)</div>'+
-      '<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed-form transform on offer, so \\(F(s)\\) is computed by quadrature and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
+      '<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed form on offer — '+method+', and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
     typesetFormula(box0);
     return;
   }
