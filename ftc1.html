@@ -786,6 +786,7 @@ function precompute(){
   var f=FUN[ST.fId].f;
   GRID.X=linspace(XMIN,XMAX,NGRID);
   GRID.f=GRID.X.map(f);
+  GRID.fok=GRID.f.map(function(v){return isFinite(v);});
   /* cumulative integral from XMIN via one GL panel per grid cell */
   GRID.cumF=new Array(NGRID); GRID.cumF[0]=0;
   for(var i=1;i<NGRID;i++){
@@ -796,10 +797,10 @@ function precompute(){
   var h=GRID.dx;
   GRID.dF=new Array(NGRID);
   for(var j=0;j<NGRID;j++){
-    if(j>=2&&j<=NGRID-3){
+    if(j>=2&&j<=NGRID-3&&GRID.fok[j-2]&&GRID.fok[j-1]&&GRID.fok[j]&&GRID.fok[j+1]&&GRID.fok[j+2]){
       GRID.dF[j]=(GRID.cumF[j-2]-8*GRID.cumF[j-1]+8*GRID.cumF[j+1]-GRID.cumF[j+2])/(12*h);
     } else {
-      GRID.dF[j]=null; /* edges: stencil unavailable */
+      GRID.dF[j]=null; /* edge or outside f's domain */
     }
   }
   /* Fixed vertical frame for the accumulation panel: spans F_a(x) over every
@@ -827,6 +828,23 @@ function dFval(u){
 /* ==================================================
    Plotly config
 ================================================== */
+/* interpolated guarded cumulative int_XMIN^u f, plus the connected valid
+   window of grid indices around a (handles functions like log defined only
+   on part of the domain: the accumulation only plots where f is defined). */
+function cumAt(u){
+  var t=(u-XMIN)/GRID.dx, i=Math.floor(t);
+  if(i<0)return GRID.cumF[0];
+  if(i>=NGRID-1)return GRID.cumF[NGRID-1];
+  return GRID.cumF[i]+(t-i)*(GRID.cumF[i+1]-GRID.cumF[i]);
+}
+function validWindow(a){
+  var ia=Math.round((a-XMIN)/GRID.dx); ia=Math.max(0,Math.min(NGRID-1,ia));
+  if(!GRID.fok[ia])return [-1,-1];
+  var lo=ia; while(lo>0&&GRID.fok[lo-1])lo--;
+  var hi=ia; while(hi<NGRID-1&&GRID.fok[hi+1])hi++;
+  return [lo,hi];
+}
+
 var CFG={responsive:true,displaylogo:false,displayModeBar:false};
 function lay(xt,yt,extra){
   var l={
@@ -892,8 +910,9 @@ function drawArea(){
    Panel 2 - accumulation F(x) with tangent line
 ================================================== */
 function drawF(){
-  var a=ST.a, x=ST.x, b=ST.b, cA=quad(FUN[ST.fId].f,XMIN,a);
-  var Fa=GRID.cumF.map(function(c){return c-cA;});
+  var a=ST.a, x=ST.x, b=ST.b;
+  var vw=validWindow(a), cA=cumAt(a);
+  var Fa=GRID.cumF.map(function(c,i){return (i>=vw[0]&&i<=vw[1])?c-cA:null;});
   /* traced portion from a up to x */
   var Fx=Fval(x);
   var slope=dFval(x);                       /* = f(x) numerically */
@@ -909,10 +928,10 @@ function drawF(){
   /* highlight [a,x] traced sub-curve */
   var tgX=[],tgY=[];
   for(var i=0;i<NGRID;i++){
-    if(GRID.X[i]>=Math.min(a,x)&&GRID.X[i]<=Math.max(a,x)){tgX.push(GRID.X[i]);tgY.push(Fa[i]);}
+    if(i>=vw[0]&&i<=vw[1]&&GRID.X[i]>=Math.min(a,x)&&GRID.X[i]<=Math.max(a,x)){tgX.push(GRID.X[i]);tgY.push(GRID.cumF[i]-cA);}
   }
   Plotly.react('plotF',[
-    {x:GRID.X,y:Fa,type:'scatter',mode:'lines',line:{color:'#c4b5fd',width:2},hoverinfo:'skip'},
+    {x:GRID.X,y:Fa,type:'scatter',mode:'lines',connectgaps:false,line:{color:'#c4b5fd',width:2},hoverinfo:'skip'},
     {x:tgX,y:tgY,type:'scatter',mode:'lines',line:{color:'#6d28d9',width:3.2},
      hovertemplate:'x=%{x:.3f}<br>F=%{y:.4f}<extra>F(x)</extra>'},
     {x:tx,y:ty,type:'scatter',mode:'lines',line:{color:'#b45309',width:2.2},hoverinfo:'skip'},
