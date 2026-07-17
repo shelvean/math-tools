@@ -1152,10 +1152,33 @@ function detectOsc(src){
   return { omega:omega, kind:kind, sign:sign, env:env };
 }
 
+/* The transform only exists where f(t)e^{-st} -> 0. If f grows too fast
+   (e.g. cosh t, e^{2t}) the integral diverges, yet quadrature would still
+   return a finite, meaningless number. Probe the tail: overflow, or a
+   non-decaying integrand, means divergence at this s. */
+function customConverges(s){
+  if(!CF.ok) return false;
+  var f=CF.f;
+  var g=function(t){ var v=f(t); return isFinite(v) ? v*Math.exp(-s*t) : NaN; };
+  var R=130/s, peak=0;
+  for(var i=0;i<=40;i++){
+    var a=Math.abs(g(R*i/40));
+    if(!isFinite(a)) return false;          /* grows faster than e^{-st} damps */
+    if(a>peak) peak=a;
+  }
+  if(peak===0) return true;
+  var r1=Math.abs(g(R)), r2=Math.abs(g(2*R));
+  if(!isFinite(r1)||!isFinite(r2)) return false;
+  if(r1<=peak*1e-4) return true;            /* tail already negligible */
+  return r2<r1*0.5;                          /* still decaying fast enough */
+}
+
 /* Numerical Laplace transform of the custom f: Ooura-Mori when f is a
-   detected sinusoid×envelope, otherwise Gauss-Laguerre. */
+   detected sinusoid×envelope, otherwise Gauss-Laguerre. Returns NaN where
+   the integral diverges. */
 function customTransform(s){
   if(!CF.ok) return 0;
+  if(!customConverges(s)) return NaN;
   var o=CF.osc;
   if(o){
     var g=function(x){ var e=o.env(x); return isFinite(e)?e*Math.exp(-s*x):0; };
@@ -1872,8 +1895,13 @@ function computeData(N) {
   var osc = OSC[ST.id];
   var netArea = osc ? laplaceOsc(osc, s, ST.p)
               : (fn.custom ? customTransform(s) : laplaceGL(fEval, s, brk));
-  var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
-  var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
+  var posArea, negArea;
+  if (fn.custom && !isFinite(netArea)) {
+    posArea = negArea = NaN;                 /* diverges: no meaningful breakdown */
+  } else {
+    posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
+    negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
+  }
 
   return {
     tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
@@ -2048,9 +2076,10 @@ function updateAreaBar(d) {
   ['aopApprox','cellExact','aopBar','cellErr'].forEach(function(elid){
     document.getElementById(elid).style.display = disp;
   });
-  document.getElementById('aPos').textContent = d.posArea.toFixed(5);
-  document.getElementById('aNeg').textContent = d.negArea.toFixed(5);
-  document.getElementById('aNet').textContent = d.netArea.toFixed(5);
+  var cell = function(v){ return isFinite(v) ? v.toFixed(5) : 'diverges'; };
+  document.getElementById('aPos').textContent = cell(d.posArea);
+  document.getElementById('aNeg').textContent = cell(d.negArea);
+  document.getElementById('aNet').textContent = cell(d.netArea);
   if (custom) return;
   var Fs = d.Fs, relErr;
   if (isFinite(Fs)&&Math.abs(Fs)>1e-10) { var e=Math.abs((d.netArea-Fs)/Fs); relErr=e<0.0005?e.toExponential(1):e.toFixed(4); }
@@ -2071,16 +2100,23 @@ function updateFormula(d) {
   var id=ST.id, fn=FUNCS[id], s=ST.s;
   if (fn.custom) {
     var box0=document.getElementById('formulaBox');
-    var num=(d&&isFinite(d.netArea))?d.netArea.toFixed(6):'\\text{—}';
     var lf0=CF.ok?CF.latex:'f(t)';
-    var method=(CF.ok&&CF.osc)
-      ? 'a detected sinusoid, so \\(F(s)\\) uses the <strong>Ooura–Mori</strong> DE-Fourier rule at \\(\\omega='+(+CF.osc.omega.toFixed(3))+'\\)'
-      : '\\(F(s)\\) is computed by <strong>Gauss–Laguerre</strong> quadrature';
+    var diverges=!(d&&isFinite(d.netArea));
+    var valLine, note;
+    if (diverges) {
+      valLine='<div class="fm-val" style="color:#7f1d1d">\\( s='+s.toFixed(2)+'\\): the integral \\(\\int_0^\\infty f(t)e^{-st}\\,dt\\) does not converge.</div>';
+      note='<div class="thm-note"><strong>Diverges here:</strong> \\(f(t)e^{-st}\\) does not decay at this \\(s\\) (it grows, or stays bounded away from \\(0\\)), so \\(F(s)\\) is undefined. Increase \\(s\\) past the region of convergence.</div>';
+    } else {
+      var method=(CF.ok&&CF.osc)
+        ? 'a detected sinusoid, so \\(F(s)\\) uses the <strong>Ooura–Mori</strong> DE-Fourier rule at \\(\\omega='+(+CF.osc.omega.toFixed(3))+'\\)'
+        : '\\(F(s)\\) is computed by <strong>Gauss–Laguerre</strong> quadrature';
+      valLine='<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')\\approx '+d.netArea.toFixed(6)+' \\)</div>';
+      note='<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed form on offer — '+method+', and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
+    }
     box0.innerHTML=
       '<div class="fm-main">\\[ \\mathcal{L}\\{f(t)\\}\\;=\\;\\int_0^{\\infty} f(t)\\,e^{-st}\\,dt \\]</div>'+
       '<div class="fm-params">\\( f(t)='+lf0+' \\)</div>'+
-      '<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')\\approx '+num+' \\)</div>'+
-      '<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed form on offer — '+method+', and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
+      valLine+note;
     typesetFormula(box0);
     return;
   }
