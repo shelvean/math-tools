@@ -143,6 +143,20 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
 .asweep .sval{font-size:1rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;
   min-width:3.4rem;text-align:right;color:var(--cpos);}
 .hc .sfield input.sinp.bad{border-color:#cc0000;color:#cc0000;}
+/* -- custom function input -- */
+.cf-row{display:none;align-items:center;gap:.6rem .75rem;flex-wrap:wrap;margin-bottom:.6rem;
+  background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);padding:.5rem .75rem;}
+.cf-row.show{display:flex;}
+.cf-lbl{font-size:.95rem;font-weight:700;color:var(--muted);white-space:nowrap;}
+.cf-input{flex:1 1 220px;min-width:170px;min-height:38px;padding:.25rem .55rem;
+  font-size:.9375rem;font-weight:600;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  border:2px solid var(--bdr);border-radius:.4rem;background:var(--card);color:var(--txt);}
+.cf-input:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.cf-input.bad{border-color:#dc2626;background:#fef2f2;}
+.cf-hint{font-size:.8125rem;color:var(--muted);}
+.fn-err{flex:1 1 100%;font-size:.8125rem;font-weight:600;color:#b91c1c;}
+.hc .fn-err{color:#7a0000;}
+
 
 /* animation row */
 .abar{display:flex;align-items:center;justify-content:center;gap:.75rem;flex-wrap:wrap;
@@ -406,6 +420,14 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
     </div>
   </div>
 
+  <!-- Custom function input (shown when Custom is selected) -->
+  <div class="cf-row" id="customField">
+    <label for="fnCustom" class="cf-lbl">\(f(x)=\)</label>
+    <input type="text" id="fnCustom" class="cf-input" value="x*cos(x)" inputmode="text" autocomplete="off" spellcheck="false" aria-label="Custom function f of x">
+    <span class="cf-hint">e.g. x^2-2, x*sin(x), exp(-x^2), 1/(1+x^2)</span>
+    <span class="fn-err" id="fnErr" role="alert" aria-live="assertive"></span>
+  </div>
+
   <!-- Animation -->
   <div class="abar" role="group" aria-label="Animation controls">
     <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play animation">
@@ -619,6 +641,126 @@ function quad(fn,a,b,nsub){
    Functions and antiderivatives
 ================================================== */
 function fresF(x){return Math.sin(Math.PI/2*x*x);}
+/* ---- expression parser (same syntax as convolution.html / slope.html) ---- */
+if(typeof Math.cot!=='function')Math.cot=function(x){return 1/Math.tan(x);};
+if(typeof Math.sec!=='function')Math.sec=function(x){return 1/Math.cos(x);};
+if(typeof Math.csc!=='function')Math.csc=function(x){return 1/Math.sin(x);};
+function powRewrite(eq){
+  var i;
+  while((i=eq.lastIndexOf('^'))>=0){
+    var bs=i,be=i;
+    while(bs>0&&/\s/.test(eq[bs-1]))bs--;
+    be=bs;
+    if(bs>0&&eq[bs-1]===')'){
+      var d=1,p=bs-2;
+      while(p>=0&&d>0){var c=eq[p];if(c===')')d++;else if(c==='(')d--;if(d>0)p--;}
+      if(p<0)return eq;
+      bs=p;
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }else{
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }
+    var base=eq.substring(bs,be);
+    var es=i+1,ee=es;
+    while(ee<eq.length&&/\s/.test(eq[ee]))ee++;
+    es=ee;
+    if(eq[ee]==='+'||eq[ee]==='-')ee++;
+    if(eq[ee]==='('){
+      var d2=1;ee++;
+      while(ee<eq.length&&d2>0){var c2=eq[ee];if(c2==='(')d2++;else if(c2===')')d2--;ee++;}
+    }else{
+      while(ee<eq.length&&/[\w$.]/.test(eq[ee]))ee++;
+      if(eq[ee]==='('){
+        var d3=1;ee++;
+        while(ee<eq.length&&d3>0){var c3=eq[ee];if(c3==='(')d3++;else if(c3===')')d3--;ee++;}
+      }
+    }
+    var expn=eq.substring(es,ee);
+    if(!base||!expn)return eq;
+    eq=eq.substring(0,bs)+'Math.pow('+base+','+expn+')'+eq.substring(ee);
+  }
+  return eq;
+}
+function preprocess(eq){
+  eq=eq.replace(/\bx\b/g,'t');
+  eq=powRewrite(eq);
+  eq=eq
+    .replace(/\b(sin|cos|tan|cot|sec|csc|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<!Math\.)e(?!\w)/g,'Math.E');
+  return eq;
+}
+function exprToLatex(s){
+  if(!s)return '';
+  var t=String(s);
+  t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+    if((l==='e'||l==='E')&&o+2<=str.length){var c=str.charAt(o+2);if((c>='0'&&c<='9')||c==='+'||c==='-')return m;}
+    return d+'*'+l;
+  });
+  function wrapPow(str){
+    var out='',i=0,n=str.length;
+    while(i<n){
+      if(str.charAt(i)==='^'){
+        if(i+1<n&&str.charAt(i+1)==='{'){out+='^';i++;continue;}
+        i++;var sign='';
+        if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+        var body='';
+        if(i<n&&str.charAt(i)==='('){
+          var depth=1,j=i+1;
+          while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+          body=str.slice(i+1,j);i=(j<n)?j+1:j;
+        }else{var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));if(mm){body=mm[0];i+=mm[0].length;}}
+        out+='^{'+sign+body+'}';
+      }else{out+=str.charAt(i);i++;}
+    }
+    return out;
+  }
+  t=wrapPow(t);
+  function callMap(str,name,mapper){
+    var i=0,nlen=name.length;
+    while((i=str.indexOf(name+'(',i))!==-1){
+      if(i>0&&/[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+      var depth=1,j=i+nlen+1,len=str.length;
+      while(j<len){var c=str.charAt(j);if(c==='(')depth++;else if(c===')'){depth--;if(depth===0)break;}j++;}
+      if(depth!==0)break;
+      var inner=str.slice(i+nlen+1,j),rep=mapper(exprToLatex(inner));
+      str=str.slice(0,i)+rep+str.slice(j+1);i+=rep.length;
+    }
+    return str;
+  }
+  t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+  t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+  t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+  t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+  t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+  t=callMap(t,'floor',function(x){return '\\lfloor '+x+'\\rfloor';});
+  t=callMap(t,'ceil', function(x){return '\\lceil '+x+'\\rceil';});
+  t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+  t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cot',  function(x){return '\\cot\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sec',  function(x){return '\\sec\\!\\left('+x+'\\right)';});
+  t=callMap(t,'csc',  function(x){return '\\csc\\!\\left('+x+'\\right)';});
+  t=t.replace(/([^\\]|^)\bpi\b/gi,'$1\\pi ');
+  t=t.replace(/\*/g,'\\cdot ');
+  return t;
+}
+
+function compileFn(expr){
+  if(!expr||!String(expr).trim())throw new Error('empty');
+  var fn=new Function('t','return ('+preprocess(expr)+');');
+  var probe=fn(0.37);
+  if(typeof probe!=='number')throw new Error('non-numeric');
+  return fn;
+}
+
 var FUN={
   x:    {drop:'\\(f(x)=x\\)',        FL:'\\tfrac{x^{2}}{2}',
          f:function(t){return t;},           F:function(t){return t*t/2;}},
@@ -629,9 +771,11 @@ var FUN={
   cos:  {drop:'\\(f(x)=\\cos x\\)',  FL:'\\sin x',
          f:function(t){return Math.cos(t);}, F:function(t){return Math.sin(t);}},
   fres: {drop:'\\(f(x)=\\sin\\!\\left(\\tfrac{\\pi}{2}x^{2}\\right)\\)', FL:'S(x)',
-         f:fresF,                            F:function(t){return quad(fresF,0,t);}}
+         f:fresF,                            F:function(t){return quad(fresF,0,t);}},
+  custom:{drop:'Custom: \\(f(x)=\\ldots\\)', FL:'\\displaystyle\\int_0^x f(t)\\,dt',
+          f:function(t){return 0;}, F:function(t){return quad(FUN.custom.f,0,t);}}
 };
-var FUN_ORDER=['x','x2','sin','cos','fres'];
+var FUN_ORDER=['x','x2','sin','cos','fres','custom'];
 
 /* ==================================================
    State + precompute (function-level)
@@ -649,7 +793,8 @@ function precompute(){
   /* cumulative area from XMIN (independent numerical route) */
   GRID.cumF=new Array(NGRID); GRID.cumF[0]=0;
   for(var i=1;i<NGRID;i++){
-    GRID.cumF[i]=GRID.cumF[i-1]+quad(fn.f,GRID.X[i-1],GRID.X[i],1);
+    var _seg=quad(fn.f,GRID.X[i-1],GRID.X[i],1);
+    GRID.cumF[i]=GRID.cumF[i-1]+(isFinite(_seg)?_seg:0);
   }
   /* Fixed frame for the antiderivative panel (a-independent) */
   GRID.F2range=yRange([GRID.F],0.6);
@@ -720,7 +865,7 @@ function drawArea(){
   Plotly.react('plotArea',[
     {x:sg,y:pos,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(15,118,110,.30)',hoverinfo:'skip'},
     {x:sg,y:neg,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(194,65,12,.28)',hoverinfo:'skip'},
-    {x:GRID.X,y:GRID.f,type:'scatter',mode:'lines',line:{color:'#1d4ed8',width:2.6},
+    {x:GRID.X,y:GRID.f,type:'scatter',mode:'lines',connectgaps:false,line:{color:'#1d4ed8',width:2.6},
      hovertemplate:'t=%{x:.3f}<br>f=%{y:.4f}<extra>f(t)</extra>'},
     {x:[a,x],y:[f(a),f(x)],type:'scatter',mode:'markers',
      marker:{size:8,color:['#6d28d9','#0f766e'],line:{color:'#fff',width:1.2}},hoverinfo:'skip'}
@@ -750,7 +895,7 @@ function drawAnti(){
      font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}
   ];
   Plotly.react('plotAnti',[
-    {x:GRID.X,y:GRID.F,type:'scatter',mode:'lines',line:{color:'#6d28d9',width:2.6},
+    {x:GRID.X,y:GRID.F,type:'scatter',mode:'lines',connectgaps:false,line:{color:'#6d28d9',width:2.6},
      hovertemplate:'x=%{x:.3f}<br>F=%{y:.4f}<extra>F(x)</extra>'},
     {x:tx,y:ty,type:'scatter',mode:'lines',line:{color:'#b45309',width:2.2},hoverinfo:'skip'},
     {x:[a],y:[Fa],type:'scatter',mode:'markers',
@@ -807,7 +952,7 @@ function drawR(){
      font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}];
   var dy=GRID.F.map(function(v){return v-Fa;});
   Plotly.react('plotR',[
-    {x:GRID.X,y:dy,type:'scatter',mode:'lines',line:{color:'#6d28d9',width:2.6},
+    {x:GRID.X,y:dy,type:'scatter',mode:'lines',connectgaps:false,line:{color:'#6d28d9',width:2.6},
      hovertemplate:'x=%{x:.3f}<br>F(x)-F(a)=%{y:.4f}<extra>F(x)-F(a)</extra>'},
     {x:[x],y:[F(x)-Fa],type:'scatter',mode:'markers',
      marker:{size:11,color:'#6d28d9',line:{color:'#4c1d95',width:2}},
@@ -985,10 +1130,38 @@ function switchFn(id){
   ST.fId=id;
   document.querySelectorAll('#cselList .csel-opt').forEach(function(el){
     el.setAttribute('aria-selected',el.getAttribute('data-id')===id?'true':'false');});
+  var cf=document.getElementById('customField');
+  if(id==='custom'){ if(cf)cf.classList.add('show'); applyCustom(); return; }
+  if(cf)cf.classList.remove('show');
   cselSetDisplay(id);
   precompute(); redrawAll(); updateLegends();
   say('Integrand changed');
 }
+
+/* ---- custom function: compile the user's f(x) ---- */
+function applyCustom(){
+  stopAnim();
+  var inp=document.getElementById('fnCustom'), errEl=document.getElementById('fnErr');
+  var raw=inp.value;
+  try{
+    var fn=compileFn(raw);
+    FUN.custom.f=fn;
+    FUN.custom.fL=exprToLatex(raw);
+    FUN.custom.drop='Custom: \\(f(x)='+FUN.custom.fL+'\\)';
+    inp.classList.remove('bad'); errEl.textContent='';
+    if(ST.fId==='custom'){ cselSetDisplay('custom'); precompute(); redrawAll(); updateLegends(); say('Custom function updated'); }
+  }catch(e){
+    inp.classList.add('bad');
+    errEl.textContent='Could not read f(x). Use x with + - * / ^ and functions like sin, cos, tan, exp, log, sqrt, abs.';
+  }
+}
+(function(){
+  var inp=document.getElementById('fnCustom');
+  if(!inp)return;
+  inp.addEventListener('change',applyCustom);
+  inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();applyCustom();}});
+})();
+
 function initCsel(){
   cselBuild(); cselSetDisplay(ST.fId);
   mj([document.getElementById('cselList'),document.getElementById('cselDisplay')]);
@@ -1037,7 +1210,7 @@ function init(){
   aRange.value=ST.a; aInp.value=fmtInp(ST.a);
   bRange.value=ST.b; bInp.value=fmtInp(ST.b);
   syncXRange();
-  precompute(); initCsel(); redrawAll(); updateLegends();
+  precompute(); initCsel(); applyCustom(); redrawAll(); updateLegends();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
 else init();
