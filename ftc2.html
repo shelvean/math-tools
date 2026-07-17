@@ -771,11 +771,13 @@ var FUN={
   cos:  {drop:'\\(f(x)=\\cos x\\)',  FL:'\\sin x',
          f:function(t){return Math.cos(t);}, F:function(t){return Math.sin(t);}},
   fres: {drop:'\\(f(x)=\\sin\\!\\left(\\tfrac{\\pi}{2}x^{2}\\right)\\)', FL:'S(x)',
-         f:fresF,                            F:function(t){return quad(fresF,0,t);}},
+         f:fresF,                            F:function(t){return quad(fresF,0,t);}, range:[-4,4]},
   custom:{drop:'Custom: \\(f(x)=\\ldots\\)', FL:'\\displaystyle\\int_0^x f(t)\\,dt',
           f:function(t){return 0;}, F:function(t){return quad(FUN.custom.f,0,t);}}
 };
 var FUN_ORDER=['x','x2','sin','cos','fres','custom'];
+/* per-function domain: Fresnel is restricted so it isn't undersampled */
+function funcRange(){ return FUN[ST.fId].range || [XMIN,XMAX]; }
 
 /* ==================================================
    State + precompute (function-level)
@@ -836,7 +838,7 @@ function lay(xt,yt,extra){
     margin:{t:10,r:14,b:44,l:52},
     plot_bgcolor:'#fafafa', paper_bgcolor:'rgba(0,0,0,0)',
     font:{family:'-apple-system,BlinkMacSystemFont,Arial,sans-serif',size:12,color:'#374151'},
-    xaxis:{title:{text:xt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true,range:[XMIN,XMAX]},
+    xaxis:{title:{text:xt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true,range:funcRange()},
     yaxis:{title:{text:yt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
     showlegend:false, autosize:true
   };
@@ -1060,11 +1062,19 @@ var xRange=document.getElementById('xRange'), xVal=document.getElementById('xVal
 
 /* keep the sweep slider bounded by [a,b]; clamp x into that interval */
 function syncXRange(){
-  /* x sweeps from the domain's left endpoint (XMIN) to the upper limit b */
-  var lo=Math.min(XMIN,ST.b), hi=Math.max(XMIN,ST.b);
+  /* x sweeps from the current function's left endpoint to the upper limit b */
+  var fr=funcRange(), lo=fr[0], hi=Math.max(fr[0],ST.b);
   xRange.min=lo; xRange.max=hi;
   ST.x=clamp(ST.x,lo,hi);
   xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2);
+}
+/* clamp a,b to the current function's domain and set the slider bounds */
+function applyFuncRange(){
+  var fr=funcRange();
+  ST.a=clamp(ST.a,fr[0],fr[1]); ST.b=clamp(ST.b,fr[0],fr[1]);
+  aRange.min=fr[0]; aRange.max=fr[1]; aRange.value=ST.a; aInp.value=fmtInp(ST.a);
+  bRange.min=fr[0]; bRange.max=fr[1]; bRange.value=ST.b; bInp.value=fmtInp(ST.b);
+  syncXRange();
 }
 
 aRange.addEventListener('input',function(){
@@ -1089,7 +1099,7 @@ function commitLimit(inp,rng,set,redraw){
   var v=evalConst(inp.value);
   if(isNaN(v)){inp.classList.add('bad');return;}
   inp.classList.remove('bad');
-  var cl=clamp(v,XMIN,XMAX); set(cl); rng.value=cl;
+  var fr=funcRange(); var cl=clamp(v,fr[0],fr[1]); set(cl); rng.value=cl;
   inp.value=fmtInp(cl); syncXRange(); redraw();
 }
 aInp.addEventListener('change',function(){commitLimit(aInp,aRange,function(v){ST.a=v;},redrawShift);});
@@ -1101,10 +1111,11 @@ bInp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault
 function stopAnim(){ST.animating=false;if(animTimer){clearInterval(animTimer);animTimer=null;}}
 function startAnim(){
   if(ST.animating)return;
-  if(Math.abs(ST.x-ST.b)<1e-6){ST.x=XMIN;}          /* restart from the left endpoint */
-  if(ST.b-XMIN<1e-9)return;
+  var fr=funcRange();
+  if(Math.abs(ST.x-ST.b)<1e-6){ST.x=fr[0];}          /* restart from the left endpoint */
+  if(ST.b-fr[0]<1e-9)return;
   ST.animating=true;
-  var step=(ST.b-XMIN)/200;                          /* sweep left-to-right, ending at b */
+  var step=(ST.b-fr[0])/200;                          /* sweep left-to-right, ending at b */
   animTimer=setInterval(function(){
     if(!ST.animating){clearInterval(animTimer);return;}
     ST.x=Math.min(ST.x+step,ST.b);
@@ -1117,7 +1128,7 @@ function startAnim(){
 document.getElementById('btnPlay').addEventListener('click',startAnim);
 document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Sweep stopped');});
 document.getElementById('btnReset').addEventListener('click',function(){
-  stopAnim(); ST.x=XMIN; xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2); redrawX();
+  stopAnim(); ST.x=funcRange()[0]; xRange.value=ST.x; xVal.textContent=ST.x.toFixed(2); redrawX();
   say('Reset x to the left endpoint');
 });
 
@@ -1147,6 +1158,7 @@ function switchFn(id){
   ST.fId=id;
   document.querySelectorAll('#cselList .csel-opt').forEach(function(el){
     el.setAttribute('aria-selected',el.getAttribute('data-id')===id?'true':'false');});
+  applyFuncRange();
   var cf=document.getElementById('customField');
   if(id==='custom'){ if(cf)cf.classList.add('show'); applyCustom(); return; }
   if(cf)cf.classList.remove('show');
