@@ -582,6 +582,7 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
         \[F(s)=\int_0^{\infty}\! f(t)\,e^{-st}\,dt \;=\; \tfrac{1}{s}\int_0^{\infty}\! e^{-u} f\!\bigl(\tfrac{u}{s}\bigr)\,du \;\approx\; \tfrac{1}{s}\sum_{k=1}^{n} w_k\,f\!\Bigl(\tfrac{x_k}{s}\Bigr)\]
       </div>
       <p>There is no upper limit to choose: the infinite tail is handled analytically by the weight, so no truncation is involved. The nodes \(x_k/s\) move with \(s\), which keeps the sampling aligned with where the integrand actually lives.</p>
+      <p>Gauss–Laguerre assumes the smooth factor \(f(u/s)\) is analytic; a jump or kink — a Heaviside step \(u_a(t)\), or the corner of \(u_a(t)*1\) — destroys that and drops the accuracy to first order. So when \(f\) is non-smooth at a point \(a\), we <strong>split the integral there</strong> rather than let a node straddle it: the tail is shifted with \(t=a+v/s\) so the break lands at an endpoint, \(\int_a^\infty\! e^{-st}f(t)\,dt=\tfrac{e^{-as}}{s}\sum_k w_k\,f(a+x_k/s)\), with Gauss–Legendre on any finite panels before it. That restores full accuracy on the step examples.</p>
 
       <h2>Shifting theorems</h2>
       <ul>
@@ -1023,6 +1024,7 @@ var FUNCS = {
     tRow:'u_c(t)', FRow:'\\dfrac{e^{-cs}}{s}', roc:'s>0',
     f:function(t,p){ return t>=p.c?1:0; },
     F:function(s,p){ return s>0?Math.exp(-p.c*s)/s:NaN; },
+    breaks:function(p){ return [p.c]; },
     rocStr:function(){ return 's > 0'; },
     params:[{id:'c',label:'Delay \\(c\\)',aria:'c delay',min:0,max:5,step:0.5,val:1,int:false}],
     tMax:9, thm:'second'
@@ -1066,6 +1068,7 @@ var FUNCS = {
     tRow:'u_a(t)*1', FRow:'\\dfrac{e^{-as}}{s^2}', roc:'s>0',
     f:function(t,p){ return t>=p.a?t-p.a:0; },
     F:function(s,p){ return s>0?Math.exp(-p.a*s)/(s*s):NaN; },
+    breaks:function(p){ return [p.a]; },
     rocStr:function(){ return 's > 0'; },
     params:[{id:'a',label:'Delay \\(a\\)',aria:'a delay',min:0,max:5,step:0.5,val:1,int:false}],
     tMax:9, thm:'conv'
@@ -1079,6 +1082,7 @@ var FUNCS = {
     tRow:'u_a(t)*u_b(t)', FRow:'\\dfrac{e^{-(a+b)s}}{s^2}', roc:'s>0',
     f:function(t,p){ var s=p.a+p.b; return t>=s?t-s:0; },
     F:function(s,p){ return s>0?Math.exp(-(p.a+p.b)*s)/(s*s):NaN; },
+    breaks:function(p){ return [p.a+p.b]; },
     rocStr:function(){ return 's > 0'; },
     params:[
       {id:'a',label:'Delay \\(a\\)',aria:'a delay',min:0,max:4,step:0.5,val:1,int:false},
@@ -1407,15 +1411,54 @@ function gaussLaguerre(n) {
 }
 var LAG = gaussLaguerre(32);
 
-/* Half-line Laplace integral  ∫₀^∞ e^{-s t} g(t) dt  via the
-   substitution t = u/s:  (1/s) Σ w_k g(x_k/s).  Nodes move with s. */
-function laplaceGL(g, s) {
+/* Gauss-Legendre 10-point on [-1,1] - for finite panels between breaks. */
+var GLN = [-0.9739065285171717,-0.8650633666889845,-0.6794095682990244,-0.4333953941292472,-0.1488743389816312,0.1488743389816312,0.4333953941292472,0.6794095682990244,0.8650633666889845,0.9739065285171717];
+var GLW = [0.0666713443086881,0.1494513491505806,0.2190863625159820,0.2692667193099963,0.2955242247147529,0.2955242247147529,0.2692667193099963,0.2190863625159820,0.1494513491505806,0.0666713443086881];
+
+/* Laguerre tail  ∫ₐ^∞ e^{-s t} g(t) dt  via the substitution t = a + v/s:
+   (e^{-as}/s) Σ w_k g(a + x_k/s).  Nodes move with s and sit on [a,∞). */
+function laguerreTail(g, s, a) {
   var sum = 0;
   for (var k = 0; k < LAG.x.length; k++) {
-    var gv = g(LAG.x[k] / s);
+    var gv = g(a + LAG.x[k] / s);
     if (isFinite(gv)) sum += LAG.w[k] * gv;
   }
-  return sum / s;
+  return Math.exp(-a * s) * sum / s;
+}
+
+/* Composite Gauss-Legendre for a finite panel  ∫ₐ^b e^{-s t} g(t) dt,
+   used only between breakpoints where g is smooth. */
+function legendrePanel(g, s, a, b) {
+  if (!(b > a)) return 0;
+  var width = b - a;
+  var nsub = Math.min(64, Math.max(1, Math.ceil(width * Math.max(1, s) / 2)));
+  var h = width / nsub, tot = 0;
+  for (var i = 0; i < nsub; i++) {
+    var mid = a + (i + 0.5) * h, hw = h / 2, sub = 0;
+    for (var k = 0; k < GLN.length; k++) {
+      var t = mid + hw * GLN[k], gv = g(t);
+      if (isFinite(gv)) sub += GLW[k] * gv * Math.exp(-s * t);
+    }
+    tot += hw * sub;
+  }
+  return tot;
+}
+
+/* Half-line Laplace integral  ∫₀^∞ e^{-s t} g(t) dt.
+   `breaks` lists interior points where g is non-smooth (jumps/kinks, e.g.
+   a Heaviside step). A quadrature rule must never integrate across such a
+   point, so we split there: Gauss-Legendre on the finite panels up to the
+   last break, then one Gauss-Laguerre tail from it to infinity. With no
+   breaks this is just the plain Laguerre rule from 0. */
+function laplaceGL(g, s, breaks) {
+  breaks = (breaks || []).filter(function(a){ return a > 0 && isFinite(a); })
+                          .sort(function(x, y){ return x - y; });
+  var total = 0, lo = 0;
+  for (var i = 0; i < breaks.length; i++) {
+    total += legendrePanel(g, s, lo, breaks[i]);
+    lo = breaks[i];
+  }
+  return total + laguerreTail(g, s, lo);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1442,11 +1485,14 @@ function computeData(N) {
      weight is handled analytically, so there is no upper limit to
      choose and no truncation error to reason about. The e^{-st}
      factor being positive, the positive/negative parts reduce to
-     splitting f itself. ── */
+     splitting f itself. If f is non-smooth at a point (a Heaviside
+     step u_a, or the kink of u_a*1), we split the integral there
+     instead of letting Laguerre quadrature straddle the jump. ── */
   var fEval = function(t){ var v = fn.f(t, ST.p); return isFinite(v) ? v : 0; };
-  var netArea = laplaceGL(fEval, s);
-  var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s);
-  var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s);
+  var brk = fn.breaks ? fn.breaks(ST.p) : [];
+  var netArea = laplaceGL(fEval, s, brk);
+  var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
+  var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
 
   return {
     tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
