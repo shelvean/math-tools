@@ -165,6 +165,18 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
 }
 .num-input:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 
+/* free-text input for a custom f(t) */
+.ctrl-custom { flex:3 1 220px; min-width:180px; }
+.txt-input {
+  width:100%; min-height:44px; padding:.3rem .5rem;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:1rem; font-weight:600; text-align:left;
+  border:2px solid var(--bdr); border-radius:.375rem;
+  background:var(--card); color:var(--blue);
+}
+.txt-input:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
+.fn-err { margin-top:.35rem; font-size:.8125rem; font-weight:600; color:#b91c1c; display:none; }
+
 /* s-display (LaTeX label above number input) */
 .s-display {
   font-size:1.1rem; font-weight:700;
@@ -585,6 +597,9 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
       <p>Gauss–Laguerre assumes the smooth factor \(f(u/s)\) is analytic; a jump or kink — a Heaviside step \(u_a(t)\), or the corner of \(u_a(t)*1\) — destroys that and drops the accuracy to first order. So when \(f\) is non-smooth at a point \(a\), we <strong>split the integral there</strong> rather than let a node straddle it: the tail is shifted with \(t=a+v/s\) so the break lands at an endpoint, \(\int_a^\infty\! e^{-st}f(t)\,dt=\dfrac{e^{-as}}{s}\sum_k w_k\,f(a+x_k/s)\), with Gauss–Legendre on any finite panels before it. That restores full accuracy on the step examples.</p>
       <p>A rapidly oscillating factor, \(\sin(\omega t)\) or \(\cos(\omega t)\), breaks the analytic assumption in a different way: once \(\omega\gtrsim s\) there are many wiggles between Laguerre nodes and the accuracy collapses (at \(s=0.5,\ \omega=4\) the plain rule is off by more than \(100\%\)). For these we switch to the <strong>Ooura–Mori double-exponential formula</strong> for Fourier integrals: writing \(e^{-st}f(t)\) as a sum of \(q(t)e^{-\lambda t}\{\sin,\cos\}(\omega t)\) pieces, each oscillatory piece \(\int_0^\infty g(x)\sin(\omega x)\,dx\) is evaluated with the substitution \(\omega x = M\varphi(t)\), whose nodes march toward the zeros \(k\pi/\omega\) so the transformed integrand decays double-exponentially. Accuracy then holds up as \(\omega\) grows — back to machine precision on the oscillatory examples.</p>
 
+      <h2>Custom \(f(t)\)</h2>
+      <p>Pick <strong>Custom</strong> from the function menu to type your own \(f(t)\) (in \(t\), e.g. <code>1/(1+t^2)</code>, <code>exp(-t)sin(3t)</code>, <code>sqrt(t)</code>). Since an arbitrary \(f\) has no closed-form transform, \(F(s)\) is computed purely by the Gauss–Laguerre quadrature above and the \(F(s)\) plot traces that numerical value — the exact-value and relative-error cells are hidden, because there is nothing to compare against. Convergence needs \(f(t)e^{-st}\to0\); if a value looks unstable, raise \(s\).</p>
+
       <h2>Shifting theorems</h2>
       <ul>
         <li><strong>First (\(s\)-shift):</strong> \(\mathcal{L}\{e^{at}f(t)\} = F(s-a)\).</li>
@@ -658,14 +673,14 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
       <div class="aval vm" id="aNet">-</div>
       <div class="asub">numerical net area</div>
     </div>
-    <div class="aop">\(\approx\)</div>
-    <div class="acell ae">
+    <div class="aop" id="aopApprox">\(\approx\)</div>
+    <div class="acell ae" id="cellExact">
       <div class="albl">Exact \(F(s)\)</div>
       <div class="aval ve" id="aExact">-</div>
       <div class="asub">closed-form value</div>
     </div>
-    <div class="aop">\(|\)</div>
-    <div class="acell ar">
+    <div class="aop" id="aopBar">\(|\)</div>
+    <div class="acell ar" id="cellErr">
       <div class="albl">Relative error</div>
       <div class="aval vr" id="aErr">-</div>
       <div class="asub">\(\bigl|\dfrac{\mathrm{num}-F(s)}{F(s)}\bigr|\)</div>
@@ -948,6 +963,166 @@ function sfmtS(a, d) {
 function sfmtE(a, d) {
   d = d || 1;
   return a.toFixed(d) + 't';
+}
+
+/* ═══════════════════════════════════════════════════
+   Custom-function parser  (expression in t, same syntax as
+   convolution.html: sin cos tan cot sec csc sinh cosh tanh
+   asin acos atan exp log log10 sqrt cbrt abs ceil floor round
+   max min, pi, e, and ^ powers). Compiles to a numeric f(t)
+   and renders the source to LaTeX.
+═══════════════════════════════════════════════════ */
+if(typeof Math.cot!=='function')Math.cot=function(x){return 1/Math.tan(x);};
+if(typeof Math.sec!=='function')Math.sec=function(x){return 1/Math.cos(x);};
+if(typeof Math.csc!=='function')Math.csc=function(x){return 1/Math.sin(x);};
+
+function powRewrite(eq){
+  var i;
+  while((i=eq.lastIndexOf('^'))>=0){
+    var bs=i,be=i;
+    while(bs>0&&/\s/.test(eq[bs-1]))bs--;
+    be=bs;
+    if(bs>0&&eq[bs-1]===')'){
+      var d=1,p=bs-2;
+      while(p>=0&&d>0){var c=eq[p];if(c===')')d++;else if(c==='(')d--;if(d>0)p--;}
+      if(p<0)return eq;
+      bs=p;
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }else{
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }
+    var base=eq.substring(bs,be);
+    var es=i+1,ee=es;
+    while(ee<eq.length&&/\s/.test(eq[ee]))ee++;
+    es=ee;
+    if(eq[ee]==='+'||eq[ee]==='-')ee++;
+    if(eq[ee]==='('){
+      var d2=1;ee++;
+      while(ee<eq.length&&d2>0){var c2=eq[ee];if(c2==='(')d2++;else if(c2===')')d2--;ee++;}
+    }else{
+      while(ee<eq.length&&/[\w$.]/.test(eq[ee]))ee++;
+      if(eq[ee]==='('){
+        var d3=1;ee++;
+        while(ee<eq.length&&d3>0){var c3=eq[ee];if(c3==='(')d3++;else if(c3===')')d3--;ee++;}
+      }
+    }
+    var expn=eq.substring(es,ee);
+    if(!base||!expn)return eq;
+    eq=eq.substring(0,bs)+'Math.pow('+base+','+expn+')'+eq.substring(ee);
+  }
+  return eq;
+}
+/* insert implied multiplication: 3t -> 3*t, 3(t+1) -> 3*(t+1),
+   (t-1)(t+1) -> (t-1)*(t+1), exp(-t)cos(t) -> exp(-t)*cos(t). log10
+   is shielded (its digits are part of the name) and 1e5-style
+   scientific notation is preserved. */
+function implicitMul(eq){
+  eq=eq.replace(/log10/gi,'LOGTENFN');
+  eq=eq.replace(/(\d)\s*([A-Za-z(])/g,function(m,d,c,off,str){
+    if(c==='e'||c==='E'){ var nx=str.charAt(off+2); if(nx===''||/[0-9+\-]/.test(nx)) return m; }
+    return d+'*'+c;
+  });
+  eq=eq.replace(/(\))\s*([A-Za-z0-9(])/g,'$1*$2');
+  return eq.replace(/LOGTENFN/g,'log10');
+}
+function preprocess(eq){
+  eq=eq.replace(/\bx\b/g,'t');
+  eq=implicitMul(eq);
+  eq=powRewrite(eq);
+  eq=eq
+    .replace(/\b(sin|cos|tan|cot|sec|csc|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<!Math\.)e(?!\w)/g,'Math.E');
+  return eq;
+}
+function exprToLatex(s){
+  if(!s)return '';
+  var t=String(s);
+  t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+    if((l==='e'||l==='E')&&o+2<=str.length){var c=str.charAt(o+2);if((c>='0'&&c<='9')||c==='+'||c==='-')return m;}
+    return d+'*'+l;
+  });
+  function wrapPow(str){
+    var out='',i=0,n=str.length;
+    while(i<n){
+      if(str.charAt(i)==='^'){
+        if(i+1<n&&str.charAt(i+1)==='{'){out+='^';i++;continue;}
+        i++;var sign='';
+        if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+        var body='';
+        if(i<n&&str.charAt(i)==='('){
+          var depth=1,j=i+1;
+          while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+          body=str.slice(i+1,j);i=(j<n)?j+1:j;
+        }else{var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));if(mm){body=mm[0];i+=mm[0].length;}}
+        out+='^{'+sign+body+'}';
+      }else{out+=str.charAt(i);i++;}
+    }
+    return out;
+  }
+  t=wrapPow(t);
+  function callMap(str,name,mapper){
+    var i=0,nlen=name.length;
+    while((i=str.indexOf(name+'(',i))!==-1){
+      if(i>0&&/[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+      var depth=1,j=i+nlen+1,len=str.length;
+      while(j<len){var c=str.charAt(j);if(c==='(')depth++;else if(c===')'){depth--;if(depth===0)break;}j++;}
+      if(depth!==0)break;
+      var inner=str.slice(i+nlen+1,j),rep=mapper(exprToLatex(inner));
+      str=str.slice(0,i)+rep+str.slice(j+1);i+=rep.length;
+    }
+    return str;
+  }
+  t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+  t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+  t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+  t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+  t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+  t=callMap(t,'floor',function(x){return '\\lfloor '+x+'\\rfloor';});
+  t=callMap(t,'ceil', function(x){return '\\lceil '+x+'\\rceil';});
+  t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+  t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cot',  function(x){return '\\cot\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sec',  function(x){return '\\sec\\!\\left('+x+'\\right)';});
+  t=callMap(t,'csc',  function(x){return '\\csc\\!\\left('+x+'\\right)';});
+  t=t.replace(/([^\\]|^)\bpi\b/gi,'$1\\pi ');
+  t=t.replace(/\*/g,'\\cdot ');
+  return t;
+}
+
+/* compiled custom f(t) + its display LaTeX */
+var CF = { f:function(t){ return 1/(1+t*t); }, src:'1/(1+t^2)', latex:'', ok:true };
+CF.latex = exprToLatex(CF.src);
+function lpCompile(expr){
+  var fn=new Function('t','return ('+preprocess(expr)+');');
+  var probe=fn(0.5);
+  if(typeof probe!=='number')throw new Error('non-numeric');
+  return fn;
+}
+function lpParseCustom(){
+  var src=(document.getElementById('fnCustom').value||'').trim()||'0';
+  var errEl=document.getElementById('fnErr');
+  try{
+    var f=lpCompile(src);
+    CF.f=f; CF.src=src;
+    var lx=exprToLatex(src);
+    CF.latex=(lx&&lx.length)?lx:'f(t)';
+    CF.ok=true;
+    if(errEl){ errEl.textContent=''; errEl.style.display='none'; }
+    return true;
+  }catch(e){
+    CF.ok=false;
+    if(errEl){ errEl.textContent='Could not read f(t). Write it in t, e.g. sin(t), exp(-t), t^2, 1/(1+t^2).'; errEl.style.display='block'; }
+    return false;
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1302,6 +1477,21 @@ var FUNCS = {
       {id:'omega',label:'\\(\\omega\\)',        aria:'omega',           min:0.5,max:10,  step:0.5,val:1,   int:false}
     ],
     tMax:10, thm:'conv'
+  },
+
+  /* ── Custom: user-entered f(t), transform computed numerically ── */
+  'custom': {
+    custom:true,
+    dropLatex:'\\(\\text{Custom }f(t)\\)',
+    latex_f:function(){ return CF.ok ? CF.latex : 'f(t)'; },
+    latex_F:function(){ return '\\text{(numerical)}'; },
+    tRow:'f(t)', FRow:'\\text{numerical}', roc:'s>0',
+    f:function(t){ return CF.ok ? CF.f(t) : NaN; },
+    /* No closed form - F(s) is the numerical transform itself, so the
+       F(s) plot shows the computed curve. */
+    F:function(s){ return laplaceGL(function(t){ return CF.ok ? CF.f(t) : 0; }, s); },
+    rocStr:function(){ return 's > 0'; },
+    params:[], tMax:8, thm:null
   }
 };
 
@@ -1347,6 +1537,23 @@ function buildParams(id) {
   var slot = document.getElementById('paramSlots');
   slot.innerHTML = '';
   var fn = FUNCS[id];
+  if (fn.custom) {
+    var div = document.createElement('div');
+    div.className = 'ctrl ctrl-param ctrl-custom';
+    div.innerHTML =
+      '<label for="fnCustom">\\(f(t) =\\)</label>'+
+      '<input type="text" id="fnCustom" class="txt-input" spellcheck="false" autocapitalize="off" '+
+        'autocomplete="off" value="'+CF.src+'" aria-label="custom f of t expression">'+
+      '<div id="fnErr" class="fn-err" role="alert"></div>';
+    slot.appendChild(div);
+    mjTypeset([div.querySelector('label')]);
+    var inp = div.querySelector('input');
+    function apply(){ lpParseCustom(); redrawAll(); }
+    inp.addEventListener('change', apply);
+    inp.addEventListener('input', apply);
+    inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); apply(); } });
+    return;
+  }
   if (!fn.params.length) {
     var note = document.createElement('div');
     note.className = 'ctrl ctrl-param';
@@ -1761,20 +1968,47 @@ function drawFs() {
 }
 
 function updateAreaBar(d) {
+  var custom = !!FUNCS[ST.id].custom;
+  /* Custom f(t) has no closed form, so hide the exact-value and
+     relative-error cells (and the operators leading to them). */
+  var disp = custom ? 'none' : '';
+  ['aopApprox','cellExact','aopBar','cellErr'].forEach(function(elid){
+    document.getElementById(elid).style.display = disp;
+  });
+  document.getElementById('aPos').textContent = d.posArea.toFixed(5);
+  document.getElementById('aNeg').textContent = d.negArea.toFixed(5);
+  document.getElementById('aNet').textContent = d.netArea.toFixed(5);
+  if (custom) return;
   var Fs = d.Fs, relErr;
   if (isFinite(Fs)&&Math.abs(Fs)>1e-10) { var e=Math.abs((d.netArea-Fs)/Fs); relErr=e<0.0005?e.toExponential(1):e.toFixed(4); }
   else if (isFinite(Fs)) relErr=Math.abs(d.netArea-Fs).toExponential(2);
   else relErr='N/A';
-  document.getElementById('aPos').textContent   = d.posArea.toFixed(5);
-  document.getElementById('aNeg').textContent   = d.negArea.toFixed(5);
-  document.getElementById('aNet').textContent   = d.netArea.toFixed(5);
   document.getElementById('aExact').textContent = isFinite(Fs)?Fs.toFixed(5):'diverges';
   document.getElementById('aErr').textContent   = relErr;
 }
 
 var fmPending = false;
-function updateFormula() {
-  var id=ST.id, fn=FUNCS[id], s=ST.s, Fs=fn.F(s,ST.p), roc=fn.rocStr(ST.p);
+function typesetFormula(box) {
+  if (!fmPending && window.MathJax && MathJax.typesetPromise) {
+    fmPending=true;
+    MathJax.typesetPromise([box]).then(function(){ fmPending=false; }).catch(function(){ fmPending=false; });
+  }
+}
+function updateFormula(d) {
+  var id=ST.id, fn=FUNCS[id], s=ST.s;
+  if (fn.custom) {
+    var box0=document.getElementById('formulaBox');
+    var num=(d&&isFinite(d.netArea))?d.netArea.toFixed(6):'\\text{—}';
+    var lf0=CF.ok?CF.latex:'f(t)';
+    box0.innerHTML=
+      '<div class="fm-main">\\[ \\mathcal{L}\\{f(t)\\}\\;=\\;\\int_0^{\\infty} f(t)\\,e^{-st}\\,dt \\]</div>'+
+      '<div class="fm-params">\\( f(t)='+lf0+' \\)</div>'+
+      '<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')\\approx '+num+' \\)</div>'+
+      '<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed-form transform on offer, so \\(F(s)\\) is computed by quadrature and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
+    typesetFormula(box0);
+    return;
+  }
+  var Fs=fn.F(s,ST.p), roc=fn.rocStr(ST.p);
   var lf  = typeof fn.latex_f==='function' ? fn.latex_f(ST.p) : fn.latex_f;
   var lFs = typeof fn.latex_F==='function' ? fn.latex_F(ST.p) : fn.latex_F;
   var paramLine='';
@@ -1835,7 +2069,7 @@ function redrawAll() {
     pending=false;
     var d=computeData(700);
     drawFt(d); drawInt(d); drawFs();
-    updateAreaBar(d); updateFormula();
+    updateAreaBar(d); updateFormula(d);
     var sb=document.getElementById('sBig');
     sb.innerHTML='\\(s='+ST.s.toFixed(2)+'\\)';
     mjTypeset([sb]);
@@ -1852,7 +2086,8 @@ var CSEL_GROUPS = [
   { label:'Trigonometric',                              ids:['sin','cos'] },
   { label:'Heaviside / Step',                           ids:['heavi'] },
   { label:'Exponential \u00d7 Trig (1st shift)',        ids:['expsin','expcos'] },
-  { label:'Convolution pairs  (f * g)',                 ids:['c_ua1','c_uaub','c_11','c_t1','c_tt','c_t2_1','c_sin1','c_cos1','c_sinsin','c_sincos','c_ea_eb','c_ea_ea','c_ea_1','c_ea_sin','c_ea_cos'] }
+  { label:'Convolution pairs  (f * g)',                 ids:['c_ua1','c_uaub','c_11','c_t1','c_tt','c_t2_1','c_sin1','c_cos1','c_sinsin','c_sincos','c_ea_eb','c_ea_ea','c_ea_1','c_ea_sin','c_ea_cos'] },
+  { label:'Custom',                                     ids:['custom'] }
 ];
 var cselCurrent = 'one';
 
