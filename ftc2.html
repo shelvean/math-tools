@@ -789,6 +789,7 @@ function precompute(){
   var fn=FUN[ST.fId];
   GRID.X=linspace(XMIN,XMAX,NGRID);
   GRID.f=GRID.X.map(fn.f);
+  GRID.fok=GRID.f.map(function(v){return isFinite(v);});
   GRID.F=GRID.X.map(fn.F);                       /* the antiderivative curve */
   /* cumulative area from XMIN (independent numerical route) */
   GRID.cumF=new Array(NGRID); GRID.cumF[0]=0;
@@ -812,6 +813,23 @@ function precompute(){
 /* ==================================================
    Plotly config
 ================================================== */
+/* interpolated guarded cumulative int_XMIN^u f, plus the connected valid
+   window of grid indices around a (handles functions like log defined only
+   on part of the domain: the accumulation only plots where f is defined). */
+function cumAt(u){
+  var t=(u-XMIN)/GRID.dx, i=Math.floor(t);
+  if(i<0)return GRID.cumF[0];
+  if(i>=NGRID-1)return GRID.cumF[NGRID-1];
+  return GRID.cumF[i]+(t-i)*(GRID.cumF[i+1]-GRID.cumF[i]);
+}
+function validWindow(a){
+  var ia=Math.round((a-XMIN)/GRID.dx); ia=Math.max(0,Math.min(NGRID-1,ia));
+  if(!GRID.fok[ia])return [-1,-1];
+  var lo=ia; while(lo>0&&GRID.fok[lo-1])lo--;
+  var hi=ia; while(hi<NGRID-1&&GRID.fok[hi+1])hi++;
+  return [lo,hi];
+}
+
 var CFG={responsive:true,displaylogo:false,displayModeBar:false};
 function lay(xt,yt,extra){
   var l={
@@ -913,7 +931,8 @@ function drawAnti(){
    Panel 3 - LHS: running area int_a^x f dt, traced
 ================================================== */
 function drawL(){
-  var a=ST.a, x=ST.x, b=ST.b, cA=quad(FUN[ST.fId].f,XMIN,a);
+  var a=ST.a, x=ST.x, b=ST.b;
+  var vw=validWindow(a), cA=cumAt(a);
   var yr=GRID.Frange; var layout=lay('$x$','$\\int_a^x f(t)\\,dt$'); layout.yaxis.range=yr;
   layout.shapes=[
     {type:'line',x0:b,x1:b,y0:yr[0],y1:yr[1],line:{color:'rgba(120,120,120,.55)',width:1.4,dash:'dot'}},
@@ -923,14 +942,14 @@ function drawL(){
      font:{size:13,color:'#6b7280'},bgcolor:'rgba(255,255,255,.8)'}];
   var rx=[],ry=[];
   for(var i=0;i<NGRID;i++){
-    if(GRID.X[i]<=x+1e-9){rx.push(GRID.X[i]);ry.push(GRID.cumF[i]-cA);}
+    if(i>=vw[0]&&i<=vw[1]&&GRID.X[i]<=x+1e-9){rx.push(GRID.X[i]);ry.push(GRID.cumF[i]-cA);}
   }
   var lead=quad(FUN[ST.fId].f,a,x);
   var slope=FUN[ST.fId].f(x);
   var dxT=Math.min(1.1,(XMAX-XMIN)*0.16);
   var tx=[x-dxT,x+dxT], ty=[lead-slope*dxT,lead+slope*dxT];
   Plotly.react('plotL',[
-    {x:rx,y:ry,type:'scatter',mode:'lines',line:{color:'#0f766e',width:2.6},
+    {x:rx,y:ry,type:'scatter',mode:'lines',connectgaps:false,line:{color:'#0f766e',width:2.6},
      hovertemplate:'x=%{x:.3f}<br>area=%{y:.4f}<extra>∫ area</extra>'},
     {x:tx,y:ty,type:'scatter',mode:'lines',line:{color:'#b45309',width:2.2},hoverinfo:'skip'},
     {x:[x],y:[lead],type:'scatter',mode:'markers',
