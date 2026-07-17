@@ -236,8 +236,6 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
 .csw { width:11px; height:11px; border-radius:2px; flex-shrink:0; }
 
 /* ── lower grid ───────────────────────────────────── */
-.lgrid { display:grid; grid-template-columns:1fr 1fr; gap:.875rem; margin-bottom:1rem; }
-@media (max-width:860px) { .lgrid { grid-template-columns:1fr; } }
 
 /* ── formula box ──────────────────────────────────── */
 .fbox { background:var(--info); border:2px solid var(--inf-b);
@@ -262,8 +260,6 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
   border:2px solid var(--inf-b);
   border-radius:var(--r) var(--r) 0 0; border-bottom:none; }
 .sechdr mjx-container { font-size:1.1em !important; vertical-align:middle; }
-.secbody { border:2px solid var(--inf-b); border-radius:0 0 var(--r) var(--r); overflow:hidden; }
-#plotConv { height:220px; }
 
 /* ── shifting / conv theorems ────────────────────── */
 .thmsec { margin-bottom:1.25rem; }
@@ -559,7 +555,7 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
 <main id="main" class="card" role="main">
 
   <h1>Laplace Transform Visualizer</h1>
-  <p class="subtitle">See \(\mathcal{L}\{f(t)\}(s)\) as a signed area - watch the integrand accumulate, track convergence, and read the exact formula.</p>
+  <p class="subtitle">See \(\mathcal{L}\{f(t)\}(s)\) as a signed area - watch the integrand accumulate and read the exact formula.</p>
 
   <!-- About -->
   <div class="info-panel">
@@ -580,11 +576,12 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
       <h2>Convolution pairs</h2>
       <p>When a convolution pair \(f * g\) is selected, the visualized function is \(h(t)=(f*g)(t)\) and the transform shown is \(H(s)=F(s)\cdot G(s)\), illustrating the Convolution Theorem.</p>
 
-      <h2>Numerical method - composite Gaussian quadrature</h2>
-      <p>The integral is computed with <strong>composite 10-point Gauss–Legendre quadrature</strong>:</p>
+      <h2>Numerical method - Gauss–Laguerre quadrature</h2>
+      <p>The transform value \(F(s)\) is computed directly on the half-line with <strong>Gauss–Laguerre quadrature</strong>, which builds the \(e^{-st}\) weight into the rule. The substitution \(t=u/s\) places the nodes correctly for every \(s\):</p>
       <div class="quad-formula">
-        \[\int_a^b g(t)\,dt \;\approx\; \tfrac{b-a}{2}\sum_{k=1}^{10} w_k\,g\!\Bigl(\tfrac{a+b}{2}+\tfrac{b-a}{2}\xi_k\Bigr)\]
+        \[F(s)=\int_0^{\infty}\! f(t)\,e^{-st}\,dt \;=\; \tfrac{1}{s}\int_0^{\infty}\! e^{-u} f\!\bigl(\tfrac{u}{s}\bigr)\,du \;\approx\; \tfrac{1}{s}\sum_{k=1}^{n} w_k\,f\!\Bigl(\tfrac{x_k}{s}\Bigr)\]
       </div>
+      <p>There is no upper limit to choose: the infinite tail is handled analytically by the weight, so no truncation is involved. The nodes \(x_k/s\) move with \(s\), which keeps the sampling aligned with where the integrand actually lives.</p>
 
       <h2>Shifting theorems</h2>
       <ul>
@@ -643,19 +640,19 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
   <!-- Area bar -->
   <div class="abar" role="region" aria-label="Integral area breakdown" aria-live="polite" aria-atomic="true">
     <div class="acell ap">
-      <div class="albl">\(\displaystyle\int_0^T\!\max\!\bigl(f(t)\,e^{-st},\,0\bigr)\,dt\)</div>
+      <div class="albl">\(\displaystyle\int_0^\infty\!\max\!\bigl(f(t)\,e^{-st},\,0\bigr)\,dt\)</div>
       <div class="aval vp" id="aPos">-</div>
       <div class="asub">positive contribution</div>
     </div>
     <div class="aop">\(-\)</div>
     <div class="acell an">
-      <div class="albl">\(\displaystyle\int_0^T\!\bigl|\min\!\bigl(f(t)\,e^{-st},\,0\bigr)\bigr|\,dt\)</div>
+      <div class="albl">\(\displaystyle\int_0^\infty\!\bigl|\min\!\bigl(f(t)\,e^{-st},\,0\bigr)\bigr|\,dt\)</div>
       <div class="aval vn" id="aNeg">-</div>
       <div class="asub">negative contribution</div>
     </div>
     <div class="aop">\(=\)</div>
     <div class="acell am">
-      <div class="albl">\(\displaystyle\int_0^T\!f(t)e^{-st}\,dt\)</div>
+      <div class="albl">\(\displaystyle\int_0^\infty\!f(t)e^{-st}\,dt\)</div>
       <div class="aval vm" id="aNet">-</div>
       <div class="asub">numerical net area</div>
     </div>
@@ -713,19 +710,9 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
     </div>
   </div>
 
-  <!-- Formula + Convergence -->
-  <div class="lgrid">
-    <div class="fbox" id="formulaBox" role="math" aria-live="polite" aria-label="Laplace transform formula and computed values">
-      <div class="fm-main" style="color:var(--muted)">Select a function above to see its Laplace transform.</div>
-    </div>
-    <div>
-      <div class="sechdr">
-        Convergence: \(\displaystyle A(T)=\int_0^{T}f(t)\,e^{-st}\,dt\;\longrightarrow\;F(s)\) as \(T\to\infty\)
-      </div>
-      <div class="secbody">
-        <div id="plotConv" role="img" aria-label="A(T) converging to F(s) as T increases"></div>
-      </div>
-    </div>
+  <!-- Formula -->
+  <div class="fbox" id="formulaBox" role="math" aria-live="polite" aria-label="Laplace transform formula and computed values" style="margin-bottom:1rem;">
+    <div class="fm-main" style="color:var(--muted)">Select a function above to see its Laplace transform.</div>
   </div>
 
   <!-- Convolution Theorem -->
@@ -1395,19 +1382,40 @@ function buildParams(id) {
 }
 
 /* ═══════════════════════════════════════════════════
-   Gauss-Legendre 10-point
+   Gauss-Laguerre  (for the half-line integral directly)
+   Nodes/weights (x_k,w_k) for  ∫₀^∞ e^{-u} g(u) du ≈ Σ w_k g(x_k),
+   generated once by Newton iteration on the Laguerre polynomial.
 ═══════════════════════════════════════════════════ */
-var GN = [-0.9739065285171717,-0.8650633666889845,-0.6794095682990244,-0.4333953941292472,-0.1488743389816312,0.1488743389816312,0.4333953941292472,0.6794095682990244,0.8650633666889845,0.9739065285171717];
-var GW = [0.0666713443086881,0.1494513491505806,0.2190863625159820,0.2692667193099963,0.2955242247147529,0.2955242247147529,0.2692667193099963,0.2190863625159820,0.1494513491505806,0.0666713443086881];
-
-function quadrature(f, a, b, nsub) {
-  var h = (b-a)/nsub, sum = 0;
-  for (var i=0; i<nsub; i++) {
-    var x0 = a+i*h, x1 = x0+h, mid = (x0+x1)/2, hw = h/2, sub = 0;
-    for (var k=0; k<10; k++) sub += GW[k]*f(mid+hw*GN[k]);
-    sum += hw*sub;
+function gaussLaguerre(n) {
+  var EPS = 1e-14, MAXIT = 100;
+  var x = new Array(n), w = new Array(n);
+  var z = 0, z1, p1, p2, p3, pp;
+  for (var i = 0; i < n; i++) {
+    if (i === 0)      z  = 3.0 / (1.0 + 2.4 * n);
+    else if (i === 1) z += 15.0 / (1.0 + 2.5 * n);
+    else { var ai = i - 1; z += (1.0 + 2.55 * ai) / (1.9 * ai) * (z - x[i - 2]); }
+    for (var its = 0; its < MAXIT; its++) {
+      p1 = 1.0; p2 = 0.0;
+      for (var j = 1; j <= n; j++) { p3 = p2; p2 = p1; p1 = ((2*j - 1 - z)*p2 - (j - 1)*p3) / j; }
+      pp = (n*p1 - n*p2) / z;            /* L_n'(z) */
+      z1 = z; z = z1 - p1 / pp;          /* Newton step */
+      if (Math.abs(z - z1) <= EPS) break;
+    }
+    x[i] = z; w[i] = -1.0 / (pp * n * p2);
   }
-  return sum;
+  return { x: x, w: w };
+}
+var LAG = gaussLaguerre(32);
+
+/* Half-line Laplace integral  ∫₀^∞ e^{-s t} g(t) dt  via the
+   substitution t = u/s:  (1/s) Σ w_k g(x_k/s).  Nodes move with s. */
+function laplaceGL(g, s) {
+  var sum = 0;
+  for (var k = 0; k < LAG.x.length; k++) {
+    var gv = g(LAG.x[k] / s);
+    if (isFinite(gv)) sum += LAG.w[k] * gv;
+  }
+  return sum / s;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1417,12 +1425,6 @@ function computeData(N) {
   N = N||700;
   var fn = FUNCS[ST.id], s = ST.s, T = ST.T;
   var tArr = linspace(0, T, N);
-
-  /* ── Integrand function used by quadrature ── */
-  var integrand = function(t) {
-    var fv = fn.f(t, ST.p);
-    return (isFinite(fv) && isFinite(fv * Math.exp(-s*t))) ? fv * Math.exp(-s*t) : 0;
-  };
 
   /* ── Plot arrays (visual only - sample grid is fine) ── */
   var fArr=[], wArr=[], gArr=[];
@@ -1435,43 +1437,20 @@ function computeData(N) {
   var gPos=gArr.map(function(v){return Math.max(v,0);});
   var gNeg=gArr.map(function(v){return Math.min(v,0);});
 
-  /* ── Convergence curve: segment-by-segment GL quadrature ──
-     Each adjacent pair of sample points is integrated with 2 GL
-     sub-intervals (= 20 evaluations).  Accumulating gives A(T_i)
-     with spectral accuracy on each tiny panel.                 ── */
-  var cum=[0], runSum=0;
-  for (var i=1;i<N;i++) {
-    runSum += quadrature(integrand, tArr[i-1], tArr[i], 2);
-    cum.push(runSum);
-  }
-
-  /* ── Area-bar values: integrate to T_eff, not just T ──
-     The integrand decays as e^{-s_eff*t}. We probe it to find
-     T_eff where |integrand| < 1e-8 * peak, then integrate there.
-     This eliminates truncation error as the dominant source. ── */
-  var T_eff = T;
-  var peakAbs = 0;
-  for (var pi=0; pi<50; pi++) {
-    var pv = Math.abs(integrand(pi * T / 49));
-    if (pv > peakAbs) peakAbs = pv;
-  }
-  if (peakAbs > 0) {
-    /* Probe beyond T in steps of T until integrand is tiny or we hit 300 */
-    var probe = T;
-    while (probe < 300) {
-      probe += Math.max(1, T * 0.5);
-      if (Math.abs(integrand(probe)) < peakAbs * 1e-8) { T_eff = probe; break; }
-      T_eff = probe;
-    }
-  }
-  var nsub = Math.max(80, Math.ceil(T_eff * 12));
-  var netArea = quadrature(integrand, 0, T_eff, nsub);
-  var posArea = quadrature(function(t){ return Math.max(integrand(t), 0); }, 0, T_eff, nsub);
-  var negArea = quadrature(function(t){ return Math.max(-integrand(t), 0); }, 0, T_eff, nsub);
+  /* ── Area-bar values: the full half-line integral, directly ──
+     Compute ∫₀^∞ f(t)e^{-st} dt with Gauss-Laguerre. The e^{-st}
+     weight is handled analytically, so there is no upper limit to
+     choose and no truncation error to reason about. The e^{-st}
+     factor being positive, the positive/negative parts reduce to
+     splitting f itself. ── */
+  var fEval = function(t){ var v = fn.f(t, ST.p); return isFinite(v) ? v : 0; };
+  var netArea = laplaceGL(fEval, s);
+  var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s);
+  var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s);
 
   return {
     tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
-    gPos:gPos, gNeg:gNeg, cum:cum,
+    gPos:gPos, gNeg:gNeg,
     posArea:posArea, negArea:negArea, netArea:netArea,
     Fs:fn.F(s,ST.p), T:T
   };
@@ -1634,26 +1613,6 @@ function drawFs() {
   ], layout, CFG);
 }
 
-function drawConv(d) {
-  var Fs = d.Fs;
-  var traces=[{x:d.tArr,y:d.cum,type:'scatter',mode:'lines',line:{color:'#1d4ed8',width:2.5},
-    hovertemplate:'T=%{x:.2f}<br>A(T)=%{y:.5f}<extra>A(T)</extra>',name:'A(T)'}];
-  if (isFinite(Fs)) {
-    traces.push({x:[d.tArr[0],d.tArr[d.tArr.length-1]],y:[Fs,Fs],
-      type:'scatter',mode:'lines',line:{color:'#c2410c',width:2,dash:'dash'},
-      hovertemplate:'F(s)='+Fs.toFixed(5)+'<extra>Exact F(s)</extra>',name:'F(s)'});
-  }
-  var layout = lay('$T$ (upper limit)','$A(T)$');
-  layout.margin.t=10; layout.height=215;
-  layout.showlegend=true;
-  layout.legend={x:.65,y:.12,bgcolor:'rgba(255,255,255,.9)',bordercolor:'#d1d5db',borderwidth:1,font:{size:11}};
-  if (isFinite(Fs)) {
-    layout.annotations=[{x:d.tArr[d.tArr.length-1],y:Fs,text:'F('+ST.s.toFixed(2)+')='+fmt(Fs,4),
-      showarrow:false,xanchor:'right',yanchor:'bottom',font:{color:'#c2410c',size:12},bgcolor:'rgba(255,255,255,.85)'}];
-  }
-  Plotly.react('plotConv', traces, layout, CFG);
-}
-
 function updateAreaBar(d) {
   var Fs = d.Fs, relErr;
   if (isFinite(Fs)&&Math.abs(Fs)>1e-10) { var e=Math.abs((d.netArea-Fs)/Fs); relErr=e<0.0005?e.toExponential(1):e.toFixed(4); }
@@ -1728,7 +1687,7 @@ function redrawAll() {
   requestAnimationFrame(function(){
     pending=false;
     var d=computeData(700);
-    drawFt(d); drawInt(d); drawFs(); drawConv(d);
+    drawFt(d); drawInt(d); drawFs();
     updateAreaBar(d); updateFormula();
     var sb=document.getElementById('sBig');
     sb.innerHTML='\\(s='+ST.s.toFixed(2)+'\\)';
