@@ -583,6 +583,7 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
       </div>
       <p>There is no upper limit to choose: the infinite tail is handled analytically by the weight, so no truncation is involved. The nodes \(x_k/s\) move with \(s\), which keeps the sampling aligned with where the integrand actually lives.</p>
       <p>Gauss–Laguerre assumes the smooth factor \(f(u/s)\) is analytic; a jump or kink — a Heaviside step \(u_a(t)\), or the corner of \(u_a(t)*1\) — destroys that and drops the accuracy to first order. So when \(f\) is non-smooth at a point \(a\), we <strong>split the integral there</strong> rather than let a node straddle it: the tail is shifted with \(t=a+v/s\) so the break lands at an endpoint, \(\int_a^\infty\! e^{-st}f(t)\,dt=\dfrac{e^{-as}}{s}\sum_k w_k\,f(a+x_k/s)\), with Gauss–Legendre on any finite panels before it. That restores full accuracy on the step examples.</p>
+      <p>A rapidly oscillating factor, \(\sin(\omega t)\) or \(\cos(\omega t)\), breaks the analytic assumption in a different way: once \(\omega\gtrsim s\) there are many wiggles between Laguerre nodes and the accuracy collapses (at \(s=0.5,\ \omega=4\) the plain rule is off by more than \(100\%\)). For these we switch to the <strong>Ooura–Mori double-exponential formula</strong> for Fourier integrals: writing \(e^{-st}f(t)\) as a sum of \(q(t)e^{-\lambda t}\{\sin,\cos\}(\omega t)\) pieces, each oscillatory piece \(\int_0^\infty g(x)\sin(\omega x)\,dx\) is evaluated with the substitution \(\omega x = M\varphi(t)\), whose nodes march toward the zeros \(k\pi/\omega\) so the transformed integrand decays double-exponentially. Accuracy then holds up as \(\omega\) grows — back to machine precision on the oscillatory examples.</p>
 
       <h2>Shifting theorems</h2>
       <ul>
@@ -1462,6 +1463,101 @@ function laplaceGL(g, s, breaks) {
 }
 
 /* ═══════════════════════════════════════════════════
+   Ooura-Mori double-exponential formula for Fourier-type
+   integrals  ∫₀^∞ g(x) {sin,cos}(ω x) dx  (Ooura & Mori 1999).
+   Gauss-Laguerre only sees f(u/s) as a polynomial, so a rapidly
+   oscillating factor sin(ωt)/cos(ωt) wrecks its accuracy once
+   ω ≳ s (many wiggles inside one node spacing). The DE-Fourier
+   rule instead places nodes that march toward the zeros kπ/ω of
+   the oscillation, where the transformed integrand decays
+   double-exponentially, so accuracy holds up as ω grows.
+═══════════════════════════════════════════════════ */
+var OM_H = 0.15, OM_NK = 40;         /* mesh and half-width of the trapezoid sum */
+function omParams(h) {
+  var M = Math.PI / h, beta = 0.25;
+  var alpha = beta / Math.sqrt(1 + M * Math.log(1 + M) / (4 * Math.PI));
+  return { M: M, alpha: alpha, beta: beta };
+}
+/* transformation φ and its derivative; both have finite limits at t=0 */
+function omPhi(t, P) {
+  if (Math.abs(t) < 1e-7) return 1 / (2 + P.alpha + P.beta);
+  var u = -2*t - P.alpha*(1 - Math.exp(-t)) - P.beta*(Math.exp(t) - 1);
+  return t / (1 - Math.exp(u));
+}
+function omPhip(t, P) {
+  if (Math.abs(t) < 1e-7) {
+    var c1 = -2 - P.alpha - P.beta, c2 = P.alpha - P.beta;
+    return (c2/2 + c1*c1/2) / (c1*c1);      /* Taylor limit B/A² */
+  }
+  var u = -2*t - P.alpha*(1 - Math.exp(-t)) - P.beta*(Math.exp(t) - 1);
+  var up = -2 - P.alpha*Math.exp(-t) - P.beta*Math.exp(t);
+  var eu = Math.exp(u), psi = 1 - eu, psip = -eu*up;
+  return (psi - t*psip) / (psi*psi);
+}
+/* ∫₀^∞ g(x) sin(ω x) dx  (kind='sin')  or  ∫₀^∞ g(x) cos(ω x) dx  (kind='cos').
+   Substitute ω x = M φ(t) and apply the trapezoid rule in t; the cosine mesh
+   is half-shifted so its nodes chase the zeros of cos. */
+function omFourier(g, w, kind) {
+  var P = omParams(OM_H), M = P.M, shift = (kind === 'cos') ? -0.5 : 0, sum = 0;
+  for (var k = -OM_NK; k <= OM_NK; k++) {
+    var t = (k + shift) * OM_H, x = M * omPhi(t, P), gv = g(x / w);
+    if (isFinite(gv)) sum += OM_H * M * omPhip(t, P) * gv * (kind === 'cos' ? Math.cos(x) : Math.sin(x));
+  }
+  return sum / w;
+}
+
+/* ∫₀^∞ q(x) e^{-λ x} dx  by Gauss-Laguerre scaled to the decay rate λ. */
+function laguerreScaled(q, lam) {
+  var sum = 0;
+  for (var k = 0; k < LAG.x.length; k++) {
+    var v = q(LAG.x[k] / lam);
+    if (isFinite(v)) sum += LAG.w[k] * v;
+  }
+  return sum / lam;
+}
+
+/* Above this many oscillations per decay length, Gauss-Laguerre is the wrong
+   tool and we switch the trig terms to Ooura-Mori; below it, Laguerre is fine. */
+var OSC_THRESH = 2;
+
+/* Integrate one term  q(x) e^{-λx} · {1, sin(ωx), cos(ωx)}  of a decomposed
+   oscillatory integrand. */
+function integrateOscTerm(tm, w) {
+  var lam = tm.lam;
+  if (tm.kind === 'const') return laguerreScaled(tm.q, lam);
+  var highlyOsc = (w / lam) >= OSC_THRESH;
+  if (highlyOsc) {
+    return omFourier(function(x){ return tm.q(x) * Math.exp(-lam * x); }, w, tm.kind);
+  }
+  var trig = (tm.kind === 'cos') ? Math.cos : Math.sin;
+  return laguerreScaled(function(x){ return tm.q(x) * trig(w * x); }, lam);
+}
+
+/* Laplace transform of an oscillatory f, computed term by term: the e^{-st}
+   weight makes every integrand a sum of  q(x) e^{-λx} · {1,sin(ωx),cos(ωx)}
+   pieces, and each highly-oscillatory trig piece goes through Ooura-Mori. */
+function laplaceOsc(osc, s, p) {
+  var terms = osc.terms(s, p), w = osc.omega(p), total = 0;
+  for (var i = 0; i < terms.length; i++) total += integrateOscTerm(terms[i], w);
+  return total;
+}
+
+/* Decomposition of e^{-st} f(t) for each oscillatory function into
+   q(x) e^{-λx} · {const, sin(ωx), cos(ωx)} pieces (keyed by function id). */
+var OSC = {
+  'sin':      { omega:function(p){ return p.omega; }, terms:function(s,p){ return [{q:function(x){return 1;}, lam:s, kind:'sin'}]; } },
+  'cos':      { omega:function(p){ return p.omega; }, terms:function(s,p){ return [{q:function(x){return 1;}, lam:s, kind:'cos'}]; } },
+  'expsin':   { omega:function(p){ return p.omega; }, terms:function(s,p){ return [{q:function(x){return 1;}, lam:s-p.a, kind:'sin'}]; } },
+  'expcos':   { omega:function(p){ return p.omega; }, terms:function(s,p){ return [{q:function(x){return 1;}, lam:s-p.a, kind:'cos'}]; } },
+  'c_sin1':   { omega:function(p){ return p.omega; }, terms:function(s,p){ var w=p.omega; return [{q:function(x){return 1/w;}, lam:s, kind:'const'}, {q:function(x){return -1/w;}, lam:s, kind:'cos'}]; } },
+  'c_cos1':   { omega:function(p){ return p.omega; }, terms:function(s,p){ var w=p.omega; return [{q:function(x){return 1/w;}, lam:s, kind:'sin'}]; } },
+  'c_sinsin': { omega:function(p){ return p.omega; }, terms:function(s,p){ var w=p.omega; return [{q:function(x){return 1/(2*w);}, lam:s, kind:'sin'}, {q:function(x){return -x/2;}, lam:s, kind:'cos'}]; } },
+  'c_sincos': { omega:function(p){ return p.omega; }, terms:function(s,p){ return [{q:function(x){return x/2;}, lam:s, kind:'sin'}]; } },
+  'c_ea_sin': { omega:function(p){ return p.omega; }, terms:function(s,p){ var a=p.a,w=p.omega,d=a*a+w*w; return [{q:function(x){return w/d;}, lam:s-a, kind:'const'}, {q:function(x){return -a/d;}, lam:s, kind:'sin'}, {q:function(x){return -w/d;}, lam:s, kind:'cos'}]; } },
+  'c_ea_cos': { omega:function(p){ return p.omega; }, terms:function(s,p){ var a=p.a,w=p.omega,d=a*a+w*w; return [{q:function(x){return a/d;}, lam:s-a, kind:'const'}, {q:function(x){return w/d;}, lam:s, kind:'sin'}, {q:function(x){return -a/d;}, lam:s, kind:'cos'}]; } }
+};
+
+/* ═══════════════════════════════════════════════════
    Data computation
 ═══════════════════════════════════════════════════ */
 function computeData(N) {
@@ -1490,7 +1586,12 @@ function computeData(N) {
      instead of letting Laguerre quadrature straddle the jump. ── */
   var fEval = function(t){ var v = fn.f(t, ST.p); return isFinite(v) ? v : 0; };
   var brk = fn.breaks ? fn.breaks(ST.p) : [];
-  var netArea = laplaceGL(fEval, s, brk);
+  /* An oscillatory f (a sin/cos factor) breaks Gauss-Laguerre once the
+     frequency outruns the decay, so route the transform value through the
+     Ooura-Mori DE-Fourier rule instead. The positive/negative lobe cells
+     stay on the plain rule - they are the auxiliary breakdown. */
+  var osc = OSC[ST.id];
+  var netArea = osc ? laplaceOsc(osc, s, ST.p) : laplaceGL(fEval, s, brk);
   var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
   var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
 
