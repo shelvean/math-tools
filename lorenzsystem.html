@@ -1083,6 +1083,43 @@ function decimate(tr,to,maxPts){
   return{x:xs,y:ys,z:zs,t:ts};
 }
 
+/* ── Catmull-Rom spline smoothing (mirrors the Rössler tool) ──────────────────
+   Plotly's scatter3d line is a straight-segment polyline, so a decimated curve
+   shows polygon facets on the tight lobes. Resample through the decimated
+   control points with a Catmull-Rom spline (interpolating x, y, z and the
+   colour-time t) so the animated trace reads as smooth curves at a low, bounded
+   point count. The spline passes through every control point, so the attractor
+   geometry is preserved - only the straight gaps are filled. */
+var ANIM_ATTRACTOR_BASE=4000;   // control points before splining (per attractor frame)
+var SMOOTH_FACTOR=4;            // spline upsample -> ~ANIM_ATTRACTOR_BASE*4 render pts
+function crInterp1D(p0,p1,p2,p3,t){
+  var t2=t*t,t3=t2*t;
+  return 0.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3);
+}
+function catmullRom3D(xs,ys,zs,ts,factor){
+  var n=xs.length;
+  if(n<4||factor<=1)return{x:xs,y:ys,z:zs,t:ts};
+  var xo=[xs[0]],yo=[ys[0]],zo=[zs[0]],to=[ts[0]];
+  for(var i=0;i<n-1;i++){
+    var i0=i===0?0:i-1,i1=i,i2=i+1,i3=i+2<n?i+2:n-1;
+    for(var j=1;j<=factor;j++){
+      var u=j/factor;
+      xo.push(crInterp1D(xs[i0],xs[i1],xs[i2],xs[i3],u));
+      yo.push(crInterp1D(ys[i0],ys[i1],ys[i2],ys[i3],u));
+      zo.push(crInterp1D(zs[i0],zs[i1],zs[i2],zs[i3],u));
+      to.push(ts[i1]+(ts[i2]-ts[i1])*u);
+    }
+  }
+  return{x:xo,y:yo,z:zo,t:to};
+}
+/* Decimate a growing prefix [0..to] to a base budget, then Catmull-Rom upsample
+   -> a smooth curve at a controlled point count. O(base) per call, so per-frame
+   cost stays flat no matter how long the trace grows. */
+function smoothTrace(tr,to,base){
+  var b=decimate(tr,to,base||ANIM_ATTRACTOR_BASE);
+  return catmullRom3D(b.x,b.y,b.z,b.t,SMOOTH_FACTOR);
+}
+
 /* ── Colorbar helper ──────────────────────────────────────────────────────────
    Shows actual simulation time on the Jet colorbar (t=0, t=mid, t=end),
    preventing the "Start/Mid/End" labels from being ambiguous across different N.
@@ -1393,15 +1430,9 @@ function launchAnimateAttractor(){
     LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);
     LAST_DISP=decimate(PA.t1);LAST_DISP_STRIDE=dispStrideFor(PA.t1);
   }
-  /* Trace a LIGHT decimated curve (ANIM_DISPLAY_PTS), NOT the full static curve
-     (up to ~30k pts). Each frame re-renders a growing prefix via Plotly.react,
-     so an unbounded prefix makes the final frames many times heavier than the
-     first - the animation stutters and stalls as it nears the end. Capping the
-     traced curve keeps every frame's render cost flat, so it stays smooth the
-     whole way; the full-res PA.t1 still positions the marker exactly. The
-     stride matches decimate()'s internal stride so the prefix math lines up. */
-  PA.disp=decimate(PA.t1,undefined,ANIM_DISPLAY_PTS);
-  PA.dispStride=(PA.t1.x.length>ANIM_DISPLAY_PTS)?Math.ceil(PA.t1.x.length/ANIM_DISPLAY_PTS):1;
+  /* renderIncrementalFrame smooths (Catmull-Rom) a bounded prefix of PA.t1 each
+     frame, so per-frame render cost stays flat AND the curve reads smooth (no
+     facets), and the full-res marker sits exactly on the trajectory. */
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
   setProgress(0, 0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
@@ -1441,16 +1472,18 @@ function renderParticleFrame(idx){
 // Jet colorbar (cmin=0, cmax=1) over the full simulation length, sliced
 // per-frame so colors map to actual elapsed time.
 function renderIncrementalFrame(idx, titlePrefix){
-  var t1=PA.t1,disp=PA.disp||t1,stride=PA.dispStride||1;
+  var t1=PA.t1;
   var rho=parseFloat(document.getElementById('rho').value);
   var t=(idx*DT).toFixed(1);
   var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-  /* Grow a prefix of the pre-decimated curve (stable vertices = no glitch,
-     no per-frame decimation), then append the exact current point so the
-     line meets the marker. */
-  var k=Math.min(disp.x.length-1,Math.floor(idx/stride));
-  var xs=disp.x.slice(0,k+1),ys=disp.y.slice(0,k+1),zs=disp.z.slice(0,k+1),ts=disp.t.slice(0,k+1);
-  if(k*stride!==idx){xs.push(t1.x[idx]);ys.push(t1.y[idx]);zs.push(t1.z[idx]);ts.push(t1.t[idx]);}
+  /* While the trace is growing, draw a Catmull-Rom-smoothed prefix at a low,
+     bounded point count: smooth curves (no facets) and flat per-frame cost. On
+     the final frame, draw the FULL-resolution curve so the resting image is as
+     crisp as "Show Attractor" (splining the whole 30k-pt curve would be need-
+     lessly heavy, and the raw full curve is already dense enough to be smooth). */
+  var last=idx>=t1.x.length-1;
+  var d=last?decimate(t1,idx,MAX_DISPLAY_PTS):smoothTrace(t1,idx,ANIM_ATTRACTOR_BASE);
+  var xs=d.x,ys=d.y,zs=d.z,ts=d.t;
   var line={color:ts,colorscale:'Jet',width:3,
             cauto:false,cmin:0,cmax:1,showscale:!mobile};
   if(!mobile)line.colorbar=makeColorbar(t1.x.length);
