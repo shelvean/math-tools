@@ -2000,20 +2000,27 @@ function drawFs() {
   if (finite.length > 4) {
     var lo = finite[Math.floor(finite.length * 0.03)];
     var hi = finite[Math.floor(finite.length * 0.97)];
-    if (isFinite(FatS)) { lo = Math.min(lo, FatS); hi = Math.max(hi, FatS); }
     var span = Math.max(hi - lo, 0.05);
     yLo = lo - span * 0.18;
     yHi = hi + span * 0.18;
+    /* Frame the window on the bulk (3rd–97th percentile), not the pole.
+       Only stretch to the current-s value if it isn't itself a near-pole
+       spike, so approaching a pole can never blow the axis up. */
+    if (isFinite(FatS) && FatS >= yLo - span && FatS <= yHi + span) {
+      yLo = Math.min(yLo, FatS); yHi = Math.max(yHi, FatS);
+    }
   } else if (isFinite(FatS)) {
     var half = Math.max(Math.abs(FatS) * 0.6, 0.5);
     yLo = FatS - half; yHi = FatS + half;
   } else {
     yLo = -1; yHi = 1;
   }
-  var FArr = rawF.map(function(v){
-    if (v === null) return null;
-    return (v >= yLo && v <= yHi) ? v : null;
-  });
+  /* Keep finite values even when they run past the window: Plotly clips them
+     to the axis range, so at a pole the curve visibly sweeps off the top (or
+     bottom) and leaves the window instead of vanishing. Only true gaps — where
+     the transform diverges / is undefined — are broken (null), so the trace
+     stops at the pole rather than drawing a line across the divergent region. */
+  var FArr = rawF.map(function(v){ return (v === null || !isFinite(v)) ? null : v; });
 
   var dotY = (isFinite(FatS) && FatS >= yLo && FatS <= yHi) ? FatS : null;
 
@@ -2029,6 +2036,22 @@ function drawFs() {
         fillcolor:'rgba(239,68,68,.07)',line:{width:0}});
       annotations.push({x:av/2,y:yLo+(yHi-yLo)*0.08,
         text:'outside ROC',showarrow:false,
+        font:{size:11,color:'#dc2626'},bgcolor:'rgba(255,255,255,.82)'});
+    }
+  }
+  /* Custom f: mark the abscissa of convergence. The integral diverges below
+     it (shaded), and F(s) has a pole there — the curve sweeps up to that
+     vertical asymptote from the convergent side. */
+  if (fn.custom) {
+    var sigma = null;
+    for (var si = 0; si < rawF.length; si++) { if (rawF[si] !== null) { sigma = sArr[si]; break; } }
+    if (sigma !== null && sigma > 0.07) {
+      shapes.push({type:'rect',x0:0.05,x1:sigma,y0:yLo,y1:yHi,
+        fillcolor:'rgba(239,68,68,.07)',line:{width:0}});
+      shapes.push({type:'line',x0:sigma,x1:sigma,y0:yLo,y1:yHi,
+        line:{color:'#dc2626',width:1.5,dash:'dot'}});
+      annotations.push({x:sigma/2,y:yLo+(yHi-yLo)*0.5,
+        text:'diverges',showarrow:false,
         font:{size:11,color:'#dc2626'},bgcolor:'rgba(255,255,255,.82)'});
     }
   }
