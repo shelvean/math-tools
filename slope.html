@@ -1,0 +1,2329 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Slope field plotter for first-order ODEs. Visualize the direction field of dy/dx = f(x, y) with overlaid solution curves traced from initial points.">
+  <title>Direction Field Visualizer</title>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
+
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady:function(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+
+  <style>
+:root{
+  --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;
+  --info:#eff6ff;--inf-b:#1d4ed8;--inf-hd:#1e3a8a;
+  --txt:#111827;--txt2:#374151;--muted:#4b5563;
+  --bdr:#6b7280;--bdr2:#d1d5db;--focus:#1d4ed8;
+  --blue:#1d4ed8;--bl2:#1e3a8a;--teal:#0f766e;
+  --vio:#6d28d9;--ora:#92400e;--green:#15803d;--red:#dc2626;--link:#1e40af;
+  --r:.5rem;--r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10);--sh2:0 4px 12px rgba(0,0,0,.12);
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;
+  --info:#e8eeff;--inf-b:#00c;--inf-hd:#00006b;
+  --txt:#000;--txt2:#000;--muted:#111;
+  --bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--ora:#7a3000;--red:#cc0000;--link:#00c;
+}
+@media(prefers-contrast:more){
+  :root{--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--blue:#00c;--link:#00c;}
+}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);margin:0;min-height:100vh;line-height:1.6;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;padding:.75rem 1.5rem;z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;outline:3px solid #fff;outline-offset:2px;}
+
+/* ── Nav ── */
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:1280px;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;padding:.625rem .5rem;border-radius:.3rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+
+/* ── Card ── */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);max-width:1280px;width:calc(100% - 2rem);margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* ── Info panel ── */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between;background:transparent;border:none;cursor:pointer;font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:none;}
+.info-icon{font-size:1.25rem;font-weight:700;flex-shrink:0;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p,.info-body li{font-size:.9375rem;color:var(--txt2);line-height:1.65;}
+.info-body ul{margin:0 0 .5rem 1.5rem;padding:0;}.info-body li{margin-bottom:.3rem;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.method-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+
+/* ── Definition ── */
+.defn{text-align:center;padding:.7rem 1rem;background:linear-gradient(135deg,#eff6ff,#f8faff);border:1px solid #bfdbfe;border-left:4px solid var(--blue);border-radius:var(--r);margin-bottom:1.25rem;}
+
+/* ── Control bars ── */
+.cbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;margin-bottom:.6rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);padding:.6rem .75rem;}
+.cbar-full{flex:1 1 100%;}
+.cbar-eq{flex:2 1 280px;}
+.cbar-sm{flex:0 1 90px;}
+.cbar-med{flex:0 1 155px;}
+.cbar-lg{flex:1 1 200px;}
+.cfield{display:flex;flex-direction:column;gap:.18rem;}
+.cfield label,.cfield .clbl{font-size:.8125rem;font-weight:700;color:var(--txt2);white-space:nowrap;}
+.cfield input[type=number]{width:100%;min-height:36px;padding:.2rem .45rem;font-size:.9375rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;}
+.cfield input[type=text]{width:100%;min-height:40px;padding:.25rem .65rem;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);font-size:.9375rem;font-weight:700;}
+.cfield input[type=range]{width:100%;accent-color:var(--blue);cursor:pointer;}
+.cfield select{width:100%;min-height:36px;padding:.2rem .4rem;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);font-size:.875rem;}
+.range-val{font-size:.875rem;font-weight:700;color:var(--blue);min-width:2rem;text-align:right;align-self:flex-end;padding-bottom:.15rem;}
+.check-wrap{display:flex;flex-direction:column;gap:.18rem;}
+.check-wrap .clbl{font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.check-inner{display:flex;align-items:center;gap:.4rem;min-height:36px;}
+.check-inner input[type=checkbox]{width:1.1rem;height:1.1rem;accent-color:var(--blue);cursor:pointer;flex-shrink:0;}
+.check-inner label{font-size:.875rem;font-weight:600;color:var(--txt2);cursor:pointer;white-space:nowrap;}
+
+/* ── Action bar ── */
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;padding:.55rem .75rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+.abtn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1.25rem;min-height:44px;min-width:110px;border:none;border-radius:.5rem;font-size:.9375rem;font-weight:700;cursor:pointer;transition:background .12s,transform .08s;}
+.abtn:hover{transform:translateY(-1px);}
+.abtn:active{transform:none;}
+.abtn-update{background:#15803d;color:#fff;}.abtn-update:hover{background:#166534;}
+.abtn-clear{background:#b45309;color:#fff;}.abtn-clear:hover{background:#92400e;}
+.abtn-dl{background:var(--vio);color:#fff;}.abtn-dl:hover{background:#5b21b6;}
+.abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.abtn-add{background:#1d4ed8;color:#fff;}.abtn-add:hover{background:#1e3a8a;}
+.ic-bar{display:flex;align-items:center;justify-content:center;gap:.4rem .55rem;flex-wrap:wrap;margin-bottom:.875rem;padding:.5rem .75rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+.ic-bar .ic-lbl{font-weight:700;font-size:.9375rem;color:var(--txt2);}
+.ic-bar label{font-weight:700;}
+.ic-bar input{width:5rem;min-height:40px;padding:.35rem .5rem;border:2px solid var(--bdr);border-radius:.4rem;font-size:.95rem;background:var(--card);color:var(--txt);}
+.ic-bar .abtn{min-width:auto;padding:.45rem .9rem;min-height:40px;}
+
+/* ── Readout bar ── */
+.rbar{display:flex;align-items:stretch;margin-bottom:.875rem;background:var(--card);border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);flex-wrap:wrap;}
+.rbar dt,.rbar dd{margin:0;padding:0;}
+.rcell{flex:1;text-align:center;padding:.5rem .4rem .4rem;border-right:1px solid var(--bdr2);min-width:90px;}
+.rcell:last-child{border-right:none;}
+.rlbl{font-size:.75rem;color:var(--txt2);margin-bottom:.1rem;line-height:1.3;font-weight:600;text-transform:uppercase;letter-spacing:.02em;}
+.rval{font-size:.875rem;font-weight:700;font-family:'Georgia',serif;line-height:1.3;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rval-b{color:#1e40af;}.rval-g{color:#14532d;}.rval-u{color:#7f1d1d;}.rval-q{color:#5b21b6;}
+
+/* ── Viz grid ── */
+.viz-grid{display:grid;grid-template-columns:1fr minmax(270px,340px);gap:.75rem;margin-bottom:.875rem;}
+/* Stack below 1240px so the graph spans the full width and the Examples /
+   implicit-curve / Supported-Functions panels move below it - this also covers
+   mobile "Request Desktop Site" mode (~980px layout viewport). */
+@media(max-width:1240px){.viz-grid{grid-template-columns:1fr;}}
+
+/* ── Plot wrapper ── */
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);}
+.phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.5rem;background:var(--sect);border-bottom:1px solid var(--bdr2);font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+/* ── Canvas ── */
+.canvas-wrap{position:relative;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+#canvas{display:block;min-width:580px;cursor:crosshair;background:#ffffff;}
+.canvas-overlay{
+  position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  background:rgba(255,255,255,.93);color:var(--txt);font-weight:600;font-size:.875rem;
+  padding:.4rem 1.2rem;border-radius:50px;border:2px solid var(--inf-b);
+  box-shadow:var(--sh);pointer-events:none;white-space:nowrap;
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+}
+.canvas-footer{display:flex;align-items:center;justify-content:space-between;padding:.3rem .65rem;background:var(--sect);border-top:1px solid var(--bdr2);flex-wrap:wrap;gap:.35rem;}
+.canvas-hint{font-size:.8125rem;color:var(--txt2);}
+
+/* ── Side panel ── */
+.side-panel{display:flex;flex-direction:column;gap:.75rem;}
+.coll-panel{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;}
+.coll-btn{width:100%;padding:.55rem .875rem;display:flex;align-items:center;justify-content:space-between;background:var(--sect);border:none;cursor:pointer;font-size:.9375rem;font-weight:700;color:var(--txt2);min-height:44px;}
+.coll-btn:hover{background:rgba(0,0,0,.04);}
+.coll-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:none;}
+.coll-icon{font-size:1.1rem;font-weight:700;flex-shrink:0;}
+.coll-inner{padding:.5rem .75rem;max-height:420px;overflow-y:auto;}
+
+/* ── Example list ── */
+.ex-list{list-style:none;padding:0;margin:0;}
+.ex-list li{border-bottom:1px solid var(--bdr2);}
+.ex-list li:last-child{border-bottom:none;}
+.example-btn{width:100%;text-align:left;background:transparent;border:none;border-left:3px solid transparent;padding:.38rem .65rem;font-size:.875rem;color:var(--txt);cursor:pointer;display:block;min-height:40px;transition:background .12s,border-color .12s;}
+.ex-subhead{font-size:.78rem;font-weight:700;color:var(--bl2);background:rgba(29,78,216,.07);padding:.35rem .65rem;margin:.55rem 0 .15rem;border-radius:.3rem;letter-spacing:.02em;}
+.ex-subhead:first-child{margin-top:.1rem;}
+.example-btn:hover,.example-btn:focus-visible{background:rgba(29,78,216,.08);border-left-color:var(--blue);color:var(--bl2);}
+.example-btn:focus-visible{outline:3px solid var(--focus);outline-offset:-3px;box-shadow:none;}
+
+/* ── Functions table ── */
+.func-table{width:100%;font-size:.875rem;border-collapse:collapse;}
+.func-table td{padding:.3rem .5rem;border-bottom:1px solid var(--bdr2);}
+.func-table tr:last-child td{border-bottom:none;}
+.func-name{display:inline-block;font-family:'Consolas','Courier New',monospace;color:#7c3aed;background:rgba(109,40,217,.09);padding:.15rem .45rem;border-radius:.25rem;font-size:.8125rem;cursor:pointer;border:1px solid transparent;transition:background .1s,border-color .1s;}
+.func-name:hover{background:rgba(29,78,216,.13);color:var(--blue);border-color:rgba(29,78,216,.3);}
+.func-name:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:none;}
+.func-latex{text-align:center;color:var(--link);font-size:.875rem;}
+
+/* ── Footer ── */
+.footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);text-decoration:underline;}
+
+/* ── High-contrast toggle ── */
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;background:var(--txt);color:var(--card);border:2px solid var(--bdr);border-radius:50%;width:48px;height:48px;font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  .card{padding:.875rem;margin:1rem .5rem 1.25rem;}
+  h1{font-size:1.375rem;}
+  .rbar{flex-wrap:wrap;}
+  .canvas-overlay{font-size:.8125rem;padding:.35rem .9rem;}
+}
+@media(max-width:480px){
+  .canvas-overlay{white-space:normal;text-align:center;width:88%;}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;transition:none!important;}
+  .abtn:hover{transform:none;}
+}
+  
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-links{display:flex;flex-wrap:wrap;justify-content:center;gap:.4rem 1.25rem;margin:.35rem auto;width:fit-content;max-width:100%;}
+.back-links .back-link{margin:0;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/slope.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Direction Field Visualizer">
+    <meta property="og:description" content="Slope field plotter for first-order ODEs. Visualize the direction field of dy/dx = f(x, y) with overlaid solution curves traced from initial points.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/slope.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Direction Field Visualizer">
+    <meta name="twitter:description" content="Slope field plotter for first-order ODEs. Visualize the direction field of dy/dx = f(x, y) with overlaid solution curves traced from initial points.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Direction Field Visualizer",
+  "description": "Slope field plotter for first-order ODEs. Visualize the direction field of dy/dx = f(x, y) with overlaid solution curves traced from initial points.",
+  "url": "https://shelvean.github.io/math-tools/slope.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html" aria-current="page">Differential Equations</a></li>
+      <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+
+<div class="back-links" role="navigation" aria-label="Back to category pages">
+  <a href="dynamical.html" class="back-link" aria-label="Back to Dynamical Systems">&larr; Back to Dynamical Systems</a>
+  <a href="projects.html" class="back-link" aria-label="Back to Differential Equations">&larr; Back to Differential Equations</a>
+</div>
+<main id="main" class="card" role="main">
+  <h1>Direction Field Visualizer</h1>
+  <p class="subtitle">Plot slope fields and trace solution curves for \(y' = f(t,y)\) with an adaptive Tsit5 solver and automatic stiffness switching to BDF5 - click anywhere on the field to draw a solution curve through that point, or click an existing initial-point dot to remove it.</p>
+
+  <!-- ── About panel ── -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
+      <span>About - Direction Fields, Solution Curves &amp; the Tsit5 / BDF5 Solvers</span>
+      <span class="info-icon" id="infoIcon" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <h2>What Is a Direction Field?</h2>
+      <p>A <strong>direction field</strong> (or slope field) for \(y' = f(t,y)\) places a short arrow at each grid point \((t,y)\) whose slope equals \(f(t,y)\). Any solution curve must be tangent to the arrows everywhere it passes.</p>
+      <div class="method-box">\[y'(t) = f\!\bigl(t,\,y(t)\bigr), \quad y(t_0)=y_0\]</div>
+      <h2>Adaptive Solver - Two Trajectory Modes</h2>
+      <p>Clicking a point \((t_0,y_0)\) solves the IVP with an <strong>adaptive Tsitouras 5(4) (Tsit5)</strong> explicit Runge&ndash;Kutta method with FSAL (the final stage of an accepted step is reused as the first stage of the next, giving an effective cost of six derivative evaluations). Step size is automatically shrunk near steep slopes and enlarged in smooth regions.</p>
+      <p>The <strong>Trajectory Mode</strong> selector chooses how the curve is parameterised:</p>
+      <ul>
+        <li><strong>t-step (default)</strong> - integrates \(y(t)\) directly from \(y' = f(t,y)\). Fastest and most familiar; one \(y\) value per \(t\). Stops short of vertical tangents and pole-style singularities (e.g. \(y' = -t/y\) at \(y = 0\)).</li>
+        <li><strong>Arc-length</strong> - integrates the equivalent autonomous 2D system \(\dot{t} = \cos\theta,\ \dot{y} = \sin\theta\) where \(\theta = \arctan f(t,y)\). The unit-speed RHS stays bounded as \(f \to \pm\infty\), so vertical tangents are crossed smoothly and full implicit curves close up - \(y' = -t/y\) traces complete circles in one click. This is exactly the trick used by phase portraits to draw trajectories of \(\dot{x} = Q(x,y),\ \dot{y} = P(x,y)\).</li>
+      </ul>
+      <h2>Solver Method - Non-stiff vs. Stiff</h2>
+      <p>The <strong>Solver Method</strong> selector chooses the time integrator for the <em>t-step</em> mode:</p>
+      <ul>
+        <li><strong>Auto (default)</strong> - starts with explicit Tsit5 and watches a stiffness indicator \(|h\,\hat L|\), where \(\hat L \approx |\partial f/\partial y|\) is estimated for free from the FSAL stages (the Tsit5 linear-stability boundary on the negative real axis is \(\approx 3.3\)). When the indicator stays elevated for many steps - the signature of a step held down by <em>stability</em> rather than accuracy - the run is declared stiff and continued with BDF5. Smooth non-stiff equations (even steep or blow-up cases) stay on Tsit5.</li>
+        <li><strong>Tsit5 (non-stiff)</strong> - the adaptive explicit Runge&ndash;Kutta method above; best for smooth, non-stiff equations.</li>
+        <li><strong>BDF5 (stiff)</strong> - a 5th-order <strong>backward differentiation formula</strong>, an implicit linear multistep method solved at each step by Newton's method (first five points bootstrapped with Tsit5). Being A(\(\alpha\))-stable, it integrates stiff equations such as \(y' = -50\,(y - \cos t)\) without the tiny steps an explicit method would require.</li>
+        <li><strong>DOP853 (8(5,3)) - dense</strong> - the order-8 Dormand&ndash;Prince method with its embedded 5th/3rd-order error pair for step control and a 7th-order <strong>continuous (dense) output</strong>. The large error-controlled steps are interpolated by the dense polynomial, so the plotted curve stays smooth while following the true solution to high precision - ideal for accurate non-stiff trajectories with far fewer accepted steps.</li>
+      </ul>
+      <p class="method-box" style="text-align:left;">BDF5: \(\;\tfrac{137}{60}y_{n+1} - 5y_n + 5y_{n-1} - \tfrac{10}{3}y_{n-2} + \tfrac{5}{4}y_{n-3} - \tfrac{1}{5}y_{n-4} = h\,f(t_{n+1},y_{n+1})\)</p>
+      <p>(Arc-length mode always uses Tsit5: its unit-speed right-hand side is bounded and non-stiff by construction.)</p>
+      <h2>How to Use</h2>
+      <ul>
+        <li>Type \(f(t,y)\) in the equation box. Use <code>t</code> or <code>x</code> for the independent variable.</li>
+        <li>Press <kbd>Enter</kbd> or click <strong>Update Field</strong> to redraw the arrows.</li>
+        <li>Click anywhere on the canvas to trace a solution curve through that point, or type an exact \((t_0, y_0)\) in the <strong>Initial condition</strong> box and press <strong>Add curve</strong> (keyboard-friendly).</li>
+        <li>Multiple curves use distinct colors automatically.</li>
+        <li><strong>Clear Solutions</strong> removes all curves. <strong>Download PNG</strong> saves the view.</li>
+      </ul>
+      <h2>Keyboard Navigation</h2>
+      <ul>
+        <li>Tab through all controls; Enter in the equation field updates the plot.</li>
+        <li>Click function names in the table to insert them directly into the equation box.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── Formula ── -->
+  <div class="defn" role="math" aria-label="Direction field equation: enter dy/dt equals f of t, y">
+    \[\dfrac{dy}{dt} = f(t,\,y)\]
+  </div>
+
+  <!-- ── Controls Row 1: Equation + Color ── -->
+  <div class="cbar" role="group" aria-label="Equation and field color">
+    <div class="cbar-eq cfield">
+      <label for="equation">Differential Equation - \(y' =\)</label>
+      <input type="text" id="equation" value="sin(t)*(4-y^2)"
+             aria-label="Enter differential equation in terms of t and y. Press Enter to update."
+             autocomplete="off" spellcheck="false">
+    </div>
+    <div class="cbar-med cfield">
+      <label for="fieldColor">Field Color</label>
+      <select id="fieldColor" aria-label="Select arrow color">
+        <option value="#1d64d2">Blue (default)</option>
+        <option value="#dc2626">Red</option>
+        <option value="#0f766e">Teal</option>
+        <option value="#6d28d9">Purple</option>
+        <option value="#ea580c">Orange</option>
+        <option value="#000000">Black</option>
+      </select>
+    </div>
+    <div class="cbar-med cfield">
+      <label for="trajColor">Trajectory Colour</label>
+      <select id="trajColor" aria-label="Select trajectory colour">
+        <option value="multicolor">Multicolor</option>
+        <option value="#3b82f6">Blue</option>
+        <option value="#dc2626">Red</option>
+        <option value="#000000" selected>Black</option>
+      </select>
+    </div>
+    <div class="cbar-med cfield">
+      <label for="solveMode">Trajectory Mode</label>
+      <select id="solveMode" aria-label="Choose integration parameterization">
+        <option value="t" selected>t-step (current)</option>
+        <option value="arc">Arc-length (handles vertical tangents)</option>
+      </select>
+    </div>
+    <div class="cbar-med cfield">
+      <label for="solveMethod">Solver Method</label>
+      <select id="solveMethod" aria-label="Choose numerical integration method">
+        <option value="auto" selected>Auto (detect stiffness)</option>
+        <option value="tsit5">Tsit5 (non-stiff)</option>
+        <option value="bdf5">BDF5 (stiff)</option>
+        <option value="dop853">DOP853 (8(5,3)) - dense</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ── Controls Row 2: Ranges + Arrow settings ── -->
+  <div class="cbar" role="group" aria-label="Axis ranges and arrow settings">
+    <div class="cbar-sm cfield">
+      <label for="tMin">t min</label>
+      <input type="number" id="tMin" value="-3" step="0.5" aria-label="Horizontal axis minimum">
+    </div>
+    <div class="cbar-sm cfield">
+      <label for="tMax">t max</label>
+      <input type="number" id="tMax" value="3" step="0.5" aria-label="Horizontal axis maximum">
+    </div>
+    <div class="cbar-sm cfield">
+      <label for="yMin">y min</label>
+      <input type="number" id="yMin" value="-4" step="0.5" aria-label="Vertical axis minimum">
+    </div>
+    <div class="cbar-sm cfield">
+      <label for="yMax">y max</label>
+      <input type="number" id="yMax" value="4" step="0.5" aria-label="Vertical axis maximum">
+    </div>
+    <div class="cbar-sm cfield">
+      <label for="arrowLength" style="white-space:normal;">Arrow length</label>
+      <input type="number" id="arrowLength" value="16" min="5" max="50" step="1"
+             title="Length of each direction-field arrow, in pixels (5–50)"
+             aria-label="Arrow length in pixels">
+    </div>
+    <div class="cbar-sm cfield">
+      <label for="arrowsPerAxis" style="white-space:normal;">Arrows per axis</label>
+      <input type="number" id="arrowsPerAxis" value="20" min="10" max="50" step="1"
+             title="Number of arrows along each axis - higher is a denser field (10–50)"
+             aria-label="Number of arrows per axis">
+    </div>
+    <div class="cbar-sm cfield">
+      <label for="trajHeadSize" style="white-space:normal;">Head size (trajectory)</label>
+      <input type="number" id="trajHeadSize" value="0" min="0" max="20" step="0.5"
+             title="Arrowhead size on solution curves, in pixels; 0 hides arrowheads (0–20)"
+             aria-label="Trajectory arrowhead size in pixels (0 to disable)">
+    </div>
+    <div class="cbar-lg cfield">
+      <label for="arrowOpacity">Opacity - <span id="opacityValue" aria-live="polite" style="color:var(--blue);font-weight:700;">0.50</span></label>
+      <input type="range" id="arrowOpacity" min="0.05" max="1" step="0.05" value="0.50"
+             title="Transparency of the direction-field arrows (0.05 faint – 1 solid)"
+             aria-label="Arrow opacity" aria-describedby="opacityValue">
+    </div>
+    <div class="check-wrap">
+      <span class="clbl">Options</span>
+      <div class="check-inner" title="Show or hide the direction-field arrows">
+        <input type="checkbox" id="showField" checked>
+        <label for="showField">Field</label>
+      </div>
+    </div>
+    <div class="check-wrap" style="justify-content:flex-end;">
+      <span class="clbl" style="visibility:hidden;">Options</span>
+      <div class="check-inner" title="Scale each arrow's length by the slope magnitude; off draws all arrows equal length">
+        <input type="checkbox" id="variableArrows" checked>
+        <label for="variableArrows">Variable length</label>
+      </div>
+    </div>
+    <div class="check-wrap" style="justify-content:flex-end;">
+      <span class="clbl" style="visibility:hidden;">Options</span>
+      <div class="check-inner" title="Show or hide the background coordinate grid">
+        <input type="checkbox" id="showGrid" checked>
+        <label for="showGrid">Grid</label>
+      </div>
+    </div>
+    <div class="check-wrap" style="justify-content:flex-end;">
+      <span class="clbl" style="visibility:hidden;">Options</span>
+      <div class="check-inner" title="Mark the clicked initial condition of each solution curve with a dot">
+        <input type="checkbox" id="showInitialPoint" checked>
+        <label for="showInitialPoint">Initial points</label>
+      </div>
+    </div>
+    <div class="check-wrap" style="justify-content:flex-end;">
+      <span class="clbl" style="visibility:hidden;">Options</span>
+      <div class="check-inner" title="Detect constant solutions y=c where f(t,c)=0 for all t and draw them as thick red lines (solid = stable, dashed = unstable)">
+        <input type="checkbox" id="showEquilibria" checked>
+        <label for="showEquilibria">Equilibria</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Action bar ── -->
+  <div class="abar" role="group" aria-label="Field actions">
+    <button type="button" id="updateFieldBtn" class="abtn abtn-update"
+            aria-label="Update direction field with current settings">
+      <span aria-hidden="true">&#8635;</span> Update Field
+    </button>
+    <button type="button" id="clearSolutionsBtn" class="abtn abtn-clear"
+            aria-label="Clear all solution curves from the plot">
+      <span aria-hidden="true">&#10005;</span> Clear Solutions
+    </button>
+    <button type="button" id="downloadBtn" class="abtn abtn-dl"
+            aria-label="Download the current direction field as a PNG image">
+      <span aria-hidden="true">&#8595;</span> Download PNG
+    </button>
+  </div>
+
+  <!-- ── Initial-condition input: keyboard-accessible alternative to clicking ── -->
+  <div class="ic-bar" role="group" aria-label="Draw a solution curve from a typed initial condition">
+    <span class="ic-lbl">Initial condition</span>
+    <label for="icT">\(t_0\)</label>
+    <input type="text" inputmode="decimal" id="icT" value="0" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial t value (accepts expressions like pi/2)">
+    <label for="icY">\(y_0\)</label>
+    <input type="text" inputmode="decimal" id="icY" value="1" title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)" aria-label="Initial y value (accepts expressions like pi/2)">
+    <button type="button" id="btnAddIC" class="abtn abtn-add" aria-label="Draw solution curve through the typed initial condition"><span aria-hidden="true">&#43;</span> Add curve</button>
+  </div>
+
+  <!-- ── Readout bar ── -->
+  <dl class="rbar" role="region" aria-label="Field status">
+    <div class="rcell">
+      <dt class="rlbl">Equation</dt>
+      <dd class="rval rval-b" id="rv-eq" title="Current equation">y&prime; = sin(t)(4&minus;y&sup2;)</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Solutions</dt>
+      <dd class="rval rval-g" id="rv-sol" aria-live="polite">0 curves</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Equilibria</dt>
+      <dd class="rval" id="rv-equil" style="color:#dc2626;" aria-live="polite" title="Equilibrium solutions y = c where f(t,c)=0 for all t">-</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Last Click</dt>
+      <dd class="rval" id="rv-click" aria-live="polite">-</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Status</dt>
+      <dd class="rval rval-b" id="rv-status" aria-live="polite" aria-atomic="true">Ready</dd>
+    </div>
+  </dl>
+
+  <!-- ── Viz grid ── -->
+  <div class="viz-grid">
+
+    <!-- Canvas -->
+    <div class="pwrap" id="canvasWrap">
+      <div class="phdr">
+        <span class="pdot" style="background:#1d4ed8" aria-hidden="true"></span>
+        Direction Field - <span id="eqDisplay">\(y' = f(t,y)\)</span> &ensp;&bull;&ensp; arrows show slope at each grid point
+      </div>
+      <div class="canvas-wrap">
+        <div class="canvas-overlay" id="canvasOverlay" aria-live="polite">
+          Click anywhere to draw a solution curve
+        </div>
+        <canvas id="canvas" role="img"
+          aria-label="Direction field plot. Click to draw a solution curve through any point."
+          aria-describedby="canvasDesc"></canvas>
+        <p id="canvasDesc" class="sr-only" aria-live="polite">Direction field visualization. Click on the canvas to draw a solution curve through the chosen point.</p>
+      </div>
+      <div class="canvas-footer">
+        <span class="canvas-hint" aria-hidden="true">Click: trace solution &ensp;&bull;&ensp; Colors cycle automatically &ensp;&bull;&ensp; Multiple curves supported</span>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="side-panel">
+
+      <!-- Examples -->
+      <div class="coll-panel">
+        <button type="button" id="exBtn" class="coll-btn"
+                aria-expanded="false" aria-controls="exDiv">
+          <span>Example Equations (28)</span>
+          <span class="coll-icon" id="exIcon" aria-hidden="true">+</span>
+        </button>
+        <div id="exDiv" class="coll-inner" role="region" aria-labelledby="exBtn" hidden>
+          <ul class="ex-list" id="exList">
+            <li><button type="button" class="example-btn" data-eq="t - y" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = t - y\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="sin(t)" data-tmin="-6" data-tmax="6" data-ymin="-4" data-ymax="4">\(y' = \sin t\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="y*(1 - y)" data-tmin="-3" data-tmax="3" data-ymin="-1" data-ymax="2">\(y' = y(1 - y)\) &nbsp;&rarr;&nbsp;logistic</button></li>
+            <li><button type="button" class="example-btn" data-eq="t^2 + y^2" data-tmin="-2" data-tmax="2" data-ymin="-2" data-ymax="2">\(y' = t^2 + y^2\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="-y + sin(t)" data-tmin="-6" data-tmax="6" data-ymin="-3" data-ymax="3">\(y' = -y + \sin t\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="exp(-t^2)" data-tmin="-3" data-tmax="3" data-ymin="-1" data-ymax="3">\(y' = e^{-t^2}\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="y/t" data-tmin="-4" data-tmax="4" data-ymin="-4" data-ymax="4">\(y' = y/t\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="t*y" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = ty\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="cos(t)*cos(y)" data-tmin="-6" data-tmax="6" data-ymin="-6" data-ymax="6">\(y' = \cos t\,\cos y\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="sqrt(abs(y))" data-tmin="-3" data-tmax="3" data-ymin="-2" data-ymax="4">\(y' = \sqrt{|y|}\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="y^2 - t" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = y^2 - t\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="tanh(t*y)" data-tmin="-4" data-tmax="4" data-ymin="-4" data-ymax="4">\(y' = \tanh(ty)\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="-t/y" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -t/y\) &nbsp;&rarr;&nbsp;circles</button></li>
+            <li><button type="button" class="example-btn" data-eq="y - y^3" data-tmin="-3" data-tmax="3" data-ymin="-2" data-ymax="2">\(y' = y - y^3\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="1/(1 + t^2) - y" data-tmin="-5" data-tmax="5" data-ymin="-2" data-ymax="2">\(y' = \dfrac{1}{1+t^2} - y\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="sin(y)*cos(t)" data-tmin="-6" data-tmax="6" data-ymin="-6" data-ymax="6">\(y' = \sin y\,\cos t\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="log(abs(t) + 1)*y" data-tmin="-4" data-tmax="4" data-ymin="-4" data-ymax="4">\(y' = \ln(|t|+1)\cdot y\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="t*exp(-y)" data-tmin="-3" data-tmax="3" data-ymin="-2" data-ymax="4">\(y' = t\,e^{-y}\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="y*(2 - y)*(y - 1)" data-tmin="-3" data-tmax="3" data-ymin="-1" data-ymax="3">\(y' = y(2-y)(y-1)\) &nbsp;&rarr;&nbsp;bistable</button></li>
+            <li><button type="button" class="example-btn" data-eq="sin(t*y)" data-tmin="-4" data-tmax="4" data-ymin="-4" data-ymax="4">\(y' = \sin(ty)\)</button></li>
+            <!-- linear & separable examples -->
+            <li><button type="button" class="example-btn" data-eq="(t^3 - 2*y)/t" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t^3 - 2y}{t}\) &nbsp;&rarr;&nbsp;linear</button></li>
+            <li><button type="button" class="example-btn" data-eq="exp(t) + y" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = e^{t} + y\) &nbsp;&rarr;&nbsp;linear, exp.\ forcing</button></li>
+            <li><button type="button" class="example-btn" data-eq="exp(-2*t) - 3*y" data-tmin="-2" data-tmax="3" data-ymin="-1" data-ymax="2">\(y' = e^{-2t} - 3y\) &nbsp;&rarr;&nbsp;linear decay</button></li>
+            <li><button type="button" class="example-btn" data-eq="-200*(y - cos(t))" data-tmin="0" data-tmax="6" data-ymin="-2" data-ymax="2">\(y' = -200\,(y - \cos t)\) &nbsp;&rarr;&nbsp;stiff (auto &rarr; BDF5)</button></li>
+            <li><button type="button" class="example-btn" data-eq="-300*(y - sin(t))" data-tmin="0" data-tmax="6" data-ymin="-2" data-ymax="2">\(y' = -300\,(y - \sin t)\) &nbsp;&rarr;&nbsp;stiff (auto &rarr; BDF5)</button></li>
+            <li><button type="button" class="example-btn" data-eq="exp(2*t) + y - 1" data-tmin="-3" data-tmax="2" data-ymin="-3" data-ymax="3">\(y' = e^{2t} + y - 1\) &nbsp;&rarr;&nbsp;linear</button></li>
+            <li><button type="button" class="example-btn" data-eq="exp(t + y)" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = e^{t+y}\) &nbsp;&rarr;&nbsp;separable, blow-up</button></li>
+            <li><button type="button" class="example-btn" data-eq="1/((1 + t^2)*(1 + y^2))" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{1}{(1+t^2)(1+y^2)}\) &nbsp;&rarr;&nbsp;separable</button></li>
+            <li><button type="button" class="example-btn" data-eq="sin(t)/t^2 - 2*y/t" data-tmin="0.3" data-tmax="10" data-ymin="-2" data-ymax="2">\(y' = \dfrac{\sin t}{t^2} - \dfrac{2y}{t}\) &nbsp;&rarr;&nbsp;\(ty' + 2y = \dfrac{\sin t}{t}\)</button></li>
+            <li><button type="button" class="example-btn" data-eq="cos(t)/t - 2*y/t" data-tmin="0.3" data-tmax="10" data-ymin="-2" data-ymax="2">\(y' = \dfrac{\cos t}{t} - \dfrac{2y}{t}\) &nbsp;&rarr;&nbsp;\(ty' + 2y = \cos t\)</button></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Implicit Curves with vertical tangents (arc-length mode) -->
+      <div class="coll-panel">
+        <button type="button" id="icBtn" class="coll-btn"
+                aria-expanded="false" aria-controls="icDiv">
+          <span>Implicit Curves - Arc-length (47)</span>
+          <span class="coll-icon" id="icIcon" aria-hidden="true">+</span>
+        </button>
+        <div id="icDiv" class="coll-inner" role="region" aria-labelledby="icBtn" hidden>
+          <p style="font-size:.8125rem;color:var(--txt2);margin:.2rem 0 .6rem;">Each example loads in <strong>arc-length</strong> mode so vertical tangents are crossed and full implicit curves close up. Bounds use a 5:3 aspect ratio matching the canvas, so circles look round. Click anywhere on the field after loading.</p>
+
+          <div class="ex-subhead">Conic &amp; classical algebraic curves</div>
+          <ul class="ex-list">
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-t/y" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -t/y\) &nbsp;&rarr;&nbsp; circles \(t^2+y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-t/(4*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -t/(4y)\) &nbsp;&rarr;&nbsp; ellipses \(t^2/4+y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-4*t/y" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -4t/y\) &nbsp;&rarr;&nbsp; tall ellipses \(t^2+y^2/4=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="t/y" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = t/y\) &nbsp;&rarr;&nbsp; hyperbolas \(t^2-y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-y/t" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -y/t\) &nbsp;&rarr;&nbsp; rect.\ hyperbolas \(ty=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t+y)/(t+2*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{2t+y}{t+2y}\) &nbsp;&rarr;&nbsp; tilted ellipses \(t^2+ty+y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="t*(1 - 2*(t^2+y^2))/(y*(1 + 2*(t^2+y^2)))" data-tmin="-2.5" data-tmax="2.5" data-ymin="-1.5" data-ymax="1.5">\(y' = \dfrac{t(1-2(t^2+y^2))}{y(1+2(t^2+y^2))}\) &nbsp;&rarr;&nbsp; Bernoulli lemniscate (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="t*(1 - 2*t^2)/y" data-tmin="-2.5" data-tmax="2.5" data-ymin="-1.5" data-ymax="1.5">\(y' = \dfrac{t(1-2t^2)}{y}\) &nbsp;&rarr;&nbsp; Gerono lemniscate (figure-8) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(y - t^2)/(y^2 - t)" data-tmin="-2.5" data-tmax="2.5" data-ymin="-1.5" data-ymax="1.5">\(y' = \dfrac{y - t^2}{y^2 - t}\) &nbsp;&rarr;&nbsp; folium of Descartes (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="1/(2*y)" data-tmin="-3" data-tmax="7" data-ymin="-3" data-ymax="3">\(y' = 1/(2y)\) &nbsp;&rarr;&nbsp; sideways parabolas \(t=y^2+C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-cbrt(y/t)" data-tmin="-2.5" data-tmax="2.5" data-ymin="-1.5" data-ymax="1.5">\(y' = -\sqrt[3]{y/t}\) &nbsp;&rarr;&nbsp; astroid family (implicit&nbsp;solution)</button></li>
+          </ul>
+
+          <div class="ex-subhead">Homogeneous (substitution \(v = y/t\))</div>
+          <ul class="ex-list">
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(t - y)/(t + y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t - y}{t + y}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(t^2 + 2*y^2)/(2*t*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t^2 + 2y^2}{2ty}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(y + 2*sqrt(t*y))/t" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{y + 2\sqrt{ty}}{t}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(t + y)/(t - y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t + y}{t - y}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="y*(t - y)/(t*(t + y))" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{y(t - y)}{t(t + y)}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(t^3 + y^3)/(t*y^2)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t^3 + y^3}{t\,y^2}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="y/t + exp(y/t)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = y/t + e^{y/t}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="2*t*y/(t^2 - y^2)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{2ty}{t^2 - y^2}\) &nbsp;&rarr;&nbsp; tangent circles (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(y + sqrt(t^2 + y^2))/t" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{y + \sqrt{t^2 + y^2}}{t}\)</button></li>
+          </ul>
+
+          <div class="ex-subhead">Linear-shift substitution (\(v = at+by+c\))</div>
+          <ul class="ex-list">
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="sqrt(t + y + 1)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \sqrt{t + y + 1}\)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(4*t + y)^2" data-tmin="-2.5" data-tmax="2.5" data-ymin="-1.5" data-ymax="1.5">\(y' = (4t + y)^2\)</button></li>
+          </ul>
+
+          <div class="ex-subhead">Bernoulli equations</div>
+          <ul class="ex-list">
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(5*y^3 - 2*t*y)/t^2" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{5y^3 - 2ty}{t^2}\) &nbsp;&rarr;&nbsp; \(n=3\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(5*y^4 - 2*t*y)/t^2" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{5y^4 - 2ty}{t^2}\) &nbsp;&rarr;&nbsp; \(n=4\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(3*t^4 + y^3)/(3*t*y^2)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{3t^4 + y^3}{3ty^2}\)</button></li>
+          </ul>
+
+          <div class="ex-subhead">Exact equations \(M\,dt + N\,dy = 0\)</div>
+          <ul class="ex-list">
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t + 3*y)/(3*t + 2*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{2t + 3y}{3t + 2y}\) &nbsp;&rarr;&nbsp; \(t^2+3ty+y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(y - 4*t)/(6*y - t)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{y - 4t}{6y - t}\) &nbsp;&rarr;&nbsp; \(2t^2-ty+3y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(3*t^2 + 2*y^2)/(4*t*y + 6*y^2)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{3t^2 + 2y^2}{4ty + 6y^2}\) &nbsp;&rarr;&nbsp; \(t^3+2ty^2+2y^3=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t*y^2 + 3*t^2)/(2*t^2*y + 4*y^3)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{2ty^2 + 3t^2}{2t^2 y + 4y^3}\) &nbsp;&rarr;&nbsp; \(t^3+t^2 y^2+y^4=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(1 + y*exp(t*y))/(2*y + t*exp(t*y))" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{1 + y\,e^{ty}}{2y + t\,e^{ty}}\) &nbsp;&rarr;&nbsp; \(t+y^2+e^{ty}=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(exp(t)*sin(y) + tan(y))/(exp(t)*cos(y) + t*sec(y)^2)" data-tmin="-2.5" data-tmax="2.5" data-ymin="-1.5" data-ymax="1.5">\(y' = -\dfrac{e^{t}\sin y + \tan y}{e^{t}\cos y + t\sec^2 y}\) &nbsp;&rarr;&nbsp; \(e^{t}\sin y + t\tan y=C\) (implicit&nbsp;solution)</button></li>
+            <!-- exact equations and review problems -->
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t + 3)/(2*y - 2)" data-tmin="-5" data-tmax="5" data-ymin="-2" data-ymax="4">\(y' = -\dfrac{2t + 3}{2y - 2}\) &nbsp;&rarr;&nbsp; circles \((t+\tfrac{3}{2})^2+(y-1)^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t - y)/(2*y - t)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{2t - y}{2y - t}\) &nbsp;&rarr;&nbsp; \(t^2-ty+y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(9*t^2 + y - 1)/(4*y - t)" data-tmin="-2" data-tmax="2" data-ymin="-3" data-ymax="3">\(y' = \dfrac{9t^2 + y - 1}{4y - t}\) &nbsp;&rarr;&nbsp; \(3t^3+ty-t-2y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t*y + 1)/(t^2 + 2*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{2ty + 1}{t^2 + 2y}\) &nbsp;&rarr;&nbsp; \(t^2 y + t + y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(2*t*y + y^2 + 1)/(t^2 + 2*t*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{2ty + y^2 + 1}{t^2 + 2ty}\) &nbsp;&rarr;&nbsp; \(t^2 y + ty^2 + t=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(t^2 + y)/(t + exp(y))" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{t^2 + y}{t + e^{y}}\) &nbsp;&rarr;&nbsp; \(t^3/3 + ty + e^{y}=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(2*t + y)/(3 + 3*y^2 - t)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{2t + y}{3 + 3y^2 - t}\) &nbsp;&rarr;&nbsp; \(t^2+ty-3y-y^3=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(t + y)/(t + 2*y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{t + y}{t + 2y}\) &nbsp;&rarr;&nbsp; \(t^2/2+ty+y^2=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(2*t + 3*t*y^2)/(3*t^2 - 2*y - y^3)" data-tmin="-3" data-tmax="3" data-ymin="-3" data-ymax="3">\(y' = \dfrac{2t + 3ty^2}{3t^2 - 2y - y^3}\) &nbsp;&rarr;&nbsp; \(t^2+t^2 y^2-y^2-y^4/2 = C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="-(3*t^2 - 2*t*y + 2)/(6*y^2 - t^2 + 3)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = -\dfrac{3t^2 - 2ty + 2}{6y^2 - t^2 + 3}\) &nbsp;&rarr;&nbsp; \(t^3 - t^2 y + 2t + 2y^3 + 3y=C\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(t^2 + y^2)/(y^2 - 1)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t^2 + y^2}{y^2 - 1}\) &nbsp;&rarr;&nbsp; vertical tangents at \(y=\pm 1\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(2*y + 3)/(4*t - y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{2y + 3}{4t - y}\) &nbsp;&rarr;&nbsp; integrating factor (implicit&nbsp;solution)</button></li>
+          </ul>
+
+          <div class="ex-subhead">Homogeneous - review problems</div>
+          <ul class="ex-list">
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(2*y + sqrt(t^2 - y^2))/(2*t)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{2y + \sqrt{t^2 - y^2}}{2t}\) &nbsp;&rarr;&nbsp; \(y/t = \sin(\tfrac{1}{2}\ln|t|+C)\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(3*y^2 + 2*t*y)/(2*t*y + t^2)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{3y^2 + 2ty}{2ty + t^2}\) &nbsp;&rarr;&nbsp; homogeneous (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="(t + 2*y)/(2*t - y)" data-tmin="-5" data-tmax="5" data-ymin="-3" data-ymax="3">\(y' = \dfrac{t + 2y}{2t - y}\) &nbsp;&rarr;&nbsp; \((2t+4y)+(2t-2y)y'=0\) (implicit&nbsp;solution)</button></li>
+            <li><button type="button" class="example-btn" data-mode="arc" data-eq="y/t + sqrt(y/t)" data-tmin="0.2" data-tmax="6" data-ymin="-1" data-ymax="3">\(y' = y/t + \sqrt{y/t}\) &nbsp;&rarr;&nbsp; \(t\,dy - y\,dt = \sqrt{ty}\,dt\) (implicit&nbsp;solution)</button></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Supported Functions -->
+      <div class="coll-panel">
+        <button type="button" id="fnBtn" class="coll-btn"
+                aria-expanded="false" aria-controls="fnDiv">
+          <span>Supported Functions</span>
+          <span class="coll-icon" id="fnIcon" aria-hidden="true">+</span>
+        </button>
+        <div id="fnDiv" class="coll-inner" role="region" aria-labelledby="fnBtn" hidden>
+          <p style="font-size:.8125rem;color:var(--txt2);margin:.2rem 0 .6rem;">Click a function name to insert it into the equation box.</p>
+          <table class="func-table" aria-label="Supported mathematical functions. Click name to insert.">
+            <thead class="sr-only"><tr><th>Code</th><th>Notation</th></tr></thead>
+            <tbody>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert sqrt(x)">sqrt(x)</span></td><td class="func-latex">\(\sqrt{x}\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert cbrt(x)">cbrt(x)</span></td><td class="func-latex">\(\sqrt[3]{x}\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert abs(x)">abs(x)</span></td><td class="func-latex">\(|x|\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert sin(x)">sin(x)</span></td><td class="func-latex">\(\sin x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert cos(x)">cos(x)</span></td><td class="func-latex">\(\cos x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert tan(x)">tan(x)</span></td><td class="func-latex">\(\tan x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert cot(x)">cot(x)</span></td><td class="func-latex">\(\cot x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert sec(x)">sec(x)</span></td><td class="func-latex">\(\sec x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert csc(x)">csc(x)</span></td><td class="func-latex">\(\csc x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert asin(x)">asin(x)</span></td><td class="func-latex">\(\arcsin x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert acos(x)">acos(x)</span></td><td class="func-latex">\(\arccos x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert atan(x)">atan(x)</span></td><td class="func-latex">\(\arctan x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert sinh(x)">sinh(x)</span></td><td class="func-latex">\(\sinh x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert cosh(x)">cosh(x)</span></td><td class="func-latex">\(\cosh x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert tanh(x)">tanh(x)</span></td><td class="func-latex">\(\tanh x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert exp(x)">exp(x)</span></td><td class="func-latex">\(e^{x}\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert log(x)">log(x)</span></td><td class="func-latex">\(\ln x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert log10(x)">log10(x)</span></td><td class="func-latex">\(\log_{10} x\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert pi">pi</span></td><td class="func-latex">\(\pi\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert e">e</span></td><td class="func-latex">\(e\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert ceil(x)">ceil(x)</span></td><td class="func-latex">\(\lceil x\rceil\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert floor(x)">floor(x)</span></td><td class="func-latex">\(\lfloor x\rfloor\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert round(x)">round(x)</span></td><td class="func-latex">\(\operatorname{round}(x)\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert max(a,b)">max(a,b)</span></td><td class="func-latex">\(\max(a,b)\)</td></tr>
+              <tr><td><span class="func-name" tabindex="0" role="button" aria-label="Insert min(a,b)">min(a,b)</span></td><td class="func-latex">\(\min(a,b)\)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /side-panel -->
+  </div><!-- /viz-grid -->
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981380">https://doi.org/10.5281/zenodo.20981380</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Direction Field Visualizer. Math Tools. https://doi.org/10.5281/zenodo.20981380</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Direction Field Visualizer." Math Tools, 2026, doi.org/10.5281/zenodo.20981380.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026slope,
+  author       = {Shelvean Kapita},
+  title        = {{Direction Field Visualizer}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981380},
+  url          = {https://doi.org/10.5281/zenodo.20981380}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: April 2026.</p>
+</footer>
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode" title="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* ── Announce ── */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+
+/* ── Info panel toggle ── */
+(function(){
+  var btn=document.getElementById('infoBtn'),body=document.getElementById('infoBody'),icon=document.getElementById('infoIcon');
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    icon.textContent=exp?'+':'\u2212';
+    if(!exp&&window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([body]).catch(function(){});
+  });
+})();
+
+/* ── Collapsible panels ── */
+function mkColl(btnId,bodyId,iconId){
+  var btn=document.getElementById(btnId),body=document.getElementById(bodyId),icon=document.getElementById(iconId);
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    if(icon)icon.textContent=exp?'+':'\u2212';
+    if(!exp&&window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([body]).catch(function(){});
+  });
+}
+mkColl('exBtn','exDiv','exIcon');
+mkColl('icBtn','icDiv','icIcon');
+mkColl('fnBtn','fnDiv','fnIcon');
+
+/* ── High-contrast ── */
+document.getElementById('ctog').addEventListener('click',function(){
+  document.documentElement.classList.toggle('hc');
+  var on=document.documentElement.classList.contains('hc');
+  say('High-contrast '+(on?'enabled':'disabled'));
+});
+
+/* ── Main application ── */
+document.addEventListener('DOMContentLoaded',function(){
+  var canvas=document.getElementById('canvas');
+  var ctx=canvas.getContext('2d');
+  var PADDING=50;
+  var solutions=[];
+  var colorIndex=0;
+
+  var TRAJ_COLORS=['#1d4ed8','#dc2626','#059669','#9333ea','#ea580c','#0891b2','#be185d','#4b5563'];
+
+  /* ── Resize ── */
+  function resizeCanvas(){
+    /* Fill the available width so the graph extends all the way across - when
+       the panels stack below it (≤1240px, incl. mobile "Request Desktop Site"
+       mode) it uses the full card width. Never drop below 875 so on narrow
+       phones the plot stays large and the canvas-wrap scrolls horizontally.
+       Keeps the nonlinear plot's 875×625 aspect ratio. */
+    var wrap=document.getElementById('canvasWrap');
+    var cW=Math.max(875, wrap.clientWidth-4);
+    var cH=Math.min(Math.round(cW*625/875), 760);
+    canvas.style.width=cW+'px';
+    canvas.style.height=cH+'px';
+    canvas.width=cW;
+    canvas.height=cH;
+  }
+
+  resizeCanvas();
+  var _resT;
+  window.addEventListener('resize',function(){
+    clearTimeout(_resT);
+    _resT=setTimeout(function(){resizeCanvas();drawDirectionField();},80);
+  });
+
+  /* ── Readout ── */
+  function updateReadout(){
+    var eq=document.getElementById('equation').value.trim()||'0';
+    var rv=document.getElementById('rv-eq');
+    rv.textContent='y\u2032 = '+eq;
+    rv.title='y\u2032 = '+eq;
+    document.getElementById('rv-sol').textContent=
+      solutions.length+(solutions.length===1?' curve':' curves');
+  }
+
+  function setStatus(txt,cls){
+    var el=document.getElementById('rv-status');
+    el.textContent=txt;
+    el.className='rval '+(cls||'rval-b');
+  }
+
+  /* ── Preprocess ── */
+  /* Rewrite a^b as Math.pow(a,b). Avoids the ES2016 syntax error
+     for expressions like exp(-t^2) where -t**2 is illegal. */
+  function powRewrite(eq){
+    var i;
+    while((i=eq.lastIndexOf('^'))>=0){
+      var bs=i,be=i;
+      while(bs>0&&/\s/.test(eq[bs-1]))bs--;
+      be=bs;
+      if(bs>0&&eq[bs-1]===')'){
+        var d=1,p=bs-2;
+        while(p>=0&&d>0){var c=eq[p];if(c===')')d++;else if(c==='(')d--;if(d>0)p--;}
+        if(p<0)return eq;
+        bs=p;
+        while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+      }else{
+        while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+      }
+      var base=eq.substring(bs,be);
+      var es=i+1,ee=es;
+      while(ee<eq.length&&/\s/.test(eq[ee]))ee++;
+      es=ee;
+      if(eq[ee]==='+'||eq[ee]==='-')ee++;
+      if(eq[ee]==='('){
+        var d2=1;ee++;
+        while(ee<eq.length&&d2>0){var c2=eq[ee];if(c2==='(')d2++;else if(c2===')')d2--;ee++;}
+      }else{
+        while(ee<eq.length&&/[\w$.]/.test(eq[ee]))ee++;
+        if(eq[ee]==='('){
+          var d3=1;ee++;
+          while(ee<eq.length&&d3>0){var c3=eq[ee];if(c3==='(')d3++;else if(c3===')')d3--;ee++;}
+        }
+      }
+      var expn=eq.substring(es,ee);
+      if(!base||!expn)return eq;
+      eq=eq.substring(0,bs)+'Math.pow('+base+','+expn+')'+eq.substring(ee);
+    }
+    return eq;
+  }
+  /* Reciprocal trig helpers (used by example equations like sec(y)^2). */
+  if(typeof Math.cot!=='function')Math.cot=function(x){return 1/Math.tan(x);};
+  if(typeof Math.sec!=='function')Math.sec=function(x){return 1/Math.cos(x);};
+  if(typeof Math.csc!=='function')Math.csc=function(x){return 1/Math.sin(x);};
+
+  function preprocess(eq){
+    eq=eq.replace(/\bx\b/g,'t');
+    eq=powRewrite(eq);
+    eq=eq
+      .replace(/\b(sin|cos|tan|cot|sec|csc|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+      .replace(/\bpi\b/gi,'Math.PI')
+      .replace(/(?<!Math\.)e(?!\w)/g,'Math.E');
+    return eq;
+  }
+
+  /* Convert a user expression (in t, y) to display LaTeX. */
+  function exprToLatex(s){
+    if(!s)return '';
+    var t=String(s);
+    t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+      if((l==='e'||l==='E')&&o+2<=str.length){var c=str.charAt(o+2);if((c>='0'&&c<='9')||c==='+'||c==='-')return m;}
+      return d+'*'+l;
+    });
+    function wrapPow(str){
+      var out='',i=0,n=str.length;
+      while(i<n){
+        if(str.charAt(i)==='^'){
+          if(i+1<n&&str.charAt(i+1)==='{'){out+='^';i++;continue;}
+          i++;var sign='';
+          if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+          var body='';
+          if(i<n&&str.charAt(i)==='('){
+            var depth=1,j=i+1;
+            while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+            body=str.slice(i+1,j);i=(j<n)?j+1:j;
+          }else{var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));if(mm){body=mm[0];i+=mm[0].length;}}
+          out+='^{'+sign+body+'}';
+        }else{out+=str.charAt(i);i++;}
+      }
+      return out;
+    }
+    t=wrapPow(t);
+    function callMap(str,name,mapper){
+      var i=0,nlen=name.length;
+      while((i=str.indexOf(name+'(',i))!==-1){
+        if(i>0&&/[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+        var depth=1,j=i+nlen+1,len=str.length;
+        while(j<len){var c=str.charAt(j);if(c==='(')depth++;else if(c===')'){depth--;if(depth===0)break;}j++;}
+        if(depth!==0)break;
+        var inner=str.slice(i+nlen+1,j),rep=mapper(exprToLatex(inner));
+        str=str.slice(0,i)+rep+str.slice(j+1);i+=rep.length;
+      }
+      return str;
+    }
+    t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+    t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+    t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+    t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+    t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+    t=callMap(t,'floor',function(x){return '\\lfloor '+x+'\\rfloor';});
+    t=callMap(t,'ceil', function(x){return '\\lceil '+x+'\\rceil';});
+    t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+    t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+    t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+    t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+    t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+    t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+    t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+    t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+    t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+    t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+    t=callMap(t,'cot',  function(x){return '\\cot\\!\\left('+x+'\\right)';});
+    t=callMap(t,'sec',  function(x){return '\\sec\\!\\left('+x+'\\right)';});
+    t=callMap(t,'csc',  function(x){return '\\csc\\!\\left('+x+'\\right)';});
+    t=t.replace(/([^\\]|^)\bpi\b/gi,'$1\\pi ');
+    t=t.replace(/\*/g,'\\cdot ');
+    return t;
+  }
+
+  /* Show the current equation as LaTeX in the field header. */
+  function updateEqDisplay(eq){
+    var el=document.getElementById('eqDisplay');
+    if(!el)return;
+    var disp=String(eq).replace(/\bx\b/g,'t');  /* x is treated as t */
+    el.innerHTML='\\(y\' = '+exprToLatex(disp)+'\\)';
+    if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});
+  }
+
+  function getNiceStep(range){
+    var rough=range/8;
+    var exp=Math.pow(10,Math.floor(Math.log10(rough)));
+    var frac=rough/exp;
+    return(frac<=1.5?1:frac<=3.5?2:frac<=7?5:10)*exp;
+  }
+
+  function drawAxisLabels(tMin,tMax,yMin,yMax,xScale,yScale){
+    var small=window.innerWidth<640;
+    ctx.font=(small?'bold 11px':'bold 13px')+' Arial,sans-serif';
+    ctx.fillStyle='#111';
+
+    ctx.textAlign='center';
+    ctx.textBaseline='alphabetic';
+    var tStep=getNiceStep(tMax-tMin);
+    for(var t=Math.ceil(tMin/tStep)*tStep;t<=tMax+1e-9;t+=tStep){
+      var x=PADDING+(t-tMin)*xScale;
+      ctx.fillText(t.toFixed(1).replace(/\.0$/,''),x,canvas.height-14);
+    }
+
+    ctx.textAlign='right';
+    ctx.textBaseline='middle';
+    var yStep=getNiceStep(yMax-yMin);
+    for(var y=Math.ceil(yMin/yStep)*yStep;y<=yMax+1e-9;y+=yStep){
+      var py=canvas.height-PADDING-(y-yMin)*yScale;
+      ctx.fillText(y.toFixed(1).replace(/\.0$/,''),PADDING-9,py);
+    }
+
+    ctx.font=(small?'bold 12px':'bold 14px')+' Arial,sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='top';
+    ctx.fillText('t',canvas.width-16,canvas.height-PADDING+7);
+    ctx.save();
+    ctx.translate(18,canvas.height/2);
+    ctx.rotate(-Math.PI/2);
+    ctx.textBaseline='middle';
+    ctx.fillText('y',0,0);
+    ctx.restore();
+  }
+
+  /* Tidy number for the equilibria list/labels. */
+  function fmtEq(v){return (+(+v).toFixed(4)).toString();}
+  /* True when f(t,y)≡0 over the whole view (every y is an equilibrium). */
+  function identicallyZero(f,tMin,tMax,yMin,yMax){
+    var nt=7,ny=9,fin=0,i,j;
+    for(i=0;i<nt;i++)for(j=0;j<ny;j++){
+      var t=tMin+(tMax-tMin)*(i+0.5)/nt,y=yMin+(yMax-yMin)*(j+0.5)/ny,v;
+      try{v=f(t,y);}catch(e){continue;}
+      if(!isFinite(v))continue;
+      fin++;
+      if(Math.abs(v)>1e-9)return false;
+    }
+    return fin>=10;
+  }
+
+  /* ── Equilibrium detection ──
+     A constant solution y=c is an equilibrium when f(t,c)=0 for ALL t in
+     view (autonomous: f(y)=0; non-autonomous it must still vanish for
+     every t, e.g. cos(t)(y-1)).  Find y-roots of f(t,·) at several t and
+     keep the values that are a root at every sampled t with negligible
+     spread.  Stability comes from the sign of f just below/above c,
+     required consistent across t. */
+  function detectEquilibria(f,tMin,tMax,yMin,yMax){
+    var tN=13,yN=600,i,j;
+    var ts=[];for(i=0;i<tN;i++)ts.push(tMin+(tMax-tMin)*i/(tN-1));
+    function rootsAt(t){
+      var rs=[],prev=null,py=null;
+      for(j=0;j<=yN;j++){
+        var y=yMin+(yMax-yMin)*j/yN,v;
+        try{v=f(t,y);}catch(e){v=NaN;}
+        if(!isFinite(v)){prev=null;py=null;continue;}
+        if(prev!==null&&((prev<0&&v>0)||(prev>0&&v<0))){
+          var lo=py,hi=y,flo=prev;
+          for(var b=0;b<40;b++){var mid=(lo+hi)/2,fm;try{fm=f(t,mid);}catch(e){fm=NaN;}if(!isFinite(fm))break;if((flo<0&&fm<0)||(flo>0&&fm>0)){lo=mid;flo=fm;}else hi=mid;}
+          rs.push((lo+hi)/2);
+        }else if(prev!==null&&v===0)rs.push(y);
+        prev=v;py=y;
+      }
+      return rs;
+    }
+    var rootSets=ts.map(rootsAt);
+    /* A column where f(t,·)≡0 (e.g. sin(t)·g(y) at t=0) yields a root at
+       essentially every grid point; mark it degenerate so it neither
+       seeds candidates nor skews the averaged equilibrium location, but
+       still counts as consistent. */
+    var degen=rootSets.map(function(rs){return rs.length>yN*0.3;});
+    var span=yMax-yMin,tolY=span*0.02,mergeTol=span*0.012;
+    var cand=[];ts.forEach(function(_,ix){if(!degen[ix]&&(ix===0||ix===((tN/2)|0)||ix===tN-1||cand.length===0))rootSets[ix].forEach(function(c){cand.push(c);});});
+    cand.sort(function(a,b){return a-b;});
+    var merged=[];cand.forEach(function(c){if(!merged.length||Math.abs(c-merged[merged.length-1])>mergeTol)merged.push(c);});
+    var d=span*0.01,out=[];
+    merged.forEach(function(c0){
+      var locs=[],ok=true;
+      for(i=0;i<tN;i++){
+        if(degen[i])continue;  /* f≡0 here - consistent with any c */
+        var best=null,bd=Infinity;
+        rootSets[i].forEach(function(r){var dd=Math.abs(r-c0);if(dd<bd){bd=dd;best=r;}});
+        if(best===null||bd>tolY){ok=false;break;}
+        locs.push(best);
+      }
+      if(!ok||!locs.length)return;
+      var avg=locs.reduce(function(a,b){return a+b;},0)/locs.length;
+      var spread=Math.max.apply(null,locs)-Math.min.apply(null,locs);
+      if(spread>=span*0.01)return;
+      if(out.length&&Math.abs(avg-out[out.length-1].y)<=mergeTol)return;
+      /* stability: sign of f below/above c, consistent across t */
+      var stable=0,unstable=0,bad=0;
+      for(i=0;i<tN;i++){
+        var lo,hi;try{lo=f(ts[i],avg-d);hi=f(ts[i],avg+d);}catch(e){bad++;continue;}
+        if(!isFinite(lo)||!isFinite(hi)){bad++;continue;}
+        if(lo>0&&hi<0)stable++;else if(lo<0&&hi>0)unstable++;
+      }
+      var stab='semi';
+      if(stable>0&&unstable===0&&bad===0)stab='stable';
+      else if(unstable>0&&stable===0&&bad===0)stab='unstable';
+      out.push({y:avg,stab:stab});
+    });
+    return out;
+  }
+
+  /* ── Draw direction field ── */
+  window.drawDirectionField=function(clearFlag){
+    if(clearFlag){
+      solutions=[];
+      document.getElementById('canvasOverlay').style.display='block';
+      updateReadout();
+    }
+
+    ctx.fillStyle='#ffffff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    var eq=document.getElementById('equation').value.trim()||'0';
+    updateEqDisplay(eq);
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var arrowLen=+document.getElementById('arrowLength').value||12;
+    var arrowsN=+document.getElementById('arrowsPerAxis').value||20;
+    var thick=1.0;
+    var opacity=+document.getElementById('arrowOpacity').value;
+    var varArrows=document.getElementById('variableArrows').checked;
+    var showGrid=document.getElementById('showGrid').checked;
+    var showInitPt=document.getElementById('showInitialPoint').checked;
+    var fieldColor=document.getElementById('fieldColor').value;
+
+    var dW=canvas.width-2*PADDING;
+    var dH=canvas.height-2*PADDING;
+    var step=Math.min(dW/arrowsN,dH/arrowsN);
+    var xScale=dW/(tMax-tMin);
+    var yScale=dH/(yMax-yMin);
+    var aspect=yScale/xScale;
+
+    var slopeFunc;
+    try{slopeFunc=new Function('t','y','return '+preprocess(eq));}
+    catch(e){return;}
+
+    /* Grid - two-level: subtle minor + slightly stronger major, square spacing */
+    if(showGrid){
+      var gStep=getNiceStep(Math.max(tMax-tMin,yMax-yMin));
+      ctx.setLineDash([]);
+      /* Minor grid */
+      ctx.strokeStyle='rgba(0,0,0,0.04)';ctx.lineWidth=0.5;
+      for(var i=Math.ceil(tMin/(gStep/2))*(gStep/2);i<=tMax+1e-9;i+=gStep/2){var xx=PADDING+(i-tMin)*xScale;ctx.beginPath();ctx.moveTo(xx,PADDING);ctx.lineTo(xx,canvas.height-PADDING);ctx.stroke();}
+      for(var j=Math.ceil(yMin/(gStep/2))*(gStep/2);j<=yMax+1e-9;j+=gStep/2){var yy=canvas.height-PADDING-(j-yMin)*yScale;ctx.beginPath();ctx.moveTo(PADDING,yy);ctx.lineTo(canvas.width-PADDING,yy);ctx.stroke();}
+      /* Major grid */
+      ctx.strokeStyle='rgba(0,0,0,0.08)';ctx.lineWidth=0.7;
+      for(var i=Math.ceil(tMin/gStep)*gStep;i<=tMax+1e-9;i+=gStep){var xx=PADDING+(i-tMin)*xScale;ctx.beginPath();ctx.moveTo(xx,PADDING);ctx.lineTo(xx,canvas.height-PADDING);ctx.stroke();}
+      for(var j=Math.ceil(yMin/gStep)*gStep;j<=yMax+1e-9;j+=gStep){var yy=canvas.height-PADDING-(j-yMin)*yScale;ctx.beginPath();ctx.moveTo(PADDING,yy);ctx.lineTo(canvas.width-PADDING,yy);ctx.stroke();}
+    }
+
+    /* Direction field - tapered arrows with magnitude-normalised sizing */
+    var showFieldChk=document.getElementById('showField').checked;
+    var r0=parseInt(fieldColor.slice(1,3),16)||0,g0=parseInt(fieldColor.slice(3,5),16)||0,b0=parseInt(fieldColor.slice(5,7),16)||0;
+    var fieldData=[];var maxMag=0;
+    if(showFieldChk)
+    for(var px=PADDING+step/2;px<canvas.width-PADDING;px+=step){
+      for(var py=PADDING+step/2;py<canvas.height-PADDING;py+=step){
+        var t=tMin+(px-PADDING)/xScale;
+        var yv=yMin+(canvas.height-PADDING-py)/yScale;
+        var m;
+        try{m=slopeFunc(t,yv);}catch(e){continue;}
+        if(!isFinite(m))continue;
+        var mag=Math.sqrt(1+m*m);
+        if(mag>maxMag)maxMag=mag;
+        fieldData.push({px:px,py:py,m:m,mag:mag});
+      }
+    }
+    var refMag=maxMag||1;
+    if(showFieldChk)
+    fieldData.forEach(function(ar){
+      var nf=Math.min(ar.mag/refMag,1),sf=Math.sqrt(nf);
+      var dl=arrowLen*(0.55+0.45*sf);
+      var angle=Math.atan(-ar.m*aspect);
+      var dcx=Math.cos(angle),dcy=Math.sin(angle);
+      var headLen=Math.max(dl*0.35,5),headHW=headLen*0.5;
+      var shaftLen=dl-headLen*0.4;
+      var baseW=1.0+0.8*sf,tipW=baseW*0.3;
+      var ppx=-dcy,ppy=dcx;
+      var tx=ar.px-dcx*shaftLen/2,ty=ar.py-dcy*shaftLen/2;
+      var hx=ar.px+dcx*shaftLen/2,hy=ar.py+dcy*shaftLen/2;
+      var alpha=opacity*(0.7+0.3*sf);
+      ctx.fillStyle='rgba('+r0+','+g0+','+b0+','+alpha+')';
+      ctx.beginPath();
+      ctx.moveTo(tx+ppx*baseW,ty+ppy*baseW);
+      ctx.lineTo(hx+ppx*tipW,hy+ppy*tipW);
+      ctx.lineTo(hx+ppx*headHW,hy+ppy*headHW);
+      ctx.lineTo(hx+dcx*headLen,hy+dcy*headLen);
+      ctx.lineTo(hx-ppx*headHW,hy-ppy*headHW);
+      ctx.lineTo(hx-ppx*tipW,hy-ppy*tipW);
+      ctx.lineTo(tx-ppx*baseW,ty-ppy*baseW);
+      ctx.closePath();ctx.fill();
+    });
+
+    /* Axes */
+    ctx.globalAlpha=1;
+    ctx.strokeStyle='#1f2937';
+    ctx.lineWidth=1.5;
+    ctx.lineCap='round';
+    ctx.setLineDash([]);
+    if(yMin<=0&&yMax>=0){
+      var y0c=canvas.height-PADDING-(0-yMin)*yScale;
+      ctx.beginPath();ctx.moveTo(PADDING,y0c);ctx.lineTo(canvas.width-PADDING,y0c);ctx.stroke();
+    }
+    if(tMin<=0&&tMax>=0){
+      var t0c=PADDING+(0-tMin)*xScale;
+      ctx.beginPath();ctx.moveTo(t0c,PADDING);ctx.lineTo(t0c,canvas.height-PADDING);ctx.stroke();
+    }
+
+    drawAxisLabels(tMin,tMax,yMin,yMax,xScale,yScale);
+
+    /* Equilibrium lines - constant solutions y=c with f(t,c)=0 for all t,
+       drawn as thick red lines (solid = stable, dashed = unstable,
+       dash-dot = semi/indeterminate).  Always update the readout box;
+       draw the lines only when the toggle is on. */
+    var eqInfo=null,eqs=[];
+    if(identicallyZero(slopeFunc,tMin,tMax,yMin,yMax)){
+      eqInfo='all y (f ≡ 0)';
+    }else{
+      eqs=detectEquilibria(slopeFunc,tMin,tMax,yMin,yMax);
+      eqInfo=eqs.length?eqs.map(function(e){return fmtEq(e.y);}).join(', '):'none';
+    }
+    var eqBox=document.getElementById('rv-equil');
+    if(eqBox)eqBox.textContent=eqInfo;
+    if(document.getElementById('showEquilibria').checked&&eqs.length){
+      ctx.save();
+      ctx.strokeStyle='#dc2626';ctx.lineWidth=3.5;ctx.lineCap='butt';ctx.globalAlpha=0.9;
+      eqs.forEach(function(eq){
+        var yy=canvas.height-PADDING-(eq.y-yMin)*yScale;
+        if(eq.stab==='stable')ctx.setLineDash([]);
+        else if(eq.stab==='unstable')ctx.setLineDash([9,6]);
+        else ctx.setLineDash([9,5,2,5]);
+        ctx.beginPath();ctx.moveTo(PADDING,yy);ctx.lineTo(canvas.width-PADDING,yy);ctx.stroke();
+        /* small label at the right edge */
+        ctx.setLineDash([]);
+        ctx.fillStyle='#dc2626';ctx.font=(window.innerWidth<640?'bold 13px':'bold 15px')+' system-ui,sans-serif';ctx.textAlign='right';ctx.textBaseline='bottom';
+        ctx.fillText('y = '+fmtEq(eq.y),canvas.width-PADDING-3,yy-2);
+      });
+      ctx.restore();
+    }
+
+    /* Solution curves with directional arrowheads */
+    solutions.forEach(function(sol){
+      ctx.save();
+      ctx.strokeStyle=sol.color;
+      ctx.lineWidth=window.innerWidth<640?1.5:2;
+      ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash([]);
+      ctx.globalAlpha=0.85;
+      /* Build visible canvas-coord points and draw curve. Each segment is
+         clipped to the plot rectangle (Liang-Barsky) so trajectories trace
+         exactly to the walls instead of stopping at the last sampled point
+         that happened to fall inside the box. */
+      var cpts=[];
+      var bx0=tMin,bx1=tMax,by0=yMin,by1=yMax;
+      function clipSeg(t0,y0,t1,y1){
+        var dt=t1-t0,dy=y1-y0,u0=0,u1=1;
+        var pp=[-dt,dt,-dy,dy],qq=[t0-bx0,bx1-t0,y0-by0,by1-y0];
+        for(var i=0;i<4;i++){
+          if(pp[i]===0){if(qq[i]<0)return null;}
+          else{var r=qq[i]/pp[i];
+            if(pp[i]<0){if(r>u1)return null;if(r>u0)u0=r;}
+            else{if(r<u0)return null;if(r<u1)u1=r;}}
+        }
+        return{ax:t0+u0*dt,ay:y0+u0*dy,bx:t0+u1*dt,by:y0+u1*dy};
+      }
+      ctx.beginPath();
+      var prev=null,penX=NaN,penY=NaN,penValid=false;
+      sol.points.forEach(function(p){
+        if(prev&&isFinite(p.t)&&isFinite(p.y)&&isFinite(prev.t)&&isFinite(prev.y)){
+          var c=clipSeg(prev.t,prev.y,p.t,p.y);
+          if(c){
+            var Acx=PADDING+(c.ax-tMin)*xScale,Acy=canvas.height-PADDING-(c.ay-yMin)*yScale;
+            var Bcx=PADDING+(c.bx-tMin)*xScale,Bcy=canvas.height-PADDING-(c.by-yMin)*yScale;
+            if(!penValid||Math.abs(Acx-penX)>0.01||Math.abs(Acy-penY)>0.01){ctx.moveTo(Acx,Acy);cpts.push({cx:Acx,cy:Acy});}
+            ctx.lineTo(Bcx,Bcy);cpts.push({cx:Bcx,cy:Bcy});
+            penX=Bcx;penY=Bcy;penValid=true;
+          }else{penValid=false;}
+        }
+        prev=p;
+      });
+      ctx.stroke();
+
+      /* Directional arrowheads - adaptive spacing, max 8, min 60px separation.
+         A head size of 0 disables arrowheads entirely. */
+      var headSzIn=parseFloat(document.getElementById('trajHeadSize').value);
+      if(cpts.length>1 && isFinite(headSzIn) && headSzIn>0){
+        var totalLen=0;
+        for(var i=1;i<cpts.length;i++){var ddx=cpts[i].cx-cpts[i-1].cx,ddy=cpts[i].cy-cpts[i-1].cy;totalLen+=Math.sqrt(ddx*ddx+ddy*ddy);}
+        var arrowSz=headSzIn;
+        var maxArr=8,arrowSp=Math.max(100,totalLen/(maxArr+1));
+        ctx.fillStyle=sol.color;ctx.globalAlpha=0.92;
+        var accum=arrowSp*0.45,placed=[];
+        for(var i=1;i<cpts.length;i++){
+          var ddx=cpts[i].cx-cpts[i-1].cx,ddy=cpts[i].cy-cpts[i-1].cy;
+          var seg=Math.sqrt(ddx*ddx+ddy*ddy);if(seg<0.5)continue;
+          accum+=seg;
+          if(accum>=arrowSp){
+            var ax=cpts[i].cx,ay=cpts[i].cy;
+            var tooClose=false;
+            for(var k=0;k<placed.length;k++){var ex=ax-placed[k].x,ey=ay-placed[k].y;if(ex*ex+ey*ey<3600){tooClose=true;break;}}
+            if(tooClose)continue;
+            accum=0;placed.push({x:ax,y:ay});
+            var ang=Math.atan2(ddy,ddx);
+            ctx.beginPath();
+            ctx.moveTo(ax+arrowSz*Math.cos(ang),ay+arrowSz*Math.sin(ang));
+            ctx.lineTo(ax-arrowSz*Math.cos(ang-Math.PI/3.2),ay-arrowSz*Math.sin(ang-Math.PI/3.2));
+            ctx.lineTo(ax-arrowSz*Math.cos(ang+Math.PI/3.2),ay-arrowSz*Math.sin(ang+Math.PI/3.2));
+            ctx.closePath();ctx.fill();
+          }
+        }
+      }
+      ctx.restore();
+
+      if(showInitPt&&sol.initialPoint){
+        var ip=sol.initialPoint;
+        var ix=PADDING+(ip.t-tMin)*xScale;
+        var iy=canvas.height-PADDING-(ip.y-yMin)*yScale;
+        ctx.fillStyle=sol.color;
+        ctx.strokeStyle='#fff';ctx.lineWidth=2.2;
+        ctx.beginPath();ctx.arc(ix,iy,5.5,0,Math.PI*2);ctx.fill();ctx.stroke();
+        ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.arc(ix,iy,5.5,0,Math.PI*2);ctx.stroke();
+      }
+    });
+
+    /* Equation watermark */
+    ctx.font=(window.innerWidth<640?'bold 13px':'bold 15px')+' Arial,sans-serif';
+    ctx.fillStyle='rgba(17,24,39,0.75)';
+    ctx.textAlign='right';
+    ctx.textBaseline='top';
+    ctx.fillText('y\u2032 = '+eq,canvas.width-14,13);
+
+    /* Overlay visibility */
+    document.getElementById('canvasOverlay').style.display=solutions.length===0?'block':'none';
+
+    updateReadout();
+  };
+
+  /* ── Tsit5 (Tsitouras 5(4), FSAL adaptive) ──
+     Replaces the previous Dormand-Prince 5(4) integrator. FSAL (k7 reused
+     as next k1) drops the per-accepted-step cost from 7 to 6 derivative
+     evaluations. Coefficients from Tsitouras (2011). */
+  function tsit5Step(t,y,h,f,k1){
+    try{
+      if(k1===null||k1===undefined) k1=f(t,y);
+      var k2=f(t+0.161*h, y+h*0.161*k1);
+      var k3=f(t+0.327*h, y+h*(-0.008480655492356989*k1+0.335480655492357*k2));
+      var k4=f(t+0.9*h,   y+h*(2.8971530571054935*k1-6.359448489975075*k2+4.362295432869581*k3));
+      var k5=f(t+0.9800255409045097*h, y+h*(5.325864828439257*k1-11.748883564062828*k2+7.4955393428898365*k3-0.09249506636175525*k4));
+      var arg6=y+h*(5.86145544294642*k1-12.92096931784711*k2+8.159367898576159*k3-0.071584973281401*k4-0.028269050394068383*k5);
+      var k6=f(t+h, arg6);
+      var yN=y+h*(0.09646076681806523*k1+0.01*k2+0.4798896504144996*k3+1.379008574103742*k4-3.290069515436081*k5+2.324710524099774*k6);
+      var k7=f(t+h, yN);
+      var err=Math.abs(h*(-0.001780011052225771*k1-0.0008164344596567469*k2+0.007880878010261996*k3-0.144711007173263*k4+0.5823571654525552*k5-0.4580821059291869*k6+0.015151515151515152*k7));
+      /* Lipschitz / dominant-eigenvalue estimate: k6 and k7 are both f(t+h, .)
+         evaluated at two nearby y values, so |Δf/Δy| approximates |∂f/∂y|.
+         Used by the auto solver to detect stiffness. */
+      var dn=Math.abs(yN-arg6),lip=dn>0?Math.abs(k7-k6)/dn:0;
+      return{yNext:yN,error:err,k7:k7,lip:lip};
+    }catch(e){return{yNext:NaN,error:Infinity,k7:null,lip:0};}
+  }
+
+  /* ── DOP853 (Dormand–Prince 8(5,3)) adaptive + 7th-order dense output ──
+     Ported verbatim (tableau, E5/E3 embedded estimators, dense interpolant)
+     from the validated scalar integrator in ivp.html. The order-8 step takes
+     large error-controlled strides; the 7th-order continuous output then fills
+     smooth curve points between the few accepted nodes. */
+  var DOP853_TAB={ c:[0.0,0.05260015195876773,0.0789002279381516,0.1183503419072274,0.2816496580927726,0.3333333333333333,0.25,0.3076923076923077,0.6512820512820513,0.6,0.8571428571428571,1.0],
+    A:[
+      [],
+      [0.05260015195876773],
+      [0.0197250569845379,0.0591751709536137],
+      [0.02958758547680685,0.0,0.08876275643042054],
+      [0.2413651341592667,0.0,-0.8845494793282861,0.924834003261792],
+      [0.037037037037037035,0.0,0.0,0.17082860872947386,0.12546768756682242],
+      [0.037109375,0.0,0.0,0.17025221101954405,0.06021653898045596,-0.017578125],
+      [0.03709200011850479,0.0,0.0,0.17038392571223998,0.10726203044637328,-0.015319437748624402,0.008273789163814023],
+      [0.6241109587160757,0.0,0.0,-3.3608926294469414,-0.868219346841726,27.59209969944671,20.154067550477894,-43.48988418106996],
+      [0.47766253643826434,0.0,0.0,-2.4881146199716677,-0.590290826836843,21.230051448181193,15.279233632882423,-33.28821096898486,-0.020331201708508627],
+      [-0.9371424300859873,0.0,0.0,5.186372428844064,1.0914373489967295,-8.149787010746927,-18.52006565999696,22.739487099350505,2.4936055526796523,-3.0467644718982196],
+      [2.273310147516538,0.0,0.0,-10.53449546673725,-2.0008720582248625,-17.9589318631188,27.94888452941996,-2.8589982771350235,-8.87285693353063,12.360567175794303,0.6433927460157636]],
+    b:[0.054293734116568765,0.0,0.0,0.0,0.0,4.450312892752409,1.8915178993145003,-5.801203960010585,0.3111643669578199,-0.1521609496625161,0.20136540080403034,0.04471061572777259] };
+  var DOP853E5=[0.01312004499419488073250102996,0,0,0,0,-1.225156446376204440720569753,-0.4957589496572501915214079952,1.664377182454986536961530415,-0.350328848749973681688648729,0.3341791187130174790297318841,0.08192320648511571246570742613,-0.02235530786388629525884427845];
+  var DOP853E3=(function(){ var b=DOP853_TAB.b.slice();
+    b[0]-=0.244094488188976377952755905512; b[8]-=0.733846688281611857341361741547; b[11]-=0.0220588235294117647058823529412;
+    return b; })();
+  var DOP853_CEX=[0.1,0.2,0.7777777777777778];
+  var DOP853_AEX=[[0.056167502283047954,0.0,0.0,0.0,0.0,0.0,0.25350021021662483,-0.2462390374708025,-0.12419142326381637,0.15329179827876568,0.00820105229563469,0.007567897660545699,-0.008298,0.0,0.0,0.0],[0.03183464816350214,0.0,0.0,0.0,0.0,0.028300909672366776,0.053541988307438566,-0.05492374857139099,0.0,0.0,-0.00010834732869724932,0.0003825710908356584,-0.00034046500868740456,0.1413124436746325,0.0,0.0],[-0.42889630158379194,0.0,0.0,0.0,0.0,-4.697621415361164,7.683421196062599,4.06898981839711,0.3567271874552811,0.0,0.0,0.0,-0.0013990241651590145,2.9475147891527724,-9.15095847217987,0.0]];
+  var DOP853_D=[[-8.428938276109013,0.0,0.0,0.0,0.0,0.5667149535193777,-3.0689499459498917,2.38466765651207,2.117034582445028,-0.871391583777973,2.2404374302607883,0.6315787787694688,-0.08899033645133331,18.148505520854727,-9.194632392478356,-4.436036387594894],[10.427508642579134,0.0,0.0,0.0,0.0,242.28349177525817,165.20045171727028,-374.5467547226902,-22.113666853125306,7.733432668472264,-30.674084731089398,-9.332130526430229,15.697238121770845,-31.139403219565178,-9.35292435884448,35.81684148639408],[19.985053242002433,0.0,0.0,0.0,0.0,-387.0373087493518,-189.17813819516758,527.8081592054236,-11.57390253995963,6.8812326946963,-1.0006050966910838,0.7777137798053443,-2.778205752353508,-60.19669523126412,84.32040550667716,11.99229113618279],[-25.69393346270375,0.0,0.0,0.0,0.0,-154.18974869023643,-231.5293791760455,357.6391179106141,93.40532418362432,-37.45832313645163,104.0996495089623,29.8402934266605,-43.53345659001114,96.32455395918828,-39.17726167561544,-149.72683625798564]];
+  /* One adaptive DOP853 step: 12 stage slopes, order-8 solution, and the
+     Hairer E5/E3 combined tolerance-normalised error norm (scalar, n=1). The
+     stage slopes k are returned so the dense builder can reuse them. */
+  function dop853Step(t,y,h,f,tol){
+    try{
+      var T=DOP853_TAB,s=T.c.length,k=new Array(s),i,j;
+      for(i=0;i<s;i++){ var yi=y; for(j=0;j<i;j++) yi+=h*T.A[i][j]*k[j]; k[i]=f(t+T.c[i]*h,yi); }
+      var yn=y,e5=0,e3=0;
+      for(i=0;i<s;i++){ yn+=h*T.b[i]*k[i]; e5+=DOP853E5[i]*k[i]; e3+=DOP853E3[i]*k[i]; }
+      if(!isFinite(yn)) return {yNext:NaN,en:Infinity,k:null};
+      var sc=tol+tol*Math.max(Math.abs(y),Math.abs(yn)); e5/=sc; e3/=sc;
+      var e5n2=e5*e5, deno=e5n2+0.01*e3*e3;
+      var en=(deno<=0)?0:Math.abs(h)*e5n2/Math.sqrt(deno);
+      return {yNext:yn, en:isFinite(en)?en:Infinity, k:k};
+    }catch(e){return {yNext:NaN,en:Infinity,k:null};}
+  }
+  /* Build the 7th-order interpolation coefficients F[0..6] for one accepted
+     DOP853 step. k holds the twelve stage slopes; fNew = f at the step end and
+     three extra stages (nodes 0.1, 0.2, 7/9) extend K to sixteen entries. */
+  function dop853Dense(t,y,h,ynew,k,f,nfd){
+    var K=new Array(16), i, s, a;
+    for (i=0;i<12;i++) K[i]=k[i];
+    var fOld=k[0], fNew=f(t+h,ynew); K[12]=fNew; nfd.n++;
+    for (s=13;s<16;s++){ a=0; for(i=0;i<s;i++) a+=DOP853_AEX[s-13][i]*K[i]; K[s]=f(t+DOP853_CEX[s-13]*h, y+h*a); nfd.n++; }
+    var delta=ynew-y, F=[delta, h*fOld-delta, 2*delta-h*(fNew+fOld), 0,0,0,0];
+    for (var r=0;r<4;r++){ var d=0; for(i=0;i<16;i++) d+=DOP853_D[r][i]*K[i]; F[3+r]=h*d; }
+    return F;
+  }
+  /* Evaluate the continuous interpolant at x=(t−t_old)/h∈[0,1]; x=0→y_old, x=1→y_new. */
+  function dop853DenseEval(F,y0,x){ var y=0; for (var i=0;i<7;i++){ y+=F[6-i]; if(i%2===0) y*=x; else y*=(1-x); } return y+y0; }
+
+  /* ── DOP853 solver (t-step) ── mirrors solve() but uses the DOP853 tableau,
+     E5/E3 error norm and dense output for smooth high-precision curves. */
+  function solveDOP853(t0,y0){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+
+    var tR=tMax-tMin;
+    var MAX_STEPS=50000,TOL=1e-8;
+    var MIN_H=1e-14,MAX_H=Math.min(0.5,tR/20);   /* relaxed cap: DOP853 can stride */
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000);
+    var MIN_DT=tR/5000;
+
+    function integrate(dir){
+      var pts=[],t=t0,y=y0,steps=0,lastT=t,nfd={n:0};
+      pts.push({t:t,y:y});
+      var tEnd=dir>0?tMax:tMin;
+      var h=dir*Math.min(0.01,tR/200);
+      while(steps<MAX_STEPS/2){
+        if(dir>0&&t+h>tEnd)h=tEnd-t;
+        if(dir<0&&t+h<tEnd)h=tEnd-t;
+        if(Math.abs(h)<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=dop853Step(t,y,curH,f,TOL);
+          if(!isFinite(res.yNext)||res.en===Infinity){curH*=0.5;attempt++;continue;}
+          var en=res.en;
+          var fac=0.9*Math.pow(Math.max(en,1e-30),-0.125);
+          fac=Math.min(5,Math.max(0.2,fac));
+          var hOpt=Math.max(MIN_H,Math.min(MAX_H,Math.abs(curH)*fac))*dir;
+          if(en<=1){
+            var tOld=t,yOld=y;
+            var F=dop853Dense(tOld,yOld,curH,res.yNext,res.k,f,nfd);
+            t+=curH;y=res.yNext;h=hOpt;ok=true;
+            /* Emit dense sub-points so consecutive points are ≤ MIN_DT apart. */
+            var nSub=Math.max(1,Math.min(64,Math.ceil(Math.abs(curH)/MIN_DT)));
+            for(var q=1;q<=nSub;q++){
+              var x=q/nSub, tt=tOld+x*curH, yy=dop853DenseEval(F,yOld,x);
+              if(Math.abs(tt-lastT)>=MIN_DT||q===nSub||Math.abs(tt-tEnd)<MIN_H){pts.push({t:tt,y:yy});lastT=tt;}
+            }
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if((dir>0&&t>=tMax)||(dir<0&&t<=tMin)){
+          if(!pts.length||pts[pts.length-1].t!==t)pts.push({t:t,y:y});
+          break;
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().concat(fwd.slice(1));
+  }
+
+  /* ── IVP solver ── */
+  function solve(t0,y0){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+
+    var tR=tMax-tMin;
+    var MAX_STEPS=50000,TOL=1e-8,SAFETY=0.9;
+    var MIN_H=1e-14,MAX_H=Math.min(0.05,tR/200);
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000);
+    var MIN_DT=tR/5000;
+
+    function integrate(dir){
+      var pts=[],t=t0,y=y0,h=dir*Math.min(0.001,tR/2000),steps=0,lastT=t;
+      pts.push({t:t,y:y});
+      var tEnd=dir>0?tMax:tMin;
+      var k1=null;
+      while(steps<MAX_STEPS/2){
+        if(dir>0&&t+h>tEnd)h=tEnd-t;
+        if(dir<0&&t+h<tEnd)h=tEnd-t;
+        if(Math.abs(h)<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=tsit5Step(t,y,curH,f,k1);
+          if(!isFinite(res.yNext)||res.error===Infinity){curH*=0.5;attempt++;k1=null;continue;}
+          var ratio=res.error/TOL;
+          var hOpt=Math.abs(curH)*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
+          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt))*dir;
+          if(ratio<=1){
+            t+=curH;y=res.yNext;h=hOpt;ok=true;k1=res.k7;
+            if(Math.abs(t-lastT)>=MIN_DT||Math.abs(t-tEnd)<MIN_H){pts.push({t:t,y:y});lastT=t;}
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if((dir>0&&t>=tMax)||(dir<0&&t<=tMin)){
+          if(!pts.length||pts[pts.length-1].t!==t)pts.push({t:t,y:y});
+          break;
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().concat(fwd.slice(1));
+  }
+
+  /* ── BDF5 (5th-order backward differentiation formula, implicit) ──
+     Fixed-step linear multistep solver for stiff IVPs. The first five points
+     are bootstrapped with single Tsit5 steps; thereafter each new point solves
+     the implicit BDF5 relation
+       (137/60) y_{n+1} - 5 y_n + 5 y_{n-1} - (10/3) y_{n-2}
+          + (5/4) y_{n-3} - (1/5) y_{n-4} = h f(t_{n+1}, y_{n+1})
+     for y_{n+1} by Newton's method (scalar Jacobian by finite difference).
+     BDF5 is A(α)-stable, so it stays bounded on stiff equations where the
+     explicit Tsit5 step would need an impractically small h. */
+  function bdf5Newton(hist,tNew,h,f){
+    var n=hist.length;
+    var yn=hist[n-1],yn1=hist[n-2],yn2=hist[n-3],yn3=hist[n-4],yn4=hist[n-5];
+    var rhs=5*yn-5*yn1+(10/3)*yn2-(5/4)*yn3+(1/5)*yn4;
+    var a=137/60,y=yn;
+    for(var it=0;it<50;it++){
+      var fy;try{fy=f(tNew,y);}catch(e){return NaN;}
+      if(!isFinite(fy))return NaN;
+      var G=a*y-h*fy-rhs;
+      var eps=1e-7*(Math.abs(y)+1);
+      var fp=(f(tNew,y+eps)-fy)/eps;
+      var dG=a-h*fp;
+      if(dG===0)break;
+      var dy=G/dG;y-=dy;
+      if(Math.abs(dy)<1e-12*(Math.abs(y)+1))break;
+    }
+    return y;
+  }
+
+  /* Integrate one direction with fixed-step BDF5 starting from (t,y). */
+  function bdf5Run(t,y,dir,f,p){
+    var pts=[{t:t,y:y}],h=dir*p.h,steps=0,lastT=t;
+    var tEnd=dir>0?p.tMax:p.tMin;
+    var hist=[y];
+    /* Bootstrap four extra history values with single Tsit5 steps. */
+    for(var i=0;i<4&&steps<p.MAX;i++){
+      if((dir>0&&t+h>tEnd)||(dir<0&&t+h<tEnd))break;
+      var r=tsit5Step(t,y,h,f,null);
+      if(!isFinite(r.yNext))return pts;
+      t+=h;y=r.yNext;hist.push(y);
+      if(Math.abs(y)>p.BLOW_UP){pts.push({t:t,y:y});return pts;}
+      if(Math.abs(t-lastT)>=p.MIN_DT){pts.push({t:t,y:y});lastT=t;}
+      steps++;
+    }
+    if(hist.length<5)return pts; /* interval too short for BDF5; Tsit5 seed used */
+    while(steps<p.MAX){
+      if((dir>0&&t+h>=tEnd)||(dir<0&&t+h<=tEnd)){
+        var hf=tEnd-t;
+        if(Math.abs(hf)>1e-14){var rf=tsit5Step(t,y,hf,f,null);if(isFinite(rf.yNext)){t=tEnd;y=rf.yNext;pts.push({t:t,y:y});}}
+        break;
+      }
+      var tNew=t+h,yNew=bdf5Newton(hist,tNew,h,f);
+      if(!isFinite(yNew))break;
+      hist.push(yNew);if(hist.length>5)hist.shift();
+      t=tNew;y=yNew;
+      if(Math.abs(y)>p.BLOW_UP){pts.push({t:t,y:y});break;}
+      if(Math.abs(t-lastT)>=p.MIN_DT){pts.push({t:t,y:y});lastT=t;}
+      steps++;
+    }
+    return pts;
+  }
+
+  function bdf5Params(){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var tR=tMax-tMin,H=Math.min(0.02,tR/1000);
+    if(!(H>0))H=Math.abs(tR)/1000||0.01;
+    return{tMin:tMin,tMax:tMax,BLOW_UP:Math.max(1e6,(yMax-yMin)*1000),MIN_DT:tR/5000,h:H,MAX:20000};
+  }
+
+  function solveBDF5(t0,y0){
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+    var p=bdf5Params();
+    var fwd=bdf5Run(t0,y0,1,f,p),bwd=bdf5Run(t0,y0,-1,f,p);
+    return bwd.reverse().concat(fwd.slice(1));
+  }
+
+  /* ── Auto solver: Tsit5 with on-the-fly stiffness detection ──
+     Integrates with adaptive Tsit5; on each accepted step the stiffness
+     indicator |h·L| (step size × estimated |∂f/∂y|) is compared with the
+     Tsit5 real-axis stability boundary (~3.3). When the step is held back by
+     stability rather than accuracy for several consecutive steps, the run is
+     declared stiff and continued from that point with BDF5. */
+  function solveAuto(t0,y0){
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var tv=f(t0,y0);if(!isFinite(tv))return[];}catch(e){return[];}
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var tR=tMax-tMin;
+    var MAX_STEPS=50000,TOL=1e-8,SAFETY=0.9;
+    var MIN_H=1e-14,MAX_H=Math.min(0.05,tR/200);
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000),MIN_DT=tR/5000;
+    var STIFF_PROD=1.5,STIFF_DECAY=2,STIFF_COUNT=12;
+    var p=bdf5Params();
+
+    function integrate(dir){
+      var pts=[],t=t0,y=y0,h=dir*Math.min(0.001,tR/2000),steps=0,lastT=t;
+      pts.push({t:t,y:y});
+      var tEnd=dir>0?tMax:tMin,k1=null,stiff=0;
+      while(steps<MAX_STEPS/2){
+        if(dir>0&&t+h>tEnd)h=tEnd-t;
+        if(dir<0&&t+h<tEnd)h=tEnd-t;
+        if(Math.abs(h)<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=tsit5Step(t,y,curH,f,k1);
+          if(!isFinite(res.yNext)||res.error===Infinity){curH*=0.5;attempt++;k1=null;continue;}
+          var ratio=res.error/TOL;
+          var hOpt=Math.abs(curH)*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
+          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt))*dir;
+          if(ratio<=1){
+            t+=curH;y=res.yNext;h=hOpt;ok=true;k1=res.k7;
+            stiff=(Math.abs(curH)*res.lip>STIFF_PROD)?stiff+1:Math.max(0,stiff-STIFF_DECAY);
+            if(Math.abs(t-lastT)>=MIN_DT||Math.abs(t-tEnd)<MIN_H){pts.push({t:t,y:y});lastT=t;}
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if((dir>0&&t>=tMax)||(dir<0&&t<=tMin)){
+          if(!pts.length||pts[pts.length-1].t!==t)pts.push({t:t,y:y});
+          break;
+        }
+        if(stiff>=STIFF_COUNT){
+          /* Hand off the rest of this direction to BDF5. */
+          var tail=bdf5Run(t,y,dir,f,p);
+          pts=pts.concat(tail.slice(1));
+          break;
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().concat(fwd.slice(1));
+  }
+
+  /* ── Arc-length integration (2D autonomous Tsit5) ──
+     Treats y' = f(t, y) as a curve in the (t, y) plane parameterised by
+     arc length. The unit tangent has two valid orientations (T = ±(1, f)
+     normalised); we pick one and maintain continuity by flipping the sign
+     when the dot product with the previous tangent goes negative. This
+     lets the integrator cross vertical tangents (where f → ±∞) and trace
+     full implicit curves like circles, not just function graphs. */
+  function tsit5StepArc(t,y,h,f,refDir,k1){
+    function G(tv,yv){
+      var fv;
+      try{fv=f(tv,yv);}catch(e){return null;}
+      if(Number.isNaN(fv))return null;
+      var tx,ty;
+      if(!isFinite(fv)){tx=0;ty=fv>0?1:-1;}
+      else{var n=Math.sqrt(1+fv*fv);tx=1/n;ty=fv/n;}
+      /* Orient relative to refDir for continuity across vertical tangents */
+      if(refDir&&(tx*refDir[0]+ty*refDir[1])<0){tx=-tx;ty=-ty;}
+      return[tx,ty];
+    }
+    if(!k1){k1=G(t,y);if(!k1)return null;}
+    var k2=G(t+h*0.161*k1[0], y+h*0.161*k1[1]); if(!k2)return null;
+    var k3=G(t+h*(-0.008480655492356989*k1[0]+0.335480655492357*k2[0]),
+             y+h*(-0.008480655492356989*k1[1]+0.335480655492357*k2[1])); if(!k3)return null;
+    var k4=G(t+h*(2.8971530571054935*k1[0]-6.359448489975075*k2[0]+4.362295432869581*k3[0]),
+             y+h*(2.8971530571054935*k1[1]-6.359448489975075*k2[1]+4.362295432869581*k3[1])); if(!k4)return null;
+    var k5=G(t+h*(5.325864828439257*k1[0]-11.748883564062828*k2[0]+7.4955393428898365*k3[0]-0.09249506636175525*k4[0]),
+             y+h*(5.325864828439257*k1[1]-11.748883564062828*k2[1]+7.4955393428898365*k3[1]-0.09249506636175525*k4[1])); if(!k5)return null;
+    var k6=G(t+h*(5.86145544294642*k1[0]-12.92096931784711*k2[0]+8.159367898576159*k3[0]-0.071584973281401*k4[0]-0.028269050394068383*k5[0]),
+             y+h*(5.86145544294642*k1[1]-12.92096931784711*k2[1]+8.159367898576159*k3[1]-0.071584973281401*k4[1]-0.028269050394068383*k5[1])); if(!k6)return null;
+    var tN=t+h*(0.09646076681806523*k1[0]+0.01*k2[0]+0.4798896504144996*k3[0]+1.379008574103742*k4[0]-3.290069515436081*k5[0]+2.324710524099774*k6[0]);
+    var yN=y+h*(0.09646076681806523*k1[1]+0.01*k2[1]+0.4798896504144996*k3[1]+1.379008574103742*k4[1]-3.290069515436081*k5[1]+2.324710524099774*k6[1]);
+    var k7=G(tN,yN); if(!k7)return null;
+    var et=h*(-0.001780011052225771*k1[0]-0.0008164344596567469*k2[0]+0.007880878010261996*k3[0]-0.144711007173263*k4[0]+0.5823571654525552*k5[0]-0.4580821059291869*k6[0]+0.015151515151515152*k7[0]);
+    var ey=h*(-0.001780011052225771*k1[1]-0.0008164344596567469*k2[1]+0.007880878010261996*k3[1]-0.144711007173263*k4[1]+0.5823571654525552*k5[1]-0.4580821059291869*k6[1]+0.015151515151515152*k7[1]);
+    return{tNext:tN,yNext:yN,error:Math.sqrt(0.5*(et*et+ey*ey)),k7:k7};
+  }
+
+  function solveArc(t0,y0){
+    var tMin=+document.getElementById('tMin').value;
+    var tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value;
+    var yMax=+document.getElementById('yMax').value;
+    var f=new Function('t','y','return '+preprocess(document.getElementById('equation').value.trim()));
+    try{var v=f(t0,y0);if(Number.isNaN(v))return[];}catch(e){return[];}
+
+    var diag=Math.sqrt((tMax-tMin)*(tMax-tMin)+(yMax-yMin)*(yMax-yMin));
+    var MAX_STEPS=50000,TOL=1e-7*diag,SAFETY=0.9;
+    var MIN_H=diag*1e-12,MAX_H=diag/100;
+    var BLOW_UP=Math.max(1e6,(yMax-yMin)*1000);
+    var MIN_DS=diag/3000;
+    var EPS_OUT=diag*0.01;
+    var MAX_ARC=20*diag; /* prevent runaway on closed curves */
+
+    var CLOSE_R=MAX_H*1.5;      /* proximity threshold for closure */
+    var MIN_ARC_CLOSE=MAX_H*8;  /* don't trigger immediately */
+
+    /* Initial unit tangent at (t0, y0); negate for backward direction so the
+       two sweeps trace opposite orientations of the same curve. */
+    function seedDir(sign){
+      var fv;try{fv=f(t0,y0);}catch(e){return null;}
+      if(Number.isNaN(fv))return null;
+      var tx,ty;
+      if(!isFinite(fv)){tx=0;ty=fv>0?1:-1;}
+      else{var n=Math.sqrt(1+fv*fv);tx=1/n;ty=fv/n;}
+      return[sign*tx,sign*ty];
+    }
+
+    function integrate(sign){
+      var refDir=seedDir(sign);if(!refDir)return[{t:t0,y:y0}];
+      var pts=[],t=t0,y=y0;
+      var h=Math.min(MAX_H,diag/2000); /* h is positive; orientation lives in refDir */
+      var steps=0,arcLen=0,lastT=t,lastY=y,k1=null;
+      pts.push({t:t,y:y});
+      while(steps<MAX_STEPS/2&&arcLen<MAX_ARC){
+        if(h<MIN_H)break;
+        var ok=false,attempt=0,curH=h;
+        while(!ok&&attempt<20){
+          var res=tsit5StepArc(t,y,curH,f,refDir,k1);
+          if(!res||!isFinite(res.tNext)||!isFinite(res.yNext)||!isFinite(res.error)){curH*=0.5;attempt++;k1=null;continue;}
+          var ratio=res.error/TOL;
+          var hOpt=curH*(ratio>0?Math.pow(SAFETY/ratio,0.2):2);
+          hOpt=Math.max(MIN_H,Math.min(MAX_H,hOpt));
+          if(ratio<=1){
+            t=res.tNext;y=res.yNext;h=hOpt;ok=true;k1=res.k7;refDir=res.k7;
+            arcLen+=curH;
+            var dt=t-lastT,dy=y-lastY;
+            if(Math.sqrt(dt*dt+dy*dy)>=MIN_DS){pts.push({t:t,y:y});lastT=t;lastY=y;}
+          }else{curH=hOpt;attempt++;}
+        }
+        if(!ok)break;
+        if(Math.abs(y)>BLOW_UP)break;
+        if(t<tMin-EPS_OUT||t>tMax+EPS_OUT||y<yMin-EPS_OUT||y>yMax+EPS_OUT){
+          if(!pts.length||pts[pts.length-1].t!==t||pts[pts.length-1].y!==y)pts.push({t:t,y:y});
+          break;
+        }
+        /* Closed-curve detection: after we've moved away from the start, if
+           we return within CLOSE_R, snap to start and stop. */
+        if(arcLen>MIN_ARC_CLOSE){
+          var d0t=t-t0,d0y=y-y0;
+          if(d0t*d0t+d0y*d0y<CLOSE_R*CLOSE_R){pts.push({t:t0,y:y0});break;}
+        }
+        steps++;
+      }
+      return pts;
+    }
+
+    var fwd=integrate(1),bwd=integrate(-1);
+    return bwd.reverse().concat(fwd.slice(1));
+  }
+
+  /* ── Canvas click ── */
+  /* Shared: trace and draw a solution curve through (t, yVal). Used by both
+     the canvas click and the typed initial-condition input. */
+  function addCurveAt(t,yVal){
+    var mode=document.getElementById('solveMode').value;
+    var method=document.getElementById('solveMethod').value;
+    var pts;
+    if(mode==='arc'){pts=solveArc(t,yVal);}            /* arc-length RHS is unit-speed (bounded), so it stays on Tsit5 */
+    else if(method==='bdf5'){pts=solveBDF5(t,yVal);}
+    else if(method==='auto'){pts=solveAuto(t,yVal);}
+    else if(method==='dop853'){pts=solveDOP853(t,yVal);}
+    else{pts=solve(t,yVal);}
+    if(pts.length>0){
+      var tc=document.getElementById('trajColor').value;
+      var color=tc==='multicolor'?TRAJ_COLORS[colorIndex%TRAJ_COLORS.length]:tc;
+      solutions.push({points:pts,color:color,initialPoint:{t:t,y:yVal}});
+      colorIndex++;
+      drawDirectionField();
+      document.getElementById('rv-click').textContent='t='+t.toFixed(3)+', y='+yVal.toFixed(3);
+      setStatus('Curve drawn \u2713','rval-g');
+      say('Solution curve drawn through t='+t.toFixed(2)+', y='+yVal.toFixed(2));
+      return true;
+    }
+    setStatus('No solution','rval-u');
+    say('No solution curve could be drawn at this point');
+    return false;
+  }
+
+  /* Map a mouse event to canvas-pixel coordinates plus the current axis scales. */
+  function canvasHitCtx(e){
+    var rect=canvas.getBoundingClientRect();
+    var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    var tMin=+document.getElementById('tMin').value,tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value,yMax=+document.getElementById('yMax').value;
+    return {
+      cx:(e.clientX-rect.left)*sx,
+      cy:(e.clientY-rect.top)*sy,
+      tMin:tMin,yMin:yMin,
+      xScale:(canvas.width-2*PADDING)/(tMax-tMin),
+      yScale:(canvas.height-2*PADDING)/(yMax-yMin),
+      /* Generous, finger-friendly hit radius (~18 CSS px) so a slightly-off
+         click on an initial-point dot still removes the curve instead of
+         quietly drawing another one on top of it. */
+      hitR:18*sx
+    };
+  }
+  /* Index of the top-most solution whose initial-point dot is under (cx,cy), or -1. */
+  function dotHitIndex(h){
+    for(var i=solutions.length-1;i>=0;i--){
+      var ip=solutions[i].initialPoint; if(!ip)continue;
+      var ix=PADDING+(ip.t-h.tMin)*h.xScale, iy=canvas.height-PADDING-(ip.y-h.yMin)*h.yScale;
+      var dx=h.cx-ix, dy=h.cy-iy;
+      if(dx*dx+dy*dy<=h.hitR*h.hitR)return i;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('click',function(e){
+    var h=canvasHitCtx(e);
+    /* Toggle: clicking on an existing initial-point dot removes that curve;
+       clicking empty space draws a new one. */
+    var hit=dotHitIndex(h);
+    if(hit>=0){
+      var ip=solutions[hit].initialPoint;
+      solutions.splice(hit,1);
+      drawDirectionField();
+      document.getElementById('rv-click').textContent='t='+ip.t.toFixed(3)+', y='+ip.y.toFixed(3);
+      setStatus('Curve removed','rval-b');
+      say('Solution curve removed');
+      return;
+    }
+    var t=h.tMin+(h.cx-PADDING)/h.xScale;
+    var yVal=h.yMin+(canvas.height-PADDING-h.cy)/h.yScale;
+    addCurveAt(t,yVal);
+  });
+
+  /* Cursor feedback: show a pointer over a removable initial-point dot so the
+     click-to-remove affordance is discoverable; crosshair everywhere else. */
+  canvas.addEventListener('mousemove',function(e){
+    canvas.style.cursor=dotHitIndex(canvasHitCtx(e))>=0?'pointer':'crosshair';
+  });
+
+  /* Parse a number or simple expression (pi, sqrt, etc.) for the IC inputs. */
+  function icParse(s){
+    if(s==null)return NaN;
+    s=String(s).trim();
+    if(s==='')return NaN;
+    var v=Number(s);
+    if(isFinite(v))return v;
+    var p=s.replace(/\^/g,'**')
+      .replace(/\b(sin|cos|tan|asin|acos|atan|exp|log|sqrt|cbrt|abs)\b/gi,'Math.$1')
+      .replace(/\bpi\b/gi,'Math.PI')
+      .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+    try{var r=(new Function('return ('+p+');'))();return (typeof r==='number'&&isFinite(r))?r:NaN;}
+    catch(_){return NaN;}
+  }
+
+  /* Typed initial condition \u2192 same solution-curve path as a click. */
+  function addCurveFromInputs(){
+    var t0=icParse(document.getElementById('icT').value);
+    var y0=icParse(document.getElementById('icY').value);
+    if(!isFinite(t0)||!isFinite(y0)){setStatus('Invalid input','rval-u');say('Enter valid numbers for the initial condition.');return;}
+    var tMin=+document.getElementById('tMin').value,tMax=+document.getElementById('tMax').value;
+    var yMin=+document.getElementById('yMin').value,yMax=+document.getElementById('yMax').value;
+    if(t0<tMin||t0>tMax||y0<yMin||y0>yMax){setStatus('Outside view','rval-u');say('Initial condition (t='+t0.toFixed(3)+', y='+y0.toFixed(3)+') is outside the current axes; update the t/y range to include it.');return;}
+    addCurveAt(t0,y0);
+  }
+  document.getElementById('btnAddIC').addEventListener('click',addCurveFromInputs);
+  ['icT','icY'].forEach(function(id){
+    document.getElementById(id).addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();addCurveFromInputs();}
+    });
+  });
+
+  /* ── Actions ── */
+  window.clearSolutions=function(){
+    solutions=[];colorIndex=0;
+    drawDirectionField(true);
+    document.getElementById('rv-click').textContent='\u2014';
+    setStatus('Cleared','rval-b');
+    say('All solution curves cleared');
+  };
+
+  window.downloadPNG=function(){
+    drawDirectionField();
+    var a=document.createElement('a');
+    a.download='direction-field_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.png';
+    a.href=canvas.toDataURL();
+    a.click();
+    say('Direction field downloaded as PNG');
+  };
+
+  document.getElementById('updateFieldBtn').addEventListener('click',function(){
+    drawDirectionField(true);
+    setStatus('Updated \u2713','rval-g');
+    say('Direction field updated');
+  });
+  document.getElementById('clearSolutionsBtn').addEventListener('click',clearSolutions);
+  document.getElementById('downloadBtn').addEventListener('click',downloadPNG);
+  document.getElementById('showField').addEventListener('change',function(){drawDirectionField(false);});
+  document.getElementById('showEquilibria').addEventListener('change',function(){drawDirectionField(false);});
+  document.getElementById('fieldColor').addEventListener('change',function(){drawDirectionField(false);});
+  document.getElementById('trajColor').addEventListener('change',function(){
+    var tc=this.value;
+    solutions.forEach(function(sol,i){
+      sol.color=tc==='multicolor'?TRAJ_COLORS[i%TRAJ_COLORS.length]:tc;
+    });
+    drawDirectionField(false);
+  });
+
+  /* Enter key in equation box */
+  document.getElementById('equation').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){
+      e.preventDefault();
+      drawDirectionField(true);
+      setStatus('Updated \u2713','rval-g');
+      say('Direction field updated');
+    }
+  });
+
+  /* Opacity slider - update the readout and redraw the field live */
+  document.getElementById('arrowOpacity').addEventListener('input',function(){
+    document.getElementById('opacityValue').textContent=this.value;
+    drawDirectionField(false);
+  });
+
+  /* Trajectory head size - redraw on change */
+  document.getElementById('trajHeadSize').addEventListener('input',function(){drawDirectionField(false);});
+
+  /* Examples panel */
+  function loadExampleFromBtn(btn,labelMsg){
+    document.getElementById('equation').value=btn.getAttribute('data-eq');
+    document.getElementById('tMin').value=btn.getAttribute('data-tmin');
+    document.getElementById('tMax').value=btn.getAttribute('data-tmax');
+    document.getElementById('yMin').value=btn.getAttribute('data-ymin');
+    document.getElementById('yMax').value=btn.getAttribute('data-ymax');
+    var mode=btn.getAttribute('data-mode');
+    if(mode){var sel=document.getElementById('solveMode');if(sel)sel.value=mode;}
+    drawDirectionField(true);
+    setStatus(labelMsg+' \u2713','rval-g');
+    say('Loaded '+labelMsg.toLowerCase()+': '+btn.getAttribute('data-eq'));
+  }
+  document.getElementById('exDiv').addEventListener('click',function(e){
+    var btn=e.target.closest('.example-btn');
+    if(!btn)return;
+    loadExampleFromBtn(btn,'Example loaded');
+  });
+  document.getElementById('icDiv').addEventListener('click',function(e){
+    var btn=e.target.closest('.example-btn');
+    if(!btn)return;
+    loadExampleFromBtn(btn,'Implicit curve loaded (arc-length)');
+  });
+
+  /* Functions table */
+  document.getElementById('fnDiv').addEventListener('click',function(e){
+    var fn=e.target.closest('.func-name');
+    if(!fn)return;
+    var input=document.getElementById('equation');
+    input.value=fn.textContent.trim();
+    input.focus();
+    say('Inserted: '+fn.textContent.trim());
+  });
+  document.getElementById('fnDiv').addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '){
+      var fn=e.target.closest('.func-name');
+      if(fn){e.preventDefault();fn.click();}
+    }
+  });
+
+  /* Initial draw */
+  drawDirectionField();
+
+  /* Typeset MathJax once ready (guard the promise - it isn't attached until
+     the MathJax library finishes loading, which can race this script). */
+  if(window.MathJax&&MathJax.startup&&MathJax.startup.promise){
+    MathJax.startup.promise.then(function(){
+      MathJax.typesetPromise().catch(function(){});
+    }).catch(function(){});
+  }
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

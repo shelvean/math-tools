@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Least squares calculator using QR factorization. Solve overdetermined systems Ax = b by reducing to Rx = Q^T b step by step.">
+  <meta name="keywords" content="least squares, QR decomposition, matrix solver, linear algebra, numerical analysis, Householder QR">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+  <title>Least Squares Solver (QR Decomposition)</title>
+  <!-- MathJax with accessibility -->
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: { pageReady: function(){ return MathJax.startup.defaultPageReady(); } }
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+  <script src="vendor/mathjs@14.6.0/math.js"></script>
+  <style>
+    :root {
+      --bg-page: #f3f4f6;
+      --bg-card: #ffffff;
+      --bg-section: #f9fafb;
+      --bg-info: #eff6ff;
+      --border-info: #93c5fd;
+      --text-primary: #1f2937;
+      --text-secondary: #4b5563;
+      --text-muted: #6b7280;
+      --text-info-heading: #1e40af;
+      --border-color: #d1d5db;
+      --border-focus: #3b82f6;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-lg: 0 4px 6px rgba(0,0,0,0.1);
+      --btn-primary-bg: #1d4ed8;
+      --btn-primary-hover: #1e40af;
+      --btn-secondary-bg: #374151;
+      --btn-secondary-hover: #1f2937;
+      --btn-success-bg: #166534;
+      --btn-success-hover: #14532d;
+      --btn-accent-bg: #9a3412;
+      --btn-accent-hover: #7c2d12;
+      --cell-border: #d1d5db;
+      --link-color: #4338ca;
+      --link-hover: #3730a3;
+      --skip-bg: #2563eb;
+    }
+    @media (prefers-contrast: more) {
+      :root {
+        --bg-page: #ffffff; --bg-card: #ffffff; --bg-section: #f0f0f0;
+        --bg-info: #e8e8ff; --border-info: #0000cc;
+        --text-primary: #000000; --text-secondary: #000000; --text-muted: #333333;
+        --text-info-heading: #000080;
+        --border-color: #000000; --border-focus: #0000ff;
+        --shadow: 0 0 0 2px #000; --shadow-lg: 0 0 0 3px #000;
+        --btn-primary-bg: #0000cc; --btn-primary-hover: #000099;
+        --btn-secondary-bg: #333333; --btn-secondary-hover: #000000;
+        --btn-success-bg: #006600; --btn-success-hover: #004d00;
+        --btn-accent-bg: #660099; --btn-accent-hover: #4d0073;
+        --cell-border: #000000;
+        --link-color: #0000cc; --link-hover: #000099;
+      }
+    }
+    .high-contrast {
+      --bg-page: #ffffff; --bg-card: #ffffff; --bg-section: #f0f0f0;
+      --bg-info: #e8e8ff; --border-info: #0000cc;
+      --text-primary: #000000; --text-secondary: #000000; --text-muted: #333333;
+      --text-info-heading: #000080;
+      --border-color: #000000; --border-focus: #0000ff;
+      --shadow: 0 0 0 2px #000; --shadow-lg: 0 0 0 3px #000;
+      --btn-primary-bg: #0000cc; --btn-primary-hover: #000099;
+      --btn-secondary-bg: #333333; --btn-secondary-hover: #000000;
+      --btn-success-bg: #006600; --btn-success-hover: #004d00;
+      --btn-accent-bg: #660099; --btn-accent-hover: #4d0073;
+      --cell-border: #000000;
+      --link-color: #0000cc; --link-hover: #000099;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg-page); color: var(--text-primary); min-height: 100vh; }
+    *:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 2px; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+    .skip-link {
+      position: absolute; top: -100%; left: 50%; transform: translateX(-50%);
+      background: var(--skip-bg); color: #fff; padding: 0.75rem 1.5rem;
+      z-index: 1000; border-radius: 0 0 0.5rem 0.5rem;
+      font-weight: 600; text-decoration: none;
+    }
+    .skip-link:focus { top: 0; outline: 3px solid #000; outline-offset: 2px; }
+
+    /* Navigation */
+    .main-nav { position:sticky; top: 0; left: 0; width: 100%; z-index: 50; background: var(--bg-card); box-shadow: var(--shadow); }
+    .nav-inner { max-width: 56rem; margin: 0 auto; padding: 0.75rem 1rem; }
+    .nav-list { display: flex; justify-content: center; gap: 1.5rem; list-style: none; }
+    .nav-list a { color: var(--link-color); font-weight: 700; font-size: 1rem; text-decoration: none; }
+    .nav-list a:hover, .nav-list a:focus-visible { color: var(--link-hover); text-decoration: underline; }
+
+    /* Card */
+    .card { max-width: 56rem; margin:1rem auto 2rem; padding: 2rem; background: var(--bg-card); border-radius: 0.5rem; box-shadow: var(--shadow-lg); }
+    h1 { font-size: 1.75rem; font-weight: 700; text-align: center; color: var(--text-primary); margin-bottom: 0.25rem; }
+    .subtitle { text-align: center; color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.95rem; }
+    .subtitle small { font-size: 0.85rem; color: var(--text-muted); }
+
+    /* Info panel */
+    .info-panel { background: var(--bg-info); border: 1px solid var(--border-info); border-radius: 0.5rem; margin-bottom: 1.5rem; overflow: hidden; }
+    .info-toggle { width: 100%; padding: 1rem; text-align: left; display: flex; align-items: center; justify-content: space-between; background: transparent; border: none; cursor: pointer; font-size: 1rem; font-weight: 700; color: var(--text-info-heading); }
+    .info-toggle:hover { background: rgba(0,0,0,0.03); }
+    .info-toggle-icon { font-size: 1.25rem; font-weight: 700; }
+    .info-body { padding: 0 1rem 1rem; }
+    .info-body p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .info-body ul { color: var(--text-secondary); font-size: 0.9rem; margin: 0 0 0.75rem 1.5rem; padding: 0; list-style: disc; }
+    .info-body li { margin-bottom: 0.25rem; }
+
+    /* Dimensions bar */
+    .dims-bar { display: flex; justify-content: center; align-items: center; gap: 0.75rem; flex-wrap: wrap; background: var(--bg-section); padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; border: 1px solid var(--border-color); }
+    .dims-bar legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .dim-input { width: 4rem; padding: 0.5rem; text-align: center; border: 1px solid var(--border-color); border-radius: 0.375rem; font-size: 0.95rem; background: var(--bg-card); color: var(--text-primary); min-height: 44px; }
+    .dim-input:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 1px; }
+    .dims-hint { margin: 0 0 1.5rem; padding: 0.4rem 1rem; background: var(--bg-section); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 0.5rem 0.5rem; font-size: 0.85rem; color: var(--text-muted); text-align: center; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.5rem 1.1rem; border: 2px solid transparent; border-radius: 0.5rem; font-size: 0.9375rem; font-weight: 700; color: #fff; cursor: pointer; transition: background-color 0.15s, transform 0.1s; min-height: 44px; min-width: 44px; white-space: nowrap; flex-shrink: 0; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-primary { background: var(--btn-primary-bg); }
+    .btn-primary:hover, .btn-primary:focus-visible { background: var(--btn-primary-hover); }
+    .btn-secondary { background: var(--btn-secondary-bg); }
+    .btn-secondary:hover, .btn-secondary:focus-visible { background: var(--btn-secondary-hover); }
+    .btn-success { background: var(--btn-success-bg); }
+    .btn-success:hover, .btn-success:focus-visible { background: var(--btn-success-hover); }
+    .btn-accent { background: var(--btn-accent-bg); }
+    .btn-accent:hover, .btn-accent:focus-visible { background: var(--btn-accent-hover); }
+    .btn-row { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+
+    /* ===== Action panel ===== */
+    .action-panel { margin-bottom: 1.5rem; border: 1px solid var(--border-color); border-radius: 0.5rem; overflow: hidden; }
+    .action-section { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-bottom: 1px solid var(--border-color); }
+    .action-section:last-child { border-bottom: none; }
+    .action-section-header { grid-column: 1 / -1; background: var(--bg-section); padding: 0.35rem 1rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+    .action-item { display: flex; flex-direction: row; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-right: 1px solid var(--border-color); }
+    .action-item:last-child, .action-item:nth-child(even) { border-right: none; }
+    .action-item .btn-desc { font-size: 0.95rem; color: var(--text-muted); line-height: 1.45; flex: 1; }
+    .action-item-full { grid-column: 1 / -1; border-right: none; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; }
+
+    /* Matrix */
+    .matrix-area { margin-bottom: 1.5rem; overflow-x: auto; }
+    .matrix-block { text-align: center; }
+    .matrix-block p { font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary); }
+    .matrix-table { border-collapse: collapse; margin: 0 auto; }
+    .matrix-table td { padding: 0.25rem; }
+    .matrix-cell {
+      width: 4rem; padding: 0.5rem; text-align: center;
+      border: 1px solid var(--border-color); border-radius: 0.375rem;
+      font-size: 0.95rem; background: var(--bg-card); color: var(--text-primary);
+      min-height: 44px;
+    }
+    .matrix-cell:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 1px; }
+
+    .matrix-cell::-webkit-inner-spin-button,
+    .matrix-cell::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .matrix-cell { -moz-appearance: textfield; }
+
+    /* Display mode */
+    .display-mode { display: flex; justify-content: center; align-items: center; gap: 1.25rem; margin-bottom: 1.5rem; border: none; padding: 0; }
+    .display-mode legend { font-weight: 600; color: var(--text-primary); margin-right: 0.5rem; }
+    .radio-label { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; font-size: 0.9rem; color: var(--text-secondary); }
+
+    /* Result */
+    .result-area { background: var(--bg-section); border-radius: 0.5rem; padding: 1.5rem; border: 1px solid var(--border-color); }
+    .step-block { margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-color); }
+    .step-block:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .step-title { font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; }
+
+    /* Footnotes */
+    .footnotes { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-secondary); }
+    .footnotes h2 { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-primary); }
+    .footnotes ol { margin-left: 1.5rem; padding: 0; }
+    .footnotes li { margin-bottom: 0.375rem; }
+    .footnote-ref { font-size: 0.75rem; vertical-align: super; text-decoration: none; color: var(--link-color); font-weight: 600; }
+    .footnote-ref:hover { text-decoration: underline; }
+    .footnote-backref { text-decoration: none; color: var(--link-color); margin-left: 0.25rem; }
+
+    /* Contrast toggle */
+    .contrast-toggle {
+      position: fixed; bottom: 1rem; right: 1rem; z-index: 20;
+      background: var(--text-primary); color: var(--bg-card);
+      border: 2px solid var(--border-color); border-radius: 50%;
+      width: 48px; height: 48px; font-size: 1.25rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: var(--shadow-lg);
+    }
+    .contrast-toggle:focus-visible { outline: 3px solid var(--border-focus); outline-offset: 2px; }
+
+    /* Footer */
+    .footer { margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+    .footer a { color: var(--link-color); text-decoration: none; }
+    .footer a:hover, .footer a:focus-visible { text-decoration: underline; }
+
+    /* Flex layout for matrices side by side */
+    .matrix-flex { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; }
+
+    @media (max-width: 640px) {
+      .card { margin: 3.5rem 0.5rem 1rem; padding: 1rem; }
+      .dims-bar { flex-direction: column; gap: 0.5rem; }
+      .btn-row { flex-direction: column; align-items: stretch; }
+      .action-section { grid-template-columns: 1fr; }
+      .action-item { border-right: none; border-bottom: 1px solid var(--border-color); }
+      .action-item:last-child { border-bottom: none; }
+      .matrix-flex { flex-direction: column; align-items: center; }
+    }
+  
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-links{display:flex;flex-wrap:wrap;justify-content:center;gap:.4rem 1.25rem;margin:.35rem auto;width:fit-content;max-width:100%;}
+.back-links .back-link{margin:0;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/leastsquaresqr.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Least Squares Solver (QR Decomposition)">
+    <meta property="og:description" content="Least squares calculator using QR factorization. Solve overdetermined systems Ax = b by reducing to Rx = Q^T b step by step.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/leastsquaresqr.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Least Squares Solver (QR Decomposition)">
+    <meta name="twitter:description" content="Least squares calculator using QR factorization. Solve overdetermined systems Ax = b by reducing to Rx = Q^T b step by step.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Least Squares Solver (QR Decomposition)",
+  "description": "Least squares calculator using QR factorization. Solve overdetermined systems Ax = b by reducing to Rx = Q^T b step by step.",
+  "url": "https://shelvean.github.io/math-tools/leastsquaresqr.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <div id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <nav class="main-nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <ul class="nav-list" role="list">
+        <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+        <li><a href="teaching.html">Teaching</a></li>
+        <li><a href="projects.html">Differential Equations</a></li>
+        <li><a href="dynamical.html">Dynamical Systems</a></li>
+        <li><a href="linear.html">Linear Algebra</a></li>
+        <li><a href="optim.html">Optimization</a></li>
+        <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+      </ul>
+    </div>
+  </nav>
+
+
+<div class="back-links" role="navigation" aria-label="Back to category pages">
+  <a href="linear.html" class="back-link" aria-label="Back to Linear Algebra">&larr; Back to Linear Algebra</a>
+  <a href="numerical.html" class="back-link" aria-label="Back to Numerical Methods">&larr; Back to Numerical Methods</a>
+</div>
+  <main id="main-content" class="card" role="main">
+    <h1>Least Squares Solver using QR Decomposition</h1>
+    <p class="subtitle">
+      Find the best approximate solution to \(A\mathbf{x} \approx \mathbf{b}\) using <strong>QR Decomposition</strong><a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a>.<br>
+      <small>Minimizes the Euclidean norm \(\|A\mathbf{x} - \mathbf{b}\|_2\) via Householder reflections<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>.</small>
+    </p>
+
+    <!-- About panel -->
+    <div class="info-panel">
+      <button id="infoToggle" class="info-toggle" aria-expanded="true" aria-controls="infoBody" type="button">
+        <span>About Least Squares via QR</span>
+        <span class="info-toggle-icon" aria-hidden="true">&minus;</span>
+      </button>
+      <div id="infoBody" class="info-body" role="region" aria-labelledby="infoToggle">
+        <p>When the system \(A\mathbf{x} = \mathbf{b}\) is <strong>overdetermined</strong> (more equations than unknowns), we find the solution that minimizes the residual:</p>
+        <p style="text-align:center;">\[\min_{\mathbf{x}} \|A\mathbf{x} - \mathbf{b}\|_2\]</p>
+        <p><strong>QR Method:</strong></p>
+        <ul>
+          <li>Factor \(A = QR\) where \(Q\) is orthogonal and \(R\) is upper triangular<a href="#fn3" id="fnref3" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>3</sup></a></li>
+          <li>Compute \(c = Q^T\mathbf{b}\), then solve \(R\mathbf{x} = c\)</li>
+          <li>More numerically stable than the normal equations<a href="#fn4" id="fnref4" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>4</sup></a></li>
+        </ul>
+        <p><strong>Advantages:</strong></p>
+        <ul>
+          <li>Handles rank-deficient matrices gracefully</li>
+          <li>Provides minimum-norm solution for underdetermined systems</li>
+          <li>Uses Householder reflections for robust computation</li>
+        </ul>
+        <p><strong>Display modes:</strong> Surd (default) - shows entries of \(Q\), \(R\), and \(c=Q^T\mathbf{b}\) as exact radicals like \(\tfrac{1}{\sqrt{2}}\) when possible, falling back to fractions or decimals otherwise. Decimal and Fraction modes are also available.</p>
+      </div>
+    </div>
+
+    <!-- Dimension input -->
+    <fieldset class="dims-bar" role="group" aria-label="Matrix dimensions">
+      <legend class="sr-only">Set matrix dimensions</legend>
+      <label for="m">Equations \(m\):</label>
+      <input type="number" id="m" class="dim-input" min="1" max="10" required aria-label="Number of equations (rows) m">
+      <label for="n">Variables \(n\):</label>
+      <input type="number" id="n" class="dim-input" min="1" max="10" required aria-label="Number of variables (columns) n">
+      <button type="button" id="genBtn" class="btn btn-success" aria-label="Generate empty m by n matrix and b vector">Generate Matrix</button>
+      <button id="exampleBtn" type="button" class="btn btn-accent" aria-label="Load a sample 4 by 2 overdetermined example">Load Example</button>
+    </fieldset>
+    <p class="dims-hint">Enter dimensions and click <strong>Generate Matrix</strong> to create the input grid and b vector.</p>
+
+    <!-- Matrix input -->
+    <div id="matrixInput" class="matrix-area" role="region" aria-label="Matrix input area"></div>
+
+    <!-- Display mode -->
+    <fieldset class="display-mode" aria-label="Result display format">
+      <legend>Display values as:</legend>
+      <label class="radio-label">
+        <input type="radio" name="displayMode" value="surd" checked> Surd
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="displayMode" value="decimal"> Decimal
+      </label>
+      <label class="radio-label">
+        <input type="radio" name="displayMode" value="fraction"> Fraction
+      </label>
+    </fieldset>
+
+    <!-- Action buttons -->
+    <div class="action-panel" role="group" aria-label="Calculator actions">
+      <div class="action-section" style="border-bottom:none;">
+        <div class="action-section-header">Compute</div>
+        <div class="action-item">
+          <button id="calcBtn" type="button" class="btn btn-primary" aria-label="Compute least squares solution">Compute</button>
+          <span class="btn-desc">Solves the least-squares problem via QR decomposition and back substitution.</span>
+        </div>
+        <div class="action-item">
+          <button id="clearBtn" type="button" class="btn btn-secondary" aria-label="Clear all inputs and results">Clear All</button>
+          <span class="btn-desc">Resets all dimensions, matrix entries, and results.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <section id="result" class="result-area" role="region" aria-label="Computation results" aria-live="polite"></section>
+
+    <!-- Footnotes -->
+    <aside class="footnotes" role="doc-endnotes" aria-labelledby="footnotes-label">
+      <h2 id="footnotes-label">Footnotes</h2>
+      <ol>
+        <li id="fn1">The <strong>least squares problem</strong> seeks \(\mathbf{x}\) minimizing \(\|A\mathbf{x} - \mathbf{b}\|_2^2\). When \(A\) has full column rank, the unique solution satisfies the normal equations \(A^T A \mathbf{x} = A^T \mathbf{b}\). <a href="#fnref1" class="footnote-backref" aria-label="Back to reference 1">&uarr;</a></li>
+        <li id="fn2"><strong>Householder reflections</strong> are orthogonal transformations of the form \(H = I - 2\mathbf{v}\mathbf{v}^T\) that zero out entries below the diagonal, producing the QR factorization in a numerically stable way. <a href="#fnref2" class="footnote-backref" aria-label="Back to reference 2">&uarr;</a></li>
+        <li id="fn3">The <strong>QR decomposition</strong> factors \(A = QR\) where \(Q\) is an \(m \times m\) orthogonal matrix (\(Q^T Q = I\)) and \(R\) is \(m \times n\) upper triangular. The economy-size form keeps only the first \(r\) columns of \(Q\) and rows of \(R\), where \(r = \operatorname{rank}(A)\). <a href="#fnref3" class="footnote-backref" aria-label="Back to reference 3">&uarr;</a></li>
+        <li id="fn4">The <strong>normal equations</strong> \(A^T A \mathbf{x} = A^T \mathbf{b}\) square the condition number of \(A\), so the QR approach is preferred for ill-conditioned problems: \(\kappa(A^T A) = \kappa(A)^2\). <a href="#fnref4" class="footnote-backref" aria-label="Back to reference 4">&uarr;</a></li>
+      </ol>
+    </aside>
+
+        <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981261">https://doi.org/10.5281/zenodo.20981261</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Least Squares Solver using QR Decomposition. Math Tools. https://doi.org/10.5281/zenodo.20981261</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Least Squares Solver using QR Decomposition." Math Tools, 2026, doi.org/10.5281/zenodo.20981261.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026leastsquaresqr,
+  author       = {Shelvean Kapita},
+  title        = {{Least Squares Solver using QR Decomposition}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981261},
+  url          = {https://doi.org/10.5281/zenodo.20981261}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: March 8, 2026.</p>
+</footer>
+  </main>
+
+  <button class="contrast-toggle" id="contrastToggle" aria-label="Toggle high-contrast mode" title="Toggle high-contrast mode" type="button">
+    <span aria-hidden="true">&#9681;</span>
+  </button>
+
+<script>
+// ============================================================
+//  ANNOUNCER
+// ============================================================
+function announce(msg) {
+  var el = document.getElementById('liveRegion');
+  el.textContent = '';
+  setTimeout(function() { el.textContent = msg; }, 50);
+}
+
+// ============================================================
+//  MATRIX KEYBOARD NAVIGATION
+// ============================================================
+function attachMatrixKeyNav(tableEl) {
+  tableEl.addEventListener('keydown', function(e) {
+    var cell = e.target;
+    if (!cell.classList.contains('matrix-cell')) return;
+    var td = cell.parentElement;
+    var tr = td.parentElement;
+    var rowIdx = Array.prototype.indexOf.call(tr.parentElement.children, tr);
+    var colIdx = Array.prototype.indexOf.call(tr.children, td);
+    var rows = tr.parentElement.children;
+    var targetInput = null;
+    switch (e.key) {
+      case 'ArrowUp':
+        if (rowIdx > 0) targetInput = rows[rowIdx - 1].children[colIdx].querySelector('input');
+        break;
+      case 'ArrowDown':
+        if (rowIdx < rows.length - 1) targetInput = rows[rowIdx + 1].children[colIdx].querySelector('input');
+        break;
+      case 'ArrowLeft':
+        if (colIdx > 0) targetInput = tr.children[colIdx - 1].querySelector('input');
+        break;
+      case 'ArrowRight':
+        if (colIdx < tr.children.length - 1) targetInput = tr.children[colIdx + 1].querySelector('input');
+        break;
+      default: return;
+    }
+    if (targetInput) { e.preventDefault(); targetInput.focus(); targetInput.select(); }
+  });
+}
+
+// ============================================================
+//  STATE
+// ============================================================
+var currentDisplayMode = 'surd';
+document.querySelectorAll('input[name="displayMode"]').forEach(function(radio) {
+  radio.addEventListener('change', function() { currentDisplayMode = this.value; });
+});
+
+// ============================================================
+//  GENERATE MATRIX
+// ============================================================
+function generateMatrix() {
+  var mInput = document.getElementById('m');
+  var nInput = document.getElementById('n');
+  var m = parseInt(mInput.value, 10);
+  var n = parseInt(nInput.value, 10);
+  if (isNaN(m) || m <= 0) { m = 4; mInput.value = '4'; }
+  if (isNaN(n) || n <= 0) { n = 2; nInput.value = '2'; }
+  var area = document.getElementById('matrixInput');
+  area.innerHTML = '';
+
+  // Statement
+  var stmt = document.createElement('p');
+  stmt.style.textAlign = 'center';
+  stmt.style.marginBottom = '1rem';
+  stmt.innerHTML = '\\(\\text{Minimize } \\| A \\mathbf{x} - \\mathbf{b} \\|_2 \\text{ using QR decomposition}\\)';
+  area.appendChild(stmt);
+
+  var stmtNote = document.createElement('p');
+  stmtNote.style.textAlign = 'center';
+  stmtNote.style.marginBottom = '1rem';
+  stmtNote.style.fontSize = '0.85rem';
+  stmtNote.style.color = 'var(--text-muted)';
+  stmtNote.textContent = '(empty spaces are treated as 0)';
+  area.appendChild(stmtNote);
+
+  var flexDiv = document.createElement('div');
+  flexDiv.className = 'matrix-flex';
+
+  // Matrix A block
+  var aBlock = document.createElement('div');
+  aBlock.className = 'matrix-block';
+  var aHeading = document.createElement('p');
+  aHeading.id = 'matA-label';
+  aHeading.innerHTML = 'Matrix \\(A\\)';
+  aBlock.appendChild(aHeading);
+
+  var aTable = document.createElement('table');
+  aTable.className = 'matrix-table';
+  aTable.setAttribute('role', 'grid');
+  aTable.setAttribute('aria-labelledby', 'matA-label');
+  var aTbody = document.createElement('tbody');
+
+  for (var i = 0; i < m; i++) {
+    var tr = document.createElement('tr');
+    tr.setAttribute('role', 'row');
+    for (var j = 0; j < n; j++) {
+      var td = document.createElement('td');
+      td.setAttribute('role', 'gridcell');
+      var inp = document.createElement('input');
+      inp.type = 'number'; inp.step = 'any';
+      inp.className = 'matrix-cell';
+      inp.id = 'A_' + i + '_' + j;
+      inp.setAttribute('aria-label', 'Matrix A, row ' + (i + 1) + ', column ' + (j + 1));
+      td.appendChild(inp);
+      tr.appendChild(td);
+    }
+    aTbody.appendChild(tr);
+  }
+  aTable.appendChild(aTbody);
+  attachMatrixKeyNav(aTable);
+  aBlock.appendChild(aTable);
+  flexDiv.appendChild(aBlock);
+
+  // Vector b block
+  var bBlock = document.createElement('div');
+  bBlock.className = 'matrix-block';
+  var bHeading = document.createElement('p');
+  bHeading.id = 'vecB-label';
+  bHeading.innerHTML = 'Vector \\(\\mathbf{b}\\)';
+  bBlock.appendChild(bHeading);
+
+  var bTable = document.createElement('table');
+  bTable.className = 'matrix-table';
+  bTable.setAttribute('role', 'grid');
+  bTable.setAttribute('aria-labelledby', 'vecB-label');
+  var bTbody = document.createElement('tbody');
+
+  for (var i2 = 0; i2 < m; i2++) {
+    var tr2 = document.createElement('tr');
+    tr2.setAttribute('role', 'row');
+    var td2 = document.createElement('td');
+    td2.setAttribute('role', 'gridcell');
+    var inp2 = document.createElement('input');
+    inp2.type = 'text';
+    inp2.className = 'matrix-cell';
+    inp2.id = 'b_' + i2;
+    inp2.setAttribute('aria-label', 'Vector b, row ' + (i2 + 1));
+    td2.appendChild(inp2);
+    tr2.appendChild(td2);
+    bTbody.appendChild(tr2);
+  }
+  bTable.appendChild(bTbody);
+  attachMatrixKeyNav(bTable);
+  bBlock.appendChild(bTable);
+  flexDiv.appendChild(bBlock);
+
+  area.appendChild(flexDiv);
+
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([area]).catch(function(err) { console.warn('MathJax error:', err); });
+  }
+  announce(m + ' by ' + n + ' matrix A and ' + m + ' by 1 vector b generated. Use arrow keys to navigate between cells.');
+  setTimeout(function() {
+    var first = document.getElementById('A_0_0');
+    if (first) first.focus();
+  }, 100);
+}
+
+// ============================================================
+//  CLEAR ALL
+// ============================================================
+function clearAll() {
+  document.getElementById('m').value = '';
+  document.getElementById('n').value = '';
+  document.getElementById('matrixInput').innerHTML = '';
+  document.getElementById('result').innerHTML = '';
+  document.querySelector('input[name="displayMode"][value="surd"]').checked = true;
+  currentDisplayMode = 'surd';
+  announce('All inputs and results cleared.');
+}
+
+// ============================================================
+//  LOAD EXAMPLE
+// ============================================================
+function loadExample() {
+  document.getElementById('m').value = '4';
+  document.getElementById('n').value = '2';
+  generateMatrix();
+  setTimeout(function() {
+    document.getElementById('A_0_0').value = '1';
+    document.getElementById('A_0_1').value = '1';
+    document.getElementById('A_1_0').value = '1';
+    document.getElementById('A_1_1').value = '2';
+    document.getElementById('A_2_0').value = '1';
+    document.getElementById('A_2_1').value = '3';
+    document.getElementById('A_3_0').value = '1';
+    document.getElementById('A_3_1').value = '4';
+    document.getElementById('b_0').value = '3';
+    document.getElementById('b_1').value = '4';
+    document.getElementById('b_2').value = '6';
+    document.getElementById('b_3').value = '7';
+    announce('Example loaded: 4 by 2 overdetermined system for line fitting.');
+  }, 150);
+}
+
+// ============================================================
+//  PARSE / FORMAT
+// ============================================================
+function parseFraction(str) {
+  str = str.trim();
+  if (str === '') return 0;
+  try {
+    var evaluated = math.evaluate(str);
+    if (typeof evaluated === 'number') return evaluated;
+    else return 0;
+  } catch (e) {
+    return null;
+  }
+}
+
+function readMatrix() {
+  var m = parseInt(document.getElementById('m').value, 10);
+  var n = parseInt(document.getElementById('n').value, 10);
+  if (isNaN(m) || m <= 0 || isNaN(n) || n <= 0) {
+    announce('Please enter valid positive integers for m and n.');
+    return null;
+  }
+  var A = [];
+  for (var i = 0; i < m; i++) {
+    var row = [];
+    for (var j = 0; j < n; j++) {
+      var cell = document.getElementById('A_' + i + '_' + j);
+      if (!cell) {
+        announce('Error: Matrix input field A row ' + (i+1) + ' column ' + (j+1) + ' not found.');
+        return null;
+      }
+      var value = cell.value.trim();
+      var num = parseFraction(value);
+      if (num === null) {
+        announce('Invalid entry at Matrix A, row ' + (i+1) + ', column ' + (j+1) + '.');
+        return null;
+      }
+      row.push(num);
+    }
+    A.push(row);
+  }
+  var b = [];
+  for (var i2 = 0; i2 < m; i2++) {
+    var cell2 = document.getElementById('b_' + i2);
+    if (!cell2) {
+      announce('Error: Vector b, row ' + (i2+1) + ' not found.');
+      return null;
+    }
+    var value2 = cell2.value.trim();
+    var num2 = parseFraction(value2);
+    if (num2 === null) {
+      announce('Invalid entry at vector b, row ' + (i2+1) + '.');
+      return null;
+    }
+    b.push(num2);
+  }
+  return { A: A, b: b, m: m, n: n };
+}
+
+// GCD and LCM helpers
+function gcd(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) { var temp = b; b = a % b; a = temp; }
+  return a;
+}
+function lcm(a, b) { return (a * b) / gcd(a, b); }
+function lcmArray(numbers) {
+  if (numbers.length === 0) return 1;
+  return numbers.reduce(function(a, b) { return lcm(a, b); }, numbers[0]);
+}
+
+function toFraction(x, tolerance, maxIterations) {
+  tolerance = tolerance || 1e-6;
+  maxIterations = maxIterations || 50;
+  if (Math.abs(x) < 1e-12) return '0';
+  var sign = x < 0 ? '-' : '';
+  x = Math.abs(x);
+  var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+  for (var i = 0; i < maxIterations; i++) {
+    var a = Math.floor(b);
+    var h = a * h1 + h2;
+    var k = a * k1 + k2;
+    if (Math.abs(x - h / k) < tolerance) {
+      if (k === 1) return sign + h;
+      else return sign + h + '/' + k;
+    }
+    h2 = h1; h1 = h;
+    k2 = k1; k1 = k;
+    b = 1 / (b - a);
+  }
+  if (k1 === 1) return sign + h1;
+  else return sign + h1 + '/' + k1;
+}
+
+function getFractionParts(str) {
+  str = str.trim();
+  var sign = 1;
+  if (str.startsWith('-')) { sign = -1; str = str.slice(1); }
+  if (str === '0' || str === '') return { sign: 1, num: 0, den: 1 };
+  if (!str.includes('/')) return { sign: sign, num: parseInt(str) || 0, den: 1 };
+  var parts = str.split('/');
+  return { sign: sign, num: parseInt(parts[0]) || 0, den: parseInt(parts[1]) || 1 };
+}
+
+// ----- Surd detection / formatting (adapted from qrfactor.html) -----
+function isPerfectSquare(n) {
+  if (n < 0) return false;
+  var root = Math.round(Math.sqrt(n));
+  return Math.abs(root * root - n) < 1e-12;
+}
+
+function formatSurd(val) {
+  // Try to express val as a*sqrt(b)/c for small integers a (|a|<=MAX), b (2..MAX, not square), c (1..MAX).
+  var MAX = 100;
+  for (var b = 2; b <= MAX; b++) {
+    if (isPerfectSquare(b)) continue;
+    var sqrtb = Math.sqrt(b);
+    for (var c = 1; c <= MAX; c++) {
+      var aApprox = (val * c) / sqrtb;
+      if (Math.abs(aApprox - Math.round(aApprox)) < 1e-9 && Math.abs(Math.round(aApprox)) <= MAX) {
+        var a = Math.round(aApprox);
+        if (a === 0) continue;
+        var sign = a < 0 ? '-' : '';
+        var aAbs = Math.abs(a);
+        var sqrtPart = '\\sqrt{' + b + '}';
+        if (c === 1) {
+          return aAbs === 1 ? sign + sqrtPart : sign + aAbs + sqrtPart;
+        }
+        var coeff = aAbs === 1 ? '' : aAbs;
+        return sign + '\\dfrac{' + coeff + sqrtPart + '}{' + c + '}';
+      }
+    }
+  }
+  return null;
+}
+
+function canBeSimpleFraction(val) {
+  // Continued-fraction reconstruction with denominator <= 100; check it's actually close.
+  var sign = val < 0 ? -1 : 1;
+  var x = Math.abs(val);
+  var h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = x;
+  for (var i = 0; i < 50; i++) {
+    var a = Math.floor(b);
+    var h = a * h1 + h2;
+    var k = a * k1 + k2;
+    if (k > 100) break;
+    if (Math.abs(x - h / k) < 1e-9) {
+      return Math.abs(h) <= 100 && k > 1;
+    }
+    h2 = h1; h1 = h;
+    k2 = k1; k1 = k;
+    if (b - a === 0) break;
+    b = 1 / (b - a);
+  }
+  return false;
+}
+
+function formatNumber(num, forceDecimal) {
+  var epsilon = 1e-10;
+  if (Math.abs(num) < epsilon) return '0';
+  if (Math.abs(num - Math.round(num)) < epsilon) return Math.round(num).toString();
+  if (forceDecimal || currentDisplayMode === 'decimal') {
+    return parseFloat(num.toFixed(6)).toString();
+  }
+  if (currentDisplayMode === 'surd') {
+    var surd = formatSurd(num);
+    if (surd !== null) return surd;
+    if (canBeSimpleFraction(num)) return toFraction(num);
+    return parseFloat(num.toFixed(6)).toString();
+  }
+  // fraction mode
+  return toFraction(num);
+}
+
+// ============================================================
+//  MATRIX OPERATIONS
+// ============================================================
+function cloneMatrix(matrix) { return matrix.map(function(row) { return row.slice(); }); }
+
+function matrixToLatex(matrix, augmented, numColsBeforeLine, forceDecimal) {
+  if (matrix.length === 0 || matrix[0].length === 0) return '';
+  var cols = matrix[0].length;
+  if (augmented) {
+    var colSpec = '';
+    for (var c = 0; c < numColsBeforeLine; c++) colSpec += 'c';
+    for (var c2 = numColsBeforeLine; c2 < cols; c2++) colSpec += '|c';
+    var content = matrix.map(function(row) { return row.map(function(num) { return formatNumber(num, forceDecimal); }).join(' & '); }).join(' \\\\ ');
+    return '\\left[\\begin{array}{' + colSpec + '}' + content + '\\end{array}\\right]';
+  } else {
+    var content2 = matrix.map(function(row) { return row.map(function(num) { return formatNumber(num, forceDecimal); }).join(' & '); }).join(' \\\\ ');
+    return '\\begin{bmatrix}' + content2 + '\\end{bmatrix}';
+  }
+}
+
+// Compute RREF with steps
+function computeRREF(matrix, forceDecimal) {
+  var m = matrix.length;
+  if (m === 0) return { matrix: matrix, steps: [] };
+  var n = matrix[0].length;
+  var steps = [];
+  var currentMatrix = cloneMatrix(matrix);
+  steps.push({ matrix: cloneMatrix(currentMatrix), description: '\\text{Initial augmented matrix}' });
+  var lead = 0;
+  for (var r = 0; r < m; r++) {
+    if (lead >= n) break;
+    var i = r;
+    while (Math.abs(currentMatrix[i][lead]) < 1e-10) {
+      i++;
+      if (i === m) { i = r; lead++; if (lead === n) break; }
+    }
+    if (lead === n) break;
+    if (i !== r) {
+      var temp = currentMatrix[r];
+      currentMatrix[r] = currentMatrix[i];
+      currentMatrix[i] = temp;
+      steps.push({ matrix: cloneMatrix(currentMatrix), description: 'R_{' + (r+1) + '} \\leftrightarrow R_{' + (i+1) + '}' });
+    }
+    var pivotValue = currentMatrix[r][lead];
+    if (Math.abs(pivotValue) > 1e-10) {
+      var reciprocal = 1 / pivotValue;
+      var scale_op = reciprocal >= 0 ? '' : '-';
+      var abs_reciprocal = Math.abs(reciprocal);
+      var scale_desc = scale_op + formatNumber(abs_reciprocal, forceDecimal) + ' R_{' + (r+1) + '} \\to R_{' + (r+1) + '}';
+      for (var j = 0; j < n; j++) currentMatrix[r][j] *= reciprocal;
+      steps.push({ matrix: cloneMatrix(currentMatrix), description: scale_desc });
+    }
+    for (var ii = 0; ii < m; ii++) {
+      if (ii !== r) {
+        var factor = currentMatrix[ii][lead];
+        if (Math.abs(factor) > 1e-10) {
+          var op = factor >= 0 ? '-' : '+';
+          var abs_factor = Math.abs(factor);
+          var elim_desc = 'R_{' + (ii+1) + '} ' + op + ' ' + formatNumber(abs_factor, forceDecimal) + ' R_{' + (r+1) + '} \\to R_{' + (ii+1) + '}';
+          for (var jj = 0; jj < n; jj++) currentMatrix[ii][jj] -= factor * currentMatrix[r][jj];
+          steps.push({ matrix: cloneMatrix(currentMatrix), description: elim_desc });
+        }
+      }
+    }
+    lead++;
+  }
+  return { matrix: currentMatrix, steps: steps };
+}
+
+// Solve linear system (used for min-norm when needed)
+function solveLinearSystem(A, b) {
+  var n = A.length;
+  var augmented = A.map(function(row, i) { return row.concat(b[i]); });
+  var rrefResult = computeRREF(augmented, false);
+  var rref = rrefResult.matrix;
+  var x = new Array(n).fill(0);
+  var pivotColumns = [];
+  var pivotRowMap = {};
+  var currentCol = 0;
+  for (var row = 0; row < n; row++) {
+    while (currentCol < n && Math.abs(rref[row][currentCol]) < 1e-10) currentCol++;
+    if (currentCol < n && Math.abs(rref[row][currentCol] - 1) < 1e-10) {
+      pivotColumns.push(currentCol);
+      pivotRowMap[currentCol] = row;
+      x[currentCol] = rref[row][n];
+      currentCol++;
+    }
+  }
+  return x;
+}
+
+// Extract solution from RREF
+function extractSolution(rref, n, forceDecimal) {
+  var m = rref.length;
+  var hasNoSolution = false;
+  for (var i = 0; i < m; i++) {
+    var isZeroRow = true;
+    for (var j = 0; j < n; j++) {
+      if (Math.abs(rref[i][j]) > 1e-10) { isZeroRow = false; break; }
+    }
+    if (isZeroRow && Math.abs(rref[i][n]) > 1e-10) { hasNoSolution = true; break; }
+  }
+  if (hasNoSolution) return { type: 'no_solution' };
+
+  var pivotColumns = [];
+  var pivotRowMap = {};
+  var currentCol = 0;
+  for (var row = 0; row < m; row++) {
+    while (currentCol < n && Math.abs(rref[row][currentCol]) < 1e-10) currentCol++;
+    if (currentCol < n && Math.abs(rref[row][currentCol] - 1) < 1e-10) {
+      pivotColumns.push(currentCol);
+      pivotRowMap[currentCol] = row;
+      currentCol++;
+    }
+  }
+  var r = pivotColumns.length;
+  var x_p = new Array(n).fill(0);
+  var generalLatex = '';
+  var nullSpaceBasis = [];
+  var minNormSteps = [];
+
+  if (r < n) {
+    var freeVars = [];
+    for (var j2 = 0; j2 < n; j2++) if (pivotColumns.indexOf(j2) === -1) freeVars.push(j2);
+    freeVars.sort(function(a, b) { return a - b; });
+
+    // Particular solution
+    for (var j3 = 0; j3 < n; j3++) {
+      if (pivotColumns.indexOf(j3) !== -1) x_p[j3] = rref[pivotRowMap[j3]][n];
+    }
+    minNormSteps.push({
+      description: '\\text{Particular solution (free variables set to 0):}',
+      latex: '\\mathbf{x}_p = \\begin{bmatrix} ' + x_p.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}'
+    });
+
+    // Null space basis
+    for (var k = 0; k < freeVars.length; k++) {
+      var v = new Array(n).fill(0);
+      var freeVarIndex = freeVars[k];
+      v[freeVarIndex] = 1;
+      for (var j4 = 0; j4 < pivotColumns.length; j4++) {
+        var pivotCol = pivotColumns[j4];
+        var pRow = pivotRowMap[pivotCol];
+        v[pivotCol] = -rref[pRow][freeVarIndex];
+      }
+      nullSpaceBasis.push(v);
+    }
+    var greekLetters = ['\\alpha', '\\beta', '\\gamma', '\\delta', '\\epsilon', '\\zeta', '\\eta', '\\theta'];
+    var nullSpaceLatex = '\\text{Basis vectors for the null space (as columns of N):}';
+    nullSpaceBasis.forEach(function(v2, k2) {
+      nullSpaceLatex += ' \\\\ \\mathbf{v}_{' + (k2+1) + '} = \\begin{bmatrix} ' + v2.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    });
+    minNormSteps.push({ description: nullSpaceLatex });
+
+    // Minimum-norm solution
+    var k_free = freeVars.length;
+    var NTN = [];
+    for (var i2 = 0; i2 < k_free; i2++) {
+      var ntnRow = [];
+      for (var j5 = 0; j5 < k_free; j5++) {
+        var sum = 0;
+        for (var l = 0; l < n; l++) sum += nullSpaceBasis[i2][l] * nullSpaceBasis[j5][l];
+        ntnRow.push(sum);
+      }
+      NTN.push(ntnRow);
+    }
+    var NT_xp = [];
+    for (var i3 = 0; i3 < k_free; i3++) {
+      var sum2 = 0;
+      for (var l2 = 0; l2 < n; l2++) sum2 += nullSpaceBasis[i3][l2] * x_p[l2];
+      NT_xp.push(-sum2);
+    }
+    var alpha = solveLinearSystem(NTN, NT_xp);
+    var x = x_p.map(function(val) { return val; });
+    for (var i4 = 0; i4 < n; i4++) {
+      for (var kk = 0; kk < k_free; kk++) x[i4] += nullSpaceBasis[kk][i4] * alpha[kk];
+    }
+
+    var NTN_latex = matrixToLatex(NTN, false, 0, forceDecimal);
+    minNormSteps.push({ description: '\\text{Compute } N^T N:', latex: 'N^T N = ' + NTN_latex });
+    var NT_xp_latex = '\\begin{bmatrix} ' + NT_xp.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    minNormSteps.push({ description: '\\text{Compute } -N^T \\mathbf{x}_p:', latex: '-N^T \\mathbf{x}_p = ' + NT_xp_latex });
+    var alpha_latex = '\\begin{bmatrix} ' + alpha.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    minNormSteps.push({ description: '\\text{Solve } N^T N \\boldsymbol{\\alpha} = -N^T \\mathbf{x}_p:', latex: '\\boldsymbol{\\alpha} = ' + alpha_latex });
+
+    var terms = alpha.map(function(a, kk2) {
+      var signStr = a >= 0 ? '+' : '-';
+      return signStr + ' ' + formatNumber(Math.abs(a), forceDecimal) + ' \\begin{bmatrix} ' + nullSpaceBasis[kk2].map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    }).join(' ');
+    minNormSteps.push({
+      description: '\\text{Minimum-norm solution } \\mathbf{x}^* = \\mathbf{x}_p + N \\boldsymbol{\\alpha}:',
+      latex: '\\mathbf{x}^* = \\begin{bmatrix} ' + x_p.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix} ' + terms + ' = \\begin{bmatrix} ' + x.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}'
+    });
+
+    // General solution
+    generalLatex = '\\begin{align*} \\text{General solution:} & \\ \\mathbf{x} = ';
+    var isZeroVector = x.every(function(val) { return Math.abs(val) < 1e-10; });
+    if (!isZeroVector) {
+      generalLatex += '\\begin{bmatrix} ' + x.map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    }
+    freeVars.forEach(function(freeVar, kk3) {
+      if (!isZeroVector || kk3 > 0) generalLatex += ' + ';
+      var param = (kk3 < greekLetters.length ? greekLetters[kk3] : 't_{' + (kk3 - greekLetters.length + 1) + '}');
+      generalLatex += param + ' \\begin{bmatrix} ' + nullSpaceBasis[kk3].map(function(val) { return formatNumber(val, forceDecimal); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    });
+    generalLatex += ' \\end{align*} \\text{where } ';
+    var params = freeVars.map(function(_, kk4) { return kk4 < greekLetters.length ? greekLetters[kk4] : 't_{' + (kk4 - greekLetters.length + 1) + '}'; });
+    if (params.length === 1) generalLatex += params[0] + ' \\in \\mathbb{R}.';
+    else if (params.length >= 2) generalLatex += params.slice(0, -1).join(', ') + ', ' + params[params.length - 1] + ' \\in \\mathbb{R}.';
+
+    return { type: 'infinite_solutions', solution: x, generalLatex: generalLatex, minNormSteps: minNormSteps };
+  } else {
+    var xUnique = new Array(n).fill(0);
+    for (var j6 = 0; j6 < n; j6++) {
+      if (pivotRowMap[j6] !== undefined) xUnique[j6] = rref[pivotRowMap[j6]][n];
+    }
+    return { type: 'unique', solution: xUnique, generalLatex: '', minNormSteps: [] };
+  }
+}
+
+// Transpose and Householder helpers
+function transpose(matrix) {
+  return matrix[0].map(function(_, colIndex) { return matrix.map(function(row) { return row[colIndex]; }); });
+}
+function dot(a, b) {
+  var s = 0;
+  for (var i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+function norm2(a) { return Math.sqrt(dot(a, a)); }
+function identityMatrix(size) {
+  var I = [];
+  for (var i = 0; i < size; i++) {
+    I[i] = [];
+    for (var j = 0; j < size; j++) I[i][j] = (i === j) ? 1 : 0;
+  }
+  return I;
+}
+
+// Householder QR (economy size)
+function computeQR(A) {
+  var m = A.length;
+  var n = A[0].length;
+  var R = A.map(function(row) { return row.slice(); });
+  var Q = identityMatrix(m);
+  for (var k = 0; k < Math.min(m, n); k++) {
+    var x = [];
+    for (var i = k; i < m; i++) x.push(R[i][k]);
+    var normx = norm2(x);
+    if (normx < 1e-14) continue;
+    var v = x.slice();
+    v[0] += (x[0] >= 0 ? normx : -normx);
+    var vnorm = norm2(v);
+    if (vnorm < 1e-14) continue;
+    for (var i2 = 0; i2 < v.length; i2++) v[i2] /= vnorm;
+
+    // Apply to R
+    for (var j = k; j < n; j++) {
+      var dotprod = 0;
+      for (var i3 = 0; i3 < v.length; i3++) dotprod += v[i3] * R[k + i3][j];
+      for (var i4 = 0; i4 < v.length; i4++) {
+        R[k + i4][j] -= 2 * v[i4] * dotprod;
+        if (Math.abs(R[k + i4][j]) < 1e-14) R[k + i4][j] = 0;
+      }
+    }
+    // Apply to Q
+    for (var i5 = 0; i5 < m; i5++) {
+      var dotprod2 = 0;
+      for (var j2 = 0; j2 < v.length; j2++) dotprod2 += Q[i5][k + j2] * v[j2];
+      for (var j3 = 0; j3 < v.length; j3++) {
+        Q[i5][k + j3] -= 2 * v[j3] * dotprod2;
+        if (Math.abs(Q[i5][k + j3]) < 1e-14) Q[i5][k + j3] = 0;
+      }
+    }
+  }
+  // Sign convention
+  for (var i6 = 0; i6 < Math.min(m, n); i6++) {
+    if (R[i6][i6] < 0) {
+      for (var j4 = 0; j4 < n; j4++) R[i6][j4] = -R[i6][j4];
+      for (var j5 = 0; j5 < m; j5++) Q[j5][i6] = -Q[j5][i6];
+    }
+  }
+  var rank = 0;
+  for (var i7 = 0; i7 < Math.min(m, n); i7++) if (Math.abs(R[i7][i7]) > 1e-14) rank++;
+  var thinQ = Q.map(function(row) { return row.slice(0, rank); });
+  var thinR = R.slice(0, rank);
+  return { thinQ: thinQ, thinR: thinR, rank: rank };
+}
+
+// Matrix multiplication
+function matrixMultiply(A, B) {
+  var m = A.length;
+  var n = B[0].length;
+  var p = B.length;
+  var C = [];
+  for (var i = 0; i < m; i++) {
+    var row = [];
+    for (var j = 0; j < n; j++) {
+      var sum = 0;
+      for (var k = 0; k < p; k++) sum += A[i][k] * B[k][j];
+      row.push(sum);
+    }
+    C.push(row);
+  }
+  return C;
+}
+
+// ============================================================
+//  RENDER RESULTS
+// ============================================================
+function renderResults(input) {
+  var A = input.A;
+  var b = input.b;
+  var m = input.m;
+  var n = input.n;
+
+  var resultDiv = document.getElementById('result');
+  resultDiv.innerHTML = '';
+
+  // QR decomposition
+  var qrResult = computeQR(A);
+  var thinQ = qrResult.thinQ;
+  var thinR = qrResult.thinR;
+  var QT = transpose(thinQ);
+  var b_col = b.map(function(v) { return [v]; });
+  var c_col = matrixMultiply(QT, b_col);
+  var c = c_col.map(function(row) { return row[0]; });
+
+  // Back substitution - let descriptions respect display mode (surd/fraction/decimal)
+  var augmented = thinR.map(function(row, i) { return row.concat(c[i]); });
+  var rrefResult = computeRREF(augmented, false);
+  var steps = rrefResult.steps;
+  steps[0].description = '\\text{Initial augmented matrix } [R | c]';
+
+  // forceDecimal=false so min-norm details (xp, NᵀN, α, etc.) also respect the surd/fraction/decimal mode
+  var solution = extractSolution(rrefResult.matrix, n, false);
+
+  // === Display Least Squares Solution first ===
+  var summaryDiv = document.createElement('div');
+  summaryDiv.className = 'step-block';
+
+  if (solution.type === 'no_solution') {
+    summaryDiv.innerHTML = '<p class="step-title" style="text-align:center;color:#dc2626;">The overdetermined system is inconsistent - no least squares solution exists.</p>';
+    resultDiv.appendChild(summaryDiv);
+  } else {
+    var x = solution.solution;
+    var components = x.map(function(val) { return formatNumber(val, false); });
+    var latex;
+    if (currentDisplayMode === 'fraction') {
+      var fracs = components.map(function(str) { return getFractionParts(str); });
+      var dens = fracs.map(function(f) { return f.den; }).filter(function(d) { return d > 0; });
+      var commonDen = lcmArray(dens);
+      if (commonDen > 1 && commonDen < 500) {
+        var nums = fracs.map(function(f) {
+          var scale = commonDen / f.den;
+          return f.sign * f.num * scale;
+        });
+        var vectorLatex = '\\begin{bmatrix} ' + nums.join(' \\\\ ') + ' \\end{bmatrix}';
+        latex = '\\mathbf{x} = \\dfrac{1}{' + commonDen + '} ' + vectorLatex;
+      } else {
+        latex = '\\mathbf{x} = \\begin{bmatrix} ' + components.join(' \\\\ ') + ' \\end{bmatrix}';
+      }
+    } else {
+      // surd or decimal mode - let formatNumber pick (surds in surd mode, decimal otherwise)
+      latex = '\\mathbf{x} = \\begin{bmatrix} ' + x.map(function(val) { return formatNumber(val, false); }).join(' \\\\ ') + ' \\end{bmatrix}';
+    }
+    summaryDiv.innerHTML =
+      '<p class="step-title" style="text-align:center;">Least Squares Solution (minimum-norm):</p>' +
+      '<div style="text-align:center;">\\[ ' + latex + ' \\]</div>';
+    resultDiv.appendChild(summaryDiv);
+
+    if (solution.type === 'infinite_solutions') {
+      var genDiv = document.createElement('div');
+      genDiv.className = 'step-block';
+      genDiv.innerHTML =
+        '<p class="step-title" style="text-align:center;">General Solution:</p>' +
+        '<div style="text-align:center;">\\[ ' + solution.generalLatex + ' \\]</div>';
+      resultDiv.appendChild(genDiv);
+    }
+  }
+
+  // === Input matrices ===
+  var inputDiv = document.createElement('div');
+  inputDiv.className = 'step-block';
+  inputDiv.innerHTML =
+    '<p class="step-title" style="text-align:center;">Input Matrix A:</p>' +
+    '<div style="text-align:center;">\\[ ' + matrixToLatex(A, false, 0, true) + ' \\]</div>' +
+    '<p class="step-title" style="text-align:center;">Input Vector b:</p>' +
+    '<div style="text-align:center;">\\[ \\mathbf{b} = \\begin{bmatrix} ' + b.map(function(val) { return formatNumber(val, true); }).join(' \\\\ ') + ' \\end{bmatrix} \\]</div>';
+  resultDiv.appendChild(inputDiv);
+
+  // === QR decomposition details (Q, R, c respect display mode so surds appear when possible) ===
+  var thinQ_latex = matrixToLatex(thinQ, false, 0, false);
+  var thinR_latex = matrixToLatex(thinR, false, 0, false);
+  var c_latex = '\\begin{bmatrix} ' + c.map(function(val) { return formatNumber(val, false); }).join(' \\\\ ') + ' \\end{bmatrix}';
+
+  var qrDiv = document.createElement('div');
+  qrDiv.className = 'step-block';
+  qrDiv.innerHTML =
+    '<p class="step-title" style="text-align:center;">QR Decomposition (economy size):</p>' +
+    '<div style="text-align:center;">\\[ Q = ' + thinQ_latex + ' \\]</div>' +
+    '<div style="text-align:center;">\\[ R = ' + thinR_latex + ' \\]</div>' +
+    '<p class="step-title" style="text-align:center;">\\(c = Q^T \\mathbf{b}\\):</p>' +
+    '<div style="text-align:center;">\\[ c = ' + c_latex + ' \\]</div>' +
+    '<p class="step-title" style="text-align:center;">Solve \\(R \\mathbf{x} = c\\):</p>';
+  resultDiv.appendChild(qrDiv);
+
+  // === Back substitution steps ===
+  if (steps.length > 0) {
+    var stepsHeader = document.createElement('h2');
+    stepsHeader.className = 'step-title';
+    stepsHeader.style.fontSize = '1.1rem';
+    stepsHeader.style.textAlign = 'center';
+    stepsHeader.textContent = 'Back Substitution Steps (Gaussian Elimination on [R | c]):';
+    resultDiv.appendChild(stepsHeader);
+
+    for (var idx = 0; idx < steps.length; idx++) {
+      var step = steps[idx];
+      var stepDiv = document.createElement('div');
+      stepDiv.className = 'step-block';
+      var descText = idx === 0 ? step.description : '\\text{Step ' + idx + ': } ' + step.description;
+      stepDiv.innerHTML =
+        '<div style="text-align:center;">\\[ ' + descText + ' \\]</div>' +
+        '<div style="text-align:center;">\\[ ' + matrixToLatex(step.matrix, true, n, false) + ' \\]</div>';
+      resultDiv.appendChild(stepDiv);
+    }
+  }
+
+  // === Minimum-norm details (only for underdetermined) ===
+  if (solution.type === 'infinite_solutions' && solution.minNormSteps.length > 0) {
+    var mnHeader = document.createElement('h2');
+    mnHeader.className = 'step-title';
+    mnHeader.style.fontSize = '1.1rem';
+    mnHeader.style.textAlign = 'center';
+    mnHeader.textContent = 'Minimum-norm Solution Details:';
+    resultDiv.appendChild(mnHeader);
+
+    solution.minNormSteps.forEach(function(mnStep, mnIdx) {
+      var mnDiv = document.createElement('div');
+      mnDiv.className = 'step-block';
+      mnDiv.innerHTML = '<div style="text-align:center;">\\[ \\text{Step ' + (mnIdx + 1) + ': } ' + mnStep.description + ' \\]</div>';
+      if (mnStep.latex) {
+        mnDiv.innerHTML += '<div style="text-align:center;">\\[ ' + mnStep.latex + ' \\]</div>';
+      }
+      resultDiv.appendChild(mnDiv);
+    });
+  }
+
+  // Typeset and announce
+  if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+    MathJax.typesetPromise([resultDiv]).catch(function(err) { console.warn('MathJax error:', err); });
+  }
+
+  if (solution.type === 'no_solution') {
+    announce('Computation complete. The system is inconsistent, no least squares solution exists.');
+  } else {
+    var xAnnounce = solution.solution.map(function(val) { return formatNumber(val, false); }).join(', ');
+    announce('Computation complete. Least squares solution: ' + xAnnounce + '.');
+  }
+}
+
+// ============================================================
+//  EVENT LISTENERS
+// ============================================================
+document.getElementById('genBtn').addEventListener('click', generateMatrix);
+document.getElementById('exampleBtn').addEventListener('click', loadExample);
+document.getElementById('calcBtn').addEventListener('click', function() {
+  var input = readMatrix();
+  if (input === null) return;
+  renderResults(input);
+});
+document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+// Info panel toggle
+(function() {
+  var toggle = document.getElementById('infoToggle');
+  var body = document.getElementById('infoBody');
+  var icon = toggle.querySelector('.info-toggle-icon');
+  toggle.addEventListener('click', function() {
+    var expanded = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', String(!expanded));
+    body.hidden = expanded;
+    icon.innerHTML = expanded ? '+' : '&minus;';
+    announce(expanded ? 'About panel collapsed' : 'About panel expanded');
+  });
+})();
+
+// Contrast toggle
+document.getElementById('contrastToggle').addEventListener('click', function() {
+  document.documentElement.classList.toggle('high-contrast');
+  var on = document.documentElement.classList.contains('high-contrast');
+  announce('High contrast mode ' + (on ? 'enabled' : 'disabled'));
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- dim-clamp:start -->
+<script>
+/* Bound matrix-dimension inputs (.dim-input). Capture-phase listeners run before
+   each tool's own input/change handlers, so the tool never reads an out-of-range
+   dimension (covers typing, pasting, spinner, and read-on-generate paths).
+     - value > 10           -> clamp to 10 and warn that the maximum dimension is 10
+     - not a natural 1..10  -> warn and revert to the tool's loaded example
+   Revert order: click #exampleBtn -> call window.loadExample() -> restore the last
+   valid value (and re-generate) for tools that have no example. */
+(function () {
+  var MAX_DIM = 10;
+
+  function warn(msg, el) {
+    var t = document.getElementById('dimClampWarn');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'dimClampWarn';
+      t.setAttribute('role', 'alert');
+      t.style.cssText = 'position:fixed;top:1rem;left:50%;transform:translateX(-50%);' +
+        'z-index:99999;background:#dc2626;color:#fff;padding:.6rem 1rem;border-radius:.5rem;' +
+        'font:600 .95rem -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;' +
+        'box-shadow:0 4px 14px rgba(0,0,0,.25);max-width:90vw;text-align:center;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function () { t.style.display = 'none'; }, 3500);
+    if (el) {
+      var prev = el.style.outline;
+      el.style.outline = '2px solid #dc2626';
+      setTimeout(function () { el.style.outline = prev; }, 1500);
+    }
+  }
+
+  function revert(el) {
+    var btn = document.getElementById('exampleBtn');
+    if (btn) { btn.click(); return; }
+    if (typeof window.loadExample === 'function') { try { window.loadExample(); return; } catch (e) {} }
+    // Fallback for tools with no example: restore last valid value (or a small default).
+    var lv = el.getAttribute('data-last-valid');
+    el.value = (lv !== null && lv !== '') ? lv : String(Math.min(3, MAX_DIM));
+    if (typeof window.generateMatrix === 'function') { try { window.generateMatrix(); } catch (e) {} }
+  }
+
+  function remember(el) {
+    var raw = (el.value || '').trim();
+    if (/^\d+$/.test(raw) && +raw >= 1 && +raw <= MAX_DIM) el.setAttribute('data-last-valid', raw);
+  }
+
+  // Live: never let an out-of-range value be read (> MAX_DIM -> MAX_DIM).
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
+    var n = Number(el.value);
+    if (isFinite(n) && n > MAX_DIM) { el.value = MAX_DIM; warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+    remember(el);
+  }, true);
+
+  // Commit (blur / Enter / spinner): full validation.
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('dim-input')) return;
+    var raw = (el.value || '').trim();
+    if (/^\d+$/.test(raw)) {
+      var num = parseInt(raw, 10);
+      if (num > MAX_DIM) { el.value = MAX_DIM; el.setAttribute('data-last-valid', String(MAX_DIM)); warn('Maximum dimension is ' + MAX_DIM + '.', el); }
+      else if (num < 1)  { warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el); revert(el); }
+      else { el.setAttribute('data-last-valid', raw); }
+    } else {
+      warn('Dimension must be a whole number from 1 to ' + MAX_DIM + '. Reverting to the example.', el);
+      revert(el);
+    }
+  }, true);
+
+  function init() {
+    var els = document.querySelectorAll('input.dim-input');
+    for (var i = 0; i < els.length; i++) {
+      els[i].max = MAX_DIM; els[i].min = 1; els[i].step = 1;
+      var n = Number(els[i].value);
+      if (isFinite(n) && n > MAX_DIM) els[i].value = MAX_DIM;
+      remember(els[i]);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+<!-- dim-clamp:end -->
+  <!-- matrix-random:start -->
+<script>
+/* Adds a "Random" button (next to Load Example / Generate) that fills the matrix
+   cells (.matrix-cell) with small random integers:
+     - magnitudes are small: mostly 1..3, up to 5
+     - about 70% positive, 30% negative
+     - for larger matrices (largest dimension > 5), about 25% of the entries are
+       zero, spread evenly across the cells
+   The button uses a distinct (violet) colour so it stands out from the others. */
+(function () {
+  var RULE = "#randomBtn{background:#7c3aed!important;background-color:#7c3aed!important;border-color:#6d28d9!important;color:#fff!important;}#randomBtn:hover,#randomBtn:focus-visible{background:#6d28d9!important;background-color:#6d28d9!important;}";
+  function randInt() {
+    var mags = [1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5];           // small values preferred
+    var m = mags[Math.floor(Math.random() * mags.length)];
+    return (Math.random() < 0.70 ? 1 : -1) * m;             // ~70% positive
+  }
+  function maxDim() {
+    var d = 0, els = document.querySelectorAll('input.dim-input');
+    for (var i = 0; i < els.length; i++) { var v = parseInt(els[i].value, 10); if (isFinite(v)) d = Math.max(d, v); }
+    return d;
+  }
+  function rebuild() {
+    if (typeof window.generateMatrix === 'function')  { try { window.generateMatrix();  return; } catch (e) {} }
+    if (typeof window.generateMatrices === 'function'){ try { window.generateMatrices(); return; } catch (e) {} }
+  }
+  function fillRandom() {
+    rebuild();
+    var cells = document.querySelectorAll('input.matrix-cell');
+    if (!cells.length && typeof window.loadExample === 'function') { try { window.loadExample(); } catch (e) {} cells = document.querySelectorAll('input.matrix-cell'); }
+    var n = cells.length;
+    if (!n) return;
+    var zero = {};
+    if (maxDim() > 5) {                                       // ~25% zeros, evenly spread but jittered
+      var z = Math.round(0.25 * n), blk = Math.max(1, Math.round(n / z));
+      for (var k = 0; k < z; k++) { var pos = k * blk + Math.floor(Math.random() * blk); if (pos < n) zero[pos] = true; }
+    }
+    for (var i = 0; i < n; i++) {
+      cells[i].value = zero[i] ? '0' : String(randInt());
+      cells[i].dispatchEvent(new Event('input',  { bubbles: true }));
+      cells[i].dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (typeof window.announce === 'function') { try { window.announce('Matrix filled with random integers.'); } catch (e) {} }
+  }
+  function ensureStyle() {
+    if (document.getElementById('randomBtnStyle')) return;
+    var st = document.createElement('style'); st.id = 'randomBtnStyle'; st.textContent = RULE;
+    document.head.appendChild(st);
+  }
+  function addButton() {
+    ensureStyle();
+    if (document.getElementById('randomBtn')) return;          // tool already provides one
+    var anchor = document.getElementById('exampleBtn');
+    if (!anchor) {
+      anchor = [].slice.call(document.querySelectorAll('button')).filter(function (b) {
+        return /loadExample|generateMatrix/.test(b.getAttribute('onclick') || '');
+      }).pop();
+    }
+    if (!anchor || !anchor.parentNode) return;
+    var rb = document.createElement('button');
+    rb.type = 'button'; rb.id = 'randomBtn'; rb.textContent = 'Random';
+    rb.className = anchor.className;                            // match the tool's button shape/size
+    rb.setAttribute('aria-label', 'Fill the matrix with random small integers');
+    rb.addEventListener('click', fillRandom);
+    anchor.parentNode.insertBefore(rb, anchor.nextSibling);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addButton);
+  else addButton();
+})();
+</script>
+<!-- matrix-random:end -->
+  <!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

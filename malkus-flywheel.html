@@ -1,0 +1,2390 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Malkus waterwheel simulator. Visualize the chaotic dynamics that map onto the Lorenz equations using a tilted, leaky waterwheel.">
+  <meta name="keywords" content="Malkus waterwheel, Lorenz attractor, chaos, butterfly effect, fluid dynamics, dynamical systems, Fourier decomposition">
+  <title>Malkus Chaotic Waterwheel - Dynamical Systems</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady:function(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+  <script src="vendor/plotly@2.35.2/plotly.min.js" charset="utf-8"></script>
+  <style>
+:root{
+  --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;
+  --info:#eff6ff;--inf-b:#1d4ed8;--inf-hd:#1e3a8a;
+  --txt:#111827;--txt2:#374151;--muted:#4b5563;
+  --bdr:#6b7280;--bdr2:#d1d5db;--focus:#1d4ed8;
+  --blue:#1d4ed8;--bl2:#1e3a8a;--teal:#0f766e;
+  --vio:#6d28d9;--ora:#92400e;--green:#15803d;--red:#dc2626;--link:#1e40af;
+  --r:.5rem;--r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10);--sh2:0 4px 12px rgba(0,0,0,.12);
+  --slider-thumb:#15803d;--slider-track:#d1d5db;
+  /* Waterwheel palette */
+  --wheel-rim:#475569;
+  --wheel-spoke:#64748b;
+  --wheel-hub:#334155;
+  --bucket-frame:#1f2937;
+  --bucket-empty:#f3f4f6;
+  --water:#2563eb;
+  --water-edge:#1d4ed8;
+  --stream:#60a5fa;
+  --ground:#6b7280;
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;--inf-hd:#00006b;
+  --txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--red:#cc0000;--link:#00c;
+  --slider-thumb:#006600;--slider-track:#000;
+  --wheel-rim:#000;--wheel-spoke:#333;--wheel-hub:#000;
+  --bucket-frame:#000;--bucket-empty:#fff;
+  --water:#0000cc;--water-edge:#000066;--stream:#0000cc;--ground:#000;
+}
+@media(prefers-contrast:more){:root{--txt:#000;--txt2:#000;--bdr:#000;--blue:#00c;--link:#00c;}}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px;
+  box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;z-index:1000;
+  border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;outline:3px solid #fff;outline-offset:2px;}
+
+/* Nav */
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;background:var(--card);
+  border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;
+  padding:.625rem .5rem;border-radius:.3rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+
+/* Card */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:1200px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* Info panel */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);
+  margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p,.info-body li{font-size:.9375rem;color:var(--txt2);line-height:1.65;}
+.info-body ul{margin:0 0 .5rem 1.5rem;}.info-body li{margin-bottom:.3rem;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+.map-box{background:rgba(15,118,110,.07);padding:.55rem .7rem;border-radius:var(--r);
+  margin:.5rem 0;border-left:3px solid var(--teal);font-size:.875rem;}
+
+/* Equation display */
+.eq-display{text-align:center;padding:.75rem 1rem;background:var(--info);
+  border:2px solid var(--inf-b);border-radius:var(--r);margin-bottom:1rem;
+  font-size:1.05rem;overflow-x:auto;}
+
+/* Preset bar */
+.preset-bar{display:flex;align-items:center;justify-content:center;gap:.4rem;flex-wrap:wrap;
+  margin-bottom:.6rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.preset-lbl{font-size:.8125rem;font-weight:700;color:var(--txt2);margin-right:.3rem;}
+.pbtn{padding:.4rem .9rem;min-height:40px;border:2px solid var(--bdr);border-radius:.4rem;
+  background:var(--card);color:var(--txt);font-size:.875rem;font-weight:700;cursor:pointer;}
+.pbtn:hover{background:rgba(29,78,216,.06);border-color:var(--blue);color:var(--bl2);}
+.pbtn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.pbtn-s{border-color:var(--green);color:var(--green);}
+.pbtn-s:hover{background:rgba(21,128,61,.08);}
+.pbtn-s.active{background:var(--green);color:#fff;border-color:var(--green);}
+.pbtn-p{border-color:var(--teal);color:var(--teal);}
+.pbtn-p:hover{background:rgba(15,118,110,.08);}
+.pbtn-p.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+.pbtn-c{border-color:var(--vio);color:var(--vio);}
+.pbtn-c:hover{background:rgba(109,40,217,.08);}
+.pbtn-c.active{background:var(--vio);color:#fff;border-color:var(--vio);}
+.pbtn-v{border-color:var(--red);color:var(--red);}
+.pbtn-v:hover{background:rgba(220,38,38,.08);}
+.pbtn-v.active{background:var(--red);color:#fff;border-color:var(--red);}
+.pbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* Parameters panel */
+.param-panel{background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);
+  padding:.7rem .85rem;margin-bottom:.6rem;}
+.param-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.7rem;}
+.sl-block{display:flex;flex-direction:column;gap:.15rem;}
+.sl-row{display:flex;align-items:center;justify-content:space-between;gap:.35rem;}
+.sl-label{font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.sl-val{width:78px;min-height:32px;padding:.15rem .3rem;border:2px solid var(--bdr);
+  border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);
+  background:var(--card);text-align:center;}
+.sl-val:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+input[type=range]{-webkit-appearance:none;width:100%;background:transparent;
+  margin:.1rem 0;min-height:28px;cursor:pointer;}
+input[type=range]::-webkit-slider-runnable-track{height:4px;background:var(--slider-track);border-radius:2px;}
+input[type=range]::-moz-range-track{height:4px;background:var(--slider-track);border-radius:2px;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;
+  background:var(--slider-thumb);border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,.2);
+  cursor:pointer;margin-top:-7px;}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;background:var(--slider-thumb);
+  border-radius:50%;border:none;cursor:pointer;}
+input[type=range]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* Action bar */
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;
+  margin-bottom:.6rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.abtn{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem 1rem;
+  min-height:40px;border:none;border-radius:.5rem;font-size:.875rem;font-weight:700;cursor:pointer;}
+.abtn-go{background:var(--blue);color:#fff;}.abtn-go:hover{background:var(--bl2);}
+.abtn-grn{background:var(--green);color:#fff;}.abtn-grn:hover{background:#166534;}
+.abtn-stop{background:var(--red);color:#fff;}.abtn-stop:hover{background:#b91c1c;}
+.abtn-reset{background:var(--muted);color:#fff;}.abtn-reset:hover{background:#374151;}
+.abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.speed-row{display:flex;align-items:center;gap:.5rem;font-size:.8125rem;flex-wrap:wrap;}
+.speed-row label{display:flex;align-items:center;gap:.25rem;cursor:pointer;color:var(--txt2);font-weight:600;min-height:32px;}
+.speed-row input[type=radio]{cursor:pointer;min-width:16px;min-height:16px;accent-color:var(--blue);}
+.toggle-row{display:inline-flex;align-items:center;gap:.4rem;margin-left:.25rem;}
+.toggle-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--blue);cursor:pointer;}
+.toggle-row label{font-size:.8125rem;font-weight:600;color:var(--txt2);cursor:pointer;}
+
+/* Readout bar */
+.rbar{display:flex;align-items:stretch;margin-bottom:.875rem;background:var(--card);
+  border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);flex-wrap:wrap;}
+.rbar{margin-block:0;}
+.rbar dt,.rbar dd{margin:0;padding:0;}
+.rcell{flex:1;text-align:center;padding:.5rem .4rem .4rem;border-right:1px solid var(--bdr2);min-width:90px;}
+.rcell:last-child{border-right:none;}
+.rlbl{font-size:.78rem;color:var(--txt2);margin-bottom:.1rem;line-height:1.3;font-weight:700;letter-spacing:.01em;}
+.rlbl mjx-container{font-size:1em !important;vertical-align:middle;}
+.rval{font-size:.95rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;line-height:1.2;color:var(--txt);}
+.rval-b{color:#1e40af;}.rval-g{color:#14532d;}.rval-r{color:#7f1d1d;}.rval-t{color:#134e4a;}.rval-v{color:#5b21b6;}
+
+/* Main layout */
+.main-layout{display:grid;grid-template-columns:minmax(360px,1fr) minmax(360px,1fr);gap:.75rem;margin-bottom:.875rem;}
+@media(max-width:900px){.main-layout{grid-template-columns:1fr;}}
+
+/* Panel wrapper */
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);}
+.phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.4rem;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+/* Wheel SVG */
+.wheel-wrap{display:flex;justify-content:center;align-items:center;padding:.4rem;background:#fafafa;}
+.hc .wheel-wrap{background:#f5f5f5;}
+#wheelSvg{display:block;max-width:100%;width:100%;height:auto;}
+.wheel-footer{display:flex;align-items:center;justify-content:space-between;gap:.35rem;
+  padding:.3rem .65rem;background:var(--sect);border-top:1px solid var(--bdr2);flex-wrap:wrap;
+  font-size:.8125rem;color:var(--txt2);}
+.wheel-legend{display:inline-flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
+.wheel-legend-item{display:inline-flex;align-items:center;gap:.3rem;}
+.wheel-legend-swatch{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.25);}
+
+/* Plot panels */
+.plot-stack{display:flex;flex-direction:column;gap:.75rem;}
+#plotOmega{width:100%;height:240px;}
+#plotPhase{width:100%;height:320px;}
+
+/* External LaTeX legend for the separation plot. Kept outside Plotly so
+   MathJax typesets once and never fires on animation frames. */
+.sep-legend{display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;
+  padding:.55rem .9rem;background:var(--sect);border-top:1px solid var(--bdr2);
+  font-size:1rem;color:var(--txt);}
+.sep-leg-item{display:inline-flex;align-items:center;gap:.5rem;}
+.sep-leg-swatch{display:inline-block;width:32px;height:0;flex-shrink:0;
+  border-top-width:3px;}
+.sep-leg-solid{border-top:3px solid #dc2626;}
+.sep-leg-dashed{border-top:3px dashed #6b7280;}
+.hc .sep-leg-solid{border-top-color:#cc0000;}
+.hc .sep-leg-dashed{border-top-color:#000;}
+.sep-leg-math mjx-container{font-size:1em !important;vertical-align:middle;}
+
+/* Pedagogical info box below */
+.ped-box{margin-top:.5rem;padding:.65rem .85rem;background:rgba(15,118,110,.06);
+  border:1px solid rgba(15,118,110,.25);border-left:4px solid var(--teal);
+  border-radius:var(--r);font-size:.875rem;line-height:1.65;color:var(--txt2);}
+
+/* Footer */
+.footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);padding-top:1rem;
+  text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);text-decoration:underline;}
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;background:var(--txt);
+  color:var(--card);border:2px solid var(--bdr);border-radius:50%;width:48px;height:48px;
+  font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important;}}
+
+/* Back link */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+  <meta name="author" content="Shelvean Kapita">
+  <link rel="canonical" href="https://shelvean.github.io/math-tools/malkus-waterwheel.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+  <meta property="og:title" content="Malkus Chaotic Waterwheel - Dynamical Systems">
+  <meta property="og:description" content="Malkus waterwheel simulator. Visualize the chaotic dynamics that map onto the Lorenz equations using a tilted, leaky waterwheel.">
+  <meta property="og:url" content="https://shelvean.github.io/math-tools/malkus-waterwheel.html">
+  <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Malkus Chaotic Waterwheel - Dynamical Systems">
+  <meta name="twitter:description" content="Malkus waterwheel simulator. Visualize the chaotic dynamics that map onto the Lorenz equations using a tilted, leaky waterwheel.">
+  <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Malkus Chaotic Waterwheel - Dynamical Systems",
+  "description": "Malkus waterwheel simulator. Visualize the chaotic dynamics that map onto the Lorenz equations using a tilted, leaky waterwheel.",
+  "url": "https://shelvean.github.io/math-tools/malkus-waterwheel.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+      <li><a href="dynamical.html" aria-current="page">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+      <li><a href="calculus.html">Calculus</a></li>
+      <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+<a href="dynamical.html" class="back-link" aria-label="Back to Dynamical Systems">&larr; Back to Dynamical Systems</a>
+<script>
+if(document.referrer.includes('projects.html')){
+  var bl=document.querySelector('.back-link');
+  if(bl){bl.href='projects.html';bl.textContent='← Back to Differential Equations';bl.setAttribute('aria-label','Back to Differential Equations');}
+}
+</script>
+
+<main id="main" class="card" role="main">
+  <h1>Malkus Chaotic Waterwheel</h1>
+  <p class="subtitle">A physical realisation of the Lorenz attractor - leaky buckets on a rotating wheel produce the same butterfly in phase space.</p>
+
+  <!-- About panel -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button"
+      aria-label="About the Malkus waterwheel: expand or collapse">
+      <span>About - Physics, Fourier Decomposition &amp; Reduction to Lorenz</span>
+      <span id="infoIcon" style="font-size:1.25rem;font-weight:700;flex-shrink:0;" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+
+      <h2>The Setup</h2>
+      <p>A wheel (radius \(R\), moment of inertia \(I\)) rotates freely about a horizontal axis. Around its rim are \(N\) leaky cups. Water flows in from above, peaking at the top (angle \(\theta=0\)). Each cup drains through a hole at the bottom at rate proportional to its water mass.</p>
+      <p>Two things tend to happen. (i) As the wheel turns, a cup that fills near the top swings outward, its weight driving the wheel further - positive feedback. (ii) Leakage and viscous damping \(\nu\) bleed the rotation away - negative feedback. The competition between these produces extraordinarily rich dynamics: steady rotation, periodic oscillation, and - at high enough inflow - <strong>chaotic reversals indistinguishable from the Lorenz attractor</strong>.</p>
+
+      <h2>Equations of Motion</h2>
+      <p>Let \(m(\theta,t)\) be the mass density of water at angle \(\theta\) around the rim. Conservation of mass in a rotating frame gives</p>
+      <div class="defn-box">
+        \[\frac{\partial m}{\partial t} + \omega\,\frac{\partial m}{\partial \theta} = Q(\theta) - K\,m\]
+      </div>
+      <p>where \(Q(\theta)\) is the inflow (water falling in) and \(K\) is the leakage rate. The wheel's angular momentum equation is</p>
+      <div class="defn-box">
+        \[I\,\dot{\omega} = gR\!\int_0^{2\pi} m(\theta,t)\sin\theta\,d\theta \;-\;\nu\,\omega.\]
+      </div>
+      <p>The gravity torque integral picks up only the \(\sin\theta\) (first-sine) Fourier component of the mass distribution.</p>
+
+      <h2>Fourier Reduction - How Lorenz Emerges</h2>
+      <p>Expand the mass density in a Fourier series around the rim:</p>
+      <div class="defn-box">
+        \[m(\theta,t) = \sum_{n=0}^{\infty}\bigl[a_n(t)\cos(n\theta) + b_n(t)\sin(n\theta)\bigr].\]
+      </div>
+      <p>Take an inflow profile that is purely first-harmonic in cosine: \(Q(\theta) = q_1\cos\theta\) (water peaks at the top, \(\theta=0\)). Substituting into the PDE and projecting onto \(\cos\theta\) and \(\sin\theta\) <em>decouples</em> the first-harmonic modes \((a_1,b_1)\) from all higher modes:</p>
+      <div class="defn-box">
+        \[\dot{a}_1 = -\omega\,b_1 - K\,a_1 + q_1,\qquad \dot{b}_1 = \omega\,a_1 - K\,b_1,\qquad \dot{\omega} = \frac{\pi gR}{I}\,b_1 - \frac{\nu}{I}\,\omega.\]
+      </div>
+      <p>Three ODEs in three unknowns \((\omega,b_1,a_1)\). Rescaling time and state gives <strong>exactly the Lorenz system</strong>:</p>
+      <div class="map-box">
+        \[\sigma = \frac{\nu/I}{K},\qquad \rho = \frac{\pi gR\,q_1}{K^2\,(\nu/I)},\qquad \beta = 1.\]
+      </div>
+      <p>The Lorenz parameter \(\beta\) is not free here - it is pinned to 1 by the waterwheel geometry. This is why Malkus's model is said to realise Lorenz <em>exactly</em> on a planar cross-section of parameter space.</p>
+
+      <h2>What You'll See</h2>
+      <ul>
+        <li>At <strong>low inflow</strong> \(q_1\): damping wins. The wheel either stays still (if initial \(\omega=0\)) or settles into steady one-directional rotation (symmetric pitchfork of stable fixed points \(C^\pm\), corresponding to Lorenz equilibria).</li>
+        <li>At <strong>intermediate inflow</strong>: a Hopf bifurcation gives birth to a periodic orbit - the wheel oscillates without crossing zero angular velocity.</li>
+        <li>At <strong>high inflow</strong>: chaos. The wheel reverses direction at unpredictable times, and the point \((\omega,b_1,a_1)\) traces the famous Lorenz butterfly in phase space - two lobes around \(C^+\) and \(C^-\).</li>
+      </ul>
+
+      <h2>Numerical Method</h2>
+      <p>This simulation uses the <em>discrete</em> version of the Malkus wheel: \(N\) buckets with individual masses \(m_i(t)\), positions \(\theta_i(t) = \theta_i(0) + \varphi(t)\) where \(\dot\varphi=\omega\). The equations are</p>
+      <div class="defn-box">
+        \[\dot m_i = q_1\,\max(0,\cos\theta_i) - K\,m_i,\qquad I\,\dot\omega = gR\sum_i m_i\sin\theta_i - \nu\,\omega.\]
+      </div>
+      <p>Note the \(\max(0,\cos\theta_i)\) inflow profile - physically realistic (water only lands in cups near the top), though it contains higher harmonics. For sufficiently large \(N\) these higher harmonics are damped out by leakage faster than the fundamental, and the effective dynamics in \((\omega,b_1,a_1)\)-space remain Lorenz-like. Integration uses a fixed-step explicit 4th-order Runge&ndash;Kutta scheme with \(\Delta t=0.01\).</p>
+      <p>The Fourier coefficients displayed in real time are</p>
+      <div class="defn-box">
+        \[a_1(t)=\tfrac{2}{N}\sum_i m_i\cos\theta_i,\qquad b_1(t)=\tfrac{2}{N}\sum_i m_i\sin\theta_i.\]
+      </div>
+
+      <h2>Sensitive Dependence on Initial Conditions</h2>
+      <p>Toggle <strong>Sensitivity (twin trajectory)</strong> in the controls to launch a second trajectory whose initial angular velocity differs from the first by \(\varepsilon\). The waterwheel animation is replaced by a log-scale plot of the separation</p>
+      <div class="defn-box">
+        \[\|\Delta(t)\| = \sqrt{(\omega_1-\omega_2)^2 + (b_{1,1}-b_{1,2})^2 + (a_{1,1}-a_{1,2})^2}.\]
+      </div>
+      <p>In the steady or periodic regime the two trajectories converge and the separation decays. In the <strong>chaotic regime</strong> they diverge exponentially,</p>
+      <div class="defn-box">
+        \[\|\Delta(t)\|\;\sim\;\varepsilon\,e^{\lambda_1 t},\]
+      </div>
+      <p>where \(\lambda_1>0\) is the <strong>maximal Lyapunov exponent</strong>. On the log plot this appears as a straight line whose slope is \(\lambda_1\); for Malkus / Lorenz with \(\sigma\!\approx\!10\), \(\rho\!\approx\!28\) the value is \(\lambda_1\approx 0.9\). After roughly \(1/\lambda_1\) time units the separation saturates at the diameter of the attractor - the two systems are then uncorrelated and prediction is lost. A dashed reference line \(\varepsilon e^{0.9 t}\) is overlaid for comparison.</p>
+      <p>The waterwheel is hidden in this mode because two near-identical wheels would not visibly differ until divergence has already occurred. Use very small \(\varepsilon\) (e.g. \(10^{-9}\)) to make the predictability horizon stretch farther into the simulation.</p>
+
+      <h2>How to Use</h2>
+      <ul>
+        <li>Click a <strong>preset</strong> (Steady / Periodic / Chaos / Intense Chaos) to load parameters that demonstrate each regime. The wheel is reset and animation starts.</li>
+        <li>Use the <strong>parameter sliders</strong> to adjust inflow \(q_1\), leakage \(K\), damping \(\nu\), and moment of inertia \(I\). Changes take effect immediately without resetting the state.</li>
+        <li>The <strong>Play / Pause</strong> button controls animation. <strong>Reset</strong> zeroes the state and starts over.</li>
+        <li>Watch the right-hand plots: the top shows \(\omega(t)\) over time - a good indicator of the regime. The bottom 3D plot traces the orbit in \((\omega,b_1,a_1)\) space, where the Lorenz butterfly emerges in the chaotic regime.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Equations -->
+  <div class="eq-display" role="math" aria-label="Malkus waterwheel equations and Fourier definitions">
+    \[\dot m_i = q_1\max(0,\cos\theta_i) - K m_i,\quad I\dot\omega = gR\!\sum_i\! m_i\sin\theta_i - \nu\omega\]
+  </div>
+
+  <!-- Preset bar -->
+  <div class="preset-bar" role="group" aria-label="Parameter presets">
+    <span class="preset-lbl">Preset:</span>
+    <button type="button" class="pbtn pbtn-s" id="preStead" aria-pressed="false">Steady (\(q_1{=}15\))</button>
+    <button type="button" class="pbtn pbtn-p" id="preOsc" aria-pressed="false">Periodic (\(q_1{=}15,\nu{=}7\))</button>
+    <button type="button" class="pbtn pbtn-c active" id="preChaos" aria-pressed="true">Chaos (\(q_1{=}40\))</button>
+    <button type="button" class="pbtn pbtn-v" id="preViol" aria-pressed="false">Intense (\(q_1{=}90\))</button>
+  </div>
+
+  <!-- Parameters -->
+  <div class="param-panel">
+    <div class="param-grid" id="paramGrid" role="group" aria-label="Physical parameters"></div>
+  </div>
+
+  <!-- Animation controls -->
+  <div class="abar" role="group" aria-label="Animation controls">
+    <button type="button" id="btnPlay" class="abtn abtn-grn" aria-pressed="false" aria-label="Pause or resume animation">
+      <span aria-hidden="true">&#9654;</span> Play
+    </button>
+    <button type="button" id="btnReset" class="abtn abtn-reset" aria-label="Reset simulation state">
+      <span aria-hidden="true">&#8635;</span> Reset
+    </button>
+    <button type="button" id="btnDownload" class="abtn abtn-go" aria-label="Download the waterwheel, omega(t), and 3D phase-space plots as PNGs">
+      <span aria-hidden="true">&#x2B07;</span> Download PNGs
+    </button>
+    <fieldset class="speed-row" style="border:none;padding:0;margin:0;">
+      <legend class="sr-only">Simulation speed</legend>
+      <span style="font-weight:700;color:var(--txt2);font-size:.8125rem;">Speed:</span>
+      <label><input type="radio" name="simSpeed" value="0.5"> 0.5&times;</label>
+      <label><input type="radio" name="simSpeed" value="1" checked> 1&times;</label>
+      <label><input type="radio" name="simSpeed" value="2"> 2&times;</label>
+      <label><input type="radio" name="simSpeed" value="4"> 4&times;</label>
+    </fieldset>
+    <div class="toggle-row" style="display:flex;align-items:center;gap:.4rem;">
+      <label for="endTime" style="font-weight:700;color:var(--txt2);font-size:.8125rem;">End&nbsp;time \(t_\text{end}\):</label>
+      <input type="number" id="endTime" value="60" min="1" max="1000" step="1"
+             style="width:80px;padding:.15rem .35rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);background:var(--card);text-align:center;"
+             aria-label="End time of simulation">
+    </div>
+    <div class="toggle-row" style="display:flex;align-items:center;gap:.4rem;">
+      <label for="method" style="font-weight:700;color:var(--txt2);font-size:.8125rem;">Method:</label>
+      <select id="method" aria-label="Numerical integration method"
+              style="flex:1;min-width:0;padding:.2rem .4rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.8125rem;font-weight:600;color:var(--txt);background:var(--card);cursor:pointer;">
+        <option value="rk4" selected>RK4 (4th order)</option>
+        <option value="dp5">Dormand-Prince 5(4)</option>
+        <option value="tsit5">Tsit5 (5th order)</option>
+        <option value="dop853">DOP853 (8th order)</option>
+      </select>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="showPhase" checked>
+      <label for="showPhase">Show 3D phase space</label>
+    </div>
+    <div class="toggle-row">
+      <input type="checkbox" id="sensMode">
+      <label for="sensMode">Sensitivity (twin trajectory)</label>
+    </div>
+    <div class="toggle-row" id="epsRow" style="display:none;align-items:center;gap:.4rem;">
+      <label for="epsInput" style="font-weight:700;color:var(--txt2);font-size:.8125rem;">\(\varepsilon\):</label>
+      <input type="text" id="epsInput" value="1e-5"
+             style="width:80px;padding:.15rem .35rem;border:2px solid var(--bdr);border-radius:.375rem;font-size:.875rem;font-weight:600;color:var(--txt);background:var(--card);text-align:center;"
+             aria-label="Initial perturbation epsilon for sensitivity twin trajectory">
+    </div>
+  </div>
+
+  <!-- Readout -->
+  <dl class="rbar" role="region" aria-label="Simulation state readouts">
+    <div class="rcell">
+      <dt class="rlbl">Time \(t\)</dt>
+      <dd class="rval rval-b" id="rvT">0.00</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">\(\omega(t)\)</dt>
+      <dd class="rval rval-b" id="rvOmega">0.000</dd>
+    </div>
+    <div class="rcell" title="First Fourier cosine coefficient of the bucket-mass distribution: a_1(t) = (2/N) Σᵢ mᵢ cos(θᵢ). Top–bottom asymmetry of the mass.">
+      <dt class="rlbl">\(a_1(t)\)</dt>
+      <dd class="rval rval-t" id="rvA1">0.000</dd>
+    </div>
+    <div class="rcell" title="First Fourier sine coefficient of the bucket-mass distribution: b_1(t) = (2/N) Σᵢ mᵢ sin(θᵢ). Left–right asymmetry - this is the mode that drives the wheel's torque.">
+      <dt class="rlbl">\(b_1(t)\)</dt>
+      <dd class="rval rval-v" id="rvB1">0.000</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Total water</dt>
+      <dd class="rval rval-g" id="rvMass">0.00</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Reversals</dt>
+      <dd class="rval rval-r" id="rvRev">0</dd>
+    </div>
+  </dl>
+
+  <!-- Main 2-col layout: wheel (left) + plots (right) -->
+  <div class="main-layout">
+
+    <!-- Left column: wheel (default) or separation plot (sensitivity mode) -->
+    <div class="plot-stack">
+      <!-- Wheel -->
+      <div class="pwrap" id="wheelPanel">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--water);" aria-hidden="true"></span>
+          Waterwheel - live animation
+        </div>
+        <div class="wheel-wrap">
+          <svg id="wheelSvg" viewBox="0 0 500 500"
+               role="img" aria-label="Animated waterwheel. Rotating wheel with leaky buckets. Water falls from top into buckets near the top; buckets leak as they rotate; the wheel's angular velocity is driven by the imbalance of water around the rim."
+               aria-describedby="wheelDesc"></svg>
+          <p id="wheelDesc" class="sr-only" aria-live="polite">Live waterwheel simulation. Current angular velocity announced in the readout bar above.</p>
+        </div>
+        <div class="wheel-footer">
+          <span class="wheel-legend" aria-hidden="true">
+            <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--water);"></span>Water level</span>
+            <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--bucket-empty);"></span>Empty bucket</span>
+            <span class="wheel-legend-item"><span class="wheel-legend-swatch" style="background:var(--stream);"></span>Inflow stream</span>
+          </span>
+          <span id="wheelStatus" style="font-weight:600;">Paused</span>
+        </div>
+      </div>
+
+      <!-- Separation plot (shown when sensitivity mode is active) -->
+      <div class="pwrap" id="sepPanel" hidden>
+        <div class="phdr">
+          <span class="pdot" style="background:var(--red);" aria-hidden="true"></span>
+          Trajectory separation - \(\|\Delta(t)\|\) (log scale)
+        </div>
+        <div id="plotSep" style="width:100%;height:400px;" role="img"
+             aria-label="Log-scale plot of the separation between two trajectories versus time. In the chaotic regime the curve is initially linear, indicating exponential growth at the maximal Lyapunov exponent; the curve then saturates at the diameter of the attractor."></div>
+        <div class="sep-legend" id="sepLegend" role="region" aria-label="Legend for trajectory separation plot">
+          <span class="sep-leg-item">
+            <span class="sep-leg-swatch sep-leg-solid" aria-hidden="true"></span>
+            <span class="sep-leg-math">\(\|\Delta(t)\|\)</span>
+          </span>
+          <span class="sep-leg-item">
+            <span class="sep-leg-swatch sep-leg-dashed" aria-hidden="true"></span>
+            <span class="sep-leg-math">\(\varepsilon\, e^{0.9\, t}\)</span>
+          </span>
+        </div>
+        <div class="wheel-footer" style="justify-content:flex-start;gap:1rem;">
+          <span style="font-size:.8rem;">Slope of the early linear region \(\approx \lambda_1\) - the maximal Lyapunov exponent. Saturation marks the predictability horizon.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Plots stack -->
+    <div class="plot-stack">
+      <div class="pwrap">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--blue);" aria-hidden="true"></span>
+          Angular velocity - \(\omega(t)\)
+        </div>
+        <div id="plotOmega" role="img" aria-label="Angular velocity omega plotted against time. Sign reversals indicate chaotic direction changes."></div>
+      </div>
+      <div class="pwrap" id="phaseWrap">
+        <div class="phdr">
+          <span class="pdot" style="background:var(--vio);" aria-hidden="true"></span>
+          Phase space - \((\omega,\,b_1,\,a_1)\)  &nbsp;<span style="font-weight:400;color:var(--muted);">- Lorenz butterfly</span>
+        </div>
+        <div id="plotPhase" role="img" aria-label="3D phase-space trajectory in omega, b1, a1 coordinates. In the chaotic regime the trajectory traces the Lorenz butterfly."></div>
+      </div>
+    </div>
+
+  </div><!-- /main-layout -->
+
+  <!-- Pedagogical note -->
+  <div class="ped-box" id="pedagogicalBox" role="region" aria-label="Pedagogical interpretation">
+    Loading interpretation&hellip;
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981302">https://doi.org/10.5281/zenodo.20981302</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Malkus Chaotic Waterwheel. Math Tools. https://doi.org/10.5281/zenodo.20981302</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Malkus Chaotic Waterwheel." Math Tools, 2026, doi.org/10.5281/zenodo.20981302.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026malkusflywheel,
+  author       = {Shelvean Kapita},
+  title        = {{Malkus Chaotic Waterwheel}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981302},
+  url          = {https://doi.org/10.5281/zenodo.20981302}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: March 2026.</p>
+</footer>
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* =====================================================
+   Utilities
+===================================================== */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+function fmt(v,d){if(!isFinite(v))return '-';d=d==null?3:d;return v.toFixed(d);}
+function fmtSig(n){if(!Number.isFinite(n))return String(n);var s=n.toFixed(6);s=s.replace(/\.?0+$/,'');return s;}
+function parseInp(s){if(!s||typeof s!=='string')return NaN;s=s.trim();var v=parseFloat(s);return isNaN(v)?NaN:v;}
+function mj(n){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(n).catch(function(){});}
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function isHC(){return document.documentElement.classList.contains('hc');}
+
+/* Shared font defaults for all Plotly panels. Uses the system UI stack so the
+   browser's native legible sans-serif is selected (San Francisco on macOS,
+   Segoe UI on Windows, Roboto on Android). Larger size + darker grey than
+   Plotly's defaults give better contrast for low-vision readers (WCAG AA on
+   light backgrounds). */
+var PLOT_FONT_FAMILY = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+function plotFont(hc, size){ return {family: PLOT_FONT_FAMILY, size: size||12, color: hc?'#000':'#1f2937'}; }
+function axisTitleFont(hc){ return {family: PLOT_FONT_FAMILY, size: 14, color: hc?'#000':'#111827'}; }
+
+/* =====================================================
+   Parameter definitions
+===================================================== */
+var PARAMS=[
+  {id:'q1',   label:'q_1',  name:'Inflow rate',     min:0,  max:150,step:0.5, value:40,
+    desc:'Peak inflow at the top. Higher = more water, more torque. Primary bifurcation parameter.'},
+  {id:'K',    label:'K',    name:'Leakage rate',    min:0.2,max:5,  step:0.05, value:1,
+    desc:'How fast each bucket drains. Higher = water leaves faster.'},
+  {id:'nu',   label:'\\nu', name:'Damping',         min:0.5,max:30, step:0.1,  value:10,
+    desc:'Viscous/frictional damping of the wheel.'},
+  {id:'I',    label:'I',    name:'Moment of inertia',min:0.2,max:5,  step:0.05, value:1,
+    desc:'Rotational inertia. Larger = wheel responds more slowly to torque.'},
+  {id:'gR',   label:'gR',   name:'Gravity &times; radius',min:0.2,max:5,  step:0.05, value:1,
+    desc:'Scaled gravitational torque arm.'},
+  {id:'N',    label:'N',    name:'Number of buckets',min:12, max:48, step:4,   value:24,
+    desc:'Finer discretization tracks the continuum PDE more faithfully.',  integer:true}
+];
+
+/* =====================================================
+   State
+===================================================== */
+var ST = {
+  /* physics state - trajectory 1 */
+  phi: 0,             // cumulative wheel angle
+  omega: 0.5,         // angular velocity
+  m: [],              // bucket masses m[i], length N
+  baseAngle: [],      // θ_i(0) = 2πi/N
+  t: 0,
+  reversals: 0,
+  lastOmegaSign: 1,
+  method: 'rk4',      // selectable integrator: rk4 | dp5 | tsit5 | dop853
+  /* physics state - trajectory 2 (sensitivity-mode twin) */
+  phi2: 0,
+  omega2: 0.5,
+  m2: [],
+  /* animation - must start false so the first startAnim() call does not early-return */
+  running: false,
+  simSpeed: 1,
+  endTime: 60,        // sim stops when ST.t ≥ endTime
+  rafId: null,
+  lastFrameWall: null,
+  /* plot buffers */
+  tHist: [],
+  omegaHist: [],
+  a1Hist: [],
+  b1Hist: [],
+  omegaHist2: [],
+  a1Hist2: [],
+  b1Hist2: [],
+  sepHist: [],
+  maxHist: 20000,     // room for a full endtime ≤ 200 at dt=0.01
+  /* preset */
+  currentPreset: 'chaos',
+  /* display */
+  showPhase: true,
+  /* sensitivity / twin trajectory */
+  sensitivityMode: false,
+  eps: 1e-5
+};
+
+/* Presets */
+var PRESETS = {
+  steady:  { name:'Steady',           q1:15, K:1, nu:10, I:1, gR:1, N:24, omega0:0.5, tag:'steady' },
+  periodic:{ name:'Periodic',         q1:15, K:1, nu:7,  I:1, gR:1, N:24, omega0:0.5, tag:'periodic' },
+  chaos:   { name:'Chaos',            q1:40, K:1, nu:10, I:1, gR:1, N:24, omega0:0.5, tag:'chaos' },
+  violent: { name:'Intense chaos',    q1:90, K:1, nu:10, I:1, gR:1, N:24, omega0:0.5, tag:'violent' }
+};
+
+var PED_TEXT = {
+  steady: 'In this regime, damping dominates the first-harmonic Fourier mode. The wheel settles to one of two symmetric steady rotations \\(C^\\pm\\) (a supercritical pitchfork bifurcation from the origin). The phase-space trajectory spirals into a single fixed point; \\(\\omega(t)\\) tends to a constant.',
+  periodic:'Just past the Hopf bifurcation of the equilibria \\(C^\\pm\\). A stable limit cycle orbits one of the fixed points - the wheel oscillates without crossing \\(\\omega=0\\). The 3D phase portrait shows a closed loop, not yet the butterfly.',
+  chaos: 'The classic Lorenz regime. The equilibria \\(C^\\pm\\) are now unstable, but a chaotic attractor has emerged around them. Nearby trajectories diverge exponentially (positive Lyapunov exponent) and the wheel reverses direction at unpredictable times. The 3D view shows the full <strong>Lorenz butterfly</strong>.',
+  violent: 'Far above the chaos threshold: strong, fast reversals with a more spread attractor. The dynamics remain bounded by leakage and damping, but each lobe of the butterfly is filled densely. A single initial condition cannot be predicted more than a few time units ahead.',
+  custom: 'Custom parameters. The regime depends on the dimensionless numbers \\(\\sigma=\\nu/(IK)\\), \\(\\rho=\\pi gR\\,q_1/(K^2\\nu/I)\\), \\(\\beta=1\\). With \\(\\beta=1\\) the Hopf threshold is \\(\\rho_H=\\sigma(\\sigma+4)/(\\sigma-2)\\); at the default \\(\\sigma\\approx 10\\) this gives \\(\\rho_H\\approx 17.5\\), past which the equilibria \\(C^\\pm\\) lose stability and chaos can emerge.'
+};
+
+/* =====================================================
+   Initialisation
+===================================================== */
+function initBuckets(N) {
+  ST.baseAngle = [];
+  ST.m = [];
+  ST.m2 = [];
+  for (var i = 0; i < N; i++) {
+    ST.baseAngle.push(2 * Math.PI * i / N);
+    ST.m.push(0);
+    ST.m2.push(0);
+  }
+}
+
+function resetState(preset) {
+  var p = preset || PRESETS[ST.currentPreset];
+  ST.phi = 0;
+  ST.omega = p.omega0;
+  ST.t = 0;
+  ST.reversals = 0;
+  ST.lastOmegaSign = Math.sign(p.omega0) || 1;
+  /* Twin trajectory: identical initial state plus an epsilon kick on omega.
+     The perturbation is applied even when sensitivity mode is currently off
+     so that toggling it on at t=0 (without a re-reset) is still meaningful. */
+  ST.phi2 = 0;
+  ST.omega2 = p.omega0 + ST.eps;
+  initBuckets(p.N); /* resets both ST.m and ST.m2 to zeros */
+  ST.tHist.length = 0;
+  ST.omegaHist.length = 0;
+  ST.a1Hist.length = 0;
+  ST.b1Hist.length = 0;
+  ST.omegaHist2.length = 0;
+  ST.a1Hist2.length = 0;
+  ST.b1Hist2.length = 0;
+  ST.sepHist.length = 0;
+  /* Record the initial condition as a single history sample so the plots
+     display the starting state on load without running the simulation. */
+  var fc0 = fourierCoeffs();
+  ST.tHist.push(ST.t);
+  ST.omegaHist.push(ST.omega);
+  ST.a1Hist.push(fc0.a1);
+  ST.b1Hist.push(fc0.b1);
+  if (ST.sensitivityMode) {
+    var fc02 = fourierCoeffs2();
+    ST.omegaHist2.push(ST.omega2);
+    ST.a1Hist2.push(fc02.a1);
+    ST.b1Hist2.push(fc02.b1);
+    var dx = ST.omega - ST.omega2;
+    var dy = fc0.b1 - fc02.b1;
+    var dz = fc0.a1 - fc02.a1;
+    ST.sepHist.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+  }
+  updateReadout();
+  drawWheel();
+  drawOmegaPlot();
+  drawPhasePlot();
+  drawSeparationPlot();
+}
+
+/* =====================================================
+   RK4 integration step (dt ≈ 0.01, 4 substeps per RAF frame at 1×)
+===================================================== */
+function getParams(){
+  return {
+    q1: parseFloat(document.getElementById('q1').value),
+    K:  parseFloat(document.getElementById('K').value),
+    nu: parseFloat(document.getElementById('nu').value),
+    I:  parseFloat(document.getElementById('I').value),
+    gR: parseFloat(document.getElementById('gR').value),
+  };
+}
+
+/* Derivatives given state (baseAngle, phi, omega, m[]) and params.
+   Pulled out of any single state object so we can advance two independent
+   trajectories sharing the same baseAngle and params (sensitivity mode). */
+function derivG(baseAngle, phi, omega, m, params) {
+  var N = m.length;
+  var dm = new Array(N);
+  var torque = 0;
+  for (var i = 0; i < N; i++) {
+    var theta = baseAngle[i] + phi;
+    var cosT = Math.cos(theta);
+    var sinT = Math.sin(theta);
+    var inflow = cosT > 0 ? params.q1 * cosT : 0;
+    dm[i] = inflow - params.K * m[i];
+    torque += m[i] * sinT;
+  }
+  var dOmega = (params.gR * torque - params.nu * omega) / params.I;
+  return { dPhi: omega, dOmega: dOmega, dm: dm };
+}
+
+/* Pure RK4 step: returns new (phi, omega, m[]) for the given input state.
+   Caller owns assignment back into ST or any other store. */
+function rk4Step(baseAngle, phi, omega, m, p, dt) {
+  var N = m.length;
+  var i;
+  /* k1 */
+  var k1 = derivG(baseAngle, phi, omega, m, p);
+  /* k2 */
+  var phiS = phi + 0.5*dt*k1.dPhi;
+  var omegaS = omega + 0.5*dt*k1.dOmega;
+  var mS = new Array(N);
+  for (i = 0; i < N; i++) mS[i] = m[i] + 0.5*dt*k1.dm[i];
+  var k2 = derivG(baseAngle, phiS, omegaS, mS, p);
+  /* k3 */
+  phiS = phi + 0.5*dt*k2.dPhi;
+  omegaS = omega + 0.5*dt*k2.dOmega;
+  for (i = 0; i < N; i++) mS[i] = m[i] + 0.5*dt*k2.dm[i];
+  var k3 = derivG(baseAngle, phiS, omegaS, mS, p);
+  /* k4 */
+  phiS = phi + dt*k3.dPhi;
+  omegaS = omega + dt*k3.dOmega;
+  for (i = 0; i < N; i++) mS[i] = m[i] + dt*k3.dm[i];
+  var k4 = derivG(baseAngle, phiS, omegaS, mS, p);
+
+  var newPhi = phi + dt * (k1.dPhi + 2*k2.dPhi + 2*k3.dPhi + k4.dPhi) / 6;
+  var newOmega = omega + dt * (k1.dOmega + 2*k2.dOmega + 2*k3.dOmega + k4.dOmega) / 6;
+  var newM = new Array(N);
+  for (i = 0; i < N; i++) {
+    newM[i] = m[i] + dt * (k1.dm[i] + 2*k2.dm[i] + 2*k3.dm[i] + k4.dm[i]) / 6;
+    if (newM[i] < 0) newM[i] = 0; /* enforce physical bound */
+  }
+  return { phi: newPhi, omega: newOmega, m: newM };
+}
+
+/* =====================================================
+   Selectable integrators (RK4 default, plus DP5 / Tsit5 / DOP853)
+   The Malkus state is composite (phi, omega, m[0..N-1]) and the system is
+   autonomous, so a single generic explicit Runge-Kutta stepper drives every
+   method from its Butcher tableau. NOTE: the inflow cos(theta)+ has corners at
+   theta = +-pi/2, so the right-hand side is only piecewise-smooth; the higher
+   orders therefore give little asymptotic accuracy gain over RK4 here, but the
+   selector still lets users confirm a feature is intrinsic to the dynamics and
+   not an artifact of one solver.
+===================================================== */
+var DOP853_A=[
+  {},
+  {0:0.05260015195876773},
+  {0:0.0197250569845379, 1:0.0591751709536137},
+  {0:0.02958758547680685, 2:0.08876275643042054},
+  {0:0.2413651341592667, 2:-0.8845494793282861, 3:0.924834003261792},
+  {0:0.037037037037037035, 3:0.17082860872947386, 4:0.12546768756682242},
+  {0:0.037109375, 3:0.17025221101954405, 4:0.06021653898045596, 5:-0.017578125},
+  {0:0.03709200011850479, 3:0.17038392571223998, 4:0.10726203044637328, 5:-0.015319437748624402, 6:0.008273789163814023},
+  {0:0.6241109587160757, 3:-3.3608926294469414, 4:-0.868219346841726, 5:27.59209969944671, 6:20.154067550477894, 7:-43.48988418106996},
+  {0:0.47766253643826434, 3:-2.4881146199716677, 4:-0.590290826836843, 5:21.230051448181193, 6:15.279233632882423, 7:-33.28821096898486, 8:-0.020331201708508627},
+  {0:-0.9371424300859873, 3:5.186372428844064, 4:1.0914373489967295, 5:-8.149787010746927, 6:-18.52006565999696, 7:22.739487099350505, 8:2.4936055526796523, 9:-3.0467644718982196},
+  {0:2.273310147516538, 3:-10.53449546673725, 4:-2.0008720582248625, 5:-17.9589318631188, 6:27.94888452941996, 7:-2.8589982771350235, 8:-8.87285693353063, 9:12.360567175794303, 10:0.6433927460157636}
+];
+var DOP853_B=[0.054293734116568765, 0.0, 0.0, 0.0, 0.0, 4.450312892752409, 1.8915178993145003, -5.801203960010585, 0.3111643669578199, -0.1521609496625161, 0.20136540080403034, 0.04471061572777259];
+/* Butcher tableaux (explicit). A-rows are sparse {col: coeff}; the system is
+   autonomous so the c nodes are unused. DOP853 reuses the arrays above. */
+var MALKUS_TAB = {
+  rk4:  { A:[{},{0:0.5},{1:0.5},{2:1}], b:[1/6,1/3,1/3,1/6] },
+  dp5:  { A:[{},{0:1/5},{0:3/40,1:9/40},{0:44/45,1:-56/15,2:32/9},
+            {0:19372/6561,1:-25360/2187,2:64448/6561,3:-212/729},
+            {0:9017/3168,1:-355/33,2:46732/5247,3:49/176,4:-5103/18656}],
+          b:[35/384,0,500/1113,125/192,-2187/6784,11/84] },
+  tsit5:{ A:[{},{0:0.161},{0:-0.008480655492356989,1:0.335480655492357},
+            {0:2.8971530571054935,1:-6.359448489975075,2:4.362295432869581},
+            {0:5.325864828439257,1:-11.748883564062828,2:7.4955393428898365,3:-0.09249506636175525},
+            {0:5.86145544294642,1:-12.92096931784711,2:8.159367898576159,3:-0.071584973281401,4:-0.028269050394068383}],
+          b:[0.09646076681806523,0.01,0.4798896504144996,1.379008574103742,-3.290069515436081,2.324710524099774] },
+  dop853:{ A:DOP853_A, b:DOP853_B }
+};
+
+/* Generic explicit RK step over the composite state, returning new
+   (phi, omega, m[]). Mirrors rk4Step's interface and its m >= 0 clamp. */
+function rkStepTableau(T, baseAngle, phi, omega, m, p, dt) {
+  var s = T.b.length, N = m.length, i, q;
+  var kPhi = new Array(s), kOmega = new Array(s), kM = new Array(s);
+  for (i = 0; i < s; i++) {
+    var aPhi = phi, aOmega = omega, aM = m.slice(), row = T.A[i];
+    for (var key in row) {
+      var j = +key, aij = row[key], kmj = kM[j];
+      aPhi += dt*aij*kPhi[j]; aOmega += dt*aij*kOmega[j];
+      for (q = 0; q < N; q++) aM[q] += dt*aij*kmj[q];
+    }
+    var d = derivG(baseAngle, aPhi, aOmega, aM, p);
+    kPhi[i] = d.dPhi; kOmega[i] = d.dOmega; kM[i] = d.dm;
+  }
+  var newPhi = phi, newOmega = omega, newM = m.slice();
+  for (i = 0; i < s; i++) {
+    var bi = T.b[i]; if (!bi) continue;
+    var kmi = kM[i];
+    newPhi += dt*bi*kPhi[i]; newOmega += dt*bi*kOmega[i];
+    for (q = 0; q < N; q++) newM[q] += dt*bi*kmi[q];
+  }
+  for (q = 0; q < N; q++) if (newM[q] < 0) newM[q] = 0;
+  return { phi:newPhi, omega:newOmega, m:newM };
+}
+
+/* method id -> stepper with the rk4Step signature. RK4 keeps the existing,
+   verified rk4Step so default runs are byte-for-byte unchanged. */
+var MALKUS_STEP = {
+  rk4:    rk4Step,
+  dp5:    function(ba,ph,om,m,p,dt){ return rkStepTableau(MALKUS_TAB.dp5,    ba,ph,om,m,p,dt); },
+  tsit5:  function(ba,ph,om,m,p,dt){ return rkStepTableau(MALKUS_TAB.tsit5,  ba,ph,om,m,p,dt); },
+  dop853: function(ba,ph,om,m,p,dt){ return rkStepTableau(MALKUS_TAB.dop853, ba,ph,om,m,p,dt); }
+};
+
+function stepRK4(dt) {
+  var p = getParams();
+  var stepFn = MALKUS_STEP[ST.method] || rk4Step;
+  var r1 = stepFn(ST.baseAngle, ST.phi, ST.omega, ST.m, p, dt);
+  ST.phi = r1.phi;
+  ST.omega = r1.omega;
+  ST.m = r1.m;
+  ST.t += dt;
+
+  /* reversal counting (trajectory 1 only) */
+  var s = Math.sign(ST.omega);
+  if (s !== 0 && s !== ST.lastOmegaSign && ST.lastOmegaSign !== 0) {
+    ST.reversals++;
+  }
+  if (s !== 0) ST.lastOmegaSign = s;
+
+  /* Advance twin trajectory in lockstep, sharing all params. */
+  if (ST.sensitivityMode) {
+    var r2 = stepFn(ST.baseAngle, ST.phi2, ST.omega2, ST.m2, p, dt);
+    ST.phi2 = r2.phi;
+    ST.omega2 = r2.omega;
+    ST.m2 = r2.m;
+  }
+}
+
+/* =====================================================
+   Fourier coefficients a_1, b_1 (current state)
+===================================================== */
+function fourierCoeffs() {
+  var N = ST.m.length;
+  var a1 = 0, b1 = 0;
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i] + ST.phi;
+    a1 += ST.m[i] * Math.cos(theta);
+    b1 += ST.m[i] * Math.sin(theta);
+  }
+  return { a1: (2/N)*a1, b1: (2/N)*b1 };
+}
+
+/* Same as fourierCoeffs but for trajectory 2 (the perturbed twin). */
+function fourierCoeffs2() {
+  var N = ST.m2.length;
+  var a1 = 0, b1 = 0;
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i] + ST.phi2;
+    a1 += ST.m2[i] * Math.cos(theta);
+    b1 += ST.m2[i] * Math.sin(theta);
+  }
+  return { a1: (2/N)*a1, b1: (2/N)*b1 };
+}
+
+function totalMass(){var s=0;for(var i=0;i<ST.m.length;i++)s+=ST.m[i];return s;}
+
+/* =====================================================
+   Wheel SVG rendering
+===================================================== */
+var SVG_NS = 'http://www.w3.org/2000/svg';
+var WHEEL_CX = 250, WHEEL_CY = 240;
+var WHEEL_R = 150;             /* rim radius */
+var BUCKET_W = 24;             /* bucket width (tangential) */
+var BUCKET_H = 40;             /* bucket height (radial, pointing outward from rim) */
+var HUB_R = 14;
+var STREAM_X = WHEEL_CX;       /* inflow stream x position */
+var STREAM_TOP = 18;           /* top of falling water */
+var STREAM_BOT = WHEEL_CY - WHEEL_R - 6; /* stream stops at top of wheel */
+
+function buildWheelSvg() {
+  var svg = document.getElementById('wheelSvg');
+  svg.innerHTML = ''; /* wipe */
+  var N = ST.m.length;
+
+  /* Background ground shading */
+  var ground = document.createElementNS(SVG_NS, 'rect');
+  ground.setAttribute('x', 0);
+  ground.setAttribute('y', WHEEL_CY + WHEEL_R + BUCKET_H + 8);
+  ground.setAttribute('width', 500);
+  ground.setAttribute('height', 500 - (WHEEL_CY + WHEEL_R + BUCKET_H + 8));
+  ground.setAttribute('fill', 'rgba(107,114,128,0.15)');
+  ground.setAttribute('aria-hidden', 'true');
+  svg.appendChild(ground);
+
+  /* Inflow stream (animated by opacity based on q1) */
+  var streamGroup = document.createElementNS(SVG_NS, 'g');
+  streamGroup.setAttribute('id', 'streamGroup');
+  streamGroup.setAttribute('aria-hidden', 'true');
+  svg.appendChild(streamGroup);
+
+  /* Wheel: rim + spokes + hub (fixed) */
+  var wheelFixed = document.createElementNS(SVG_NS, 'g');
+  wheelFixed.setAttribute('id', 'wheelFixed');
+  wheelFixed.setAttribute('aria-hidden', 'true');
+  svg.appendChild(wheelFixed);
+
+  /* Outer rim */
+  var rim = document.createElementNS(SVG_NS, 'circle');
+  rim.setAttribute('cx', WHEEL_CX);
+  rim.setAttribute('cy', WHEEL_CY);
+  rim.setAttribute('r', WHEEL_R);
+  rim.setAttribute('fill', 'none');
+  rim.setAttribute('stroke', 'var(--wheel-rim)');
+  rim.setAttribute('stroke-width', 3);
+  wheelFixed.appendChild(rim);
+
+  /* Rotating layer: spokes + buckets */
+  var rotGroup = document.createElementNS(SVG_NS, 'g');
+  rotGroup.setAttribute('id', 'rotGroup');
+  svg.appendChild(rotGroup);
+
+  /* Spokes (8 evenly spaced inside rotating group so they turn with wheel) */
+  for (var s = 0; s < 8; s++) {
+    var ang = s * Math.PI / 4;
+    var sp = document.createElementNS(SVG_NS, 'line');
+    sp.setAttribute('x1', WHEEL_CX);
+    sp.setAttribute('y1', WHEEL_CY);
+    sp.setAttribute('x2', WHEEL_CX + WHEEL_R * Math.sin(ang));
+    sp.setAttribute('y2', WHEEL_CY - WHEEL_R * Math.cos(ang));
+    sp.setAttribute('stroke', 'var(--wheel-spoke)');
+    sp.setAttribute('stroke-width', 1.8);
+    sp.setAttribute('opacity', '0.55');
+    rotGroup.appendChild(sp);
+  }
+
+  /* Buckets (created inside rotating group) */
+  for (var i = 0; i < N; i++) {
+    var bucketGroup = document.createElementNS(SVG_NS, 'g');
+    bucketGroup.setAttribute('data-bucket', String(i));
+    /* Bucket frame (outline) */
+    var frame = document.createElementNS(SVG_NS, 'rect');
+    frame.setAttribute('x', -BUCKET_W / 2);
+    frame.setAttribute('y', 0);
+    frame.setAttribute('width', BUCKET_W);
+    frame.setAttribute('height', BUCKET_H);
+    frame.setAttribute('fill', 'var(--bucket-empty)');
+    frame.setAttribute('stroke', 'var(--bucket-frame)');
+    frame.setAttribute('stroke-width', 1.4);
+    frame.setAttribute('rx', 2);
+    frame.setAttribute('data-kind', 'frame');
+    bucketGroup.appendChild(frame);
+    /* Water fill */
+    var water = document.createElementNS(SVG_NS, 'rect');
+    water.setAttribute('x', -BUCKET_W / 2 + 1.5);
+    water.setAttribute('y', BUCKET_H - 1.5); /* bottom-anchored */
+    water.setAttribute('width', BUCKET_W - 3);
+    water.setAttribute('height', 0);
+    water.setAttribute('fill', 'var(--water)');
+    water.setAttribute('data-kind', 'water');
+    bucketGroup.appendChild(water);
+    /* Water surface line (slight) */
+    var surface = document.createElementNS(SVG_NS, 'line');
+    surface.setAttribute('stroke', 'var(--water-edge)');
+    surface.setAttribute('stroke-width', 1);
+    surface.setAttribute('data-kind', 'surface');
+    surface.setAttribute('x1', -BUCKET_W / 2 + 1.5);
+    surface.setAttribute('x2', BUCKET_W / 2 - 1.5);
+    surface.setAttribute('y1', BUCKET_H - 1.5);
+    surface.setAttribute('y2', BUCKET_H - 1.5);
+    bucketGroup.appendChild(surface);
+    rotGroup.appendChild(bucketGroup);
+  }
+
+  /* Hub (above rotating group so it stays on top, non-rotating but not strictly necessary) */
+  var hub = document.createElementNS(SVG_NS, 'circle');
+  hub.setAttribute('cx', WHEEL_CX);
+  hub.setAttribute('cy', WHEEL_CY);
+  hub.setAttribute('r', HUB_R);
+  hub.setAttribute('fill', 'var(--wheel-hub)');
+  hub.setAttribute('aria-hidden', 'true');
+  svg.appendChild(hub);
+
+  /* Direction-of-rotation arrow (inside hub) */
+  var dirArrow = document.createElementNS(SVG_NS, 'g');
+  dirArrow.setAttribute('id', 'dirArrow');
+  dirArrow.setAttribute('aria-hidden', 'true');
+  svg.appendChild(dirArrow);
+
+  /* θ = 0 marker (small tick at top, above wheel) */
+  var topMarker = document.createElementNS(SVG_NS, 'g');
+  topMarker.setAttribute('aria-hidden', 'true');
+  var markTri = document.createElementNS(SVG_NS, 'polygon');
+  var mY = WHEEL_CY - WHEEL_R - 3;
+  markTri.setAttribute('points', (WHEEL_CX-6)+','+(mY-8)+' '+(WHEEL_CX+6)+','+(mY-8)+' '+WHEEL_CX+','+mY);
+  markTri.setAttribute('fill', 'var(--stream)');
+  topMarker.appendChild(markTri);
+  svg.appendChild(topMarker);
+}
+
+function drawWheel() {
+  /* In sensitivity mode the wheel panel is hidden; skip the SVG churn. */
+  if (ST.sensitivityMode) return;
+  var N = ST.m.length;
+  if (!document.getElementById('rotGroup')) buildWheelSvg();
+  var rot = document.getElementById('rotGroup');
+
+  /* Defensive: if bucket count in SVG doesn't match current N, rebuild.
+     This covers the case where buildWheelSvg ran with a different N
+     (e.g. initial empty state, or N slider changed). */
+  var existingBuckets = rot.querySelectorAll('[data-bucket]');
+  if (existingBuckets.length !== N) {
+    buildWheelSvg();
+    rot = document.getElementById('rotGroup');
+  }
+
+  /* Apply rotation: wheel spins by phi (radians). SVG rotates in degrees, positive = clockwise. */
+  var phiDeg = (ST.phi * 180 / Math.PI);
+  rot.setAttribute('transform', 'rotate(' + phiDeg + ' ' + WHEEL_CX + ' ' + WHEEL_CY + ')');
+
+  /* For each bucket, compute its rest position (θ = 2πi/N from top) and apply local transform
+     that places the bucket at that rim position with radial-outward orientation.
+     When rotGroup rotates by phi, the bucket naturally moves to θ_i + phi without per-bucket logic. */
+  var buckets = rot.querySelectorAll('[data-bucket]');
+  var mMax = 0;
+  for (var i = 0; i < N; i++) if (ST.m[i] > mMax) mMax = ST.m[i];
+  /* Anchor mMax to typical steady-state level so fills are visible early on;
+     use 1.5× running max or at least mass_target = q1/K (rough single-bucket steady state) */
+  var p = getParams();
+  var estMax = Math.max(mMax, p.q1 / p.K * 0.7);
+  var fillCap = Math.max(0.5, estMax);
+
+  for (var i = 0; i < N; i++) {
+    var theta = ST.baseAngle[i]; /* local base angle; rotGroup transform adds phi */
+    /* bucket rest position (top at theta = 0 going CW is standard Malkus convention) */
+    var rimX = WHEEL_CX + WHEEL_R * Math.sin(theta);
+    var rimY = WHEEL_CY - WHEEL_R * Math.cos(theta);
+    /* rotation angle (degrees) to point bucket radially outward */
+    var rotDeg = theta * 180 / Math.PI;
+    /* combined transform: translate to rim, rotate so bucket y-axis points outward */
+    buckets[i].setAttribute('transform',
+      'translate(' + rimX + ',' + rimY + ') rotate(' + rotDeg + ')');
+    /* Update water fill: bucket local coords have rectangle from (−W/2, 0) to (W/2, BUCKET_H).
+       Water fills from the bottom (y=BUCKET_H) upward, so water rect has:
+       y = BUCKET_H - fillH, height = fillH */
+    var fillFrac = Math.min(1, Math.max(0, ST.m[i] / fillCap));
+    var fillH = fillFrac * (BUCKET_H - 3);
+    var water = buckets[i].querySelector('[data-kind=water]');
+    var surface = buckets[i].querySelector('[data-kind=surface]');
+    water.setAttribute('y', BUCKET_H - 1.5 - fillH);
+    water.setAttribute('height', fillH);
+    surface.setAttribute('y1', BUCKET_H - 1.5 - fillH);
+    surface.setAttribute('y2', BUCKET_H - 1.5 - fillH);
+  }
+
+  /* Inflow stream: intensity ~ q1 */
+  var streamGroup = document.getElementById('streamGroup');
+  streamGroup.innerHTML = '';
+  var streamOp = Math.min(1, p.q1 / 40);
+  if (streamOp > 0.01) {
+    /* Main stream: a few vertical droplet-lines falling at slightly different x */
+    for (var j = -2; j <= 2; j++) {
+      var xj = STREAM_X + j * 2.5;
+      var line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', xj);
+      line.setAttribute('x2', xj + 0.4);
+      line.setAttribute('y1', STREAM_TOP);
+      line.setAttribute('y2', STREAM_BOT);
+      line.setAttribute('stroke', 'var(--stream)');
+      line.setAttribute('stroke-width', 1.6);
+      line.setAttribute('opacity', streamOp * (1 - Math.abs(j) * 0.15));
+      streamGroup.appendChild(line);
+    }
+    /* Animated droplets (CSS keyframe alternative: just redraw each frame at different y) */
+    for (var d = 0; d < 3; d++) {
+      var tPhase = ((ST.t * 3 + d * 0.33) % 1);
+      var dy = STREAM_TOP + tPhase * (STREAM_BOT - STREAM_TOP);
+      var drop = document.createElementNS(SVG_NS, 'circle');
+      drop.setAttribute('cx', STREAM_X);
+      drop.setAttribute('cy', dy);
+      drop.setAttribute('r', 2.2);
+      drop.setAttribute('fill', 'var(--water)');
+      drop.setAttribute('opacity', streamOp);
+      streamGroup.appendChild(drop);
+    }
+    /* Small puddle/splash at top-most bucket location */
+    var splash = document.createElementNS(SVG_NS, 'ellipse');
+    splash.setAttribute('cx', STREAM_X);
+    splash.setAttribute('cy', STREAM_BOT + 1);
+    splash.setAttribute('rx', 9);
+    splash.setAttribute('ry', 2.4);
+    splash.setAttribute('fill', 'var(--water)');
+    splash.setAttribute('opacity', streamOp * 0.45);
+    streamGroup.appendChild(splash);
+  }
+
+  /* Direction arrow inside hub */
+  var arrow = document.getElementById('dirArrow');
+  arrow.innerHTML = '';
+  if (Math.abs(ST.omega) > 0.02) {
+    var arrowR = HUB_R - 4;
+    var dir = ST.omega > 0 ? 1 : -1; /* +1 = clockwise */
+    /* Simple curved arrow: 3/4 circle arc with arrowhead */
+    var startA = -Math.PI/2;
+    var sweep = dir * Math.PI * 1.35;
+    var endA = startA + sweep;
+    var x1 = WHEEL_CX + arrowR * Math.cos(startA);
+    var y1 = WHEEL_CY + arrowR * Math.sin(startA);
+    var x2 = WHEEL_CX + arrowR * Math.cos(endA);
+    var y2 = WHEEL_CY + arrowR * Math.sin(endA);
+    var largeArc = Math.abs(sweep) > Math.PI ? 1 : 0;
+    var sweepFlag = dir > 0 ? 1 : 0;
+    var path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', 'M ' + x1 + ',' + y1 + ' A ' + arrowR + ',' + arrowR + ' 0 ' + largeArc + ' ' + sweepFlag + ' ' + x2 + ',' + y2);
+    path.setAttribute('stroke', '#fff');
+    path.setAttribute('stroke-width', 1.5);
+    path.setAttribute('fill', 'none');
+    arrow.appendChild(path);
+    /* Arrowhead at end */
+    var tipLen = 4;
+    var tipA = endA + dir * Math.PI / 2;
+    var tipX = x2 + tipLen * Math.cos(tipA - dir * 0.45);
+    var tipY = y2 + tipLen * Math.sin(tipA - dir * 0.45);
+    var head = document.createElementNS(SVG_NS, 'circle');
+    head.setAttribute('cx', x2);
+    head.setAttribute('cy', y2);
+    head.setAttribute('r', 1.7);
+    head.setAttribute('fill', '#fff');
+    arrow.appendChild(head);
+  }
+}
+
+/* =====================================================
+   Plots: ω(t) time series and (ω, b1, a1) phase space
+===================================================== */
+
+/* Catmull-Rom spline interpolation (3D + scalar channel)
+   Produces `factor` extra points between each pair of samples,
+   giving visually smooth curves without changing the underlying
+   RK4 samples. The scalar channel `ts` is interpolated linearly
+   over the same parameterisation so the color map lines up. */
+function crInterp1D(p0, p1, p2, p3, t) {
+  var t2 = t*t, t3 = t2*t;
+  return 0.5 * ((2*p1) +
+                (-p0 + p2) * t +
+                (2*p0 - 5*p1 + 4*p2 - p3) * t2 +
+                (-p0 + 3*p1 - 3*p2 + p3) * t3);
+}
+
+/* ── Plot decimation ──────────────────────────────────────────────────────────
+   History grows to ~20,000 samples; the ω time-series and the 3D phase plot
+   (which additionally Catmull-Rom upsamples ×4 → ~80,000 points) re-render the
+   whole thing every animation frame. Stride-decimate the parallel arrays to
+   <= MAX_PLOT_PTS, always keeping the final sample, so per-frame plot cost stays
+   flat as the run grows. Visually identical - the curves are far over-sampled at
+   full resolution. Use a single shared stride so all arrays stay index-aligned. */
+var MAX_PLOT_PTS = 3000;
+function plotStride(n){ return Math.max(1, Math.ceil(n / MAX_PLOT_PTS)); }
+function decArr(arr, stride){
+  if(stride <= 1) return arr;
+  var out = [], n = arr.length;
+  for(var i = 0; i < n; i += stride) out.push(arr[i]);
+  if((n-1) % stride !== 0) out.push(arr[n-1]);
+  return out;
+}
+function catmullRom3D(xs, ys, zs, ts, factor) {
+  var n = xs.length;
+  if (n < 4 || factor <= 1) return { x: xs, y: ys, z: zs, t: ts };
+  var xo = [xs[0]], yo = [ys[0]], zo = [zs[0]], to = [ts[0]];
+  for (var i = 0; i < n - 1; i++) {
+    var i0 = i === 0 ? 0 : i - 1;
+    var i1 = i;
+    var i2 = i + 1;
+    var i3 = i + 2 < n ? i + 2 : n - 1;
+    for (var j = 1; j <= factor; j++) {
+      var u = j / factor;
+      xo.push(crInterp1D(xs[i0], xs[i1], xs[i2], xs[i3], u));
+      yo.push(crInterp1D(ys[i0], ys[i1], ys[i2], ys[i3], u));
+      zo.push(crInterp1D(zs[i0], zs[i1], zs[i2], zs[i3], u));
+      to.push(ts[i1] + (ts[i2] - ts[i1]) * u);
+    }
+  }
+  return { x: xo, y: yo, z: zo, t: to };
+}
+
+/* Phase-trajectory colormap. Jet matches the Lorenz tool: t=0 → dark
+   blue and t=endTime → dark red through cyan-green-yellow. */
+var PHASE_COLORSCALE = 'Jet';
+
+/* Colorbar labelled t=0 → t=endTime so the user sees what the
+   blue-to-red gradient corresponds to in simulation time. */
+function makeMalkusColorbar(tEnd) {
+  var tMid = Math.round(tEnd / 2);
+  var tEndR = Math.round(tEnd);
+  var hc = isHC();
+  return {
+    title: { text: 't', side: 'right', font: axisTitleFont(hc) },
+    thickness: 14,
+    len: 0.75,
+    tickvals: [0, tMid, tEndR],
+    tickfont: plotFont(hc, 12)
+  };
+}
+
+function drawOmegaPlot() {
+  var hc = isHC();
+  var bg = hc ? '#fff' : '#fafafa';
+  var grid = hc ? 'rgba(0,0,0,.2)' : '#e5e7eb';
+  var nH = ST.tHist.length;
+  var lastT = nH ? [ST.tHist[nH-1]] : [];
+  var st = plotStride(nH);
+  var tD = decArr(ST.tHist, st), oD = decArr(ST.omegaHist, st), o2D = decArr(ST.omegaHist2, st);
+  var traces;
+  if (ST.sensitivityMode) {
+    traces = [{
+      x: tD, y: oD,
+      type:'scatter', mode:'lines',
+      line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
+      name:'ω₁(t)',
+      hovertemplate:'t=%{x:.2f}<br>ω₁=%{y:.3f}<extra></extra>'
+    }, {
+      x: tD, y: o2D,
+      type:'scatter', mode:'lines',
+      line:{color:'#dc2626', width:1.6, shape:'spline', smoothing:1.0, dash:'dot'},
+      name:'ω₂(t)',
+      hovertemplate:'t=%{x:.2f}<br>ω₂=%{y:.3f}<extra></extra>'
+    }, {
+      x: lastT,
+      y: nH ? [ST.omegaHist[nH-1]] : [],
+      type:'scatter', mode:'markers',
+      marker:{color:'#1d4ed8', size:7, line:{color:'#fff', width:1.5}},
+      hoverinfo:'skip', showlegend:false
+    }, {
+      x: lastT,
+      y: nH ? [ST.omegaHist2[nH-1]] : [],
+      type:'scatter', mode:'markers',
+      marker:{color:'#dc2626', size:7, line:{color:'#fff', width:1.5}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  } else {
+    traces = [{
+      x: tD, y: oD,
+      type:'scatter', mode:'lines',
+      line:{color:'#1d4ed8', width:1.8, shape:'spline', smoothing:1.0},
+      hovertemplate:'t=%{x:.2f}<br>ω=%{y:.3f}<extra></extra>',
+      name:'ω(t)'
+    }, {
+      x: lastT,
+      y: nH ? [ST.omegaHist[nH-1]] : [],
+      type:'scatter', mode:'markers',
+      marker:{color:'#dc2626', size:8, line:{color:'#fff', width:1.5}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  }
+  Plotly.react('plotOmega', traces, {
+    margin:{t:8, r:14, b:42, l:58},
+    plot_bgcolor: bg,
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font: plotFont(hc, 12),
+    xaxis:{title:{text:'t', font: axisTitleFont(hc)}, tickfont: plotFont(hc, 12), gridcolor:grid, zerolinecolor:grid},
+    yaxis:{title:{text:'ω', font: axisTitleFont(hc)}, tickfont: plotFont(hc, 12), gridcolor:grid, zerolinecolor: hc?'#000':'#9ca3af', zerolinewidth:1.5},
+    showlegend: ST.sensitivityMode,
+    legend: ST.sensitivityMode ? {x:.02, y:.98, bgcolor:'rgba(255,255,255,.85)', font: plotFont(hc, 12)} : undefined
+  }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
+}
+
+function drawPhasePlot() {
+  if (!ST.showPhase) return;
+  var hc = isHC();
+  var bg = hc ? '#fff' : '#fafafa';
+  var n = ST.tHist.length;
+  /* Decimate history (shared stride) before the ×4 Catmull-Rom upsample so the
+     3D trace stays a few thousand points instead of ~80,000 at full run. */
+  var st = plotStride(n);
+  var tH = decArr(ST.tHist, st),
+      oH = decArr(ST.omegaHist, st),  bH = decArr(ST.b1Hist, st),  aH = decArr(ST.a1Hist, st),
+      oH2 = decArr(ST.omegaHist2, st), bH2 = decArr(ST.b1Hist2, st), aH2 = decArr(ST.a1Hist2, st);
+  var traces;
+
+  if (ST.sensitivityMode) {
+    /* Two solid-colour trajectories so divergence is visually obvious;
+       drop the time-coloured colorscale (would only confuse the comparison). */
+    var sm1 = catmullRom3D(oH,  bH,  aH,  tH, 4);
+    var sm2 = catmullRom3D(oH2, bH2, aH2, tH, 4);
+    traces = [{
+      x: sm1.x, y: sm1.y, z: sm1.z,
+      type:'scatter3d', mode:'lines',
+      line:{color:'#1d4ed8', width:2.2},
+      name:'Traj 1',
+      hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>'
+    }, {
+      x: sm2.x, y: sm2.y, z: sm2.z,
+      type:'scatter3d', mode:'lines',
+      line:{color:'#dc2626', width:2, dash:'dot'},
+      name:'Traj 2',
+      hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>'
+    }, {
+      x: n ? [ST.omegaHist[n-1]] : [],
+      y: n ? [ST.b1Hist[n-1]] : [],
+      z: n ? [ST.a1Hist[n-1]] : [],
+      type:'scatter3d', mode:'markers',
+      marker:{color:'#1d4ed8', size:5, line:{color:'#fff', width:1}},
+      hoverinfo:'skip', showlegend:false
+    }, {
+      x: n ? [ST.omegaHist2[n-1]] : [],
+      y: n ? [ST.b1Hist2[n-1]] : [],
+      z: n ? [ST.a1Hist2[n-1]] : [],
+      type:'scatter3d', mode:'markers',
+      marker:{color:'#dc2626', size:5, line:{color:'#fff', width:1}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  } else {
+    /* Catmull-Rom smoothing: 4× densification eliminates the
+       angular "coarseness" between consecutive RK4 samples. */
+    var sm = catmullRom3D(oH, bH, aH, tH, 4);
+    /* Colour by raw simulation time, clamped to [0, endTime]. t=0 → blue,
+       t=endTime → red. Using the absolute endTime (not a per-frame min/max)
+       means colour stays stable as the trajectory grows: a trajectory
+       point keeps the same colour for the whole run. */
+    var tEnd = ST.endTime || 1;
+    traces = [{
+      x: sm.x, y: sm.y, z: sm.z,
+      type:'scatter3d', mode:'lines',
+      line:{
+        color: sm.t,
+        colorscale: PHASE_COLORSCALE,
+        width: 2,
+        cauto: false,
+        cmin: 0,
+        cmax: tEnd,
+        showscale: true,
+        colorbar: makeMalkusColorbar(tEnd)
+      },
+      hovertemplate:'ω=%{x:.2f}<br>b₁=%{y:.2f}<br>a₁=%{z:.2f}<extra></extra>',
+      name:'orbit'
+    }, {
+      /* current point */
+      x: n ? [ST.omegaHist[n-1]] : [],
+      y: n ? [ST.b1Hist[n-1]] : [],
+      z: n ? [ST.a1Hist[n-1]] : [],
+      type:'scatter3d', mode:'markers',
+      marker:{color:'#dc2626', size:4.5, line:{color:'#fff', width:1}},
+      hoverinfo:'skip', showlegend:false
+    }];
+  }
+
+  Plotly.react('plotPhase', traces, {
+    scene:{
+      xaxis:{title:{text:'ω', font: axisTitleFont(hc)}, tickfont: plotFont(hc, 11),
+             gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
+      yaxis:{title:{text:'b₁', font: axisTitleFont(hc)}, tickfont: plotFont(hc, 11),
+             gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
+      zaxis:{title:{text:'a₁', font: axisTitleFont(hc)}, tickfont: plotFont(hc, 11),
+             gridcolor: hc?'#ccc':'#d1d5db', linecolor:hc?'#000':'#6b7280'},
+      /* Look along the ω axis so the (a₁, b₁) plane is front-facing.
+         This is the same viewing angle the Lorenz tool uses and reveals
+         the two symmetric butterfly lobes cleanly. */
+      camera:{eye:{x:2.18, y:0, z:0}},
+      bgcolor: bg
+    },
+    margin:{t:6, r:6, b:6, l:6},
+    paper_bgcolor:bg,
+    font: plotFont(hc, 12),
+    hovermode:false,
+    showlegend: ST.sensitivityMode,
+    legend: ST.sensitivityMode ? {x:.02, y:.98, bgcolor:'rgba(255,255,255,.85)', font: plotFont(hc, 12)} : undefined,
+    uirevision:'camera3d-v2'
+  }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
+}
+
+/* Log-scale separation plot, only meaningful when both trajectories are
+   integrated. The dashed reference line ε e^(λ t) with λ=0.9 (Lorenz value
+   for σ≈10, ρ≈28) lets the user see whether the early slope matches the
+   classical maximal Lyapunov exponent. */
+function drawSeparationPlot() {
+  if (!ST.sensitivityMode) return;
+  if (!document.getElementById('plotSep')) return;
+  var hc = isHC();
+  var bg = hc ? '#fff' : '#fafafa';
+  var grid = hc ? 'rgba(0,0,0,.2)' : '#e5e7eb';
+  var eps = ST.eps || 1e-5;
+  var lambda = 0.9;
+  var refX = [], refY = [];
+  /* Sample the reference line on a coarse grid so Plotly's log axis renders
+     it cleanly; clamp at a large ceiling so we don't blow up the y range. */
+  var tEnd = ST.endTime || 60;
+  var nRef = 80;
+  var capY = 1e6;
+  for (var i = 0; i <= nRef; i++) {
+    var tR = (i / nRef) * tEnd;
+    var yR = eps * Math.exp(lambda * tR);
+    if (yR > capY) yR = capY;
+    refX.push(tR);
+    refY.push(yR);
+  }
+  /* Keep only strictly positive separations for log axis. */
+  var sx = [], sy = [];
+  for (var j = 0; j < ST.tHist.length; j++) {
+    var v = ST.sepHist[j];
+    if (isFinite(v) && v > 0) { sx.push(ST.tHist[j]); sy.push(v); }
+  }
+  var nH = sx.length;
+  /* Legend is rendered outside the plot as static MathJax-typeset HTML
+     (see #sepLegend); Plotly's own legend is disabled so trace name lookups
+     never trigger a typeset on animation frames. */
+  Plotly.react('plotSep', [{
+    x: sx, y: sy,
+    type:'scatter', mode:'lines',
+    line:{color:'#dc2626', width:2.2},
+    hovertemplate:'t=%{x:.2f}<br>‖Δ‖=%{y:.3e}<extra></extra>',
+    showlegend:false
+  }, {
+    x: refX, y: refY,
+    type:'scatter', mode:'lines',
+    line:{color:'#6b7280', width:1.6, dash:'dash'},
+    hovertemplate:'t=%{x:.2f}<br>ref=%{y:.3e}<extra></extra>',
+    showlegend:false
+  }, {
+    x: nH ? [sx[nH-1]] : [],
+    y: nH ? [sy[nH-1]] : [],
+    type:'scatter', mode:'markers',
+    marker:{color:'#dc2626', size:8, line:{color:'#fff', width:1.5}},
+    hoverinfo:'skip', showlegend:false
+  }], {
+    margin:{t:8, r:14, b:48, l:76},
+    plot_bgcolor: bg,
+    paper_bgcolor:'rgba(0,0,0,0)',
+    font: plotFont(hc, 12),
+    xaxis:{title:{text:'t', font: axisTitleFont(hc)}, tickfont: plotFont(hc, 12),
+           gridcolor:grid, zerolinecolor:grid, range:[0, tEnd]},
+    yaxis:{type:'log', title:{text:'‖Δ(t)‖', font: axisTitleFont(hc)},
+           tickfont: plotFont(hc, 12), gridcolor:grid, zerolinecolor:grid, exponentformat:'power'},
+    showlegend:false
+  }, {responsive:true, displaylogo:false, modeBarButtonsToRemove:['lasso2d','select2d','autoScale2d']});
+}
+
+/* =====================================================
+   Readouts
+===================================================== */
+function updateReadout() {
+  var fc = fourierCoeffs();
+  document.getElementById('rvT').textContent = ST.t.toFixed(2);
+  document.getElementById('rvOmega').textContent = ST.omega.toFixed(3);
+  document.getElementById('rvA1').textContent = fc.a1.toFixed(3);
+  document.getElementById('rvB1').textContent = fc.b1.toFixed(3);
+  document.getElementById('rvMass').textContent = totalMass().toFixed(2);
+  document.getElementById('rvRev').textContent = ST.reversals;
+}
+
+function updatePedagogical() {
+  var key = ST.currentPreset || 'custom';
+  var txt = PED_TEXT[key] || PED_TEXT.custom;
+  var p = getParams();
+  var sigma = (p.nu / p.I) / p.K;
+  var rho = Math.PI * p.gR * p.q1 / (p.K * p.K * (p.nu / p.I));
+  /* For the Malkus waterwheel β = 1 is pinned by geometry, so the
+     Hopf threshold is ρ_H = σ(σ+4)/(σ−2) rather than the classical
+     β = 8/3 value of 24.74. At the default σ ≈ 10 this gives 17.5. */
+  var rhoH = sigma > 2 ? sigma * (sigma + 4) / (sigma - 2) : Infinity;
+  var rhoHStr = isFinite(rhoH) ? rhoH.toFixed(2) : '\\infty';
+  var dim = '<span style="display:block;margin-top:.35rem;color:var(--txt);"><strong>Effective Lorenz parameters:</strong> \\(\\sigma \\approx '+sigma.toFixed(2)+'\\), \\(\\rho \\approx '+rho.toFixed(2)+'\\), \\(\\beta = 1\\). ' +
+    (rho > rhoH && sigma > 2 ? 'Chaotic regime (\\(\\rho>\\rho_H\\approx '+rhoHStr+'\\)).' : rho > 1 ? 'Fixed-point or periodic regime (\\(\\rho_H\\approx '+rhoHStr+'\\)).' : 'Sub-threshold (origin stable).') +'</span>';
+  var box = document.getElementById('pedagogicalBox');
+  box.innerHTML = txt + dim;
+  mj([box]);
+}
+
+/* =====================================================
+   Animation loop
+===================================================== */
+function animLoop() {
+  if (!ST.running) return;
+  var now = performance.now();
+  if (!ST.lastFrameWall) ST.lastFrameWall = now;
+  var dtWall = (now - ST.lastFrameWall) / 1000; /* seconds */
+  ST.lastFrameWall = now;
+  /* Cap to avoid huge jumps after tab-away */
+  if (dtWall > 0.1) dtWall = 0.1;
+
+  /* Sim time per wall-clock second is simSpeed (so at 1×, 1s wall = 1 time unit) */
+  var simDt = 0.01;
+  var targetSimAdvance = dtWall * ST.simSpeed;
+  var nSteps = Math.max(1, Math.round(targetSimAdvance / simDt));
+  nSteps = Math.min(nSteps, 40); /* cap to keep frame affordable */
+
+  /* Push history every RK4 sub-step (not once per wall frame) so the
+     sample density is constant in simulation time, independent of
+     playback speed. Otherwise fast replay produces a coarse polyline. */
+  var reachedEnd = false;
+  for (var k = 0; k < nSteps; k++) {
+    if (ST.t >= ST.endTime) { reachedEnd = true; break; }
+    stepRK4(simDt);
+    var fc = fourierCoeffs();
+    ST.tHist.push(ST.t);
+    ST.omegaHist.push(ST.omega);
+    ST.a1Hist.push(fc.a1);
+    ST.b1Hist.push(fc.b1);
+    if (ST.sensitivityMode) {
+      var fc2 = fourierCoeffs2();
+      ST.omegaHist2.push(ST.omega2);
+      ST.a1Hist2.push(fc2.a1);
+      ST.b1Hist2.push(fc2.b1);
+      var dx = ST.omega - ST.omega2;
+      var dy = fc.b1 - fc2.b1;
+      var dz = fc.a1 - fc2.a1;
+      ST.sepHist.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+    }
+  }
+  var excess = ST.tHist.length - ST.maxHist;
+  if (excess > 0) {
+    ST.tHist.splice(0, excess);
+    ST.omegaHist.splice(0, excess);
+    ST.a1Hist.splice(0, excess);
+    ST.b1Hist.splice(0, excess);
+    if (ST.sensitivityMode) {
+      ST.omegaHist2.splice(0, excess);
+      ST.a1Hist2.splice(0, excess);
+      ST.b1Hist2.splice(0, excess);
+      ST.sepHist.splice(0, excess);
+    }
+  }
+
+  drawWheel();
+  /* Throttle plot updates (Plotly react is expensive) */
+  if (animLoop.framesSincePlot === undefined) animLoop.framesSincePlot = 0;
+  animLoop.framesSincePlot++;
+  if (animLoop.framesSincePlot >= 5) {
+    drawOmegaPlot();
+    if (ST.showPhase) drawPhasePlot();
+    if (ST.sensitivityMode) drawSeparationPlot();
+    animLoop.framesSincePlot = 0;
+  }
+  if (animLoop.framesSinceReadout === undefined) animLoop.framesSinceReadout = 0;
+  animLoop.framesSinceReadout++;
+  if (animLoop.framesSinceReadout >= 3) {
+    updateReadout();
+    animLoop.framesSinceReadout = 0;
+  }
+  if (reachedEnd) {
+    /* Flush a final redraw so the last state is on-screen then stop. */
+    drawOmegaPlot();
+    if (ST.showPhase) drawPhasePlot();
+    if (ST.sensitivityMode) drawSeparationPlot();
+    updateReadout();
+    stopAnim();
+    say('End time reached');
+    return;
+  }
+  ST.rafId = requestAnimationFrame(animLoop);
+}
+
+function startAnim() {
+  if (ST.running) return;
+  /* If the sim already reached endTime, pressing Play should rewind
+     to t=0 with current parameters rather than being a dead button. */
+  if (ST.t >= ST.endTime) {
+    var pr = ST.currentPreset && PRESETS[ST.currentPreset]
+      ? PRESETS[ST.currentPreset]
+      : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+    resetState(pr);
+  }
+  ST.running = true;
+  ST.lastFrameWall = null;
+  var btn = document.getElementById('btnPlay');
+  btn.innerHTML = '<span aria-hidden="true">&#9616;&#9616;</span> Pause';
+  btn.setAttribute('aria-pressed', 'true');
+  btn.className = 'abtn abtn-stop';
+  document.getElementById('wheelStatus').textContent = 'Running';
+  animLoop();
+  say('Animation resumed');
+}
+
+function stopAnim() {
+  ST.running = false;
+  if (ST.rafId) { cancelAnimationFrame(ST.rafId); ST.rafId = null; }
+  var btn = document.getElementById('btnPlay');
+  btn.innerHTML = '<span aria-hidden="true">&#9654;</span> Play';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.className = 'abtn abtn-grn';
+  document.getElementById('wheelStatus').textContent = 'Paused';
+  say('Animation paused');
+}
+
+/* =====================================================
+   Parameter controls
+===================================================== */
+function buildParamGrid() {
+  var grid = document.getElementById('paramGrid');
+  grid.innerHTML = PARAMS.map(function(p) {
+    return '<div class="sl-block">' +
+      '<div class="sl-row">' +
+        '<label class="sl-label" for="' + p.id + 'Val">\\(' + p.label + '\\) - ' + p.name + '</label>' +
+        '<input type="text" id="' + p.id + 'Val" class="sl-val" value="' + fmtSig(p.value) + '" aria-label="' + p.name + ' value">' +
+      '</div>' +
+      '<input type="range" id="' + p.id + '" min="' + p.min + '" max="' + p.max + '" step="' + p.step + '" value="' + p.value + '" aria-label="' + p.name + ' slider">' +
+    '</div>';
+  }).join('');
+  mj([grid]);
+}
+
+function syncParamInputs(p, val) {
+  var slider = document.getElementById(p.id);
+  var text = document.getElementById(p.id + 'Val');
+  if (slider) slider.value = val;
+  if (text) text.value = p.integer ? String(Math.round(val)) : fmtSig(val);
+}
+
+function onParamChange(pid, rawVal) {
+  var pDef = PARAMS.find(function(pd){return pd.id === pid;});
+  if (!pDef) return;
+  var v = parseInp(rawVal);
+  if (isNaN(v)) v = pDef.value;
+  v = Math.max(pDef.min, Math.min(pDef.max, v));
+  if (pDef.integer) v = Math.round(v);
+  syncParamInputs(pDef, v);
+  pDef.value = v;
+  if (pid === 'N') {
+    /* Rebuild buckets preserving mass roughly - simplest: reset buckets.
+       This zeroes both ST.m and ST.m2 via initBuckets. ST.omega and ST.omega2
+       are intentionally preserved so the wheel keeps spinning across an N change. */
+    initBuckets(v);
+    buildWheelSvg();
+    /* Clear history since dimensionality of system changed */
+    ST.tHist.length = 0; ST.omegaHist.length = 0; ST.a1Hist.length = 0; ST.b1Hist.length = 0;
+    ST.omegaHist2.length = 0; ST.a1Hist2.length = 0; ST.b1Hist2.length = 0; ST.sepHist.length = 0;
+  }
+  ST.currentPreset = matchingPreset() || 'custom';
+  highlightPreset();
+  updatePedagogical();
+}
+
+function matchingPreset() {
+  var p = getParams();
+  var N = parseFloat(document.getElementById('N').value);
+  for (var key in PRESETS) {
+    var pr = PRESETS[key];
+    if (Math.abs(pr.q1 - p.q1) < 1e-6 &&
+        Math.abs(pr.K  - p.K)  < 1e-6 &&
+        Math.abs(pr.nu - p.nu) < 1e-6 &&
+        Math.abs(pr.I  - p.I)  < 1e-6 &&
+        Math.abs(pr.gR - p.gR) < 1e-6 &&
+        pr.N === N) return key;
+  }
+  return null;
+}
+
+function highlightPreset() {
+  var key = ST.currentPreset;
+  var map = { steady:'preStead', periodic:'preOsc', chaos:'preChaos', violent:'preViol' };
+  Object.keys(map).forEach(function(k){
+    var btn = document.getElementById(map[k]);
+    if (!btn) return;
+    if (k === key) { btn.classList.add('active'); btn.setAttribute('aria-pressed','true'); }
+    else { btn.classList.remove('active'); btn.setAttribute('aria-pressed','false'); }
+  });
+}
+
+function applyPreset(key) {
+  var pr = PRESETS[key];
+  if (!pr) return;
+  ST.currentPreset = key;
+  PARAMS.forEach(function(pd){
+    var v = pr[pd.id];
+    if (v == null) return;
+    pd.value = v;
+    syncParamInputs(pd, v);
+  });
+  resetState(pr);
+  highlightPreset();
+  updatePedagogical();
+  say('Preset loaded: ' + pr.name);
+}
+
+/* =====================================================
+   Event listeners
+===================================================== */
+document.addEventListener('DOMContentLoaded', function() {
+  /* CRITICAL: populate ST.m before buildWheelSvg reads ST.m.length.
+     Without this, buildWheelSvg creates an empty rotGroup with zero buckets,
+     and the subsequent drawWheel crashes on buckets[i].setAttribute (undefined). */
+  var defaultN = 24;
+  var nInput = PARAMS.find(function(p){return p.id==='N';});
+  if (nInput) defaultN = nInput.value;
+  initBuckets(defaultN);
+
+  buildParamGrid();
+  buildWheelSvg();
+  /* Apply initial bucket transforms so the wheel is correctly aligned
+     before bootChaos runs - without this the buckets sit at the SVG
+     origin until the first drawWheel(), which only happens after
+     applyPreset() and showed up as a "misaligned" wheel on load. */
+  drawWheel();
+
+  /* Parameter listeners */
+  PARAMS.forEach(function(p) {
+    var slider = document.getElementById(p.id);
+    var text = document.getElementById(p.id + 'Val');
+    if (!slider || !text) return;
+    slider.addEventListener('input', function(){ onParamChange(p.id, this.value); });
+    text.addEventListener('change', function(){ onParamChange(p.id, this.value); });
+    text.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); onParamChange(p.id, this.value); } });
+  });
+
+  /* Preset buttons */
+  document.getElementById('preStead').addEventListener('click', function(){ applyPreset('steady'); });
+  document.getElementById('preOsc').addEventListener('click', function(){ applyPreset('periodic'); });
+  document.getElementById('preChaos').addEventListener('click', function(){ applyPreset('chaos'); });
+  document.getElementById('preViol').addEventListener('click', function(){ applyPreset('violent'); });
+
+  /* Play/pause */
+  document.getElementById('btnPlay').addEventListener('click', function(){
+    if (ST.running) stopAnim(); else startAnim();
+  });
+
+  /* Reset */
+  document.getElementById('btnReset').addEventListener('click', function(){
+    var pr = ST.currentPreset && PRESETS[ST.currentPreset] ? PRESETS[ST.currentPreset] : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+    resetState({ N: parseFloat(document.getElementById('N').value), omega0: 0.5 });
+    say('Simulation reset');
+  });
+
+  /* Trigger a browser download for a Blob. */
+  function triggerDownload(blob, filename){
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename.replace(/(\.[^.\/]+)$/, '_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'$1');
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  /* Rasterise the waterwheel SVG to a PNG Blob. CSS variables are inlined
+     into a <style> block so var(--water) etc. resolve when the SVG is
+     parsed standalone inside an <img>. */
+  function exportWheelPng(){
+    return new Promise(function(resolve, reject){
+      var svg = document.getElementById('wheelSvg');
+      if (!svg) { reject(new Error('no wheel svg')); return; }
+      var SCALE = 2;
+      var W = 500 * SCALE, H = 500 * SCALE;
+      var clone = svg.cloneNode(true);
+      clone.setAttribute('xmlns', SVG_NS);
+      clone.setAttribute('width', W);
+      clone.setAttribute('height', H);
+      /* Inline the CSS custom properties the SVG depends on. Without these,
+         var(--water) and friends are unresolved when the SVG is loaded as a
+         standalone document via the data URL. */
+      var rootStyles = getComputedStyle(document.documentElement);
+      var vars = ['--wheel-rim','--wheel-spoke','--wheel-hub','--bucket-frame',
+                  '--bucket-empty','--water','--water-edge','--stream','--ground'];
+      var decls = vars.map(function(v){
+        return v + ':' + rootStyles.getPropertyValue(v).trim() + ';';
+      }).join('');
+      var styleEl = document.createElementNS(SVG_NS, 'style');
+      styleEl.textContent = 'svg{' + decls + '}';
+      clone.insertBefore(styleEl, clone.firstChild);
+      /* Solid white background so the PNG isn't transparent. */
+      var bg = document.createElementNS(SVG_NS, 'rect');
+      bg.setAttribute('width', '100%');
+      bg.setAttribute('height', '100%');
+      bg.setAttribute('fill', '#ffffff');
+      clone.insertBefore(bg, clone.firstChild);
+      var src = new XMLSerializer().serializeToString(clone);
+      var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+      var img = new Image();
+      img.onload = function(){
+        var canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        canvas.getContext('2d').drawImage(img, 0, 0, W, H);
+        canvas.toBlob(function(blob){
+          if (blob) resolve(blob); else reject(new Error('toBlob failed'));
+        }, 'image/png');
+      };
+      img.onerror = function(){ reject(new Error('svg load failed')); };
+      img.src = url;
+    });
+  }
+
+  /* Export a Plotly graph div to a PNG Blob at 2x its rendered size. */
+  function exportPlotlyPng(id){
+    var el = document.getElementById(id);
+    if (!el || !window.Plotly || !el.data) {
+      return Promise.reject(new Error('plot ' + id + ' not ready'));
+    }
+    var rect = el.getBoundingClientRect();
+    var w = Math.max(Math.round(rect.width)  || 0, 700);
+    var h = Math.max(Math.round(rect.height) || 0, 300);
+    return Plotly.toImage(el, {format:'png', width:w, height:h, scale:2})
+      .then(function(dataUrl){ return fetch(dataUrl); })
+      .then(function(r){ return r.blob(); });
+  }
+
+  /* Download all three panels: waterwheel + omega(t) + 3D phase space. */
+  document.getElementById('btnDownload').addEventListener('click', function(){
+    var tStr = (ST && typeof ST.t === 'number') ? ST.t.toFixed(2) : '0';
+    say('Downloading PNGs');
+
+    var jobs = [
+      { run: exportWheelPng,                    name: 'malkus-waterwheel-t' + tStr + '.png' },
+      { run: function(){ return exportPlotlyPng('plotOmega'); }, name: 'malkus-omega-t'      + tStr + '.png' },
+    ];
+    if (ST.showPhase) {
+      jobs.push({ run: function(){ return exportPlotlyPng('plotPhase'); }, name: 'malkus-phase-t' + tStr + '.png' });
+    }
+
+    /* Sequential downloads with a small gap - some browsers throttle
+       multiple programmatic downloads fired in the same tick. */
+    var i = 0;
+    function next(){
+      if (i >= jobs.length) { say('Downloads complete'); return; }
+      var job = jobs[i++];
+      job.run()
+        .then(function(blob){ triggerDownload(blob, job.name); })
+        .catch(function(err){ say(job.name + ' failed'); })
+        .then(function(){ setTimeout(next, 250); });
+    }
+    next();
+  });
+
+  /* Speed */
+  document.querySelectorAll('input[name="simSpeed"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      ST.simSpeed = parseFloat(this.value);
+      say('Speed ' + this.value + '×');
+    });
+  });
+
+  /* End time - drives the colorbar range and the auto-stop condition. */
+  (function(){
+    var et = document.getElementById('endTime');
+    if (!et) return;
+    var applyEnd = function(){
+      var v = parseFloat(et.value);
+      if (!isFinite(v) || v <= 0) v = 60;
+      ST.endTime = v;
+      if (ST.showPhase) drawPhasePlot();
+      drawOmegaPlot();
+      say('End time set to ' + v);
+    };
+    et.addEventListener('change', applyEnd);
+    et.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') { e.preventDefault(); applyEnd(); }
+    });
+    ST.endTime = parseFloat(et.value) || 60;
+  })();
+
+  /* Phase plot toggle */
+  document.getElementById('showPhase').addEventListener('change', function(){
+    ST.showPhase = this.checked;
+    document.getElementById('phaseWrap').style.display = this.checked ? '' : 'none';
+    if (this.checked) drawPhasePlot();
+  });
+
+  /* Integration-method selector - switches the solver for subsequent steps. */
+  (function(){
+    var ms = document.getElementById('method');
+    if (!ms) return;
+    ms.addEventListener('change', function(){
+      ST.method = MALKUS_STEP[this.value] ? this.value : 'rk4';
+    });
+  })();
+
+  /* Sensitivity mode toggle: swap the left-column panel between wheel and
+     separation plot, reset both trajectories with the current epsilon kick,
+     and (if paused) immediately start animating so the user sees the demo. */
+  function setSensitivityMode(on) {
+    ST.sensitivityMode = !!on;
+    var wp = document.getElementById('wheelPanel');
+    var sp = document.getElementById('sepPanel');
+    var er = document.getElementById('epsRow');
+    if (wp) wp.hidden = !!on;
+    if (sp) sp.hidden = !on;
+    if (er) er.style.display = on ? 'inline-flex' : 'none';
+    /* The legend is static \(...\) markup - typeset once when first revealed
+       in case MathJax hadn't finished its initial sweep yet. */
+    if (on) {
+      var legendEl = document.getElementById('sepLegend');
+      if (legendEl) mj([legendEl]);
+    }
+    var pr = ST.currentPreset && PRESETS[ST.currentPreset]
+      ? PRESETS[ST.currentPreset]
+      : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+    resetState(pr);
+    if (on && !ST.running) startAnim();
+    say(on ? 'Sensitivity mode on - twin trajectory launched' : 'Sensitivity mode off');
+  }
+  document.getElementById('sensMode').addEventListener('change', function(){
+    setSensitivityMode(this.checked);
+  });
+  (function(){
+    var epsInp = document.getElementById('epsInput');
+    if (!epsInp) return;
+    var applyEps = function(){
+      var v = parseFloat(epsInp.value);
+      if (!isFinite(v) || v <= 0) v = 1e-5;
+      ST.eps = v;
+      if (ST.sensitivityMode) {
+        var pr = ST.currentPreset && PRESETS[ST.currentPreset]
+          ? PRESETS[ST.currentPreset]
+          : { N: parseFloat(document.getElementById('N').value), omega0: 0.5 };
+        resetState(pr);
+        if (!ST.running) startAnim();
+      }
+      say('epsilon = ' + v);
+    };
+    epsInp.addEventListener('change', applyEps);
+    epsInp.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); applyEps(); } });
+  })();
+
+  /* Info panel */
+  document.getElementById('infoBtn').addEventListener('click', function(){
+    var exp = this.getAttribute('aria-expanded') === 'true';
+    this.setAttribute('aria-expanded', String(!exp));
+    document.getElementById('infoBody').hidden = exp;
+    document.getElementById('infoIcon').textContent = exp ? '+' : '\u2212';
+    if (!exp && window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([document.getElementById('infoBody')]).catch(function(){});
+  });
+
+  /* High contrast */
+  document.getElementById('ctog').addEventListener('click', function(){
+    document.documentElement.classList.toggle('hc');
+    drawWheel(); drawOmegaPlot();
+    if (ST.showPhase) drawPhasePlot();
+    if (ST.sensitivityMode) drawSeparationPlot();
+    say('High contrast ' + (isHC() ? 'on' : 'off'));
+  });
+
+  /* Initial load: apply the chaos preset and start animating immediately.
+     The simulation does not depend on MathJax - any LaTeX in the param
+     grid / pedagogical box gets typeset whenever MathJax finishes loading
+     via its own page-ready hook, independent of the animation. */
+  applyPreset('chaos');
+  startAnim();
+
+  /* Handle window resize (debounced) */
+  var _rt;
+  window.addEventListener('resize', function(){
+    clearTimeout(_rt);
+    _rt = setTimeout(function(){
+      drawOmegaPlot();
+      if (ST.showPhase) drawPhasePlot();
+      if (ST.sensitivityMode) drawSeparationPlot();
+    }, 120);
+  });
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

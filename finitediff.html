@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Finite difference method calculator. Solve boundary value problems for second-order ODEs using central differences and a tridiagonal linear system.">
+  <meta name="keywords" content="finite difference, numerical differentiation, coefficients, error terms, Taylor expansion, convergence, stencil">
+  <title>Finite Difference Generator - Numerical Methods</title>
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+      options: {
+        enableAssistiveMml: true,
+        skipHtmlTags: ['script','noscript','style','textarea','pre','code']
+      },
+      startup: { pageReady: function(){ return MathJax.startup.defaultPageReady(); } }
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+  <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js" charset="utf-8"></script>
+  <!-- decimal.js: recompute the convergence-graph errors at ~40-digit precision
+       so the finite-difference round-off wall (~1e-16 in double precision) is
+       pushed far down and the true O(h^p) truncation error stays visible. -->
+  <script src="vendor/decimal.js@10.4.3/decimal.js"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
+  <style>
+:root{
+  --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;
+  --info:#eff6ff;--inf-b:#93c5fd;--inf-hd:#1e3a8a;
+  --txt:#111827;--txt2:#374151;--muted:#4b5563;
+  --bdr:#6b7280;--bdr2:#d1d5db;--focus:#1d4ed8;
+  --blue:#1d4ed8;--bl2:#1e3a8a;--teal:#0f766e;
+  --vio:#6d28d9;--ora:#92400e;--green:#15803d;--red:#dc2626;--link:#1e40af;
+  --r:.5rem;--r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10);--sh2:0 4px 12px rgba(0,0,0,.12);
+}
+.hc{--bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;--inf-hd:#00006b;
+  --txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--red:#cc0000;--link:#00c;}
+@media(prefers-contrast:more){:root{--txt:#000;--txt2:#000;--bdr:#000;--blue:#00c;--link:#00c;}}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px;
+  box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;z-index:1000;
+  border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;outline:3px solid #fff;outline-offset:2px;}
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;background:var(--card);
+  border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;
+  padding:.625rem .5rem;border-radius:.3rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:1060px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+.info-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);
+  margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p,.info-body li{font-size:.9375rem;color:var(--txt2);line-height:1.65;}
+.info-body ul{margin:0 0 .5rem 1.5rem;list-style:disc;}.info-body li{margin-bottom:.3rem;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+.cbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;margin-bottom:.6rem;
+  background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);padding:.5rem .7rem;}
+.cfield{display:flex;flex-direction:column;gap:.18rem;}
+.cfield label{font-size:.8125rem;font-weight:700;color:var(--txt2);white-space:nowrap;}
+.cfield input[type=text],.cfield input[type=number]{
+  width:100%;min-height:40px;padding:.25rem .5rem;font-size:.9375rem;font-weight:700;
+  border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);}
+.cfield input[type=number]{text-align:center;}
+.cfield-lg{flex:1 1 280px;}.cfield-sm{flex:0 1 140px;}
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;
+  margin-bottom:.875rem;padding:.5rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);}
+.abtn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1.1rem;
+  min-height:44px;border:none;border-radius:.5rem;font-size:.9375rem;font-weight:700;cursor:pointer;}
+.abtn-go{background:var(--blue);color:#fff;}.abtn-go:hover{background:var(--bl2);}
+.abtn-clr{background:var(--red);color:#fff;}.abtn-clr:hover{background:#b91c1c;}
+.abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;
+  background:var(--card);margin-bottom:.875rem;}
+.phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.4rem;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.result-body{padding:.75rem;overflow-x:auto;}
+.math-container{overflow-x:auto;padding:.5rem;margin:.5rem 0;border-radius:var(--r);}
+.deriv-body{padding:.5rem .25rem;color:var(--txt2);}
+.deriv-body h4{margin:1rem 0 .35rem;font-size:.95rem;font-weight:700;color:var(--txt);
+  border-left:3px solid var(--vio);padding-left:.55rem;}
+.deriv-body h4:first-child{margin-top:.25rem;}
+.deriv-body p{margin:.35rem 0;font-size:.9375rem;line-height:1.55;}
+.deriv-note{color:var(--muted);font-size:.875rem;font-style:italic;}
+.deriv-table-wrap{overflow-x:auto;margin:.5rem 0;}
+.deriv-table{border-collapse:collapse;margin:0 auto;font-size:.9375rem;}
+.deriv-table th,.deriv-table td{border:1px solid var(--bdr2);padding:.3rem .75rem;text-align:center;}
+.deriv-table thead th{background:var(--sect);font-weight:700;color:var(--txt);}
+.deriv-table tr.deriv-ok td{background:rgba(22,163,74,.08);}
+.deriv-table tr.deriv-err td{background:rgba(146,64,14,.10);font-weight:700;}
+details.deriv-toggle{margin:.25rem 0;}
+details.deriv-toggle>summary{cursor:pointer;font-weight:700;color:var(--vio);
+  padding:.35rem .25rem;list-style:none;display:inline-flex;align-items:center;gap:.4rem;
+  border-radius:.25rem;}
+details.deriv-toggle>summary::-webkit-details-marker{display:none;}
+details.deriv-toggle>summary::before{content:"\25B8";font-size:.8rem;
+  transition:transform .15s ease;display:inline-block;}
+details.deriv-toggle[open]>summary::before{transform:rotate(90deg);}
+details.deriv-toggle>summary:hover{background:rgba(109,40,217,.06);}
+details.deriv-toggle>summary:focus-visible{outline:2px solid var(--focus);outline-offset:1px;}
+.warning-message{background:#fffbeb;border:1px solid #fde68a;color:#92400e;
+  padding:.5rem .75rem;border-radius:var(--r);margin-top:.5rem;font-size:.875rem;text-align:center;}
+.hidden{display:none!important;}
+#convergence-plot{width:66.6667%;height:400px;margin:0 auto;}
+@media(max-width:640px){#convergence-plot{width:100%;}}
+.footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);padding-top:1rem;
+  text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);text-decoration:underline;}
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;background:var(--txt);
+  color:var(--card);border:2px solid var(--bdr);border-radius:50%;width:48px;height:48px;
+  font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+@media(max-width:640px){.card{padding:.875rem;margin:1rem .5rem 1.25rem;}.cfield-lg{flex:1 1 100%;}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important;}}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+  
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+  <meta name="author" content="Shelvean Kapita">
+  <link rel="canonical" href="https://shelvean.github.io/math-tools/finitediff.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+  <meta property="og:title" content="Finite Difference Generator - Numerical Methods">
+  <meta property="og:description" content="Finite difference method calculator. Solve boundary value problems for second-order ODEs using central differences and a tridiagonal linear system.">
+  <meta property="og:url" content="https://shelvean.github.io/math-tools/finitediff.html">
+  <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Finite Difference Generator - Numerical Methods">
+  <meta name="twitter:description" content="Finite difference method calculator. Solve boundary value problems for second-order ODEs using central differences and a tridiagonal linear system.">
+  <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Finite Difference Generator - Numerical Methods",
+  "description": "Finite difference method calculator. Solve boundary value problems for second-order ODEs using central differences and a tridiagonal linear system.",
+  "url": "https://shelvean.github.io/math-tools/finitediff.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+        <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html" aria-current="page">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+
+<a href="numerical.html" class="back-link" aria-label="Back to Numerical Methods">&larr; Back to Numerical Methods</a>
+<main id="main" class="card" role="main">
+  <h1>Finite Difference Generator</h1>
+  <p class="subtitle">Compute finite difference coefficients with exact rational arithmetic and error terms for any derivative order and stencil.</p>
+
+  <!-- About panel -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button"
+      aria-label="About finite differences: expand or collapse">
+      <span>About - Finite Differences &amp; Taylor's Theorem</span>
+      <span id="infoIcon" style="font-size:1.25rem;font-weight:700;flex-shrink:0;" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <h2>Finite Difference Approximations</h2>
+      <p><strong>Finite differences</strong> approximate derivatives of a function \(f(x)\) using values at discrete grid points \(x + jh\), where \(h\) is the step size and \(j\) is an integer offset. They are fundamental to numerical differentiation, solving ODEs and PDEs, and analysing experimental data.</p>
+
+      <h2>Taylor's Theorem with Remainder</h2>
+      <p>For a sufficiently smooth function \(f\), Taylor expansion about \(x\) gives:</p>
+      <div class="defn-box">\[f(x+jh) = \sum_{k=0}^{N} \frac{(jh)^k}{k!} f^{(k)}(x) + \frac{(jh)^{N+1}}{(N+1)!} f^{(N+1)}(\xi_j)\]</div>
+      <p>where \(\xi_j\) lies between \(x\) and \(x+jh\). A finite difference formula combines several such expansions so that all Taylor terms cancel except the target derivative and a leading error term.</p>
+
+      <h2>Common Formulas</h2>
+      <ul>
+        <li><strong>Forward difference:</strong> \(f'(x) \approx \dfrac{f(x+h) - f(x)}{h} + O(h)\)</li>
+        <li><strong>Backward difference:</strong> \(f'(x) \approx \dfrac{f(x) - f(x-h)}{h} + O(h)\)</li>
+        <li><strong>Central difference:</strong> \(f'(x) \approx \dfrac{f(x+h) - f(x-h)}{2h} + O(h^2)\) - higher accuracy from symmetry</li>
+        <li><strong>Second derivative:</strong> \(f''(x) \approx \dfrac{f(x+h) - 2f(x) + f(x-h)}{h^2} + O(h^2)\)</li>
+      </ul>
+
+      <h2>This Tool</h2>
+      <p>Enter any set of integer stencil points (e.g., \(-2, -1, 0, 1, 2\)) and a derivative order. You can also use <strong>MATLAB-style ranges</strong> instead of listing every point: <code>-2:2</code> expands to \(-2,-1,0,1,2\), and <code>a:s:b</code> steps by \(s\) (e.g. <code>-4:2:4</code> gives \(-4,-2,0,2,4\)); ranges and individual points can be mixed and comma-separated. The tool solves the Vandermonde system using <strong>exact rational (BigInt) arithmetic</strong> - no floating-point rounding - and returns:</p>
+      <ul>
+        <li>The finite difference formula with exact rational coefficients</li>
+        <li>The leading error term \(C \cdot h^p \cdot f^{(q)}(\xi)\) with exact constant \(C\)</li>
+        <li>A log-log convergence plot demonstrating the computed order of accuracy \(O(h^p)\) using \(f(x) = e^x\)</li>
+      </ul>
+      <p>For an \(n\)-th derivative you need at least \(n+1\) stencil points. Symmetric stencils (e.g., \(-2,\!-1,\!0,\!1,\!2\)) typically yield higher-order accuracy due to cancellation of odd error terms.</p>
+      <p><strong>Round-off vs. truncation.</strong> The convergence plot shows the error two ways. In ordinary <strong>double precision</strong> the error decreases as \(O(h^p)\) only until it reaches the finite-difference <em>round-off wall</em> near \(10^{-16}\) - subtracting nearly-equal function values and dividing by \(h^{\text{order}}\) magnifies rounding, so shrinking \(h\) further makes the error <em>worse</em> (dramatically so for high derivatives). Recomputing the identical formula at <strong>~40-digit precision</strong> (via decimal.js) pushes that wall far down, so the true \(O(h^p)\) truncation error stays visible - a direct picture of why every finite-difference formula has an optimal step size.</p>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="cbar" role="group" aria-label="Input settings">
+    <div class="cfield cfield-lg">
+      <label for="points">Stencil points (integers or ranges, e.g. <code>-2:2</code>)</label>
+      <input type="text" id="points" value="-1, 0, 1" placeholder="e.g. -2, -1, 0, 1, 2  or  -2:2  or  -4:2:4">
+    </div>
+    <div class="cfield cfield-sm">
+      <label for="derivative-order">Derivative order</label>
+      <input type="number" id="derivative-order" min="1" value="2">
+    </div>
+  </div>
+  <div id="katex-examples" style="font-size:.8125rem;color:var(--muted);text-align:center;margin:-.3rem 0 .6rem;"></div>
+  <div id="points-warning" class="warning-message hidden"></div>
+
+  <!-- Action bar -->
+  <div class="abar" role="group" aria-label="Actions">
+    <button class="abtn abtn-go" id="calculate" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5,3 19,12 5,21"/></svg> Calculate
+    </button>
+    <button class="abtn abtn-clr" id="clear" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" style="display:none;text-align:center;padding:.75rem;">
+    <div style="border:4px solid var(--bdr2);border-top:4px solid var(--blue);border-radius:50%;width:36px;height:36px;animation:spin 1s linear infinite;margin:0 auto;"></div>
+    <p style="margin-top:.5rem;color:var(--muted);font-size:.875rem;">Calculating coefficients...</p>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="hidden">
+    <div class="pwrap">
+      <div class="phdr"><span class="pdot" style="background:var(--blue);" aria-hidden="true"></span> Results</div>
+      <div class="result-body">
+        <div id="error-message" class="hidden" style="background:#fee2e2;border:1px solid #f87171;color:#991b1b;padding:.5rem .75rem;border-radius:var(--r);margin-bottom:.5rem;"></div>
+        <div class="math-container">
+          <div id="formula"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Derivation -->
+  <div id="derivation-section" class="hidden">
+    <div class="pwrap">
+      <div class="phdr"><span class="pdot" style="background:var(--vio);" aria-hidden="true"></span> Derivation</div>
+      <div style="padding:.6rem .75rem;">
+        <details class="deriv-toggle">
+          <summary>Show step-by-step derivation (Taylor expansion)</summary>
+          <div id="derivation-body" class="deriv-body math-container"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Convergence plot -->
+  <div id="graph-section" class="hidden">
+    <div class="pwrap">
+      <div class="phdr"><span class="pdot" style="background:var(--green);" aria-hidden="true"></span> Convergence Demonstration</div>
+      <div style="padding:.75rem;">
+        <div id="chart-title" style="text-align:center;font-weight:700;font-size:.9375rem;margin-bottom:.25rem;"></div>
+        <div id="convergence-plot"></div>
+        <p id="chart-caption" style="margin-top:.35rem;color:var(--muted);font-size:.875rem;text-align:center;"></p>
+      </div>
+    </div>
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981217">https://doi.org/10.5281/zenodo.20981217</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Finite Difference Generator. Math Tools. https://doi.org/10.5281/zenodo.20981217</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Finite Difference Generator." Math Tools, 2026, doi.org/10.5281/zenodo.20981217.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026finitediff,
+  author       = {Shelvean Kapita},
+  title        = {{Finite Difference Generator}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981217},
+  url          = {https://doi.org/10.5281/zenodo.20981217}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: April 2026.</p>
+</footer>
+</main>
+
+<button class="ctoggle" id="contrastToggle" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+  <script>
+    function toggleFDConcepts() {
+      var body = document.getElementById("infoBody");
+      var icon = document.getElementById("infoIcon");
+      var btn = document.getElementById("infoBtn");
+      var exp = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', String(!exp));
+      body.hidden = exp;
+      icon.textContent = exp ? '+' : '\u2212';
+    }
+    document.getElementById('infoBtn').addEventListener('click', toggleFDConcepts);
+
+    // ===== MathJax compatibility shim (replaces KaTeX auto-render) =====
+    function renderMathInElement(el, opts) {
+      if (!el) return;
+      function go(){ if (MathJax.typesetClear) MathJax.typesetClear([el]);
+        MathJax.typesetPromise([el]).catch(function(e){ console.warn('MathJax error:', e); }); }
+      // MathJax loads async: render now if ready, else wait for startup, else poll
+      // until the script has parsed. Without this, math inserted before MathJax
+      // is ready would silently never typeset (timing race).
+      if (window.MathJax && MathJax.typesetPromise) { go(); }
+      else if (window.MathJax && MathJax.startup && MathJax.startup.promise) { MathJax.startup.promise.then(go); }
+      else { var iv = setInterval(function(){ if (window.MathJax && MathJax.typesetPromise) { clearInterval(iv); go(); } }, 50);
+             setTimeout(function(){ clearInterval(iv); }, 15000); }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const pointsInput = document.getElementById('points');
+      const derivativeOrderInput = document.getElementById('derivative-order');
+      const calculateButton = document.getElementById('calculate');
+      const clearButton = document.getElementById('clear');
+      const resultsDiv = document.getElementById('results');
+      const formulaDiv = document.getElementById('formula');
+      const errorMessageDiv = document.getElementById('error-message');
+      const addPointButton = document.getElementById('add-point');/* may be null */
+      const katexExamplesDiv = document.getElementById('katex-examples');
+      const loadingDiv = document.getElementById('loading');
+      const pointsWarningDiv = document.getElementById('points-warning');
+      
+      // Render math examples for stencil points
+      function renderKatexExamples() {
+        const examples = [
+          { point: '-1', explanation: 'for \\(f(x-h)\\)', color: '#dc2626' },
+          { point: '0', explanation: 'for \\(f(x)\\)', color: '#1d4ed8' },
+          { point: '1', explanation: 'for \\(f(x+h)\\)', color: '#111827' },
+          { point: '-2', explanation: 'for \\(f(x-2h)\\)', color: '#dc2626' }
+        ];
+        let html = '';
+        examples.forEach((example, index) => {
+          html += `<span style="color:${example.color};"><span class="inline-block mx-1">${example.point}</span> ${example.explanation}</span>`;
+          if (index < examples.length - 1) {
+            html += '<span class="mx-1" style="margin:0 .5em;color:var(--bdr);">|</span>';
+          }
+        });
+        katexExamplesDiv.innerHTML = html;
+        // Render with MathJax
+        renderMathInElement(katexExamplesDiv, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+      }
+      
+      // Render math in instructions and description
+      var infoBody = document.getElementById('infoBody');
+      if(infoBody) renderMathInElement(infoBody, {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false},
+          {left: '\\(', right: '\\)', display: false},
+          {left: '\\[', right: '\\]', display: true}
+        ],
+        throwOnError: false
+      });
+
+      // Initialize math examples
+      renderKatexExamples();
+      
+      // Clear button functionality
+      clearButton.addEventListener('click', function() {
+        pointsInput.value = '-1, 0, 1';
+        derivativeOrderInput.value = '1';
+        resultsDiv.classList.add('hidden');
+        errorMessageDiv.classList.add('hidden');
+        pointsWarningDiv.classList.add('hidden');
+        formulaDiv.innerHTML = '';
+        document.getElementById('graph-section').classList.add('hidden');
+        document.getElementById('derivation-section').classList.add('hidden');
+        document.getElementById('derivation-body').innerHTML = '';
+        // Clear the Plotly plot
+        const plotDiv = document.getElementById('convergence-plot');
+        plotDiv.innerHTML = '';
+      });
+      
+      // Add a new point input field
+      if(addPointButton) addPointButton.addEventListener('click', function() {
+        const currentPoints = pointsInput.value;
+        if (currentPoints.trim() === '') {
+          pointsInput.value = '0';
+        } else {
+          pointsInput.value = currentPoints + ', 0';
+        }
+      });
+      
+      // Validate input for integers and MATLAB-style ranges (a:b or a:s:b)
+      pointsInput.addEventListener('input', function() {
+        const value = pointsInput.value;
+        // Allow digits, comma, minus, colon (ranges) and whitespace
+        pointsInput.value = value.replace(/[^\d,\-\s:]/g, '');
+      });
+      
+      // Calculate coefficients when button is clicked
+      calculateButton.addEventListener('click', function() {
+        // Clear previous results
+        resultsDiv.classList.add('hidden');
+        errorMessageDiv.classList.add('hidden');
+        pointsWarningDiv.classList.add('hidden');
+        formulaDiv.innerHTML = '';
+        document.getElementById('graph-section').classList.add('hidden');
+        document.getElementById('derivation-section').classList.add('hidden');
+        
+        // Show loading indicator
+        loadingDiv.style.display = 'block';
+        
+        // Use setTimeout to allow UI to update before computation
+        setTimeout(calculateCoefficients, 10);
+      });
+      
+      function calculateCoefficients() {
+        // Hide error message
+        errorMessageDiv.classList.add('hidden');
+        pointsWarningDiv.classList.add('hidden');
+        
+        try {
+          // Parse inputs
+          const pointsText = pointsInput.value.trim();
+          const derivativeOrder = parseInt(derivativeOrderInput.value);
+          
+          if (isNaN(derivativeOrder) || derivativeOrder < 1) {
+            throw new Error('Derivative order must be a positive integer');
+          }
+          
+          // Parse points and remove duplicates
+          const pointStrings = pointsText.split(',').map(s => s.trim()).filter(s => s !== '');
+          if (pointStrings.length === 0) {
+            throw new Error('Please enter at least one point');
+          }
+          
+          const points = parseAndValidatePoints(pointStrings);
+          
+          if (points.length < derivativeOrder + 1) {
+            throw new Error(`Need at least ${derivativeOrder + 1} distinct points for a ${derivativeOrder}${getOrdinalSuffix(derivativeOrder)} order derivative`);
+          }
+          
+          // Calculate coefficients using stable Vandermonde approach
+          const result = computeFiniteDifferenceCoefficients(points, derivativeOrder);
+          
+          // Display results
+          displayResults(result, points, derivativeOrder);
+          displayDerivation(result, points, derivativeOrder);
+          drawConvergenceGraph(points, derivativeOrder, result.rationalCoefficients, result.errorOrder);
+
+          // Show results and derivation sections
+          resultsDiv.classList.remove('hidden');
+          document.getElementById('derivation-section').classList.remove('hidden');
+
+          // Render math in results & derivation
+          renderMathInElement(formulaDiv, {
+            delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '\\(', right: '\\)', display: false},
+              {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+          });
+          renderMathInElement(document.getElementById('derivation-body'), {throwOnError: false});
+        } catch (error) {
+          errorMessageDiv.textContent = error.message;
+          errorMessageDiv.classList.remove('hidden');
+        } finally {
+          // Hide loading indicator
+          loadingDiv.style.display = 'none';
+        }
+      }
+      
+      // Expand one comma token to a list of integers.  Accepts a plain integer
+      // or MATLAB-style ranges: "a:b" (all integers a..b, either direction) and
+      // "a:s:b" (from a in steps of s, MATLAB semantics).
+      const RANGE_MAX = 200;  // guard against runaway expansions
+      function expandPointToken(token) {
+        const parts = token.split(':').map(s => s.trim());
+        const isInt = s => /^-?\d+$/.test(s);
+        if (parts.length === 1) {
+          if (!isInt(parts[0])) throw new Error(`Invalid integer: "${token}"`);
+          return [parseInt(parts[0], 10)];
+        }
+        if (parts.length === 2 || parts.length === 3) {
+          if (!parts.every(isInt)) throw new Error(`Invalid range: "${token}" - use integers like -2:2 or -4:2:4`);
+          let a, step, stop;
+          if (parts.length === 2) {              // a:b - step ±1 toward b
+            a = parseInt(parts[0], 10); stop = parseInt(parts[1], 10);
+            step = stop >= a ? 1 : -1;
+          } else {                               // a:s:b - explicit step
+            a = parseInt(parts[0], 10); step = parseInt(parts[1], 10); stop = parseInt(parts[2], 10);
+            if (step === 0) throw new Error(`Range step cannot be zero: "${token}"`);
+          }
+          const out = [];
+          for (let v = a; step > 0 ? v <= stop : v >= stop; v += step) {
+            out.push(v);
+            if (out.length > RANGE_MAX) throw new Error(`Range "${token}" produces more than ${RANGE_MAX} points`);
+          }
+          if (out.length === 0) throw new Error(`Range "${token}" is empty - check the step direction`);
+          return out;
+        }
+        throw new Error(`Invalid range: "${token}"`);
+      }
+
+      function parseAndValidatePoints(pointStrings) {
+        const points = [];
+        const uniquePoints = new Set();
+        let hasDuplicates = false;
+        let expandedCount = 0;   // total integers after range expansion
+
+        for (const pointStr of pointStrings) {
+          for (const point of expandPointToken(pointStr)) {
+            expandedCount++;
+            // Check for duplicates
+            if (uniquePoints.has(point)) {
+              hasDuplicates = true;
+              continue; // Skip duplicate
+            }
+            uniquePoints.add(point);
+            points.push(point);
+          }
+        }
+
+        // Show warning if duplicates were removed
+        if (hasDuplicates) {
+          const removedCount = expandedCount - points.length;
+          pointsWarningDiv.textContent = `Removed ${removedCount} duplicate point${removedCount > 1 ? 's' : ''}. Using unique points only.`;
+          pointsWarningDiv.classList.remove('hidden');
+        }
+
+        if (points.length > RANGE_MAX) throw new Error(`Too many stencil points (${points.length}); please use at most ${RANGE_MAX}`);
+
+        // Sort points for consistent behavior
+        points.sort((a, b) => a - b);
+        return points;
+      }
+      
+      function getOrdinalSuffix(n) {
+        if (n % 10 === 1 && n % 100 !== 11) return 'st';
+        if (n % 10 === 2 && n % 100 !== 12) return 'nd';
+        if (n % 10 === 3 && n % 100 !== 13) return 'rd';
+        return 'th';
+      }
+      
+      // BigInt helpers
+      function gcdBig(a, b) {
+        a = a < 0n ? -a : a;
+        b = b < 0n ? -b : b;
+        while (b !== 0n) {
+          const t = b;
+          b = a % b;
+          a = t;
+        }
+        return a;
+      }
+      
+      function lcmBig(a, b) {
+        return (a * b) / gcdBig(a, b);
+      }
+      
+      function lcmArrayBig(arr) {
+        let result = arr[0];
+        for (let i = 1; i < arr.length; i++) {
+          result = lcmBig(result, arr[i]);
+        }
+        return result;
+      }
+      
+      function factorialBig(n) {
+        if (n === 0 || n === 1) return 1n;
+        let result = 1n;
+        for (let i = 2; i <= n; i++) {
+          result *= BigInt(i);
+        }
+        return result;
+      }
+      
+      class Rational {
+        constructor(num, den = 1n) {
+          this.num = BigInt(num);
+          this.den = BigInt(den);
+          this.normalize();
+        }
+        
+        normalize() {
+          if (this.den < 0n) {
+            this.num = -this.num;
+            this.den = -this.den;
+          }
+          const g = gcdBig(this.num, this.den);
+          this.num /= g;
+          this.den /= g;
+        }
+        
+        add(other) {
+          return new Rational(this.num * other.den + other.num * this.den, this.den * other.den);
+        }
+        
+        sub(other) {
+          return new Rational(this.num * other.den - other.num * this.den, this.den * other.den);
+        }
+        
+        mul(other) {
+          return new Rational(this.num * other.num, this.den * other.den);
+        }
+        
+        div(other) {
+          return new Rational(this.num * other.den, this.den * other.num);
+        }
+        
+        abs() {
+          return new Rational(this.num < 0n ? -this.num : this.num, this.den);
+        }
+        
+        compare(other) {
+          const diff = this.sub(other);
+          if (diff.num > 0n) return 1;
+          if (diff.num < 0n) return -1;
+          return 0;
+        }
+        
+        isZero() {
+          return this.num === 0n;
+        }
+        
+        toString() {
+          if (this.den === 1n) return this.num.toString();
+          return this.num.toString() + '/' + this.den.toString();
+        }
+      }
+      
+      // Using Vandermonde matrix with exact rational arithmetic
+      function computeFiniteDifferenceCoefficients(points, derivativeOrder) {
+        const n = points.length;
+        const pointsBig = points.map(BigInt);
+        
+        // Create the Vandermonde matrix
+        const A = [];
+        for (let i = 0; i < n; i++) {
+          A[i] = [];
+          for (let j = 0; j < n; j++) {
+            A[i][j] = new Rational(pointsBig[j] ** BigInt(i));
+          }
+        }
+        
+        // Create the right-hand side vector
+        const b = Array(n).fill(new Rational(0n));
+        b[derivativeOrder] = new Rational(factorialBig(derivativeOrder));
+        
+        // Solve the linear system A * c = b
+        const coefficients = solveLinearSystemRational(A, b);
+        
+        // Rational coefficients
+        const rationalCoefficients = coefficients;
+        
+        // Find the least common multiple of denominators
+        const denominators = rationalCoefficients.map(r => r.den);
+        const lcmDenom = lcmArrayBig(denominators);
+        
+        // Scale to integers
+        const integerCoefficients = rationalCoefficients.map(r => r.num * (lcmDenom / r.den));
+        
+        // Calculate error term
+        const errorResult = computeErrorTerm(pointsBig, rationalCoefficients, derivativeOrder);
+        
+        return {
+          coefficients: integerCoefficients,
+          denominator: lcmDenom,
+          errorOrder: errorResult.errorOrder,
+          errorConstant: errorResult.errorConstant,
+          errorDerivativeOrder: errorResult.errorDerivativeOrder,
+          rationalCoefficients: rationalCoefficients
+        };
+      }
+      
+      function solveLinearSystemRational(A, b) {
+        const n = A.length;
+        const augmented = [];
+        for (let i = 0; i < n; i++) {
+          augmented[i] = [...A[i], b[i]];
+        }
+        
+        // Gaussian elimination with partial pivoting
+        for (let i = 0; i < n; i++) {
+          // Partial pivoting
+          let maxRow = i;
+          for (let j = i + 1; j < n; j++) {
+            if (augmented[j][i].abs().compare(augmented[maxRow][i].abs()) > 0) {
+              maxRow = j;
+            }
+          }
+          
+          // Swap rows
+          [augmented[i], augmented[maxRow]] = [augmented[maxRow], augmented[i]];
+          
+          // Check if pivot is zero
+          if (augmented[i][i].isZero()) {
+            throw new Error('Matrix is singular or poorly conditioned');
+          }
+          
+          // Make the diagonal element 1
+          const pivot = augmented[i][i];
+          for (let j = i; j <= n; j++) {
+            augmented[i][j] = augmented[i][j].div(pivot);
+          }
+          
+          // Eliminate below and above
+          for (let j = 0; j < n; j++) {
+            if (j !== i) {
+              const factor = augmented[j][i];
+              for (let k = i; k <= n; k++) {
+                augmented[j][k] = augmented[j][k].sub(factor.mul(augmented[i][k]));
+              }
+            }
+          }
+        }
+        
+        // Extract solution
+        const solution = [];
+        for (let i = 0; i < n; i++) {
+          solution[i] = augmented[i][n];
+        }
+        return solution;
+      }
+      
+      function computeErrorTerm(pointsBig, coefficients, derivativeOrder) {
+        const n = pointsBig.length;
+        
+        // Find the first non-zero term in the Taylor expansion beyond the derivative order
+        let errorOrder = 0;
+        let errorConstant = new Rational(0n);
+        let errorDerivativeOrder = 0;
+        
+        // Dynamically adjust maxSearchOrder based on number of points to ensure error term is found
+        const maxSearchOrder = Math.max(derivativeOrder + n + 1, 20);
+        
+        for (let k = derivativeOrder + 1; k <= maxSearchOrder; k++) {
+          let sum = new Rational(0n);
+          for (let i = 0; i < n; i++) {
+            const pow = new Rational(pointsBig[i] ** BigInt(k));
+            sum = sum.add(coefficients[i].mul(pow));
+          }
+          const fact = new Rational(factorialBig(k));
+          const term = sum.div(fact);
+          
+          if (!term.isZero()) {
+            errorOrder = k - derivativeOrder;
+            errorConstant = term;
+            errorDerivativeOrder = k;
+            break;
+          }
+        }
+        
+        return { errorOrder, errorConstant, errorDerivativeOrder };
+      }
+      
+      function formatPointExpr(p) {
+        if (p === 0) { return 'x'; }
+        else if (p === 1) { return 'x+h'; }
+        else if (p === -1) { return 'x-h'; }
+        else if (p > 0) { return `x+${p}h`; }
+        else { return `x-${Math.abs(p)}h`; }
+      }
+      
+      function displayResults(result, points, derivativeOrder) {
+        const { coefficients, denominator, errorOrder, errorConstant, errorDerivativeOrder } = result;
+        const n = points.length;
+        
+        // Find overall GCD of all absolute coefficients and the denominator to simplify
+        let overallGCD = denominator;
+        coefficients.forEach(c => {
+          const absC = c < 0n ? -c : c;
+          overallGCD = gcdBig(overallGCD, absC);
+        });
+        
+        const simplifiedCoefficients = coefficients.map(c => c / overallGCD);
+        const simplifiedDenominator = denominator / overallGCD;
+        
+        // Display formula
+        let formulaHTML = '';
+        
+        // Build numerator - REVERSED: from highest to lowest points
+        let numerator = '';
+        let firstTerm = true;
+        
+        // Create an array of indices sorted by points in descending order
+        const indices = Array.from({length: n}, (_, i) => i);
+        indices.sort((i, j) => points[j] - points[i]);
+        
+        for (const i of indices) {
+          const coeff = simplifiedCoefficients[i];
+          if (coeff !== 0n) {
+            const absCoeff = coeff < 0n ? -coeff : coeff;
+            const sign = coeff > 0n ? '+' : '-';
+            
+            // Format the function notation
+            let functionNotation;
+            if (points[i] === 0) { functionNotation = 'f(x)'; }
+            else if (points[i] === 1) { functionNotation = 'f(x+h)'; }
+            else if (points[i] === -1) { functionNotation = 'f(x-h)'; }
+            else if (points[i] > 0) { functionNotation = `f(x+${points[i]}h)`; }
+            else { functionNotation = `f(x-${Math.abs(points[i])}h)`; }
+            
+            if (firstTerm) {
+              numerator += (coeff < 0n ? '-' : '') + (absCoeff !== 1n ? absCoeff.toString() : '') + functionNotation;
+              firstTerm = false;
+            } else {
+              numerator += ` ${sign} ${absCoeff !== 1n ? absCoeff.toString() : ''}${functionNotation}`;
+            }
+          }
+        }
+        
+        // Build formula
+        const derivativeSymbol = derivativeOrder === 1 ? "f'(x)" : derivativeOrder === 2 ? "f''(x)" : `f^{(${derivativeOrder})}(x)`;
+        
+        // Format denominator - include the proper scaling factor
+        let denominatorStr = '';
+        const denomStr = simplifiedDenominator === 1n ? '' : simplifiedDenominator.toString();
+        if (simplifiedDenominator === 1n) {
+          denominatorStr = derivativeOrder === 1 ? 'h' : `h^{${derivativeOrder}}`;
+        } else {
+          denominatorStr = derivativeOrder === 1 ? `${denomStr}h` : `${denomStr} h^{${derivativeOrder}}`;
+        }
+        
+        formulaHTML += `<p class="text-lg">\\[${derivativeSymbol} = \\dfrac{${numerator}}{${denominatorStr}}`;
+        
+        // Add error term
+        if (!errorConstant.isZero()) {
+          const absErrorConstant = errorConstant.abs();
+          const errorConstantStr = formatErrorConstantRational(absErrorConstant);
+          const errorDerivativeSymbol = errorDerivativeOrder === 1 ? "f'(\\xi)" : errorDerivativeOrder === 2 ? "f''(\\xi)" : `f^{(${errorDerivativeOrder})}(\\xi)`;
+          const errorSign = errorConstant.num > 0n ? '-' : '+';
+          
+          // Display h without exponent if power is 1
+          const hPower = errorOrder === 1 ? 'h' : `h^{${errorOrder}}`;
+          formulaHTML += ` ${errorSign} ${errorConstantStr} ${hPower} ${errorDerivativeSymbol}`;
+        }
+        formulaHTML += `\\]</p>`;
+        
+        const minPoint = Math.min(...points);
+        const maxPoint = Math.max(...points);
+        const minExpr = formatPointExpr(minPoint);
+        const maxExpr = formatPointExpr(maxPoint);
+        formulaHTML += `<p class="text-lg text-center">where \\(\\xi \\in (${minExpr}, ${maxExpr})\\)</p>`;
+        
+        formulaDiv.innerHTML = formulaHTML;
+      }
+      
+      function formatErrorConstantRational(rat) {
+        if (rat.num === 1n && rat.den !== 1n) {
+          return `\\dfrac{1}{${rat.den}}`;
+        } else if (rat.den === 1n) {
+          return rat.num === 1n ? '' : rat.num.toString();
+        } else {
+          return `\\dfrac{${rat.num}}{${rat.den}}`;
+        }
+      }
+
+      // ───────── Derivation panel ─────────
+      function displayDerivation(result, points, derivativeOrder) {
+        const n = points.length;
+        const d = derivativeOrder;
+        const pointsBig = points.map(p => BigInt(p));
+        const { rationalCoefficients, errorOrder, errorConstant, errorDerivativeOrder } = result;
+        const body = document.getElementById('derivation-body');
+
+        // ── tiny LaTeX helpers ──
+        const derivSym = (k, arg = 'x') =>
+          k === 0 ? `f(${arg})` :
+          k === 1 ? `f'(${arg})` :
+          k === 2 ? `f''(${arg})` :
+          k === 3 ? `f'''(${arg})` : `f^{(${k})}(${arg})`;
+
+        const hPow = (k) => k === 0 ? '' : k === 1 ? 'h' : `h^{${k}}`;
+
+        const fArg = (p) =>
+          p === 0 ? 'x' :
+          p === 1 ? 'x+h' :
+          p === -1 ? 'x-h' :
+          p > 0 ? `x+${p}h` : `x-${Math.abs(p)}h`;
+
+        // Format (signedNum / den) · h^k · f^(derivK)(arg) as a LaTeX block.
+        // Returns {sign, body} or null if numerator is zero.
+        function fdTerm(signedNum, den, k, derivK, arg = 'x') {
+          if (signedNum === 0n) return null;
+          const sign = signedNum < 0n ? '-' : '+';
+          const a0 = signedNum < 0n ? -signedNum : signedNum;
+          const g = gcdBig(a0, den);
+          const a = a0 / g;
+          const b = den / g;
+          const hs = hPow(k);
+          const fs = derivSym(derivK, arg);
+          let txt;
+          if (b === 1n) {
+            const num = (a === 1n ? '' : a.toString()) + hs;
+            txt = (num ? num + '\\,' : '') + fs;
+            if (!num) txt = fs;
+          } else if (a === 1n) {
+            txt = hs
+              ? `\\dfrac{${hs}}{${b.toString()}}\\,${fs}`
+              : `\\dfrac{1}{${b.toString()}}\\,${fs}`;
+          } else {
+            txt = hs
+              ? `\\dfrac{${a.toString()}${hs}}{${b.toString()}}\\,${fs}`
+              : `\\dfrac{${a.toString()}}{${b.toString()}}\\,${fs}`;
+          }
+          return { sign, body: txt };
+        }
+
+        function joinTerms(arr) {
+          if (arr.length === 0) return '0';
+          let s = (arr[0].sign === '-' ? '-' : '') + arr[0].body;
+          for (let i = 1; i < arr.length; i++) s += ` ${arr[i].sign} ${arr[i].body}`;
+          return s;
+        }
+
+        function fmtRational(r) {
+          if (r.isZero()) return '0';
+          if (r.den === 1n) return r.num.toString();
+          const a = r.num < 0n ? -r.num : r.num;
+          return (r.num < 0n ? '-' : '') + `\\dfrac{${a.toString()}}{${r.den.toString()}}`;
+        }
+
+        let H = '';
+
+        // ── Step 1: Taylor expansion of each stencil value ──
+        H += `<h4>Step 1 - Taylor expansion with remainder</h4>`;
+        const piList = points.map((p, i) => `p_{${i}} = ${p}`).join(',\\; ');
+        H += `<p>where \\(${piList}\\).</p>`;
+        H += `<p>Expand each \\(f(x + p_i h)\\) about \\(x\\) to order \\(${n}\\), with Lagrange remainder \\(\\xi_i\\) between \\(x\\) and \\(x + p_i h\\):</p>`;
+        H += `\\[\\begin{aligned}\n`;
+        for (let i = 0; i < n; i++) {
+          const p = points[i];
+          const lhs = `f(${fArg(p)})`;
+          const terms = [];
+          for (let k = 0; k < n; k++) {
+            const coef = pointsBig[i] ** BigInt(k);
+            const t = fdTerm(coef, factorialBig(k), k, k, 'x');
+            if (t) terms.push(t);
+          }
+          // remainder at order n
+          const remCoef = pointsBig[i] ** BigInt(n);
+          const remTerm = fdTerm(remCoef, factorialBig(n), n, n, `\\xi_{${i}}`);
+          if (remTerm) terms.push(remTerm);
+          H += `${lhs} &= ${joinTerms(terms)}`;
+          H += (i < n - 1) ? ` \\\\[2pt]\n` : `\n`;
+        }
+        H += `\\end{aligned}\\]`;
+
+        // ── Step 2: Combine and cancel ──
+        const dFact = factorialBig(d);
+        H += `<h4>Step 2 - Combine and cancel</h4>`;
+        H += `<p>Take a combination \\(\\sum_i c_i\\,f(x + p_i h)\\) with \\(c_i = \\beta_i / h^{${d}}\\). Matching the coefficient of each \\(f^{(k)}(x)\\) so that only \\(${derivSym(d)}\\) survives requires</p>`;
+        H += `\\[ \\sum_{i=0}^{${n-1}} \\beta_i\\,p_i^{\\,k} \\;=\\; ${dFact.toString()}\\,\\delta_{k,${d}}, \\qquad k = 0, 1, \\ldots, ${n-1}, \\]`;
+        H += `<p>where \\(\\delta_{k,${d}} = 1\\) if \\(k = ${d}\\) and \\(0\\) otherwise.</p>`;
+
+        // ── Step 3: Solve ── list the weights on one centered line (not a
+        // stacked block), full-size \dfrac fractions matching the rest of the page.
+        H += `<h4>Step 3 - Solve for the weights</h4>`;
+        const wParts = [];
+        for (let i = 0; i < n; i++) {
+          wParts.push(`\\(\\beta_{${i}} = ${fmtRational(rationalCoefficients[i])}\\)`);
+        }
+        H += `<p class="deriv-weights" style="text-align:center; line-height:2.4;">${wParts.join(', ')}</p>`;
+
+        // ── Step 4: Leading error (boxed result) ──
+        const errAbsStr = formatErrorConstantRational(errorConstant.abs());
+        const errSign = errorConstant.num > 0n ? '-' : '+';
+        const errH = hPow(errorOrder);
+        H += `<h4>Step 4 - Leading error</h4>`;
+        H += `<p>The Taylor remainders combine, and the generalized intermediate value theorem replaces the individual \\(\\xi_i\\) by a single \\(\\xi\\) in the stencil's range, giving</p>`;
+        H += `\\[\\boxed{\\, ${derivSym(d)} \\;=\\; \\dfrac{1}{${hPow(d)}}\\sum_{i=0}^{${n-1}} \\beta_i\\,f(x + p_i h) \\;${errSign}\\; ${errAbsStr}\\,${errH}\\,${derivSym(errorDerivativeOrder, '\\xi')} \\,}\\]`;
+        H += `<p class="deriv-note">The method is \\(O(${errH})\\), verified numerically below on \\(f(x) = e^x\\).</p>`;
+
+        body.innerHTML = H;
+      }
+
+      function drawConvergenceGraph(points, derivativeOrder, rationalCoefficients, errorOrder) {
+        // Show the graph section
+        const graphSection = document.getElementById('graph-section');
+        graphSection.classList.remove('hidden');
+        
+        const chartTitleDiv = document.getElementById('chart-title');
+        
+        // Set chart title with LaTeX
+        let k_str;
+        if (derivativeOrder === 1) k_str = "'";
+        else if (derivativeOrder === 2) k_str = "''";
+        else k_str = `^{(${derivativeOrder})}`;
+        
+        chartTitleDiv.innerHTML = `Convergence for \\(f${k_str}(x)\\) with \\(f(x) = e^x\\)`;
+        renderMathInElement(chartTitleDiv, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+        
+        // Test function f(x) = e^x at x=1
+        const x0 = 1;
+        const f = (t) => Math.exp(t);
+        const exactDeriv = Math.exp(x0); // All derivatives of e^x are e^x
+        
+        // Step-size ladder, extended down to 2^-20 so double precision reaches
+        // its finite-difference round-off wall (where subtracting nearly-equal
+        // f-values and dividing by a tiny h^order amplifies rounding) and the
+        // extended-precision curve visibly continues along O(h^p).
+        const hs = [];
+        for (let k = 1; k <= 20; k++) hs.push(Math.pow(2, -k));
+
+        // Double-precision errors - what a naive floating-point implementation
+        // of this exact-coefficient stencil actually achieves.
+        const errors = hs.map(h => {
+          let sum = 0.0;
+          for (let j = 0; j < points.length; j++) {
+            const c = Number(rationalCoefficients[j].num) / Number(rationalCoefficients[j].den);
+            sum += c * f(x0 + points[j] * h);
+          }
+          return Math.abs(sum / Math.pow(h, derivativeOrder) - exactDeriv);
+        });
+
+        // Extended-precision errors (decimal.js, ~40 digits): the SAME exact
+        // rational coefficients and the same formula, but the catastrophic
+        // cancellation no longer bottoms out near machine epsilon, so the true
+        // truncation error stays visible far below the double-precision floor.
+        let hpErrors = null;
+        if (typeof Decimal !== 'undefined') {
+          Decimal.set({ precision: 45 });
+          const eHP = Decimal.exp(1);                        // exact f^(k)(1) for f=e^x
+          const cHP = rationalCoefficients.map(r => new Decimal(r.num.toString()).div(r.den.toString()));
+          hpErrors = hs.map(h => {
+            const H = new Decimal(h);                        // exact: h is a power of two
+            let sum = new Decimal(0);
+            for (let j = 0; j < points.length; j++) {
+              sum = sum.plus(cHP[j].times(Decimal.exp(H.times(points[j]).plus(1))));  // f(1 + p·h)
+            }
+            const err = sum.div(H.pow(derivativeOrder)).minus(eHP).abs();
+            return Math.max(err.toNumber(), 1e-42);          // floor for the log axis
+          });
+        }
+
+        // Reference O(h^p) line, anchored on a clean (round-off-free) point.
+        const refSeries = hpErrors || errors;
+        const refIdx = 3, refH = hs[refIdx], refError = refSeries[refIdx];
+        const refData = hs.map(h => refError * Math.pow(h / refH, errorOrder));
+
+        // y-axis range spanning both curves; capped so the tall round-off
+        // branch of high-order/high-derivative stencils stays readable.
+        const allErr = errors.concat(hpErrors || [], refData).filter(v => v > 0 && isFinite(v));
+        const minError = Math.min(...allErr), maxError = Math.max(...allErr);
+        const minExponent = Math.max(-40, Math.floor(Math.log10(minError)) - 1);
+        const maxExponent = Math.min(12, Math.max(0, Math.ceil(Math.log10(maxError))));
+
+        // Generate y-axis tick values (thinned when the range spans many decades)
+        const ySpan = maxExponent - minExponent;
+        const tickStep = ySpan > 24 ? 4 : (ySpan > 12 ? 2 : 1);
+        const yTickExponents = [];
+        for (let i = Math.ceil(minExponent / tickStep) * tickStep; i <= maxExponent; i += tickStep) {
+          yTickExponents.push(i);
+        }
+        const yTickVals = yTickExponents.map(e => Math.pow(10, e));
+        const yTickText = yTickExponents.map(e => `10<sup>${e}</sup>`);
+        // Thin the x-axis ticks too (20 step sizes would crowd the axis).
+        const xTickVals = hs.filter((_, i) => i % 2 === 1);
+        
+        // Format step sizes with one decimal place in scientific notation
+        const formatStepSize = (h) => {
+          if (h >= 1) {
+            return h.toFixed(1);
+          }
+          
+          const exponent = Math.floor(Math.log10(h));
+          const coefficient = h / Math.pow(10, exponent);
+          const roundedCoefficient = Math.round(coefficient * 10) / 10;
+          
+          // Handle cases where rounding might give us 10.0
+          const finalCoefficient = roundedCoefficient >= 10 ? 1.0 : roundedCoefficient;
+          const finalExponent = roundedCoefficient >= 10 ? exponent + 1 : exponent;
+          
+          return `${finalCoefficient.toFixed(1)}e${finalExponent}`;
+        };
+        
+        // Double-precision error (markers) - flattens/rises at the round-off wall
+        const actualTrace = {
+          x: hs,
+          y: errors,
+          mode: 'markers',
+          type: 'scatter',
+          name: 'Double precision',
+          marker: {
+            size: 8,
+            color: 'rgb(59, 130, 246)'
+          }
+        };
+
+        // Extended-precision error (markers + line) - keeps falling along O(h^p)
+        const hpTrace = hpErrors ? {
+          x: hs,
+          y: hpErrors,
+          mode: 'lines+markers',
+          type: 'scatter',
+          name: '40-digit precision',
+          marker: { size: 6, color: 'rgb(16, 185, 129)' },
+          line: { color: 'rgb(16, 185, 129)', width: 2 }
+        } : null;
+
+        // Expected convergence rate (dashed reference)
+        const expectedTrace = {
+          x: hs,
+          y: refData,
+          mode: 'lines',
+          type: 'scatter',
+          name: `Order O(h<sup>${errorOrder}</sup>)`,
+          line: {
+            dash: 'dash',
+            color: 'rgb(239, 68, 68)',
+            width: 2
+          }
+        };
+        
+        // Create the layout
+        const layout = {
+          title: '',
+          xaxis: {
+            title: 'Step Size',
+            type: 'log',
+            autorange: 'reversed',
+            tickvals: xTickVals,
+            ticktext: xTickVals.map(h => formatStepSize(h)),
+            showgrid: true,
+            showline: true,
+            mirror: true
+          },
+          yaxis: {
+            title: 'Absolute Error',
+            type: 'log',
+            range: [minExponent, maxExponent],
+            tickvals: yTickVals,
+            ticktext: yTickText,
+            showgrid: true,
+            showline: true,
+            mirror: true
+          },
+          showlegend: true,
+          legend: {
+            x: 0.5,
+            y: 1,
+            xanchor: 'right',
+            yanchor: 'top',
+            bgcolor: 'rgba(255,255,255,0.8)'
+          },
+          margin: {
+            l: 80,
+            r: 40,
+            t: 40,
+            b: 80
+          }
+        };
+        
+        // Plot the data (expected line first, then the two error series)
+        const traces = hpTrace ? [expectedTrace, actualTrace, hpTrace] : [actualTrace, expectedTrace];
+        Plotly.newPlot('convergence-plot', traces, layout, {
+          responsive: true,
+          displayModeBar: true
+        });
+
+        // Update caption with LaTeX
+        const captionDiv = document.getElementById('chart-caption');
+        captionDiv.innerHTML = hpTrace
+          ? `Log-log plot of absolute error vs. step size for \\(f(x)=e^x\\). In <span style="color:rgb(59,130,246)">double precision</span> the error stops improving at the finite-difference round-off wall (\\(\\approx 10^{-16}\\), from catastrophic cancellation) and can rise again; at <span style="color:rgb(16,185,129)">40-digit precision</span> the true \\(O(h^{${errorOrder}})\\) truncation error (dashed) stays visible far below it.`
+          : `Log-log plot of absolute error vs. step size. Dashed line shows expected convergence rate \\(O(h^{${errorOrder}})\\).`;
+        renderMathInElement(captionDiv, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+      }
+    });
+  </script>
+  <script>
+    /* Announce to screen readers */
+    function announce(msg) {
+      var el = document.getElementById('liveRegion');
+      el.textContent = '';
+      setTimeout(function() { el.textContent = msg; }, 50);
+    }
+    /* High-contrast toggle */
+    document.getElementById('contrastToggle').addEventListener('click', function() {
+      document.documentElement.classList.toggle('hc');
+      var on = document.documentElement.classList.contains('hc');
+      announce('High contrast mode ' + (on ? 'enabled' : 'disabled'));
+    });
+  </script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+
+</html>
+

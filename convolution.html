@@ -1,0 +1,2098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Convolution calculator. Compute and animate the convolution f * g of two signals or functions step by step with sliding-window visualization.">
+  <meta name="keywords" content="convolution, Laplace transform, differential equations, integral, accessible math tool">
+  <title>Convolution Visualizer</title>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer=window.dataLayer||[];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js',new Date()); gtag('config','G-LEQE004C92');
+  </script>
+
+  <script src="vendor/plotly@2.35.2/plotly.min.js" charset="utf-8"></script>
+
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+
+  <style>
+/* -- tokens ----------------------------- */
+:root{
+  --bg:#f0f2f5; --card:#fff; --sect:#f8f9fb;
+  --info:#eff6ff; --inf-b:#93c5fd; --inf-hd:#1e3a8a;
+  --txt:#111827; --txt2:#374151; --muted:#4b5563;
+  --bdr:#9ca3af; --bdr2:#d1d5db; --focus:#1d4ed8;
+  --blue:#1d4ed8; --bl2:#1e3a8a; --teal:#0f766e;
+  --vio:#6d28d9; --ora:#b45309; --green:#15803d;
+  --link:#1e40af;
+  --r:.5rem; --r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10); --sh2:0 4px 12px rgba(0,0,0,.12);
+  /* semantic colours for the four traces */
+  --cf:#1d4ed8;    /* f(t)        – blue  */
+  --cg:#c2410c;    /* g(t-t)      – orange*/
+  --cprod:#0f766e; /* product     – teal  */
+  --ch:#7c3aed;    /* h(t)        – violet*/
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;
+  --txt:#000;--txt2:#000;--muted:#111;--inf-hd:#00006b;
+  --bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--ora:#7a3000;--link:#00c;
+  --cf:#00c;--cg:#993300;--cprod:#005500;--ch:#5500aa;
+}
+@media(prefers-contrast:more){
+  :root{--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;
+    --blue:#00c;--bl2:#000099;--link:#00c;--focus:#00f;}
+}
+
+/* -- reset & base ----------------------- */
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;font-size:1rem;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:2px;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+/* -- skip & nav ------------------------- */
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;
+  z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;}
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;
+  background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;
+  font-size:1rem;padding:.25rem .5rem;border-radius:.3rem;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+
+/* -- card & headings -------------------- */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:960px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
+  color:var(--txt);letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* -- info panel ------------------------- */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);
+  border-radius:var(--r);margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-icon{font-size:1.25rem;font-weight:700;flex-shrink:0;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p{font-size:.9375rem;color:var(--txt2);margin-bottom:.5rem;line-height:1.65;}
+.info-body ul{font-size:.9375rem;color:var(--txt2);margin:0 0 .5rem 1.5rem;}
+.info-body li{margin-bottom:.3rem;line-height:1.65;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+
+/* -- definition bar --------------------- */
+.defn{text-align:center;padding:.7rem 1rem;
+  background:linear-gradient(135deg,#eff6ff,#f8faff);
+  border:1px solid #bfdbfe;border-left:4px solid var(--blue);
+  border-radius:var(--r);margin-bottom:1.25rem;}
+
+/* -- compact controls bar --------------- */
+.cbar{
+  display:flex;flex-wrap:wrap;align-items:flex-end;
+  gap:.5rem;margin-bottom:.6rem;
+  background:var(--sect);border:2px solid var(--bdr2);
+  border-radius:var(--r);padding:.5rem .7rem;
+}
+/* pair selector takes most space */
+.cbar-pair{flex:3 1 220px;min-width:180px;}
+/* param slots inline */
+#paramSlots{display:contents;}
+.param-field{flex:0 1 90px;}
+/* t and T fields */
+.cbar-scalar{flex:0 1 80px;}
+/* custom-function inputs */
+.cbar-custom{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;flex:2 1 320px;min-width:240px;}
+.cfield-fn{flex:1 1 150px;min-width:130px;}
+.cfield-fn input[type=text]{
+  width:100%;min-height:36px;padding:.2rem .5rem;
+  font-size:.9375rem;font-weight:600;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);
+}
+.cfield-fn input[type=text]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.fn-err{flex:1 1 100%;font-size:.8125rem;font-weight:600;color:#b91c1c;margin-top:.1rem;}
+.hc .fn-err{color:#7a0000;}
+
+/* shared field style */
+.cfield{display:flex;flex-direction:column;gap:.18rem;}
+.cfield label,.cfield .clbl{
+  font-size:.8125rem;font-weight:700;color:var(--muted);
+  white-space:nowrap;
+}
+.cfield label mjx-container,.cfield .clbl mjx-container{
+  font-size:1em !important;vertical-align:middle;
+}
+.cfield input[type=number]{
+  width:100%;min-height:36px;padding:.2rem .35rem;
+  font-size:.9375rem;font-weight:600;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);text-align:center;
+}
+.cfield input[type=number]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* animation row */
+.abar{
+  display:flex;align-items:center;justify-content:center;
+  gap:.75rem;flex-wrap:wrap;
+  margin-bottom:.75rem;
+  padding:.6rem .75rem;
+  background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);
+}
+.abar-speed{display:flex;align-items:center;gap:.4rem;margin-left:.5rem;}
+.abtn{
+  display:inline-flex;align-items:center;gap:.45rem;
+  padding:.55rem 1.4rem;min-height:44px;min-width:96px;
+  border:none;border-radius:.5rem;
+  font-size:1rem;font-weight:700;cursor:pointer;
+  letter-spacing:.01em;
+  transition:background .12s,transform .08s;
+}
+.abtn:active{transform:scale(.97);}
+.abtn-play {background:var(--green);color:#fff;box-shadow:0 2px 6px rgba(21,128,61,.35);}
+.abtn-play:hover,.abtn-play:focus-visible{background:#166534;}
+.abtn-stop {background:var(--ora);color:#fff;box-shadow:0 2px 6px rgba(180,83,9,.30);}
+.abtn-stop:hover,.abtn-stop:focus-visible{background:#92400e;}
+.abtn-reset{background:var(--muted);color:#fff;box-shadow:0 2px 6px rgba(75,85,99,.25);}
+.abtn-reset:hover,.abtn-reset:focus-visible{background:#374151;}
+.speed-lbl{font-size:.875rem;font-weight:600;color:var(--muted);white-space:nowrap;}
+.speed-sel{padding:.3rem .5rem;border:2px solid var(--bdr2);border-radius:.375rem;
+  font-size:.9rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+
+/* -- h(t) readout bar ------------------- */
+.hbar{display:flex;align-items:center;justify-content:center;gap:2rem;flex-wrap:wrap;
+  padding:.65rem 1rem;background:var(--card);border:2px solid var(--bdr2);
+  border-radius:var(--r);margin-bottom:1rem;box-shadow:var(--sh);}
+.hcell{text-align:center;}
+.hlbl{font-size:.875rem;color:var(--muted);margin-bottom:.15rem;}
+.hlbl mjx-container{font-size:1.1em !important;vertical-align:middle;}
+.hval{font-size:1.2rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;
+  color:var(--vio);}
+
+/* -- 3-panel plot layout --------------- */
+.pgrid3{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  grid-template-rows:auto auto;
+  gap:.5rem;
+  margin-bottom:.875rem;
+}
+@media(max-width:600px){.pgrid3{grid-template-columns:1fr;}}
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);}
+.pwrap-full{
+  grid-column:1/-1;
+  justify-self:center;
+  width:calc(50% - .25rem);   /* same width as one column */
+}
+.phdr{padding:.3rem .65rem;display:flex;align-items:center;gap:.35rem;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);white-space:nowrap;overflow:hidden;}
+.phdr mjx-container{font-size:1.05em !important;vertical-align:middle;}
+.pdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.pplot{height:220px;}
+.pplot-wide{height:220px;}
+
+/* -- legend chips ----------------------- */
+.chips{display:flex;gap:.4rem;padding:.3rem .75rem;
+  background:var(--sect);border-top:1px solid var(--bdr2);flex-wrap:wrap;}
+.chip{display:inline-flex;align-items:center;gap:.3rem;
+  font-size:.875rem;font-weight:600;color:var(--txt2);
+  background:var(--card);border:1px solid var(--bdr2);
+  border-radius:1rem;padding:.2rem .6rem;}
+.chip mjx-container{font-size:1.1em !important;vertical-align:middle;}
+.csw{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+
+/* -- per-plot legend (rendered outside plot area, LaTeX) -- */
+.plegend{
+  display:flex;flex-wrap:wrap;gap:.4rem .9rem;justify-content:center;align-items:center;
+  padding:.4rem .65rem;background:var(--sect);border-top:1px solid var(--bdr2);
+  font-size:.8125rem;color:var(--txt2);min-height:1.9rem;
+}
+.plegend:empty{display:none;}
+.plegend .lgi{display:inline-flex;align-items:center;gap:.4rem;line-height:1.2;}
+.plegend .lgsw{width:18px;height:3px;border-radius:1.5px;display:inline-block;flex-shrink:0;}
+.plegend .lgdot{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;
+  border:1.5px solid #1e40af;background:#2563eb;}
+.plegend mjx-container{font-size:1em !important;vertical-align:middle;}
+
+/* -- custom LaTeX listbox --------------- */
+.csel-wrap{position:relative;}
+.csel-btn{
+  width:100%;min-height:44px;padding:.4rem .6rem .4rem .7rem;
+  border:2px solid var(--bdr);border-radius:.4rem;
+  background:var(--card);color:var(--txt);
+  display:flex;align-items:center;justify-content:space-between;gap:.4rem;
+  cursor:pointer;font-size:.9375rem;text-align:left;
+}
+.csel-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.csel-btn mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+.csel-arrow{font-size:.8rem;color:var(--muted);flex-shrink:0;}
+.csel-list{
+  display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:600;
+  background:var(--card);border:2px solid var(--bdr);border-radius:.4rem;
+  box-shadow:var(--sh2);max-height:340px;overflow-y:auto;
+}
+.csel-list.open{display:block;}
+.csel-grp{
+  padding:.3rem .75rem .15rem;
+  font-size:.8rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em;
+  border-top:1px solid var(--bdr2);
+}
+.csel-grp:first-child{border-top:none;}
+.csel-opt{
+  padding:.38rem .875rem;min-height:40px;cursor:pointer;
+  display:flex;align-items:center;font-size:.875rem;color:var(--txt);
+}
+.csel-opt:hover{background:rgba(29,78,216,.07);}
+.csel-opt[aria-selected="true"]{background:rgba(29,78,216,.12);font-weight:600;}
+.csel-opt:focus-visible{outline:3px solid var(--focus);outline-offset:-3px;}
+.csel-opt mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+
+/* -- contrast toggle & footer ----------- */
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;
+  background:var(--txt);color:var(--card);border:2px solid var(--bdr);
+  border-radius:50%;width:48px;height:48px;font-size:1.25rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+.footer{margin-top:1.5rem;border-top:2px solid var(--bdr2);
+  padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);}
+
+/* -- responsive & motion ---------------- */
+@media(max-width:640px){
+  .card{padding:1rem;margin:1rem .5rem 1.5rem;}
+  .pplot,.pplot-wide{height:200px;}
+}
+@media(prefers-reduced-motion:reduce){
+  .abtn{transition:none;}
+}
+  
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/convolution.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Convolution Visualizer">
+    <meta property="og:description" content="Convolution calculator. Compute and animate the convolution f * g of two signals or functions step by step with sliding-window visualization.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/convolution.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Convolution Visualizer">
+    <meta name="twitter:description" content="Convolution calculator. Compute and animate the convolution f * g of two signals or functions step by step with sliding-window visualization.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Convolution Visualizer",
+  "description": "Convolution calculator. Compute and animate the convolution f * g of two signals or functions step by step with sliding-window visualization.",
+  "url": "https://shelvean.github.io/math-tools/convolution.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Nav -->
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html" aria-current="page">Differential Equations</a></li>
+      <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+
+<a href="projects.html" class="back-link" aria-label="Back to Differential Equations">&larr; Back to Differential Equations</a>
+<main id="main" class="card" role="main">
+
+  <h1>Convolution Visualizer</h1>
+  <p class="subtitle">
+    Watch \(g(t-\tau)\) slide across \(f(\tau)\) as \(t\) grows.
+    The shaded overlap area accumulates into \(h(t)=(f*g)(t)\).
+  </p>
+
+  <!-- About -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
+      <span>About This Visualization</span>
+      <span class="info-icon" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <p>The <strong>convolution</strong> of two causal functions \(f\) and \(g\) is defined as</p>
+      <div class="defn-box">
+        \[(f*g)(t) \;=\; h(t) \;=\; \int_0^{t} f(\tau)\,g(t-\tau)\,d\tau, \qquad t\ge 0.\]
+      </div>
+
+      <h2>The four plots</h2>
+      <ul>
+        <li><strong style="color:#1d4ed8">Top-left - \(f(\tau)\):</strong> the first function, fixed in the \(\tau\) domain.</li>
+        <li><strong style="color:#c2410c">Top-right - \(g(t-\tau)\):</strong> the second function, <em>flipped</em> about \(\tau=0\) and then <em>shifted right by \(t\)</em>. As \(t\) increases it slides to the right, sweeping over \(f\).</li>
+        <li><strong style="color:#0f766e">Bottom-left - product \(f(\tau)\cdot g(t-\tau)\):</strong> the integrand. The green shaded area from \(0\) to \(t\) equals \(h(t)\).</li>
+        <li><strong style="color:#7c3aed">Bottom-right - \(h(t)\):</strong> the convolution, building up as \(t\) increases. The orange dot marks the current value.</li>
+      </ul>
+
+      <h2>Key ideas</h2>
+      <ul>
+        <li>Convolution is commutative: \((f*g)(t) = (g*f)(t)\).</li>
+        <li>In Laplace-transform terms: \(\mathcal{L}\{f*g\} = F(s)\cdot G(s)\). The convolution theorem converts multiplication in \(s\)-space back to a convolution integral in \(t\)-space.</li>
+        <li>The <em>flip-and-slide</em> interpretation: \(g(t-\tau)\) is \(g(\tau)\) reflected about zero and then shifted by \(t\). As \(t\) grows, more of \(f\) is covered.</li>
+        <li>Use the animation button to watch the process unfold automatically. Drag the \(t\) slider for manual control.</li>
+      </ul>
+
+      <h2>Numerical method</h2>
+      <p>Each snapshot uses <strong>composite 10-point Gauss–Legendre quadrature</strong> on \([0,t]\),
+      giving exponential convergence for smooth functions. \(h(t)\) is pre-computed on a fine grid
+      to draw the full result curve.</p>
+    </div>
+  </div>
+
+  <!-- Definition bar -->
+  <div class="defn" role="math" aria-label="Convolution definition">
+    \[(f*g)(t) \;=\; h(t) \;=\; \int_0^{t} f(\tau)\,g(t-\tau)\,d\tau\]
+  </div>
+
+  <!-- Compact controls bar -->
+  <div class="cbar" role="group" aria-label="Convolution controls">
+
+    <!-- Pair selector -->
+    <div class="cbar-pair cfield">
+      <span class="clbl" id="exLbl">Convolution pair \(f * g\)</span>
+      <select id="exSel" style="display:none" tabindex="-1" aria-hidden="true">
+        <option value="11">11</option><option value="t1">t1</option>
+        <option value="tt">tt</option><option value="t2_1">t2_1</option>
+        <option value="t_t2">t_t2</option><option value="ea_eb">ea_eb</option>
+        <option value="ea_ea">ea_ea</option><option value="ea_1">ea_1</option>
+        <option value="ea_t">ea_t</option><option value="sin_1">sin_1</option>
+        <option value="cos_1">cos_1</option><option value="sin_sin">sin_sin</option>
+        <option value="sin_cos">sin_cos</option><option value="ea_sin">ea_sin</option>
+        <option value="ea_cos">ea_cos</option><option value="ua_ub">ua_ub</option>
+        <option value="ua_1" selected>ua_1</option>
+        <option value="custom">custom</option>
+      </select>
+      <div class="csel-wrap" id="cselWrap">
+        <button type="button" id="cselBtn" class="csel-btn"
+                role="combobox" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="exLbl" aria-controls="cselList">
+          <span id="cselDisplay"></span>
+          <span class="csel-arrow" aria-hidden="true">&#9660;</span>
+        </button>
+        <div id="cselList" class="csel-list" role="listbox" aria-labelledby="exLbl"></div>
+      </div>
+    </div>
+
+    <!-- Dynamic parameter inputs (filled by JS) -->
+    <div id="paramSlots" role="group" aria-label="Function parameters"></div>
+
+    <!-- Custom function inputs (shown only for the Custom pair) -->
+    <div id="customRow" class="cbar-custom" role="group" aria-label="Custom functions" style="display:none;">
+      <div class="cfield cfield-fn">
+        <label for="fnF">\(f(t)=\)</label>
+        <input type="text" id="fnF" value="sin(t)" autocomplete="off" spellcheck="false"
+               inputmode="text" aria-label="Function f of t">
+      </div>
+      <div class="cfield cfield-fn">
+        <label for="fnG">\(g(t)=\)</label>
+        <input type="text" id="fnG" value="exp(-t)" autocomplete="off" spellcheck="false"
+               inputmode="text" aria-label="Function g of t">
+      </div>
+      <div id="fnErr" class="fn-err" role="alert" aria-live="assertive" style="display:none;"></div>
+    </div>
+
+    <!-- Current t -->
+    <div class="cbar-scalar cfield">
+      <label for="tNum">Current \(t\)</label>
+      <input type="number" id="tNum" min="0" max="8" step="0.05" value="0"
+             aria-label="Current t" style="color:var(--blue);font-weight:700;">
+    </div>
+
+    <!-- Domain end T -->
+    <div class="cbar-scalar cfield">
+      <label for="tmaxNum">Domain \(T\)</label>
+      <input type="number" id="tmaxNum" min="2" max="20" step="0.5" value="8"
+             aria-label="Domain end T" style="color:var(--teal);font-weight:700;">
+    </div>
+
+  </div>
+
+  <!-- Prominent animation controls -->
+  <div class="abar" role="group" aria-label="Animation controls">
+    <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play animation">
+      <span aria-hidden="true">&#9654;</span> Play
+    </button>
+    <button class="abtn abtn-stop"  id="btnStop"  type="button" aria-label="Stop animation">
+      <span aria-hidden="true">&#9632;</span> Stop
+    </button>
+    <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset to t = 0">
+      <span aria-hidden="true">&#8635;</span> Reset
+    </button>
+    <input type="hidden" id="speedSel" value="3">
+  </div>
+
+  <!-- h(t) readout -->
+  <div class="hbar" role="region" aria-label="Convolution value" aria-live="polite" aria-atomic="true">
+    <div class="hcell">
+      <div class="hlbl">\(t\)</div>
+      <div class="hval" id="hvt">0.000</div>
+    </div>
+    <div class="hcell">
+      <div class="hlbl">\(h(t) = (f*g)(t)\)</div>
+      <div class="hval" id="hvht" style="color:var(--vio);">0.00000</div>
+    </div>
+  </div>
+
+  <!-- 3-panel plots -->
+  <div class="pgrid3" role="region" aria-label="Convolution visualization plots">
+
+    <!-- Top-left: f(t) and g(t-t) overlaid -->
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--cf)" aria-hidden="true"></span>
+        \(f(\tau)\) and
+        <span class="pdot" style="background:var(--cg);margin-left:.25rem" aria-hidden="true"></span>
+        \(g(t-\tau)\) - overlap
+      </div>
+      <div id="plotFG" class="pplot" role="img"
+           aria-label="f(tau) in blue and g(t minus tau) in orange overlaid; shaded overlap shows where both are nonzero"></div>
+      <div class="plegend" id="legFG" aria-label="Legend for f and g plot"></div>
+    </div>
+
+    <!-- Top-right: integrand -->
+    <div class="pwrap">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--cprod)" aria-hidden="true"></span>
+        \(f(\tau)\cdot g(t-\tau)\) - integrand
+      </div>
+      <div id="plotProd" class="pplot" role="img"
+           aria-label="Product of f and g; shaded area equals h(t)"></div>
+      <div class="plegend" id="legProd" aria-label="Legend for integrand plot"></div>
+    </div>
+
+    <!-- Bottom: h(t) centered at half-width -->
+    <div class="pwrap pwrap-full">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--ch)" aria-hidden="true"></span>
+        \(h(t) = (f * g)(t) = \displaystyle\int_0^t f(\tau)\,g(t-\tau)\,d\tau\) - convolution
+      </div>
+      <div id="plotH" class="pplot-wide" role="img"
+           aria-label="Convolution h(t) tracing out as t increases; blue dot marks current numerical value"></div>
+      <div class="plegend" id="legH" aria-label="Legend for h of t plot"></div>
+    </div>
+
+  </div>
+
+  <!-- Formula box -->
+  <div id="formulaBox" class="info-panel" style="padding:1rem 1.25rem;min-height:80px;"
+       role="math" aria-live="polite" aria-label="Convolution formula for current example">
+    <div style="color:var(--muted);text-align:center">Select an example to see the formula.</div>
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981175">https://doi.org/10.5281/zenodo.20981175</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Convolution Visualizer. Math Tools. https://doi.org/10.5281/zenodo.20981175</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Convolution Visualizer." Math Tools, 2026, doi.org/10.5281/zenodo.20981175.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026convolution,
+  author       = {Shelvean Kapita},
+  title        = {{Convolution Visualizer}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981175},
+  url          = {https://doi.org/10.5281/zenodo.20981175}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: March 23, 2026.</p>
+</footer>
+
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* ---------------------------------------------------
+   Utilities
+--------------------------------------------------- */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+function linspace(a,b,n){var r=[];for(var i=0;i<n;i++)r.push(a+(b-a)*i/(n-1));return r;}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function fmt(v,d){d=d==null?5:d;if(!isFinite(v))return 'undef.';if(Math.abs(v)<1e-5&&v!==0)return v.toExponential(3);return v.toFixed(d);}
+function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* -- pretty-print a parameter value, stripping trailing zeros -- */
+function fmtPV(v){
+  if(!isFinite(v))return String(v);
+  var s=Number(v).toFixed(2);
+  if(s.indexOf('.')>=0)s=s.replace(/0+$/,'').replace(/\.$/,'');
+  return s;
+}
+function wrapNeg(v){return v<0?'('+fmtPV(v)+')':fmtPV(v);}
+
+/* -- pretty-print a computed number, rounding away float noise -- */
+function fmtN(v){
+  if(!isFinite(v))return String(v);
+  var s=(Math.round(v*1e6)/1e6).toString();
+  return s;
+}
+
+/* -- negate a LaTeX expression by flipping its top-level +/- signs
+   (those at brace/paren depth 0). If it doesn't start with a sign,
+   a leading '-' is prepended. Used to factor a negative denominator
+   into the numerator: X/(-N) ≡ (-X)/N. */
+function negateLatexExpr(expr){
+  if(!expr)return expr;
+  var out='', depth=0;
+  for(var i=0;i<expr.length;i++){
+    var c=expr.charAt(i);
+    if(depth===0 && (c==='+'||c==='-')){
+      out += c==='+' ? '-' : '+';
+    } else {
+      out += c;
+    }
+    if(c==='{'||c==='(') depth++;
+    else if(c==='}'||c===')') depth--;
+  }
+  var first=expr.charAt(0);
+  if(first!=='+' && first!=='-') out='-'+out;
+  return out;
+}
+
+/* -- repeatedly fold pure-numeric sub-expressions (after substitution),
+   so things like 3+2, 2\cdot 2, (-0.5)^2, (t-3-2) collapse to 5, 4,
+   0.25, (t-5). Variables (t, \tau, \sin, ...) are never touched. */
+function simplifyArith(s){
+  if(!s)return s;
+  var prev;
+  for(var i=0;i<30;i++){
+    prev=s;
+    /* Raw double-sign collapses (e.g. e^{-t}--\sin(t) → e^{-t}+\sin(t)).
+       These arise when a coefficient of -1 substitutes a bare "-" right
+       after an existing "-". */
+    s=s.replace(/--/g, '+');
+    s=s.replace(/\+\+/g, '+');
+    s=s.replace(/\+-/g, '-');
+    s=s.replace(/-\+/g, '-');
+    /* Sign simplifications: -(-x) → +x, +(-x) → -x.
+       Guarded by (?!\^) so we don't break -(-1)^2, which by PEMDAS is -1
+       (negation applies after the square), not +1. */
+    s=s.replace(/-\((-?\d+(?:\.\d+)?)\)(?!\^)/g, function(m,n){
+      return n.charAt(0)==='-' ? '+'+n.substring(1) : '-'+n;
+    });
+    s=s.replace(/\+\((-?\d+(?:\.\d+)?)\)(?!\^)/g, function(m,n){
+      return n.charAt(0)==='-' ? '-'+n.substring(1) : '+'+n;
+    });
+    /* Strip wrapper parens around (-num) when preceded by '{', '(', or
+       start of string AND not followed by '^' (which would change
+       meaning by precedence - (-0.5)^2 ≠ -0.5^2). */
+    s=s.replace(/(^|[{(])\((-\d+(?:\.\d+)?)\)(?!\^)/g, '$1$2');
+    /* a \cdot b → product (each side: bare number or (negative) ) */
+    s=s.replace(/(\(-?\d+(?:\.\d+)?\)|-?\d+(?:\.\d+)?)\s*\\cdot\s*(\(-?\d+(?:\.\d+)?\)|-?\d+(?:\.\d+)?)/g,
+      function(m,a,b){
+        var av=parseFloat(a.replace(/[()]/g,''));
+        var bv=parseFloat(b.replace(/[()]/g,''));
+        return fmtN(av*bv);
+      });
+    /* (n)^2 → n*n */
+    s=s.replace(/\((-?\d+(?:\.\d+)?)\)\^2/g, function(m,a){
+      var v=parseFloat(a); return fmtN(v*v);
+    });
+    /* n^2 → n*n (bare digit base) */
+    s=s.replace(/(\d+(?:\.\d+)?)\^2/g, function(m,a){
+      var v=parseFloat(a); return fmtN(v*v);
+    });
+    /* num op (num)  e.g. 1-(-0.5) */
+    s=s.replace(/(-?\d+(?:\.\d+)?)\s*([+\-])\s*\((-?\d+(?:\.\d+)?)\)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* (num) op (num) */
+    s=s.replace(/\((-?\d+(?:\.\d+)?)\)\s*([+\-])\s*\((-?\d+(?:\.\d+)?)\)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* (num) op num */
+    s=s.replace(/\((-?\d+(?:\.\d+)?)\)\s*([+\-])\s*(\d+(?:\.\d+)?)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* num op num - second number must be non-negative digits only, so
+       this doesn't latch onto things like '2t-2t' where the '2's are
+       coefficients of variables. */
+    s=s.replace(/(-?\d+(?:\.\d+)?)\s*([+\-])\s*(\d+(?:\.\d+)?)/g,
+      function(m,a,op,b){
+        var av=parseFloat(a), bv=parseFloat(b);
+        return fmtN(op==='+'?av+bv:av-bv);
+      });
+    /* strip leading '+' after '{' or '(' or start of string, when
+       followed by a digit/paren - handles cases like {+0.5\sin(t)}
+       that arise after sign simplification. */
+    s=s.replace(/([{(])\s*\+(?=[\d(])/g, '$1');
+    s=s.replace(/^\s*\+(?=[\d(])/, '');
+    /* collapse ((x)) → (x) where x has no nested parens - fixes
+       double-paren artefacts like \cos((t-\tau)) when omega=1 was
+       dropped before '('. */
+    s=s.replace(/\(\(([^()]+)\)\)/g, '($1)');
+    /* \dfrac{X}{-N} → \dfrac{negate(X)}{N}  (division by a negative is
+       multiplication by -1; factor the sign into the numerator so the
+       /1 rule below can then drop the fraction when N=1). */
+    s=s.replace(/\\dfrac\{((?:[^{}]|\{[^{}]*\})*)\}\{-(\d+(?:\.\d+)?)\}/g,
+      function(m, num, n){
+        return '\\dfrac{'+negateLatexExpr(num)+'}{'+n+'}';
+      });
+    /* \dfrac{X}{1} → X  (drop division by 1). The numerator pattern
+       allows one level of nested brace-groups, which covers things
+       like e^{0.5t} or u_{5} inside the numerator. */
+    s=s.replace(/\\dfrac\{((?:[^{}]|\{[^{}]*\})*)\}\{1\}/g, '$1');
+    if(s===prev)break;
+  }
+  return s;
+}
+
+/* -- substitute current parameter values into a LaTeX template --
+   handles \omega, a, b carefully (won't touch letters inside LaTeX
+   command names like \tau, \dfrac, \sin, \cos). Omits coefficients
+   equal to 1 (and renders -1 as a bare "-") when the symbol is acting
+   as a coefficient (followed by a letter, backslash, or '('). */
+function substParams(latex, p){
+  if(!latex)return latex;
+  function makeReplacer(v){
+    return function(match, offset, str){
+      var after =str.charAt(offset+match.length);
+      var before=str.charAt(offset-1);
+      var isCoef    = after !== '' && /[A-Za-z\\(]/.test(after);
+      var followsNum= before !== '' && /[0-9]/.test(before);
+      var rep;
+      if(isCoef && v===1)       rep='';
+      else if(isCoef && v===-1) rep='-';
+      else                      rep=wrapNeg(v);
+      if(followsNum && /^[0-9(]/.test(rep)) rep='\\cdot '+rep;
+      return rep;
+    };
+  }
+  var s=latex;
+  if(p && p.w!==undefined && s.indexOf('\\omega')>=0){
+    /* \omega in LaTeX is often written with a trailing space (e.g.
+       "\omega t") since the command name must be terminated; consume
+       it so the after-char check sees the real next token. */
+    s=s.replace(/\\omega\s*/g, makeReplacer(p.w));
+  }
+  if(p && p.a!==undefined){
+    s=s.replace(/u_a\b/g, 'u_{'+fmtPV(p.a)+'}');
+    s=s.replace(/(?<![A-Za-z])a/g, makeReplacer(p.a));
+  }
+  if(p && p.b!==undefined){
+    s=s.replace(/u_b\b/g, 'u_{'+fmtPV(p.b)+'}');
+    s=s.replace(/(?<![A-Za-z])b/g, makeReplacer(p.b));
+  }
+  return simplifyArith(s);
+}
+
+/* -- Gauss-Legendre 10-point -- */
+var GN=[-0.9739065285171717,-0.8650633666889845,-0.6794095682990244,-0.4333953941292472,-0.1488743389816312,
+         0.1488743389816312, 0.4333953941292472, 0.6794095682990244, 0.8650633666889845, 0.9739065285171717];
+var GW=[ 0.0666713443086881, 0.1494513491505806, 0.2190863625159820, 0.2692667193099963, 0.2955242247147529,
+         0.2955242247147529, 0.2692667193099963, 0.2190863625159820, 0.1494513491505806, 0.0666713443086881];
+
+function quadrature(fn,a,b,nsub){
+  if(b<=a)return 0;
+  nsub=nsub||40;
+  var h=(b-a)/nsub,sum=0;
+  for(var i=0;i<nsub;i++){
+    var x0=a+i*h,x1=x0+h,mid=(x0+x1)/2,hw=h/2,s=0;
+    for(var k=0;k<10;k++)s+=GW[k]*fn(mid+hw*GN[k]);
+    sum+=hw*s;
+  }
+  return sum;
+}
+
+/* ---------------------------------------------------
+   Custom-function parser - same list of functions and
+   syntax as slope.html (sin cos tan cot sec csc sinh
+   cosh tanh asin acos atan exp log log10 sqrt cbrt abs
+   ceil floor round max min, pi, e, and ^ powers). A
+   user expression in t (x is accepted as an alias) is
+   compiled to a numeric evaluator and rendered to LaTeX.
+--------------------------------------------------- */
+if(typeof Math.cot!=='function')Math.cot=function(x){return 1/Math.tan(x);};
+if(typeof Math.sec!=='function')Math.sec=function(x){return 1/Math.cos(x);};
+if(typeof Math.csc!=='function')Math.csc=function(x){return 1/Math.sin(x);};
+
+function powRewrite(eq){
+  var i;
+  while((i=eq.lastIndexOf('^'))>=0){
+    var bs=i,be=i;
+    while(bs>0&&/\s/.test(eq[bs-1]))bs--;
+    be=bs;
+    if(bs>0&&eq[bs-1]===')'){
+      var d=1,p=bs-2;
+      while(p>=0&&d>0){var c=eq[p];if(c===')')d++;else if(c==='(')d--;if(d>0)p--;}
+      if(p<0)return eq;
+      bs=p;
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }else{
+      while(bs>0&&/[\w$.]/.test(eq[bs-1]))bs--;
+    }
+    var base=eq.substring(bs,be);
+    var es=i+1,ee=es;
+    while(ee<eq.length&&/\s/.test(eq[ee]))ee++;
+    es=ee;
+    if(eq[ee]==='+'||eq[ee]==='-')ee++;
+    if(eq[ee]==='('){
+      var d2=1;ee++;
+      while(ee<eq.length&&d2>0){var c2=eq[ee];if(c2==='(')d2++;else if(c2===')')d2--;ee++;}
+    }else{
+      while(ee<eq.length&&/[\w$.]/.test(eq[ee]))ee++;
+      if(eq[ee]==='('){
+        var d3=1;ee++;
+        while(ee<eq.length&&d3>0){var c3=eq[ee];if(c3==='(')d3++;else if(c3===')')d3--;ee++;}
+      }
+    }
+    var expn=eq.substring(es,ee);
+    if(!base||!expn)return eq;
+    eq=eq.substring(0,bs)+'Math.pow('+base+','+expn+')'+eq.substring(ee);
+  }
+  return eq;
+}
+function preprocess(eq){
+  eq=eq.replace(/\bx\b/g,'t');
+  eq=powRewrite(eq);
+  eq=eq
+    .replace(/\b(sin|cos|tan|cot|sec|csc|sinh|cosh|tanh|asin|acos|atan|exp|log|log10|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<!Math\.)e(?!\w)/g,'Math.E');
+  return eq;
+}
+function exprToLatex(s){
+  if(!s)return '';
+  var t=String(s);
+  t=t.replace(/(\d)([a-zA-Z_])/g,function(m,d,l,o,str){
+    if((l==='e'||l==='E')&&o+2<=str.length){var c=str.charAt(o+2);if((c>='0'&&c<='9')||c==='+'||c==='-')return m;}
+    return d+'*'+l;
+  });
+  function wrapPow(str){
+    var out='',i=0,n=str.length;
+    while(i<n){
+      if(str.charAt(i)==='^'){
+        if(i+1<n&&str.charAt(i+1)==='{'){out+='^';i++;continue;}
+        i++;var sign='';
+        if(i<n&&(str.charAt(i)==='-'||str.charAt(i)==='+')){sign=str.charAt(i);i++;}
+        var body='';
+        if(i<n&&str.charAt(i)==='('){
+          var depth=1,j=i+1;
+          while(j<n){var cc=str.charAt(j);if(cc==='(')depth++;else if(cc===')'){depth--;if(depth===0)break;}j++;}
+          body=str.slice(i+1,j);i=(j<n)?j+1:j;
+        }else{var mm=/^(\d+\.?\d*|\.\d+|[A-Za-z_]\w*)/.exec(str.slice(i));if(mm){body=mm[0];i+=mm[0].length;}}
+        out+='^{'+sign+body+'}';
+      }else{out+=str.charAt(i);i++;}
+    }
+    return out;
+  }
+  t=wrapPow(t);
+  function callMap(str,name,mapper){
+    var i=0,nlen=name.length;
+    while((i=str.indexOf(name+'(',i))!==-1){
+      if(i>0&&/[a-zA-Z0-9_]/.test(str.charAt(i-1))){i++;continue;}
+      var depth=1,j=i+nlen+1,len=str.length;
+      while(j<len){var c=str.charAt(j);if(c==='(')depth++;else if(c===')'){depth--;if(depth===0)break;}j++;}
+      if(depth!==0)break;
+      var inner=str.slice(i+nlen+1,j),rep=mapper(exprToLatex(inner));
+      str=str.slice(0,i)+rep+str.slice(j+1);i+=rep.length;
+    }
+    return str;
+  }
+  t=callMap(t,'sqrt', function(x){return '\\sqrt{'+x+'}';});
+  t=callMap(t,'cbrt', function(x){return '\\sqrt[3]{'+x+'}';});
+  t=callMap(t,'abs',  function(x){return '\\left|'+x+'\\right|';});
+  t=callMap(t,'exp',  function(x){return 'e^{'+x+'}';});
+  t=callMap(t,'log10',function(x){return '\\log_{10}\\!\\left('+x+'\\right)';});
+  t=callMap(t,'floor',function(x){return '\\lfloor '+x+'\\rfloor';});
+  t=callMap(t,'ceil', function(x){return '\\lceil '+x+'\\rceil';});
+  t=callMap(t,'log',  function(x){return '\\ln\\!\\left('+x+'\\right)';});
+  t=callMap(t,'asin', function(x){return '\\arcsin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'acos', function(x){return '\\arccos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'atan', function(x){return '\\arctan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sinh', function(x){return '\\sinh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cosh', function(x){return '\\cosh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tanh', function(x){return '\\tanh\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sin',  function(x){return '\\sin\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cos',  function(x){return '\\cos\\!\\left('+x+'\\right)';});
+  t=callMap(t,'tan',  function(x){return '\\tan\\!\\left('+x+'\\right)';});
+  t=callMap(t,'cot',  function(x){return '\\cot\\!\\left('+x+'\\right)';});
+  t=callMap(t,'sec',  function(x){return '\\sec\\!\\left('+x+'\\right)';});
+  t=callMap(t,'csc',  function(x){return '\\csc\\!\\left('+x+'\\right)';});
+  t=t.replace(/([^\\]|^)\bpi\b/gi,'$1\\pi ');
+  t=t.replace(/\*/g,'\\cdot ');
+  return t;
+}
+
+/* compiled custom functions + their display LaTeX */
+var CF={
+  f:function(t){return Math.sin(t);},
+  g:function(t){return Math.exp(-t);},
+  fSrc:'sin(t)', gSrc:'exp(-t)',
+  fTauLatex:'\\sin(\\tau)', gTTauLatex:'e^{-(t-\\tau)}',
+  ok:true
+};
+function cvCompile(expr){
+  var fn=new Function('t','return ('+preprocess(expr)+');');
+  var probe=fn(0.5);                        /* reject non-numeric expressions */
+  if(typeof probe!=='number')throw new Error('non-numeric');
+  return fn;
+}
+/* substitute the variable t (or x) in a raw source expression with a marker,
+   render to LaTeX, then swap the marker for a LaTeX token. Lets f(tau) and
+   g(t-tau) be displayed without corrupting function names that contain "t". */
+function cvArgLatex(src,repl){
+  var marked=src.replace(/\bt\b/g,'@').replace(/\bx\b/g,'@');
+  return exprToLatex(marked).replace(/@/g,repl);
+}
+function cvParseCustom(){
+  var fSrc=(document.getElementById('fnF').value||'').trim()||'0';
+  var gSrc=(document.getElementById('fnG').value||'').trim()||'0';
+  var errEl=document.getElementById('fnErr');
+  try{
+    var f=cvCompile(fSrc), g=cvCompile(gSrc);
+    CF.f=f; CF.g=g; CF.fSrc=fSrc; CF.gSrc=gSrc;
+    CF.fTauLatex=cvArgLatex(fSrc,'\\tau');
+    CF.gTTauLatex=cvArgLatex(gSrc,'(t-\\tau)');
+    CF.ok=true;
+    errEl.textContent=''; errEl.style.display='none';
+    return true;
+  }catch(e){
+    CF.ok=false;
+    errEl.textContent='Could not read f or g. Write them in t, e.g. sin(t), exp(-t), t^2, 1/(1+t^2).';
+    errEl.style.display='block';
+    return false;
+  }
+}
+
+/* ---------------------------------------------------
+   Example Registry
+--------------------------------------------------- */
+var EX = {
+
+  '11': {
+    dropLatex:'\\(1 * 1 = t\\)',
+    lf:'1', lg:'1', lh:'t',
+    lf_tau:'1', lg_ttau:'1',
+    desc:'\\(1 * 1 = t\\)',
+    ft:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t){return t;},
+    params:[], tMax:8
+  },
+
+  't1': {
+    dropLatex:'\\(t * 1 = \\dfrac{t^2}{2}\\)',
+    lf:'t', lg:'1', lh:'\\dfrac{t^2}{2}',
+    lf_tau:'\\tau', lg_ttau:'1',
+    desc:'\\(t * 1 = \\dfrac{t^2}{2}\\)',
+    ft:function(tau,t){return (tau>=0&&tau<=t)?tau:null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t){return t*t/2;},
+    params:[], tMax:6
+  },
+
+  'tt': {
+    dropLatex:'\\(t * t = \\dfrac{t^3}{6}\\)',
+    lf:'t', lg:'t', lh:'\\dfrac{t^3}{6}',
+    lf_tau:'\\tau', lg_ttau:'(t-\\tau)',
+    desc:'\\(t * t = \\dfrac{t^3}{6}\\)',
+    ft:function(tau,t){return (tau>=0&&tau<=t)?tau:null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?t-tau:null;},
+    h:function(t){return t*t*t/6;},
+    params:[], tMax:5
+  },
+
+  't2_1': {
+    dropLatex:'\\(t^2 * 1 = \\dfrac{t^3}{3}\\)',
+    lf:'t^2', lg:'1', lh:'\\dfrac{t^3}{3}',
+    lf_tau:'\\tau^2', lg_ttau:'1',
+    desc:'\\(t^2 * 1 = \\dfrac{t^3}{3}\\)',
+    ft:function(tau,t){return (tau>=0&&tau<=t)?tau*tau:null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t){return t*t*t/3;},
+    params:[], tMax:4
+  },
+
+  't_t2': {
+    dropLatex:'\\(t * t^2 = \\dfrac{t^4}{12}\\)',
+    lf:'t', lg:'t^2', lh:'\\dfrac{t^4}{12}',
+    lf_tau:'\\tau', lg_ttau:'(t-\\tau)^2',
+    desc:'\\(t * t^2 = \\dfrac{t^4}{12}\\)',
+    ft:function(tau,t){return (tau>=0&&tau<=t)?tau:null;},
+    gt:function(tau,t){var s=t-tau;return (tau>=0&&tau<=t)?s*s:null;},
+    h:function(t){return Math.pow(t,4)/12;},
+    params:[], tMax:4
+  },
+
+  'ea_eb': {
+    dropLatex:'\\(e^{at} * e^{bt} = \\dfrac{e^{at}-e^{bt}}{a-b}\\quad(a\\ne b)\\)',
+    lf:'e^{at}', lg:'e^{bt}', lh:'\\dfrac{e^{at}-e^{bt}}{a-b}',
+    lf_tau:'e^{a\\tau}', lg_ttau:'e^{b(t-\\tau)}',
+    desc:'\\(e^{at}*e^{bt} = \\dfrac{e^{at}-e^{bt}}{a-b}\\quad(a\\ne b)\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*tau):null;},
+    gt:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.b*(t-tau)):null;},
+    h:function(t,p){
+      var a=p.a,b=p.b;
+      if(Math.abs(a-b)<1e-8)return t*Math.exp(a*t);
+      return (Math.exp(a*t)-Math.exp(b*t))/(a-b);
+    },
+    params:[
+      {id:'a',label:'\\(a\\)',aria:'a',min:-2,max:2,step:0.1,val:0.5,int:false},
+      {id:'b',label:'\\(b\\)',aria:'b',min:-2,max:2,step:0.1,val:-0.5,int:false}
+    ],
+    tMax:6
+  },
+
+  'ea_ea': {
+    dropLatex:'\\(e^{at} * e^{at} = t\\,e^{at}\\)',
+    lf:'e^{at}', lg:'e^{at}', lh:'t\\,e^{at}',
+    lf_tau:'e^{a\\tau}', lg_ttau:'e^{a(t-\\tau)}',
+    desc:'\\(e^{at}*e^{at} = t\\,e^{at}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*tau):null;},
+    gt:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*(t-tau)):null;},
+    h:function(t,p){return t*Math.exp(p.a*t);},
+    params:[{id:'a',label:'\\(a\\)',aria:'a',min:-2,max:1,step:0.1,val:-0.5,int:false}],
+    tMax:8
+  },
+
+  'ea_1': {
+    dropLatex:'\\(e^{at} * 1 = \\dfrac{e^{at}-1}{a}\\)',
+    lf:'e^{at}', lg:'1', lh:'\\dfrac{e^{at}-1}{a}',
+    lf_tau:'e^{a\\tau}', lg_ttau:'1',
+    desc:'\\(e^{at}*1 = \\dfrac{e^{at}-1}{a}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*tau):null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t,p){
+      var a=p.a;
+      if(Math.abs(a)<1e-8)return t;
+      return (Math.exp(a*t)-1)/a;
+    },
+    params:[{id:'a',label:'\\(a\\)',aria:'a',min:-3,max:2,step:0.1,val:1,int:false}],
+    tMax:6
+  },
+
+  'ea_t': {
+    dropLatex:'\\(e^{at} * t = \\dfrac{e^{at}-at-1}{a^2}\\)',
+    lf:'e^{at}', lg:'t', lh:'\\dfrac{e^{at}-at-1}{a^2}',
+    lf_tau:'e^{a\\tau}', lg_ttau:'(t-\\tau)',
+    desc:'\\(e^{at}*t = \\dfrac{e^{at}-at-1}{a^2}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*tau):null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?t-tau:null;},
+    h:function(t,p){
+      var a=p.a;
+      if(Math.abs(a)<1e-8)return t*t/2;
+      return (Math.exp(a*t)-a*t-1)/(a*a);
+    },
+    params:[{id:'a',label:'\\(a\\)',aria:'a',min:-2,max:2,step:0.1,val:1,int:false}],
+    tMax:5
+  },
+
+  'sin_1': {
+    dropLatex:'\\(\\sin(\\omega t) * 1 = \\dfrac{1-\\cos\\omega t}{\\omega}\\)',
+    lf:'\\sin(\\omega t)', lg:'1', lh:'\\dfrac{1-\\cos(\\omega t)}{\\omega}',
+    lf_tau:'\\sin(\\omega\\tau)', lg_ttau:'1',
+    desc:'\\(\\sin(\\omega t)*1 = \\dfrac{1-\\cos(\\omega t)}{\\omega}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.sin(p.w*tau):null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t,p){return (1-Math.cos(p.w*t))/p.w;},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}],
+    tMax:10
+  },
+
+  'cos_1': {
+    dropLatex:'\\(\\cos(\\omega t) * 1 = \\dfrac{\\sin\\omega t}{\\omega}\\)',
+    lf:'\\cos(\\omega t)', lg:'1', lh:'\\dfrac{\\sin(\\omega t)}{\\omega}',
+    lf_tau:'\\cos(\\omega\\tau)', lg_ttau:'1',
+    desc:'\\(\\cos(\\omega t)*1 = \\dfrac{\\sin(\\omega t)}{\\omega}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.cos(p.w*tau):null;},
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t,p){return Math.sin(p.w*t)/p.w;},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}],
+    tMax:10
+  },
+
+  'sin_sin': {
+    dropLatex:'\\(\\sin(\\omega t) * \\sin(\\omega t)\\)',
+    lf:'\\sin(\\omega t)', lg:'\\sin(\\omega t)',
+    lh:'\\dfrac{\\sin(\\omega t)-\\omega t\\cos(\\omega t)}{2\\omega}',
+    lf_tau:'\\sin(\\omega\\tau)', lg_ttau:'\\sin(\\omega(t-\\tau))',
+    desc:'\\(\\sin(\\omega t)*\\sin(\\omega t) = \\dfrac{\\sin(\\omega t)-\\omega t\\cos(\\omega t)}{2\\omega}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.sin(p.w*tau):null;},
+    gt:function(tau,t,p){return (tau>=0&&tau<=t)?Math.sin(p.w*(t-tau)):null;},
+    h:function(t,p){var w=p.w;return (Math.sin(w*t)-w*t*Math.cos(w*t))/(2*w);},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:3,step:0.5,val:1,int:false}],
+    tMax:10
+  },
+
+  'sin_cos': {
+    dropLatex:'\\(\\sin(\\omega t) * \\cos(\\omega t) = \\dfrac{t\\sin\\omega t}{2}\\)',
+    lf:'\\sin(\\omega t)', lg:'\\cos(\\omega t)',
+    lh:'\\dfrac{t\\sin(\\omega t)}{2}',
+    lf_tau:'\\sin(\\omega\\tau)', lg_ttau:'\\cos(\\omega(t-\\tau))',
+    desc:'\\(\\sin(\\omega t)*\\cos(\\omega t) = \\dfrac{t\\sin(\\omega t)}{2}\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.sin(p.w*tau):null;},
+    gt:function(tau,t,p){return (tau>=0&&tau<=t)?Math.cos(p.w*(t-tau)):null;},
+    h:function(t,p){return t*Math.sin(p.w*t)/2;},
+    params:[{id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:3,step:0.5,val:1,int:false}],
+    tMax:10
+  },
+
+  'ea_sin': {
+    dropLatex:'\\(e^{at} * \\sin(\\omega t)\\)',
+    lf:'e^{at}', lg:'\\sin(\\omega t)',
+    lh:'\\dfrac{\\omega e^{at}-a\\sin(\\omega t)-\\omega\\cos(\\omega t)}{a^2+\\omega^2}',
+    lf_tau:'e^{a\\tau}', lg_ttau:'\\sin(\\omega(t-\\tau))',
+    desc:'\\(e^{at}*\\sin(\\omega t)\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*tau):null;},
+    gt:function(tau,t,p){return (tau>=0&&tau<=t)?Math.sin(p.w*(t-tau)):null;},
+    h:function(t,p){
+      var a=p.a,w=p.w,d=a*a+w*w;
+      return (w*Math.exp(a*t)-a*Math.sin(w*t)-w*Math.cos(w*t))/d;
+    },
+    params:[
+      {id:'a',label:'\\(a\\)',aria:'a',min:-3,max:0,step:0.1,val:-0.5,int:false},
+      {id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}
+    ],
+    tMax:10
+  },
+
+  'ea_cos': {
+    dropLatex:'\\(e^{at} * \\cos(\\omega t)\\)',
+    lf:'e^{at}', lg:'\\cos(\\omega t)',
+    lh:'\\dfrac{a(e^{at}-\\cos(\\omega t))+\\omega\\sin(\\omega t)}{a^2+\\omega^2}',
+    lf_tau:'e^{a\\tau}', lg_ttau:'\\cos(\\omega(t-\\tau))',
+    desc:'\\(e^{at}*\\cos(\\omega t)\\)',
+    ft:function(tau,t,p){return (tau>=0&&tau<=t)?Math.exp(p.a*tau):null;},
+    gt:function(tau,t,p){return (tau>=0&&tau<=t)?Math.cos(p.w*(t-tau)):null;},
+    h:function(t,p){
+      var a=p.a,w=p.w,d=a*a+w*w;
+      return (a*(Math.exp(a*t)-Math.cos(w*t))+w*Math.sin(w*t))/d;
+    },
+    params:[
+      {id:'a',label:'\\(a\\)',aria:'a',min:-3,max:0,step:0.1,val:-0.5,int:false},
+      {id:'w',label:'\\(\\omega\\)',aria:'omega',min:0.5,max:4,step:0.5,val:1,int:false}
+    ],
+    tMax:10
+  },
+
+  'ua_ub': {
+    dropLatex:'\\(u_a(t) * u_b(t) = (t-a-b)\\,u_{a+b}(t)\\)<br><small style="color:var(--muted);padding-left:.2em">\\(a {<} b,\\; a,b\\ge 0\\)</small>',
+    lf:'u_a(t)', lg:'u_b(t)',
+    lh:'(t-a-b)\\cdot u_{a+b}(t)',
+    lf_tau:'u_a(\\tau)', lg_ttau:'u_b(t-\\tau)',
+    desc:'\\(u_a(t)*u_b(t) = (t-a-b)\\cdot u_{a+b}(t),\\quad a{<}b\\)',
+    ft:function(tau,t,p){
+      if(tau<0||tau>t)return null;
+      return tau>=p.a?1:0;
+    },
+    gt:function(tau,t,p){
+      if(tau<0||tau>t)return null;
+      return (t-tau)>=p.b?1:0;
+    },
+    h:function(t,p){var s=p.a+p.b;return t>=s?t-s:0;},
+    params:[
+      {id:'a',label:'Delay \\(a\\)',aria:'a',min:0,max:4,step:0.5,val:3,int:false},
+      {id:'b',label:'Delay \\(b\\)',aria:'b',min:0,max:4,step:0.5,val:2,int:false}
+    ],
+    tMax:10
+  },
+
+  'ua_1': {
+    dropLatex:'\\(u_a(t) * 1 = u_a(t)(t-a)\\)',
+    lf:'u_a(t)', lg:'1',
+    lh:'u_a(t)(t-a)',
+    lf_tau:'u_a(\\tau)', lg_ttau:'1',
+    desc:'\\(u_a(t)*1 = u_a(t)(t-a)\\)',
+    ft:function(tau,t,p){
+      if(tau<0||tau>t)return null;
+      return tau>=p.a?1:0;
+    },
+    gt:function(tau,t){return (tau>=0&&tau<=t)?1:null;},
+    h:function(t,p){return t>=p.a?t-p.a:0;},
+    params:[{id:'a',label:'Delay \\(a\\)',aria:'a',min:0,max:5,step:0.5,val:3,int:false}],
+    tMax:8
+  }
+};
+
+/* Custom pair: two arbitrary user functions, convolved numerically.
+   No closed form exists in general, so only the graph is shown - the
+   formula box is replaced by a note (see updateFormula). */
+EX.custom = {
+  custom:true,
+  dropLatex:'\\(\\text{Custom }f * g\\)',
+  lf:'f', lg:'g', lh:'(f*g)(t)',
+  lf_tau:'f(\\tau)', lg_ttau:'g(t-\\tau)',
+  desc:'',
+  ft:function(tau,t){ return (tau>=0&&tau<=t)?CF.f(tau):null; },
+  gt:function(tau,t){ return (tau>=0&&tau<=t)?CF.g(t-tau):null; },
+  h:function(t){
+    if(t<=0)return 0;
+    return quadrature(function(tau){
+      var a=CF.f(tau), b=CF.g(t-tau);
+      return (isFinite(a)&&isFinite(b))?a*b:0;
+    }, 0, t);
+  },
+  params:[], tMax:8
+};
+
+/* ---------------------------------------------------
+   State
+--------------------------------------------------- */
+var ST = {
+  exId: 'ua_1',
+  t: 0,
+  tMax: 8,
+  p: { a:1, b:2, w:1 },
+  animating: false
+};
+var animTimer = null;
+
+/* ---------------------------------------------------
+   Info panel
+--------------------------------------------------- */
+(function(){
+  var btn=document.getElementById('infoBtn');
+  var body=document.getElementById('infoBody');
+  var icon=btn.querySelector('.info-icon');
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    icon.innerHTML=exp?'+':'&minus;';
+    if(!exp)mj([body]);
+  });
+})();
+
+/* high-contrast */
+document.getElementById('ctog').addEventListener('click',function(){
+  document.documentElement.classList.toggle('hc');
+  var on=document.documentElement.classList.contains('hc');
+  say('High-contrast '+(on?'enabled':'disabled'));
+  redrawAll();
+});
+
+/* ---------------------------------------------------
+   Parameter controls
+--------------------------------------------------- */
+function resetParams(id){
+  EX[id].params.forEach(function(pd){ ST.p[pd.id]=pd.val; });
+}
+
+function buildParams(id){
+  var slot=document.getElementById('paramSlots');
+  slot.innerHTML='';
+  var ex=EX[id];
+  if(!ex.params.length) return;
+  var lblNodes=[];
+  ex.params.forEach(function(pd){
+    var val=ST.p[pd.id]!=null?ST.p[pd.id]:pd.val;
+    var div=document.createElement('div');
+    div.className='param-field cfield';
+    div.innerHTML=
+      '<label for="pN_'+pd.id+'">'+pd.label+'</label>'+
+      '<input type="number" id="pN_'+pd.id+'" min="'+pd.min+'" max="'+pd.max+
+        '" step="'+pd.step+'" value="'+val+'" aria-label="'+pd.aria+'">';
+    slot.appendChild(div);
+    lblNodes.push(div.querySelector('label'));
+    var num=div.querySelector('input');
+    function sync(v){
+      v=pd.int?Math.round(parseFloat(v)||0):parseFloat(v)||0;
+      v=clamp(v,pd.min,pd.max);
+      num.value=v; ST.p[pd.id]=v;
+      precompute(); redrawAll();
+    }
+    num.addEventListener('change',function(){sync(this.value);});
+    num.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();sync(this.value);}});
+  });
+  if(lblNodes.length)mj(lblNodes);
+}
+
+/* ---------------------------------------------------
+   Precompute h(t) curve
+--------------------------------------------------- */
+var CURVE = { tArr:[], hNum:[], hExact:[], fArr:[], gFlipArr:[] };
+var N_CURVE = 300;
+
+function precompute(){
+  var ex=EX[ST.exId];
+  CURVE.tArr   = linspace(0, ST.tMax, N_CURVE);
+  CURVE.hExact = CURVE.tArr.map(function(t){ return ex.h(t, ST.p); });
+}
+
+/* ---------------------------------------------------
+   Plotly config
+--------------------------------------------------- */
+var CFG={responsive:true,displaylogo:false,displayModeBar:false};
+function lay(xt,yt,extra){
+  var l={
+    margin:{t:10,r:14,b:46,l:58},
+    plot_bgcolor:'#fafafa', paper_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'-apple-system,BlinkMacSystemFont,Arial,sans-serif',size:12,color:'#374151'},
+    xaxis:{title:{text:xt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
+    yaxis:{title:{text:yt,font:{size:13}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af',zerolinewidth:1.5,automargin:true},
+    showlegend:false, autosize:true
+  };
+  if(extra)Object.assign(l,extra);
+  return l;
+}
+
+function yRange(arrays, minSpan) {
+  var lo=Infinity, hi=-Infinity;
+  arrays.forEach(function(arr){
+    arr.forEach(function(v){
+      if(v!=null&&isFinite(v)){ if(v<lo)lo=v; if(v>hi)hi=v; }
+    });
+  });
+  if(!isFinite(lo)||!isFinite(hi)){ return [-1,1]; }
+  if(lo===hi){ lo-=0.5; hi+=0.5; }
+  var span=hi-lo;
+  minSpan=minSpan||0;
+  if(span<minSpan){ var mid=(lo+hi)/2; lo=mid-minSpan/2; hi=mid+minSpan/2; span=minSpan; }
+  var pad=span*0.12;
+  return [lo-pad, hi+pad];
+}
+
+function tauGrid(){
+  return linspace(0, ST.tMax, 400);
+}
+
+/* -- Draw f(t) and g(t-t) overlaid -- */
+function drawFG(){
+  var ex=EX[ST.exId], tg=tauGrid(), p=ST.p, t=ST.t;
+  var fy_full=tg.map(function(tau){
+    var v=ex.ft(tau,ST.tMax,p); return v;
+  });
+  var fy=tg.map(function(tau){return ex.ft(tau,t,p);});
+  var gy=tg.map(function(tau){return ex.gt(tau,t,p);});
+  var overlapY=tg.map(function(tau,i){
+    var fv=fy[i], gv=gy[i];
+    if(fv===null||gv===null)return null;
+    return Math.min(Math.abs(fv),Math.abs(gv))*(fv>=0&&gv>=0?1:fv<0&&gv<0?-1:0);
+  });
+  var yr=yRange([fy_full,gy], 0.5);
+  var layout=lay('$\\tau$','');
+  layout.yaxis.range=yr;
+  layout.shapes=[
+    {type:'rect',x0:0,x1:t,y0:yr[0],y1:yr[1],
+     fillcolor:'rgba(124,58,237,.06)',line:{width:0}},
+    {type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],
+     line:{color:'rgba(100,100,100,.45)',width:1.5,dash:'dot'}}
+  ];
+  layout.annotations=[{
+    x:t,y:yr[0]+(yr[1]-yr[0])*0.06,xanchor:'left',yanchor:'bottom',
+    text:'t='+t.toFixed(2),showarrow:false,
+    font:{size:10,color:'#555'},bgcolor:'rgba(255,255,255,.8)'
+  }];
+  layout.margin={t:8,r:12,b:46,l:48};
+  Plotly.react('plotFG',[
+    {x:tg,y:overlapY,type:'scatter',mode:'none',fill:'tozeroy',
+     fillcolor:'rgba(124,58,237,.18)',hoverinfo:'skip',showlegend:false},
+    {x:tg,y:gy,type:'scatter',mode:'lines',name:'g(t\u2212\u03c4)',
+     line:{color:'#c2410c',width:2.5},connectgaps:false,showlegend:false,
+     hovertemplate:'\u03c4=%{x:.3f}<br>g(t\u2212\u03c4)=%{y:.4f}<extra>g(t\u2212\u03c4)</extra>'},
+    {x:tg,y:fy_full,type:'scatter',mode:'lines',name:'f(\u03c4)',
+     line:{color:'#1d4ed8',width:2.5},connectgaps:false,showlegend:false,
+     hovertemplate:'\u03c4=%{x:.3f}<br>f(\u03c4)=%{y:.4f}<extra>f(\u03c4)</extra>'}
+  ],layout,CFG);
+}
+
+/* -- Draw product & shaded area -- */
+function drawProd(){
+  var ex=EX[ST.exId], tg=tauGrid(), p=ST.p, t=ST.t;
+  var prod=tg.map(function(tau){
+    var fv=ex.ft(tau,t,p);
+    var gv=ex.gt(tau,t,p);
+    if(fv===null||gv===null)return null;
+    return fv*gv;
+  });
+  var prodPos=prod.map(function(v){return v!=null?Math.max(v,0):null;});
+  var prodNeg=prod.map(function(v){return v!=null?Math.min(v,0):null;});
+  var yr=yRange([prod], 0.5);
+  if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
+  var layout=lay('$\\tau$','$f(\\tau)\\cdot g(t-\\tau)$');
+  layout.yaxis.range=yr;
+  layout.shapes=[
+    {type:'line',x0:0,x1:ST.tMax,y0:0,y1:0,line:{color:'#9ca3af',width:1}},
+    {type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],line:{color:'rgba(15,118,110,.55)',width:1.8,dash:'dot'}}
+  ];
+  Plotly.react('plotProd',[
+    {x:tg,y:prodPos,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(15,118,110,.3)',hoverinfo:'skip'},
+    {x:tg,y:prodNeg,type:'scatter',mode:'none',fill:'tozeroy',fillcolor:'rgba(239,68,68,.3)',hoverinfo:'skip'},
+    {x:tg,y:prod,type:'scatter',mode:'lines',line:{color:'#0f766e',width:2.8},connectgaps:false,
+     showlegend:false,hovertemplate:'\u03c4=%{x:.3f}<br>product=%{y:.5f}<extra>f\u00b7g</extra>'}
+  ],layout,CFG);
+}
+
+/* -- Draw h(t) -- */
+function drawH(){
+  var ex=EX[ST.exId], t=ST.t, p=ST.p;
+  var hExact=CURVE.hExact, tArr=CURVE.tArr;
+  var hNow=ex.h(t,p);
+  var yr=yRange([hExact,[hNow]], 0.5);
+  if(yr[0]>-0.05)yr[0]=-0.05-(yr[1]-yr[0])*0.05;
+  var layout=lay('$t$','$h(t)$',{height:215});
+  layout.yaxis.range=yr;
+  layout.shapes=[{type:'line',x0:t,x1:t,y0:yr[0],y1:yr[1],
+    line:{color:'rgba(37,99,235,.4)',width:1.5,dash:'dot'}}];
+  Plotly.react('plotH',[
+    {x:tArr,y:hExact,type:'scatter',mode:'lines',name:'h(t)',
+     line:{color:'#7c3aed',width:2.8},connectgaps:false,showlegend:false,
+     hovertemplate:'t=%{x:.3f}<br>h(t)=%{y:.5f}<extra>h(t)</extra>'},
+    {x:[t],y:[isFinite(hNow)?hNow:null],type:'scatter',mode:'markers',name:'current t',
+     marker:{color:'#2563eb',size:12,symbol:'circle',line:{color:'#1e40af',width:2.5}},
+     showlegend:false,
+     hovertemplate:'t='+t.toFixed(3)+'<br>h='+fmt(hNow,5)+'<extra>current</extra>'}
+  ],layout,CFG);
+  document.getElementById('hvt').textContent    = t.toFixed(3);
+  document.getElementById('hvht').textContent   = isFinite(hNow)?fmt(hNow,5):'-';
+}
+
+/* ---------------------------------------------------
+   Formula box
+--------------------------------------------------- */
+var fmPending=false;
+function updateFormula(){
+  var ex=EX[ST.exId], p=ST.p;
+  var box=document.getElementById('formulaBox');
+  if(ex.custom){
+    /* No closed form for arbitrary functions: show only the definition and a
+       note that the convolution is evaluated numerically - no result formula. */
+    box.innerHTML=
+      '<div style="text-align:center">\\[ (f*g)(t) \\;=\\; \\int_0^t f(\\tau)\\,g(t-\\tau)\\,d\\tau \\]</div>'+
+      '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+
+      'Custom \\(f,g\\) - convolution evaluated numerically; no closed-form formula is shown.</div>';
+    if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
+      fmPending=true;
+      MathJax.typesetPromise([box]).then(function(){fmPending=false;}).catch(function(){fmPending=false;});
+    }
+    return;
+  }
+  var lf_tau=substParams(ex.lf_tau,p);
+  var lg_ttau=substParams(ex.lg_ttau,p);
+  var lh=substParams(ex.lh,p);
+  var desc=substParams(ex.desc,p);
+  var html=
+    '<div style="text-align:center">\\[ (f*g)(t) \\;=\\; \\int_0^t '+
+    lf_tau+'\\cdot '+lg_ttau+'\\,d\\tau \\;=\\; '+lh+' \\]</div>'+
+    '<div style="text-align:center;color:var(--muted);font-size:.875rem">'+desc+'</div>';
+  box.innerHTML=html;
+  if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
+    fmPending=true;
+    MathJax.typesetPromise([box]).then(function(){fmPending=false;}).catch(function(){fmPending=false;});
+  }
+}
+
+/* ---------------------------------------------------
+   Per-plot LaTeX legends (rendered outside graphs)
+--------------------------------------------------- */
+var lgPending=false;
+function legendChip(color, tex, dot){
+  var sw=dot
+    ?'<span class="lgdot" aria-hidden="true" style="background:'+color+';border-color:'+color+'"></span>'
+    :'<span class="lgsw" aria-hidden="true" style="background:'+color+'"></span>';
+  return '<span class="lgi">'+sw+'\\('+tex+'\\)</span>';
+}
+function updateLegends(){
+  var ex=EX[ST.exId], p=ST.p;
+  var lf_tau, lg_ttau, lh;
+  if(ex.custom){
+    /* built from the user's expressions; h has no closed form */
+    lf_tau=CF.fTauLatex; lg_ttau=CF.gTTauLatex; lh='(f*g)(t)';
+  } else {
+    lf_tau=substParams(ex.lf_tau,p);
+    lg_ttau=substParams(ex.lg_ttau,p);
+    lh=substParams(ex.lh,p);
+  }
+
+  document.getElementById('legFG').innerHTML=
+    legendChip('#1d4ed8','f(\\tau)='+lf_tau)+
+    legendChip('#c2410c','g(t-\\tau)='+lg_ttau);
+
+  document.getElementById('legProd').innerHTML=
+    legendChip('#0f766e','f(\\tau)\\cdot g(t-\\tau)='+lf_tau+'\\cdot '+lg_ttau);
+
+  document.getElementById('legH').innerHTML=
+    legendChip('#7c3aed','h(t)='+lh)+
+    legendChip('#2563eb','\\text{current }t','dot');
+
+  if(!lgPending&&window.MathJax&&MathJax.typesetPromise){
+    lgPending=true;
+    var nodes=[document.getElementById('legFG'),
+               document.getElementById('legProd'),
+               document.getElementById('legH')];
+    MathJax.typesetPromise(nodes).then(function(){lgPending=false;}).catch(function(){lgPending=false;});
+  }
+}
+
+/* ---------------------------------------------------
+   Master redraw
+--------------------------------------------------- */
+var pending=false;
+function redrawAll(){
+  if(pending)return; pending=true;
+  requestAnimationFrame(function(){
+    pending=false;
+    drawFG(); drawProd(); drawH(); updateFormula(); updateLegends();
+  });
+}
+/* lighter redraw for t-only changes (no MathJax re-typeset) */
+function redrawT(){
+  if(pending)return; pending=true;
+  requestAnimationFrame(function(){
+    pending=false;
+    drawFG(); drawProd(); drawH();
+  });
+}
+
+/* ---------------------------------------------------
+   t input
+--------------------------------------------------- */
+document.getElementById('tNum').addEventListener('change',function(){
+  ST.t=clamp(parseFloat(this.value)||0,0,ST.tMax);
+  this.value=ST.t;
+  redrawT();
+});
+document.getElementById('tNum').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){e.preventDefault();this.dispatchEvent(new Event('change'));}
+});
+
+/* ---------------------------------------------------
+   tMax input
+--------------------------------------------------- */
+function syncTMax(v){
+  v=clamp(parseFloat(v)||8,2,20);
+  ST.tMax=v;
+  document.getElementById('tmaxNum').value=v;
+  if(ST.t>v){ST.t=v;document.getElementById('tNum').value=v;}
+  document.getElementById('tNum').max=v;
+  precompute(); redrawAll();
+}
+document.getElementById('tmaxNum').addEventListener('change',function(){syncTMax(this.value);});
+document.getElementById('tmaxNum').addEventListener('keydown',function(e){
+  if(e.key==='Enter'){e.preventDefault();syncTMax(this.value);}
+});
+
+/* ---------------------------------------------------
+   Custom function inputs
+--------------------------------------------------- */
+function applyCustom(){
+  stopAnim();
+  if(cvParseCustom()){ precompute(); redrawAll(); say('Custom functions updated'); }
+}
+['fnF','fnG'].forEach(function(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.addEventListener('change',applyCustom);
+  el.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();applyCustom();}
+  });
+});
+
+/* ---------------------------------------------------
+   Animation
+--------------------------------------------------- */
+function stopAnim(){
+  ST.animating=false;
+  if(animTimer)clearInterval(animTimer);
+  animTimer=null;
+  say('Animation stopped');
+}
+function startAnim(){
+  if(ST.animating)return;
+  if(ST.t>=ST.tMax){ST.t=0;document.getElementById('tNum').value=0;}
+  ST.animating=true;
+  var ms=parseInt(document.getElementById('speedSel').value)||30;
+  var step=ST.tMax/200;
+  animTimer=setInterval(function(){
+    if(!ST.animating){clearInterval(animTimer);return;}
+    ST.t=Math.min(ST.t+step,ST.tMax);
+    document.getElementById('tNum').value=ST.t.toFixed(2);
+    redrawT();
+    if(ST.t>=ST.tMax){stopAnim();say('Animation complete');}
+  },ms);
+  say('Animation started');
+}
+document.getElementById('btnPlay').addEventListener('click',startAnim);
+document.getElementById('btnStop').addEventListener('click',stopAnim);
+document.getElementById('btnReset').addEventListener('click',function(){
+  stopAnim();
+  ST.t=0;
+  document.getElementById('tNum').value=0;
+  redrawT();
+  say('Reset to t = 0');
+});
+
+/* ---------------------------------------------------
+   Custom LaTeX listbox for example selector
+--------------------------------------------------- */
+var CSEL_GROUPS=[
+  {label:'Custom (any \u0192, g)',   ids:['custom']},
+  {label:'Heaviside Step',          ids:['ua_ub','ua_1']},
+  {label:'Trigonometric',           ids:['sin_1','cos_1','sin_sin','sin_cos']},
+  {label:'Exponential \u00d7 Trig', ids:['ea_sin','ea_cos']},
+  {label:'Exponential',             ids:['ea_eb','ea_ea','ea_1','ea_t']},
+  {label:'Constant / Polynomial',   ids:['11','t1','tt','t2_1','t_t2']}
+];
+var cselCurrent='ua_1';
+
+function cselBuild(){
+  var list=document.getElementById('cselList');
+  list.innerHTML='';
+  CSEL_GROUPS.forEach(function(grp){
+    var gl=document.createElement('div');
+    gl.className='csel-grp'; gl.textContent=grp.label;
+    list.appendChild(gl);
+    grp.ids.forEach(function(id){
+      var opt=document.createElement('div');
+      opt.className='csel-opt';
+      opt.setAttribute('role','option');
+      opt.setAttribute('tabindex','-1');
+      opt.setAttribute('data-id',id);
+      opt.setAttribute('aria-selected',id===cselCurrent?'true':'false');
+      opt.innerHTML=EX[id].dropLatex;
+      list.appendChild(opt);
+    });
+  });
+}
+function cselSetDisplay(id){
+  var d=document.getElementById('cselDisplay');
+  d.innerHTML=EX[id].dropLatex;
+  mj([d]);
+}
+function cselSelect(id){
+  cselCurrent=id;
+  cselSetDisplay(id);
+  document.querySelectorAll('#cselList .csel-opt').forEach(function(el){
+    el.setAttribute('aria-selected',el.getAttribute('data-id')===id?'true':'false');
+  });
+  document.getElementById('exSel').value=id;
+}
+function cselOpen(){
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  list.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+  var sel=list.querySelector('[aria-selected="true"]');
+  if(sel){sel.focus();sel.scrollIntoView({block:'nearest'});}
+}
+function cselClose(){
+  document.getElementById('cselList').classList.remove('open');
+  document.getElementById('cselBtn').setAttribute('aria-expanded','false');
+}
+function cselToggle(){
+  document.getElementById('cselList').classList.contains('open')?cselClose():cselOpen();
+}
+function initCsel(){
+  cselBuild();
+  cselSetDisplay(cselCurrent);
+  mj([document.getElementById('cselList'),document.getElementById('cselDisplay')]);
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  btn.addEventListener('click',function(e){e.stopPropagation();cselToggle();});
+  btn.addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();cselToggle();}
+    if(e.key==='Escape')cselClose();
+    if(e.key==='ArrowDown'){e.preventDefault();cselOpen();}
+  });
+  list.addEventListener('click',function(e){
+    var opt=e.target.closest('.csel-opt');
+    if(!opt)return;
+    cselSelect(opt.getAttribute('data-id'));
+    cselClose(); btn.focus();
+    switchEx(opt.getAttribute('data-id'));
+  });
+  list.addEventListener('keydown',function(e){
+    var opts=Array.from(list.querySelectorAll('.csel-opt'));
+    var idx=opts.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'){e.preventDefault();if(idx<opts.length-1)opts[idx+1].focus();}
+    else if(e.key==='ArrowUp'){e.preventDefault();if(idx>0)opts[idx-1].focus();else{cselClose();btn.focus();}}
+    else if(e.key==='Enter'||e.key===' '){
+      e.preventDefault();
+      var f=document.activeElement;
+      if(f&&f.dataset&&f.dataset.id){cselSelect(f.dataset.id);cselClose();btn.focus();switchEx(f.dataset.id);}
+    }
+    else if(e.key==='Escape'||e.key==='Tab'){cselClose();if(e.key==='Escape')btn.focus();}
+  });
+  document.addEventListener('click',function(e){
+    if(!document.getElementById('cselWrap').contains(e.target))cselClose();
+  });
+}
+
+function switchEx(id){
+  stopAnim();
+  if(!EX[id])return;
+  ST.exId=id; ST.t=0;
+  resetParams(id);
+  buildParams(id);
+  var custom=!!EX[id].custom;
+  document.getElementById('customRow').style.display=custom?'':'none';
+  document.getElementById('paramSlots').style.display=custom?'none':'';
+  if(custom)cvParseCustom();
+  var dT=EX[id].tMax;
+  ST.tMax=dT;
+  document.getElementById('tNum').value=0;
+  document.getElementById('tNum').max=dT;
+  document.getElementById('tmaxNum').value=dT;
+  precompute(); redrawAll();
+  say('Loaded: '+id);
+}
+
+/* ---------------------------------------------------
+   Init
+--------------------------------------------------- */
+document.addEventListener('DOMContentLoaded',function(){
+  resetParams('ua_1');
+  buildParams('ua_1');
+  ST.exId='ua_1';
+  ST.tMax=EX['ua_1'].tMax;
+  document.getElementById('tmaxNum').value=ST.tMax;
+  document.getElementById('tNum').max=ST.tMax;
+
+  function init(){
+    if(window.MathJax&&MathJax.typesetPromise){
+      MathJax.startup.promise.then(function(){
+        MathJax.typesetPromise().then(function(){
+          initCsel();
+          precompute();
+          redrawAll();
+        }).catch(function(){initCsel();precompute();redrawAll();});
+      }).catch(function(){initCsel();precompute();redrawAll();});
+    } else {
+      setTimeout(init,100);
+    }
+  }
+  init();
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

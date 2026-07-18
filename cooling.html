@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Newton's law of cooling calculator. Solve du/dt = -k(u - T) with adjustable parameters and an interactive temperature vs time plot.">
+  <meta name="keywords" content="Newton's Law of Cooling, Temperature, Heat Transfer, Differential Equations, ODE, Simulation, Numerical Methods">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-LEQE004C92');
+  </script>
+  <title>Newton's Law of Cooling - Interactive Heat Transfer Simulation</title>
+  <!-- MathJax - screen-reader accessible math -->
+  <script>
+    window.MathJax = {
+      tex: { inlineMath: [['$','$'], ['\\(','\\)']], displayMath: [['$$','$$'], ['\\[','\\]']] },
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: { pageReady: function(){ return MathJax.startup.defaultPageReady(); } }
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+  <script src="vendor/plotly@2.27.0/plotly.min.js"></script>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --surface: #ffffff;
+      --bg: #f0f4f8;
+      --bg-input: #f8fafc;
+      --text: #1e293b;
+      --text-muted: #475569;
+      --border: #d1d5db;
+      --border-badge: #94a3b8;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+      --link-color: #2563eb;
+      --btn-secondary-bg: #f1f5f9;
+      --btn-secondary-text: #374151;
+      --btn-secondary-hover: #e2e8f0;
+      --btn-danger-bg: #fef2f2;
+      --btn-danger-text: #b91c1c;
+      --btn-danger-border: #f9a8a8;
+      --btn-danger-hover: #fee2e2;
+    }
+
+    /* High-contrast mode (OS preference) */
+    @media (prefers-contrast: more) {
+      :root {
+        --primary: #0000cc; --primary-dark: #000099;
+        --surface: #ffffff; --bg: #ffffff; --bg-input: #ffffff;
+        --text: #000000; --text-muted: #1a1a1a;
+        --border: #000000; --border-badge: #000000; --link-color: #0000cc;
+        --shadow: 0 0 0 2px #000;
+        --btn-secondary-bg: #ffffff; --btn-secondary-text: #000000; --btn-secondary-hover: #e0e0e0;
+        --btn-danger-bg: #ffffff; --btn-danger-text: #990000; --btn-danger-border: #990000; --btn-danger-hover: #f0f0f0;
+      }
+    }
+
+    /* Manual high-contrast toggle class */
+    .high-contrast {
+      --primary: #0000cc; --primary-dark: #000099;
+      --surface: #ffffff; --bg: #ffffff; --bg-input: #ffffff;
+      --text: #000000; --text-muted: #1a1a1a;
+      --border: #000000; --border-badge: #000000; --link-color: #0000cc;
+      --shadow: 0 0 0 2px #000;
+      --btn-secondary-bg: #ffffff; --btn-secondary-text: #000000; --btn-secondary-hover: #e0e0e0;
+      --btn-danger-bg: #ffffff; --btn-danger-text: #990000; --btn-danger-border: #990000; --btn-danger-hover: #f0f0f0;
+    }
+
+    /* Skip navigation link */
+    .skip-link {
+      position: absolute; top: -100%; left: 50%; transform: translateX(-50%);
+      background: var(--primary); color: #fff; padding: 0.75rem 1.5rem;
+      z-index: 1000; border-radius: 0 0 0.5rem 0.5rem;
+      font-weight: 600; text-decoration: none;
+    }
+    .skip-link:focus { top: 0; outline: 3px solid #000; outline-offset: 2px; }
+
+    /* Focus ring for all elements */
+    *:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+
+    /* Screen-reader only */
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    /* Contrast toggle */
+    .contrast-toggle { position: fixed; bottom: 1rem; right: 1rem; z-index: 20; background: var(--text); color: var(--surface); border: 2px solid var(--border); border-radius: 50%; width: 48px; height: 48px; font-size: 1.25rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .main-container { max-width: 1400px; margin: 0 auto; }
+
+    header { text-align: center; margin-bottom: 28px; }
+    header h1 { font-size: 1.7rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    header p { font-size: 0.95rem; color: var(--text-muted); }
+
+    .equation-bar {
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .equation-bar .MathJax { font-size: 1.15rem; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* --- Controls --- */
+    .controls {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 24px;
+    }
+
+    .controls h3 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text);
+      margin-bottom: 16px;
+      font-weight: 700;
+    }
+
+    .control-group { margin-bottom: 18px; }
+    .control-group label {
+      display: block; font-size: 0.82rem; font-weight: 600;
+      color: var(--text); margin-bottom: 6px;
+    }
+    .control-group label span.unit { font-weight: 400; color: var(--text-muted); }
+
+    .control-group select,
+    .control-group input[type="number"] {
+      width: 100%; padding: 10px 12px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 0.92rem; color: var(--text); background: var(--bg-input);
+      transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+    }
+    .control-group select:focus,
+    .control-group input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+
+    .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 11px 18px; border: none; border-radius: 0.5rem;
+      font-size: 0.9rem; font-weight: 700; cursor: pointer;
+      transition: all 0.2s; width: 100%;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
+    .btn-secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); border: 1.5px solid var(--border); }
+    .btn-secondary:hover { background: var(--btn-secondary-hover); }
+    .btn-danger { background: var(--btn-danger-bg); color: var(--btn-danger-text); border: 1.5px solid var(--btn-danger-border); }
+    .btn-danger:hover { background: var(--btn-danger-hover); }
+
+    .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+
+    .speed-control { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+    .speed-control input[type="range"] { flex: 1; accent-color: var(--primary); }
+    .speed-label {
+      font-size: 0.82rem; color: var(--text); min-width: 28px;
+      text-align: right; font-weight: 600;
+    }
+
+    /* --- Right Panel --- */
+    .viz-panel { display: flex; flex-direction: column; gap: 20px; }
+
+    /* --- Object Display --- */
+    .object-display {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .ambient-bg {
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 300px; padding: 30px;
+      transition: background-color 0.8s ease;
+    }
+
+    .ambient-label {
+      position: absolute; top: 12px; right: 16px;
+      font-size: 0.82rem; font-weight: 700;
+      color: var(--text);
+      background: var(--surface);
+      padding: 5px 14px; border-radius: 20px;
+      border: 1.5px solid var(--border-badge);
+    }
+
+    .object-scene {
+      position: relative;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    .temp-badge {
+      font-size: 1.8rem; font-weight: 800;
+      color: var(--text);
+      background: var(--surface);
+      padding: 6px 20px; border-radius: 10px;
+      border: 2px solid var(--border-badge);
+      margin-bottom: 12px;
+      z-index: 5;
+    }
+
+    /* --- Steam Particles --- */
+    .steam-container {
+      position: absolute; top: -40px; left: 50%;
+      transform: translateX(-50%);
+      width: 120px; height: 80px;
+      pointer-events: none; overflow: visible;
+    }
+
+    .steam-particle {
+      position: absolute; bottom: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.6);
+      filter: blur(3px);
+      animation: steamRise linear infinite;
+      opacity: 0;
+    }
+
+    @keyframes steamRise {
+      0% { opacity: 0; transform: translateY(0) translateX(0) scale(0.4); }
+      15% { opacity: 0.7; }
+      50% { opacity: 0.5; }
+      100% { opacity: 0; transform: translateY(-80px) translateX(var(--drift)) scale(1.2); }
+    }
+
+    .frost-particle {
+      position: absolute; bottom: 0;
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: rgba(180,220,255,0.7);
+      filter: blur(1px);
+      animation: frostFall linear infinite;
+      opacity: 0;
+    }
+
+    @keyframes frostFall {
+      0% { opacity: 0; transform: translateY(0) translateX(0) scale(0.5); }
+      20% { opacity: 0.8; }
+      100% { opacity: 0; transform: translateY(40px) translateX(var(--drift)) scale(0.3); }
+    }
+
+    /* --- SVG Object --- */
+    .object-svg {
+      width: 160px; height: 160px;
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.2));
+      transition: filter 0.3s;
+    }
+
+    .object-name-label {
+      margin-top: 12px; font-size: 0.95rem; font-weight: 800;
+      color: var(--text);
+      background: var(--surface);
+      padding: 5px 18px; border-radius: 8px;
+      border: 2px solid var(--border-badge);
+      text-transform: uppercase; letter-spacing: 1.2px;
+      z-index: 5;
+    }
+
+    /* --- Graph --- */
+    .graph-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .solution-bar {
+      text-align: center;
+      background: var(--bg, #f8fafc);
+      border: 1px solid var(--border);
+      border-left: 3px solid #f59e0b;
+      border-radius: var(--radius);
+      padding: 8px 14px;
+      margin: 0 0 12px;
+      font-size: 0.9rem;
+      color: var(--text);
+      overflow-x: auto;
+    }
+    .solution-bar .sol-label {
+      font-weight: 700; color: var(--muted, #64748b);
+      margin-right: 6px; font-size: 0.82rem;
+    }
+
+    .graph-legend {
+      display: flex; align-items: center; justify-content: center;
+      gap: 20px; padding: 10px 0 2px;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 0.82rem; font-weight: 600; color: var(--text);
+    }
+    .legend-line {
+      display: inline-block; width: 24px; height: 3px; border-radius: 2px;
+    }
+    .legend-line.dashed {
+      background: none !important;
+      border-top: 3px dotted;
+      border-color: inherit; height: 0;
+    }
+    .legend-line.dashed { border-color: #f59e0b; }
+    .legend-line.dashed.thin { border-top-style: dashed; border-width: 2px; border-color: #94a3b8; }
+
+    /* --- Info Cards --- */
+    .info-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .info-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px; text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .info-card .value { font-size: 1.4rem; font-weight: 800; color: var(--text); }
+    .info-card .label {
+      font-size: 0.75rem; color: var(--text); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px;
+    }
+
+    /* --- Status bar --- */
+    .status-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; font-size: 0.82rem; color: var(--text); font-weight: 600;
+      background: var(--bg-input);
+      border-top: 1px solid var(--border);
+      border-radius: 0 0 var(--radius) var(--radius);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #94a3b8; transition: background 0.3s;
+    }
+    .status-dot.running { background: #22c55e; animation: pulse 1.5s infinite; }
+    .status-dot.paused { background: #f59e0b; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    /* --- Color Scale Legend --- */
+    .color-legend {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; background: var(--bg-input);
+      border-bottom: 1px solid var(--border);
+    }
+    .color-legend span { font-size: 0.78rem; color: var(--text); font-weight: 700; }
+    .color-bar {
+      flex: 1; height: 10px; border-radius: 5px;
+      background: linear-gradient(to right,
+        #00008B, #0000FF, #0080FF, #00FFFF,
+        #00FF80, #00FF00, #80FF00, #FFFF00,
+        #FF8000, #FF0000, #8B0000);
+    }
+
+    /* --- Presets pills --- */
+    .presets-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .preset-pill {
+      font-size: 0.78rem; padding: 4px 10px; border-radius: 20px;
+      border: 1.5px solid var(--border); background: var(--bg-input);
+      color: var(--text); cursor: pointer; font-weight: 600; transition: all 0.2s;
+    }
+    .preset-pill:hover { border-color: var(--primary); color: var(--primary); background: var(--surface); }
+    .preset-pill.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+
+    .divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .controls { position: static; }
+      .info-row { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      body { padding: 12px; }
+      .info-row { grid-template-columns: 1fr; }
+      .ambient-bg { min-height: 200px; }
+      .object-svg { width: 120px; height: 120px; }
+    }
+
+    .back-link {
+      display: flex; width: fit-content; align-items: center; gap: 6px;
+      font-size: 0.85rem; font-weight: 500;
+      color: var(--primary); text-decoration: none;
+      margin: 0 auto 16px; transition: transform 0.2s;
+    }
+    .back-link:hover { transform: translateX(-3px); }
+
+    /* Footnotes */
+    .footnotes { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.85rem; color: var(--text-muted); }
+    .footnotes h2 { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text); }
+    .footnotes ol { margin-left: 1.5rem; padding: 0; }
+    .footnotes li { margin-bottom: 0.375rem; }
+    .footnote-ref { font-size: 0.75rem; vertical-align: super; text-decoration: none; color: var(--link-color); font-weight: 600; }
+    .footnote-ref:hover { text-decoration: underline; }
+    .footnote-backref { text-decoration: none; color: var(--link-color); margin-left: 0.25rem; }
+    .footer { margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+    .footer a { color: var(--link-color); text-decoration: none; }
+    .footer a:hover, .footer a:focus-visible { text-decoration: underline; }
+
+    /* Reduced motion preference */
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+
+    /* Forced colors (Windows High Contrast) */
+    @media (forced-colors: active) { .color-bar { border: 1px solid ButtonText; } .status-dot { border: 1px solid ButtonText; } }
+  
+/* ===== Site Nav ===== */
+.main-nav{position:sticky;top:0;left:0;width:100%;z-index:1000;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.nav-inner{max-width:72rem;margin:0 auto;padding:.5rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:1rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:#4338ca;text-decoration:none;font-weight:700;font-size:1.05rem;
+  padding:.5rem .5rem;border-radius:.25rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{color:#3730a3;text-decoration:underline;}
+@media(max-width:640px){.nav-list{gap:.4rem;}.nav-list a{font-size:.9rem;padding:.4rem .35rem;}}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/cooling.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Newton's Law of Cooling - Interactive Heat Transfer Simulation">
+    <meta property="og:description" content="Newton's law of cooling calculator. Solve du/dt = -k(u - T) with adjustable parameters and an interactive temperature vs time plot.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/cooling.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Newton's Law of Cooling - Interactive Heat Transfer Simulation">
+    <meta name="twitter:description" content="Newton's law of cooling calculator. Solve du/dt = -k(u - T) with adjustable parameters and an interactive temperature vs time plot.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Newton's Law of Cooling - Interactive Heat Transfer Simulation",
+  "description": "Newton's law of cooling calculator. Solve du/dt = -k(u - T) with adjustable parameters and an interactive temperature vs time plot.",
+  "url": "https://shelvean.github.io/math-tools/cooling.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<nav class="main-nav" aria-label="Main navigation">
+  <div class="nav-inner">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+        <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+  <!-- Skip navigation for keyboard users -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Live region for screen reader announcements -->
+  <div id="sr-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="main-container">
+    <a href="projects.html" class="back-link" aria-label="Back to Differential Equations page">&larr; Back to Differential Equations</a>
+
+    <header role="banner">
+      <h1>Newton's Law of Cooling</h1>
+      <p>Real-time numerical simulation of heat transfer between an object and its environment</p>
+    </header>
+
+    <div class="equation-bar" id="equationBar" role="math" aria-label="Newton's Law of Cooling: du/dt equals negative k times the quantity u minus T, with initial value u naught. Solution: u of t equals T plus the quantity u naught minus T times e to the negative k t"></div>
+
+    <div class="layout" id="main-content" role="main">
+      <!-- Left: Controls -->
+      <aside class="controls" aria-label="Simulation controls">
+        <h2 class="sr-only">Simulation Controls</h2>
+        <h3 id="object-heading">Object</h3>
+        <div class="control-group">
+          <label for="objectSelect">Select Object</label>
+          <select id="objectSelect" aria-label="Select object to simulate cooling for">
+            <option value="coffee">Coffee Mug</option>
+            <option value="pizza">Pizza Slice</option>
+            <option value="soup">Bowl of Soup</option>
+            <option value="icecream">Ice Cream</option>
+            <option value="metalrod">Metal Rod</option>
+          </select>
+        </div>
+        <div class="presets-row" id="presetPills" role="group" aria-label="Quick presets"></div>
+
+        <div class="divider" role="separator"></div>
+        <h3 id="parameters-heading">Parameters<a href="#fn1" id="fnref1" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>1</sup></a></h3>
+
+        <div class="control-group">
+          <label for="initTemp">Initial Temperature, <em>u</em><sub>0</sub> <span class="unit">(°C)</span></label>
+          <input type="number" id="initTemp" value="95" step="1" aria-label="Initial temperature u naught in degrees Celsius">
+        </div>
+
+        <div class="control-group">
+          <label for="ambientTemp">Ambient Temperature, <em>T</em> <span class="unit">(°C)</span></label>
+          <input type="number" id="ambientTemp" value="22" step="1" aria-label="Ambient environment temperature in degrees Celsius">
+        </div>
+
+        <div class="control-group">
+          <label for="kConstant">Cooling Constant, <em>k</em> <span class="unit">(min<sup>&minus;1</sup>)</span></label>
+          <input type="number" id="kConstant" value="0.07" step="0.005" min="0.001" aria-label="Cooling constant k in inverse minutes">
+        </div>
+
+        <div class="input-row">
+          <div class="control-group">
+            <label for="endTime">End Time <span class="unit">(min)</span></label>
+            <input type="number" id="endTime" value="60" step="5" min="5" aria-label="Simulation end time in minutes">
+          </div>
+          <div class="control-group">
+            <label for="dt">Time Step, <em>dt</em></label>
+            <input type="number" id="dt" value="0.25" step="0.05" min="0.05" aria-label="Numerical time step dt">
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label for="speedSlider">Animation Speed</label>
+          <div class="speed-control">
+            <span class="speed-label" aria-hidden="true">1&times;</span>
+            <input type="range" id="speedSlider" min="1" max="20" value="5" aria-label="Animation speed multiplier, 1 to 20">
+            <span class="speed-label" id="speedValue" aria-live="polite">5&times;</span>
+          </div>
+        </div>
+
+        <div class="divider" role="separator"></div>
+
+        <div class="btn-row" style="grid-template-columns: 1fr;" role="group" aria-label="Simulation actions">
+          <button class="btn btn-primary" id="startBtn" onclick="startSimulation()" aria-label="Start simulation">&#9654; Start Simulation</button>
+        </div>
+        <div class="btn-row" style="margin-top: 8px;" role="group" aria-label="Pause and reset controls">
+          <button class="btn btn-secondary" id="pauseBtn" onclick="togglePause()" disabled aria-label="Pause simulation">&#10074;&#10074; Pause</button>
+          <button class="btn btn-danger" id="resetBtn" onclick="resetSimulation()" aria-label="Reset simulation">&#8634; Reset</button>
+        </div>
+      </aside>
+
+      <!-- Right: Visualization -->
+      <section class="viz-panel" aria-label="Visualization and results">
+        <div class="object-display" role="region" aria-label="Object temperature display">
+          <div class="color-legend" aria-label="Temperature color scale from cold to hot">
+            <span>Cold</span>
+            <div class="color-bar" role="img" aria-label="Jet colormap gradient from blue (cold) to red (hot)"></div>
+            <span>Hot</span>
+          </div>
+          <div class="ambient-bg" id="ambientBg">
+            <div class="ambient-label" id="ambientLabel" aria-live="polite">Ambient: 22°C</div>
+            <div class="object-scene" id="objectScene">
+              <div class="steam-container" id="steamContainer" aria-hidden="true"></div>
+              <div class="temp-badge" id="tempBadge" aria-live="polite" aria-label="Current object temperature">95.0°C</div>
+              <svg class="object-svg" id="objectSvg" viewBox="0 0 160 160" role="img" aria-label="Visual representation of the selected object colored by its current temperature"></svg>
+              <div class="object-name-label" id="objectNameLabel">COFFEE MUG</div>
+            </div>
+          </div>
+          <div class="status-bar" role="status" aria-live="polite">
+            <div class="status-dot" id="statusDot" aria-hidden="true"></div>
+            <span id="statusText">Ready - press Start to begin</span>
+          </div>
+        </div>
+
+        <!-- Info cards -->
+        <div class="info-row" role="region" aria-label="Simulation statistics">
+          <div class="info-card" aria-label="Current temperature">
+            <div class="value" id="infoCurrentTemp" aria-live="off">-</div>
+            <div class="label">Current Temp</div>
+          </div>
+          <div class="info-card" aria-label="Elapsed time">
+            <div class="value" id="infoTime" aria-live="off">-</div>
+            <div class="label">Elapsed Time</div>
+          </div>
+          <div class="info-card" aria-label="Cooling rate">
+            <div class="value" id="infoRate" aria-live="off">-</div>
+            <div class="label">Cooling Rate</div>
+          </div>
+        </div>
+
+        <!-- Graph -->
+        <div class="graph-card" role="region" aria-label="Temperature vs time plot">
+          <div class="solution-bar" id="solutionBar" role="math" aria-label="Exact solution of Newton's law of cooling for the current values"><span class="sol-label">Exact solution</span><span id="solutionEq"></span></div>
+          <div id="plotDiv" style="width:100%;height:380px;" aria-label="Interactive graph showing numerical and analytical temperature curves over time"></div>
+          <div class="graph-legend" aria-label="Graph legend">
+            <span class="legend-item"><span class="legend-line" style="background:#2563eb;" aria-hidden="true"></span> Numerical (Improved Euler<a href="#fn2" id="fnref2" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>2</sup></a>)</span>
+            <span class="legend-item"><span class="legend-line dashed" style="background:#f59e0b;" aria-hidden="true"></span> Analytical<a href="#fn3" id="fnref3" class="footnote-ref" aria-describedby="footnotes-label" role="doc-noteref"><sup>3</sup></a></span>
+            <span class="legend-item"><span class="legend-line dashed thin" style="background:#94a3b8;" aria-hidden="true"></span> Ambient</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  // ===== OBJECT PRESETS =====
+  const PRESETS = {
+    coffee:   { name: 'Coffee Mug',   T0: 95,   k: 0.07,  Tamb: 22  },
+    pizza:    { name: 'Pizza Slice',   T0: 75,   k: 0.04,  Tamb: 22  },
+    soup:     { name: 'Bowl of Soup',  T0: 85,   k: 0.055, Tamb: 22  },
+    icecream: { name: 'Ice Cream',     T0: -15,  k: 0.06,  Tamb: 22  },
+    metalrod: { name: 'Metal Rod',     T0: 250,  k: 0.025, Tamb: 22  },
+  };
+
+  // ===== STATE =====
+  let simState = {
+    running: false,
+    paused: false,
+    times: [],
+    temps: [],
+    analyticalTemps: [],
+    currentTime: 0,
+    currentTemp: 0,
+    animFrame: null,
+    lastFrameTime: 0,
+  };
+
+  // ===== JET COLORMAP =====
+  function jetColor(t) {
+    t = Math.max(0, Math.min(1, t));
+    let r, g, b;
+    if (t < 0.125) {
+      r = 0; g = 0; b = 0.5 + t * 4;
+    } else if (t < 0.375) {
+      r = 0; g = (t - 0.125) * 4; b = 1;
+    } else if (t < 0.625) {
+      r = (t - 0.375) * 4; g = 1; b = 1 - (t - 0.375) * 4;
+    } else if (t < 0.875) {
+      r = 1; g = 1 - (t - 0.625) * 4; b = 0;
+    } else {
+      r = 1 - (t - 0.875) * 4; g = 0; b = 0;
+    }
+    r = Math.max(0, Math.min(1, r));
+    g = Math.max(0, Math.min(1, g));
+    b = Math.max(0, Math.min(1, b));
+    return `rgb(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)})`;
+  }
+
+  function tempToJet(T) {
+    const lo = -20, hi = 260;
+    return (T - lo) / (hi - lo);
+  }
+
+  // ===== AMBIENT BACKGROUND COLOR =====
+  function ambientBgColor(Tamb) {
+    if (Tamb <= -10) return 'rgba(15, 23, 80, 0.55)';
+    if (Tamb <= 0)   return 'rgba(30, 58, 138, 0.45)';
+    if (Tamb <= 10)  return 'rgba(59, 130, 246, 0.25)';
+    if (Tamb <= 18)  return 'rgba(147, 197, 253, 0.2)';
+    if (Tamb <= 26)  return 'rgba(241, 245, 249, 0.6)';
+    if (Tamb <= 35)  return 'rgba(253, 224, 71, 0.18)';
+    if (Tamb <= 45)  return 'rgba(251, 191, 36, 0.25)';
+    return 'rgba(239, 68, 68, 0.2)';
+  }
+
+  function ambientTextDark(Tamb) {
+    return Tamb > 15 && Tamb < 35;
+  }
+
+  // ===== SVG OBJECT DRAWINGS =====
+  function drawObject(id, color) {
+    const svg = document.getElementById('objectSvg');
+    const c = color;
+    const darken = (rgb, amt) => {
+      const m = rgb.match(/rgb\((\d+),(\d+),(\d+)\)/);
+      if (!m) return rgb;
+      return `rgb(${Math.max(0,m[1]-amt)},${Math.max(0,m[2]-amt)},${Math.max(0,m[3]-amt)})`;
+    };
+    const lighter = (rgb, amt) => {
+      const m = rgb.match(/rgb\((\d+),(\d+),(\d+)\)/);
+      if (!m) return rgb;
+      return `rgb(${Math.min(255,+m[1]+amt)},${Math.min(255,+m[2]+amt)},${Math.min(255,+m[3]+amt)})`;
+    };
+    const d = darken(c, 40);
+    const l = lighter(c, 40);
+
+    switch (id) {
+      case 'coffee':
+        svg.innerHTML = `
+          <!-- Saucer -->
+          <ellipse cx="70" cy="130" rx="50" ry="10" fill="#d4d0c8" stroke="#b0aaa0" stroke-width="1.5"/>
+          <ellipse cx="70" cy="127" rx="42" ry="5" fill="#e8e4dc"/>
+          <!-- Mug body (white ceramic) -->
+          <rect x="35" y="42" width="70" height="85" rx="10" fill="#f5f0eb" stroke="#d1c9c0" stroke-width="2.5"/>
+          <!-- Mug highlight -->
+          <rect x="40" y="50" width="8" height="50" rx="4" fill="white" opacity="0.5"/>
+          <!-- Handle -->
+          <path d="M105 58 C125 58, 128 95, 105 100" fill="none" stroke="#d1c9c0" stroke-width="5" stroke-linecap="round"/>
+          <!-- Coffee liquid surface (jet-colored) -->
+          <ellipse cx="70" cy="48" rx="33" ry="7.5" fill="${c}" stroke="${darken(c,25)}" stroke-width="1"/>
+          <!-- Liquid shine -->
+          <ellipse cx="60" cy="46" rx="10" ry="3" fill="${l}" opacity="0.25" transform="rotate(-5 60 46)"/>
+        `;
+        break;
+      case 'pizza':
+        svg.innerHTML = `
+          <!-- Cheese/topping layer (jet-colored) -->
+          <path d="M80 20 L30 135 L130 135 Z" fill="${c}" stroke="${darken(c,30)}" stroke-width="2"/>
+          <!-- Crust -->
+          <path d="M30 135 Q80 155, 130 135" fill="#d4a04a" stroke="#b8862d" stroke-width="2.5"/>
+          <!-- Cheese stretch marks -->
+          <ellipse cx="70" cy="90" rx="12" ry="6" fill="${lighter(c,30)}" opacity="0.5" transform="rotate(-8 70 90)"/>
+          <ellipse cx="90" cy="100" rx="10" ry="5" fill="${lighter(c,25)}" opacity="0.4" transform="rotate(12 90 100)"/>
+          <!-- Pepperoni -->
+          <circle cx="75" cy="70" r="8" fill="#c0392b" stroke="#922b21" stroke-width="1"/>
+          <circle cx="60" cy="100" r="7" fill="#c0392b" stroke="#922b21" stroke-width="1"/>
+          <circle cx="95" cy="110" r="7" fill="#c0392b" stroke="#922b21" stroke-width="1"/>
+          <!-- Basil -->
+          <circle cx="80" cy="55" r="2" fill="#27ae60" opacity="0.8"/>
+          <circle cx="68" cy="112" r="2" fill="#27ae60" opacity="0.7"/>
+        `;
+        break;
+      case 'soup':
+        svg.innerHTML = `
+          <!-- Bowl outer (ceramic) -->
+          <path d="M20 70 Q20 140, 80 140 Q140 140, 140 70" fill="#e8e0d4" stroke="#c4b8a8" stroke-width="2"/>
+          <!-- Bowl inner (ceramic) -->
+          <path d="M28 72 Q28 130, 80 130 Q132 130, 132 72" fill="#f5efe8" stroke="none"/>
+          <!-- Rim -->
+          <ellipse cx="80" cy="70" rx="60" ry="14" fill="#ebe4da" stroke="#c4b8a8" stroke-width="2"/>
+          <!-- Soup liquid (jet-colored) -->
+          <ellipse cx="80" cy="70" rx="52" ry="10" fill="${c}" stroke="${darken(c,20)}" stroke-width="1"/>
+          <!-- Soup highlight -->
+          <ellipse cx="72" cy="68" rx="14" ry="4" fill="${l}" opacity="0.2" transform="rotate(-8 72 68)"/>
+          <!-- Garnish -->
+          <ellipse cx="70" cy="68" rx="5" ry="2.5" fill="#27ae60" opacity="0.6" transform="rotate(-15 70 68)"/>
+          <ellipse cx="92" cy="71" rx="4" ry="2" fill="#27ae60" opacity="0.5" transform="rotate(20 92 71)"/>
+          <!-- Bowl shadow -->
+          <ellipse cx="80" cy="142" rx="25" ry="5" fill="rgba(0,0,0,0.08)"/>
+        `;
+        break;
+      case 'icecream':
+        svg.innerHTML = `
+          <!-- Cone (stays brown) -->
+          <path d="M50 80 L80 150 L110 80" fill="#d4a04a" stroke="#b8862d" stroke-width="2"/>
+          <!-- Waffle pattern -->
+          <line x1="58" y1="90" x2="74" y2="140" stroke="#b8862d" stroke-width="0.8" opacity="0.5"/>
+          <line x1="70" y1="85" x2="78" y2="145" stroke="#b8862d" stroke-width="0.8" opacity="0.5"/>
+          <line x1="84" y1="85" x2="79" y2="145" stroke="#b8862d" stroke-width="0.8" opacity="0.5"/>
+          <line x1="96" y1="90" x2="82" y2="140" stroke="#b8862d" stroke-width="0.8" opacity="0.5"/>
+          <line x1="54" y1="100" x2="106" y2="100" stroke="#b8862d" stroke-width="0.8" opacity="0.5"/>
+          <line x1="60" y1="115" x2="100" y2="115" stroke="#b8862d" stroke-width="0.8" opacity="0.5"/>
+          <!-- Scoops (jet-colored) -->
+          <circle cx="80" cy="60" r="30" fill="${c}" stroke="${darken(c,20)}" stroke-width="2"/>
+          <circle cx="60" cy="70" r="18" fill="${lighter(c,20)}" stroke="${d}" stroke-width="1.5"/>
+          <circle cx="100" cy="70" r="18" fill="${lighter(c,10)}" stroke="${d}" stroke-width="1.5"/>
+          <!-- Ice cream highlights -->
+          <ellipse cx="72" cy="50" rx="8" ry="5" fill="white" opacity="0.3" transform="rotate(-20 72 50)"/>
+          <!-- Sprinkles (stay colorful) -->
+          <rect x="85" y="48" width="6" height="2" rx="1" fill="#e74c3c" transform="rotate(30 88 49)"/>
+          <rect x="70" y="42" width="6" height="2" rx="1" fill="#2ecc71" transform="rotate(-20 73 43)"/>
+          <rect x="90" y="55" width="6" height="2" rx="1" fill="#f39c12" transform="rotate(60 93 56)"/>
+        `;
+        break;
+      case 'metalrod':
+        svg.innerHTML = `
+          <!-- Rod body (fully jet-colored - the metal itself heats) -->
+          <rect x="20" y="62" width="120" height="28" rx="4" fill="${c}" stroke="${darken(c,50)}" stroke-width="2"/>
+          <!-- Metallic sheen -->
+          <rect x="20" y="66" width="120" height="6" rx="2" fill="${lighter(c,50)}" opacity="0.35"/>
+          <!-- End caps -->
+          <rect x="16" y="58" width="12" height="36" rx="3" fill="${d}" stroke="${darken(c,60)}" stroke-width="1.5"/>
+          <rect x="132" y="58" width="12" height="36" rx="3" fill="${d}" stroke="${darken(c,60)}" stroke-width="1.5"/>
+          <!-- Glow -->
+          <rect x="22" y="64" width="116" height="24" rx="3" fill="${lighter(c,60)}" opacity="0.15"/>
+          <!-- Tongs (stay grey) -->
+          <path d="M60 92 L55 120 M60 92 L65 120" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+          <path d="M100 92 L95 120 M100 92 L105 120" stroke="#777" stroke-width="3" stroke-linecap="round"/>
+          <!-- Highlight -->
+          <line x1="30" y1="68" x2="50" y2="68" stroke="white" stroke-width="1" opacity="0.3" stroke-linecap="round"/>
+        `;
+        break;
+    }
+  }
+
+  // ===== STEAM / FROST PARTICLES =====
+  function updateParticles(T, Tamb) {
+    const container = document.getElementById('steamContainer');
+    container.innerHTML = '';
+    const diff = T - Tamb;
+
+    if (diff > 5) {
+      const intensity = Math.min(1, diff / 100);
+      const count = Math.round(3 + intensity * 12);
+      for (let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'steam-particle';
+        const size = 6 + Math.random() * 10 * intensity;
+        const left = 20 + Math.random() * 80;
+        const drift = (Math.random() - 0.5) * 40;
+        const duration = 1.5 + Math.random() * 1.5;
+        const delay = Math.random() * duration;
+        p.style.cssText = `
+          width:${size}px; height:${size}px;
+          left:${left}px;
+          --drift:${drift}px;
+          animation-duration:${duration}s;
+          animation-delay:${delay}s;
+          opacity:0;
+          background:rgba(255,255,255,${0.3 + intensity * 0.4});
+        `;
+        container.appendChild(p);
+      }
+    } else if (diff < -5) {
+      const intensity = Math.min(1, Math.abs(diff) / 40);
+      const count = Math.round(3 + intensity * 8);
+      for (let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'frost-particle';
+        const left = 25 + Math.random() * 70;
+        const drift = (Math.random() - 0.5) * 30;
+        const duration = 2 + Math.random() * 1.5;
+        const delay = Math.random() * duration;
+        p.style.cssText = `
+          left:${left}px;
+          --drift:${drift}px;
+          animation-duration:${duration}s;
+          animation-delay:${delay}s;
+        `;
+        container.appendChild(p);
+      }
+    }
+  }
+
+  // ===== UPDATE VISUAL STATE =====
+  function updateVisuals(T, Tamb) {
+    const jetT = tempToJet(T);
+    const color = jetColor(jetT);
+    const sel = document.getElementById('objectSelect').value;
+    drawObject(sel, color);
+
+    const badge = document.getElementById('tempBadge');
+    badge.textContent = T.toFixed(1) + '°C';
+
+    document.getElementById('ambientBg').style.backgroundColor = ambientBgColor(Tamb);
+
+    const lbl = document.getElementById('ambientLabel');
+    lbl.textContent = `Ambient: ${Tamb}°C`;
+
+    document.getElementById('objectNameLabel').textContent = PRESETS[sel].name.toUpperCase();
+    updateParticles(T, Tamb);
+
+    document.getElementById('infoCurrentTemp').textContent = T.toFixed(1) + '°C';
+    const rate = -getK() * (T - Tamb);
+    document.getElementById('infoRate').textContent = rate.toFixed(2) + '°C/min';
+
+    renderSolution();
+  }
+
+  // ===== PLOTLY GRAPH =====
+  function initPlot() {
+    const Tamb = getAmbient();
+    const endT = getEndTime();
+    Plotly.newPlot('plotDiv', [
+      {
+        x: [], y: [],
+        mode: 'lines',
+        name: 'Numerical (Improved Euler)',
+        line: { color: '#2563eb', width: 3 },
+        hovertemplate: '<b>t = %{x:.1f} min</b><br>T = %{y:.2f}°C<extra></extra>'
+      },
+      {
+        x: [], y: [],
+        mode: 'lines',
+        name: 'Analytical',
+        line: { color: '#f59e0b', width: 2, dash: 'dot' },
+        hovertemplate: '<b>t = %{x:.1f} min</b><br>T = %{y:.2f}°C<extra></extra>'
+      },
+      {
+        x: [0, endT], y: [Tamb, Tamb],
+        mode: 'lines',
+        name: 'Ambient',
+        line: { color: '#94a3b8', width: 1.5, dash: 'dash' },
+        hoverinfo: 'skip'
+      }
+    ], {
+      xaxis: {
+        title: { text: 'Time (min)', font: { size: 13, color: '#1e293b' } },
+        range: [0, endT],
+        gridcolor: '#d1d5db',
+        zeroline: false,
+        tickfont: { color: '#1e293b', size: 12 },
+      },
+      yaxis: {
+        title: { text: 'Temperature (°C)', font: { size: 13, color: '#1e293b' } },
+        gridcolor: '#d1d5db',
+        zeroline: false,
+        tickfont: { color: '#1e293b', size: 12 },
+      },
+      margin: { t: 20, r: 30, b: 50, l: 60 },
+      showlegend: false,
+      hovermode: 'x unified',
+      plot_bgcolor: '#ffffff',
+      paper_bgcolor: 'transparent',
+      font: { family: 'Segoe UI, system-ui, sans-serif', color: '#1e293b' },
+    }, {
+      responsive: true,
+      displayModeBar: true,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d'],
+      displaylogo: false,
+    });
+  }
+
+  // ===== HELPERS =====
+  function getT0()      { return parseFloat(document.getElementById('initTemp').value); }
+  function getAmbient()  { return parseFloat(document.getElementById('ambientTemp').value); }
+  function getK()        { return parseFloat(document.getElementById('kConstant').value); }
+  function getEndTime()  { return parseFloat(document.getElementById('endTime').value); }
+  function getDt()       { return parseFloat(document.getElementById('dt').value); }
+  function getSpeed()    { return parseInt(document.getElementById('speedSlider').value); }
+
+  // ===== SIMULATION =====
+  function startSimulation() {
+    if (simState.running && !simState.paused) return;
+
+    if (!simState.running) {
+      const T0 = getT0();
+      const Tamb = getAmbient();
+      simState.times = [0];
+      simState.temps = [T0];
+      simState.analyticalTemps = [T0];
+      simState.currentTime = 0;
+      simState.currentTemp = T0;
+      simState.running = true;
+      simState.paused = false;
+
+      initPlot();
+      Plotly.extendTraces('plotDiv', {
+        x: [[0], [0]], y: [[T0], [T0]]
+      }, [0, 1]);
+
+      updateVisuals(T0, Tamb);
+      document.getElementById('infoTime').textContent = '0.0 min';
+    }
+
+    simState.paused = false;
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('pauseBtn').disabled = false;
+    document.getElementById('pauseBtn').innerHTML = '&#10074;&#10074; Pause';
+    updateStatus('running', 'Simulating...');
+
+    simState.lastFrameTime = performance.now();
+    simState.animFrame = requestAnimationFrame(stepSimulation);
+  }
+
+  function stepSimulation(timestamp) {
+    if (!simState.running || simState.paused) return;
+
+    const dt = getDt();
+    const k = getK();
+    const Tamb = getAmbient();
+    const endTime = getEndTime();
+    const speed = getSpeed();
+
+    const realDt = (timestamp - simState.lastFrameTime) / 1000;
+    simState.lastFrameTime = timestamp;
+
+    const stepsPerFrame = Math.max(1, Math.round(speed * realDt / dt * 10));
+
+    let newTimes = [], newTemps = [], newAnalytical = [];
+
+    for (let s = 0; s < stepsPerFrame && simState.currentTime < endTime; s++) {
+      // Improved Euler (Heun's method):
+      // predictor: T* = T_n + dt * f(T_n)
+      // corrector: T_{n+1} = T_n + (dt/2) * [f(T_n) + f(T*)]
+      const f_n = -k * (simState.currentTemp - Tamb);
+      const T_star = simState.currentTemp + dt * f_n;
+      const f_star = -k * (T_star - Tamb);
+      simState.currentTemp += (dt / 2) * (f_n + f_star);
+      simState.currentTime += dt;
+
+      const T0 = getT0();
+      const Tanalytical = Tamb + (T0 - Tamb) * Math.exp(-k * simState.currentTime);
+
+      newTimes.push(simState.currentTime);
+      newTemps.push(simState.currentTemp);
+      newAnalytical.push(Tanalytical);
+
+      simState.times.push(simState.currentTime);
+      simState.temps.push(simState.currentTemp);
+      simState.analyticalTemps.push(Tanalytical);
+    }
+
+    if (newTimes.length > 0) {
+      Plotly.extendTraces('plotDiv', {
+        x: [newTimes, newTimes],
+        y: [newTemps, newAnalytical]
+      }, [0, 1]);
+
+      updateVisuals(simState.currentTemp, Tamb);
+      document.getElementById('infoTime').textContent = simState.currentTime.toFixed(1) + ' min';
+    }
+
+    if (simState.currentTime >= endTime) {
+      simState.running = false;
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('pauseBtn').disabled = true;
+      updateStatus('idle', `Complete - ${simState.times.length} steps computed`);
+      return;
+    }
+
+    simState.animFrame = requestAnimationFrame(stepSimulation);
+  }
+
+  function togglePause() {
+    if (!simState.running) return;
+    simState.paused = !simState.paused;
+    const btn = document.getElementById('pauseBtn');
+
+    if (simState.paused) {
+      btn.innerHTML = '&#9654; Resume';
+      updateStatus('paused', 'Paused');
+      cancelAnimationFrame(simState.animFrame);
+    } else {
+      btn.innerHTML = '&#10074;&#10074; Pause';
+      updateStatus('running', 'Simulating...');
+      simState.lastFrameTime = performance.now();
+      simState.animFrame = requestAnimationFrame(stepSimulation);
+    }
+  }
+
+  function resetSimulation() {
+    cancelAnimationFrame(simState.animFrame);
+    simState.running = false;
+    simState.paused = false;
+
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('pauseBtn').disabled = true;
+    document.getElementById('pauseBtn').innerHTML = '&#10074;&#10074; Pause';
+
+    const T0 = getT0();
+    const Tamb = getAmbient();
+
+    initPlot();
+    updateVisuals(T0, Tamb);
+
+    document.getElementById('infoCurrentTemp').textContent = '-';
+    document.getElementById('infoTime').textContent = '-';
+    document.getElementById('infoRate').textContent = '-';
+    updateStatus('idle', 'Ready - press Start to begin');
+  }
+
+  function updateStatus(state, text) {
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'status-dot ' + (state === 'running' ? 'running' : state === 'paused' ? 'paused' : '');
+    txt.textContent = text;
+    announce(text);
+  }
+
+  // ===== PRESET HANDLING =====
+  function applyPreset(key) {
+    const p = PRESETS[key];
+    document.getElementById('objectSelect').value = key;
+    document.getElementById('initTemp').value = p.T0;
+    document.getElementById('kConstant').value = p.k;
+    document.getElementById('ambientTemp').value = p.Tamb;
+
+    document.querySelectorAll('.preset-pill').forEach(el => {
+      const isActive = el.dataset.key === key;
+      el.classList.toggle('active', isActive);
+      el.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+    announce('Loaded ' + p.name + ' preset');
+
+    updateVisuals(p.T0, p.Tamb);
+    if (!simState.running) {
+      initPlot();
+      document.getElementById('infoCurrentTemp').textContent = '-';
+      document.getElementById('infoTime').textContent = '-';
+      document.getElementById('infoRate').textContent = '-';
+    }
+  }
+
+  function buildPresetPills() {
+    const row = document.getElementById('presetPills');
+    row.innerHTML = '';
+    for (const [key, p] of Object.entries(PRESETS)) {
+      const pill = document.createElement('button');
+      pill.className = 'preset-pill' + (key === 'coffee' ? ' active' : '');
+      pill.dataset.key = key;
+      pill.textContent = p.name;
+      pill.setAttribute('aria-label', 'Load ' + p.name + ' preset');
+      pill.setAttribute('aria-pressed', key === 'coffee' ? 'true' : 'false');
+      pill.onclick = () => applyPreset(key);
+      row.appendChild(pill);
+    }
+  }
+
+  document.getElementById('objectSelect').addEventListener('change', function() {
+    applyPreset(this.value);
+  });
+
+  document.getElementById('speedSlider').addEventListener('input', function() {
+    document.getElementById('speedValue').textContent = this.value + '\u00d7';
+  });
+
+  // ===== SCREEN READER ANNOUNCEMENTS =====
+  function announce(message) {
+    const region = document.getElementById('sr-announcements');
+    if (region) {
+      region.textContent = '';
+      setTimeout(() => { region.textContent = message; }, 50);
+    }
+  }
+
+  // ===== MathJax EQUATION =====
+  function renderEquation() {
+    const bar = document.getElementById('equationBar');
+    bar.innerHTML = '$$\\dfrac{du}{dt} = -k\\,(u - T),\\quad u(0)=u_0 \\qquad u(t) = T + (u_0 - T)\\,e^{-kt}$$';
+    if (window.MathJax && MathJax.typesetPromise) {
+      MathJax.typesetPromise([bar]).catch(function() {
+        bar.innerHTML = '<em>du/dt = &minus;k(u &minus; T), u<sub>0</sub></em>';
+      });
+    }
+  }
+
+  // Format a number for display: integers without decimals, else up to 3 dp.
+  function fmtNum(v) {
+    if (!isFinite(v)) return '?';
+    return (Math.round(v) === v) ? String(v) : String(parseFloat(v.toFixed(3)));
+  }
+  // The exact (analytical) solution with the current parameter values substituted.
+  function renderSolution() {
+    const el = document.getElementById('solutionEq');
+    if (!el) return;
+    const T0 = getT0(), Tamb = getAmbient(), k = getK();
+    if (![T0, Tamb, k].every(isFinite)) { el.textContent = ''; return; }
+    const C = T0 - Tamb;                       // evaluated coefficient (u0 - T)
+    let latex;
+    if (C === 0) {
+      latex = 'u(t) = ' + fmtNum(Tamb);        // starts at ambient: constant
+    } else {
+      const sign = C < 0 ? '-' : '+';
+      latex = 'u(t) = ' + fmtNum(Tamb) + ' ' + sign + ' ' + fmtNum(Math.abs(C)) +
+              '\\,e^{-' + fmtNum(k) + '\\,t}';
+    }
+    el.innerHTML = '\\( ' + latex + ' \\)';
+    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(function(){});
+  }
+
+  // ===== INIT =====
+  window.addEventListener('DOMContentLoaded', () => {
+    buildPresetPills();
+
+    const tryRender = () => {
+      if (window.MathJax && MathJax.typesetPromise) { renderEquation(); renderSolution(); }
+      else setTimeout(tryRender, 100);
+    };
+    tryRender();
+
+    // Keep the exact-solution display in sync as the parameters are edited.
+    ['initTemp', 'ambientTemp', 'kConstant'].forEach(function(id) {
+      const inp = document.getElementById(id);
+      if (inp) inp.addEventListener('input', renderSolution);
+    });
+
+    updateVisuals(getT0(), getAmbient());
+    initPlot();
+  });
+  </script>
+  <!-- Footnotes -->
+  <div class="main-container">
+    <aside class="footnotes" role="doc-endnotes" aria-labelledby="footnotes-label">
+      <h2 id="footnotes-label">Footnotes</h2>
+      <ol>
+        <li id="fn1">Newton's Law of Cooling states that the rate of temperature change is proportional to the difference between the object temperature \(u\) and the ambient temperature \(T\): \(\dfrac{du}{dt} = -k(u - T)\), with initial temperature \(u_0\) and where \(k > 0\) is the cooling constant. <a href="#fnref1" class="footnote-backref" aria-label="Back to reference 1">&uarr;</a></li>
+        <li id="fn2">The <strong>Improved Euler</strong> (Heun's) method is a second-order Runge-Kutta scheme: it first predicts \(T^* = T_n + \Delta t\,f(T_n)\), then corrects with \(T_{n+1} = T_n + \frac{\Delta t}{2}[f(T_n) + f(T^*)]\). <a href="#fnref2" class="footnote-backref" aria-label="Back to reference 2">&uarr;</a></li>
+        <li id="fn3">The analytical (exact) solution is \(u(t) = T + (u_0 - T)\,e^{-kt}\), obtained by separation of variables. <a href="#fnref3" class="footnote-backref" aria-label="Back to reference 3">&uarr;</a></li>
+      </ol>
+    </aside>
+
+        <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981179">https://doi.org/10.5281/zenodo.20981179</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Newton's Law of Cooling. Math Tools. https://doi.org/10.5281/zenodo.20981179</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Newton's Law of Cooling." Math Tools, 2026, doi.org/10.5281/zenodo.20981179.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026cooling,
+  author       = {Shelvean Kapita},
+  title        = {{Newton's Law of Cooling}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981179},
+  url          = {https://doi.org/10.5281/zenodo.20981179}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: March 7, 2026.</p>
+</footer>
+  </div>
+
+  <!-- Contrast toggle button -->
+  <button class="contrast-toggle" onclick="document.documentElement.classList.toggle('high-contrast')" aria-label="Toggle high-contrast mode" title="Toggle high-contrast mode">
+    <span aria-hidden="true">&#9681;</span>
+  </button>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

@@ -1,0 +1,1044 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desktop Preview - macOS / Windows</title>
+<style>
+  /* ============================================================
+     TOOL UI  - restrained dark "instrument panel" so the colourful
+     OS previews are the visual focus.
+     ============================================================ */
+  :root{
+    --ui-bg:#0c0d11;
+    --ui-panel:#15171e;
+    --ui-panel-2:#1c1f29;
+    --ui-line:#2a2e3a;
+    --ui-text:#e8eaf0;
+    --ui-dim:#8b90a0;
+    --ui-accent:#5e8bff;
+    --ui-accent-soft:#5e8bff22;
+    --radius:9px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--ui-bg);color:var(--ui-text);
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  .app{display:flex;flex-direction:column;height:100%}
+
+  /* ---- top toolbar ---- */
+  .toolbar{
+    flex:0 0 auto;
+    background:linear-gradient(180deg,#191b23,#121319);
+    border-bottom:1px solid var(--ui-line);
+    padding:11px 16px;
+    display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
+  }
+  .brand{display:flex;align-items:center;gap:9px;margin-right:4px;user-select:none}
+  .brand .mark{
+    width:26px;height:26px;border-radius:7px;flex:0 0 auto;
+    background:linear-gradient(135deg,#5e8bff,#9b6bff);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 10px #5e8bff55;
+  }
+  .brand .mark svg{width:15px;height:15px}
+  .brand b{font-size:13.5px;letter-spacing:.2px}
+  .brand span{font-size:11px;color:var(--ui-dim);display:block;margin-top:-2px}
+
+  .field{
+    flex:1 1 320px;display:flex;align-items:center;min-width:240px;
+    background:var(--ui-panel);border:1px solid var(--ui-line);
+    border-radius:var(--radius);overflow:hidden;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .field:focus-within{border-color:var(--ui-accent);box-shadow:0 0 0 3px var(--ui-accent-soft)}
+  .field .glyph{padding:0 4px 0 11px;color:var(--ui-dim);display:flex}
+  .field input{
+    flex:1;background:transparent;border:0;color:var(--ui-text);
+    font-size:13px;padding:9px 8px;outline:none;font-family:inherit;
+  }
+  .field input::placeholder{color:#5b6072}
+  .field button{
+    background:var(--ui-accent);color:#fff;border:0;font-weight:600;
+    padding:0 16px;align-self:stretch;cursor:pointer;font-size:12.5px;
+    font-family:inherit;transition:filter .15s;
+  }
+  .field button:hover{filter:brightness(1.1)}
+
+  /* segmented controls */
+  .seg{
+    display:inline-flex;background:var(--ui-panel);border:1px solid var(--ui-line);
+    border-radius:var(--radius);padding:3px;gap:2px;
+  }
+  .seg button{
+    background:transparent;border:0;color:var(--ui-dim);cursor:pointer;
+    font-family:inherit;font-size:12px;font-weight:600;
+    padding:6px 11px;border-radius:6px;display:flex;align-items:center;gap:6px;
+    transition:background .15s,color .15s;white-space:nowrap;
+  }
+  .seg button svg{width:14px;height:14px}
+  .seg button:hover{color:var(--ui-text)}
+  .seg button[aria-pressed="true"]{
+    background:var(--ui-panel-2);color:var(--ui-text);
+    box-shadow:inset 0 0 0 1px var(--ui-line);
+  }
+  .seg button[aria-pressed="true"].on-accent{
+    background:var(--ui-accent);color:#fff;box-shadow:none;
+  }
+
+  select.ctl{
+    background:var(--ui-panel);color:var(--ui-text);
+    border:1px solid var(--ui-line);border-radius:var(--radius);
+    font-family:inherit;font-size:12px;font-weight:600;
+    padding:8px 30px 8px 11px;cursor:pointer;outline:none;
+    appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' stroke='%238b90a0' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+    background-repeat:no-repeat;background-position:right 11px center;
+  }
+  select.ctl:focus{border-color:var(--ui-accent)}
+
+  .iconbtn{
+    background:var(--ui-panel);border:1px solid var(--ui-line);
+    color:var(--ui-dim);width:34px;height:34px;border-radius:var(--radius);
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    transition:color .15s,border-color .15s;flex:0 0 auto;
+  }
+  .iconbtn:hover{color:var(--ui-text);border-color:#3a3f4d}
+  .iconbtn.active{color:var(--ui-accent);border-color:var(--ui-accent)}
+  .iconbtn svg{width:16px;height:16px}
+
+  /* fullscreen presentation mode */
+  .fs-exit{
+    position:fixed;top:16px;right:16px;z-index:60;
+    width:40px;height:40px;border-radius:50%;
+    background:rgba(15,17,22,.62);color:#fff;
+    border:1px solid rgba(255,255,255,.16);
+    display:none;align-items:center;justify-content:center;
+    cursor:pointer;
+    backdrop-filter:blur(12px) saturate(150%);
+    -webkit-backdrop-filter:blur(12px) saturate(150%);
+    transition:background .15s,transform .15s,opacity .2s;
+    opacity:.55;
+  }
+  .fs-exit:hover{background:rgba(36,40,55,.85);opacity:1;transform:scale(1.06)}
+  .fs-exit svg{width:18px;height:18px}
+  body.fs .fs-exit{display:flex}
+  body.fs .toolbar,
+  body.fs .strip{display:none}
+  body.fs .stage{padding:18px}
+
+  /* mode info strip */
+  .strip{
+    flex:0 0 auto;font-size:11.5px;color:var(--ui-dim);
+    background:#101117;border-bottom:1px solid var(--ui-line);
+    padding:6px 16px;display:flex;align-items:center;gap:8px;
+  }
+  .strip .dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .strip b{color:var(--ui-text);font-weight:600}
+  .strip .spacer{flex:1}
+  .strip .meta{
+    font-variant-numeric:tabular-nums;color:#6f7484;
+    font-size:11px;letter-spacing:.3px;
+  }
+
+  /* ---- stage ---- */
+  .stage{
+    flex:1 1 auto;position:relative;overflow:auto;
+    display:flex;align-items:center;justify-content:center;
+    padding:34px;
+    background:
+      radial-gradient(rgba(255,255,255,.045) 1px,transparent 1.4px);
+    background-size:24px 24px;
+    background-color:#0a0b0e;
+  }
+  .scaler{position:relative;flex:0 0 auto}
+  .desktop{
+    position:absolute;top:0;left:0;
+    transform-origin:0 0;overflow:hidden;
+    border-radius:14px;
+    box-shadow:0 50px 120px -30px rgba(0,0,0,.85),
+               0 0 0 1px rgba(255,255,255,.06);
+  }
+
+  /* wallpapers */
+  .wall{position:absolute;inset:0;z-index:0}
+  .os-mac.theme-light .wall{
+    background:
+      radial-gradient(1200px 820px at 12% 16%, rgba(255,176,108,.92), transparent 60%),
+      radial-gradient(1150px 920px at 86% 10%, rgba(150,118,255,.92), transparent 60%),
+      radial-gradient(1350px 1020px at 72% 98%, rgba(86,196,255,.92), transparent 60%),
+      radial-gradient(940px 720px at 28% 92%, rgba(255,118,196,.7), transparent 60%),
+      linear-gradient(158deg,#ffd6a0,#7a6bf6 54%,#36a2ff);
+  }
+  .os-mac.theme-dark .wall{
+    background:
+      radial-gradient(1100px 800px at 16% 18%, rgba(118,86,210,.7), transparent 60%),
+      radial-gradient(1200px 900px at 84% 12%, rgba(60,90,200,.6), transparent 62%),
+      radial-gradient(1300px 1000px at 70% 100%, rgba(30,140,190,.55), transparent 60%),
+      linear-gradient(160deg,#2a1c4a,#10132e 60%,#070914);
+  }
+  .os-win .wall{
+    background:
+      radial-gradient(900px 900px at 50% 56%, rgba(96,162,250,.55), transparent 60%),
+      radial-gradient(640px 640px at 50% 50%, rgba(150,200,255,.5), transparent 55%),
+      radial-gradient(1500px 1100px at 50% 122%, rgba(16,52,128,.85), transparent 62%),
+      linear-gradient(180deg,#0c2f7a,#06122e);
+  }
+  .os-win.theme-dark .wall{
+    background:
+      radial-gradient(900px 900px at 50% 56%, rgba(56,104,180,.5), transparent 60%),
+      radial-gradient(1500px 1100px at 50% 122%, rgba(8,26,72,.9), transparent 62%),
+      linear-gradient(180deg,#0a1c44,#03060f);
+  }
+
+  /* ============ macOS chrome ============ */
+  .menubar{
+    position:absolute;top:0;left:0;right:0;z-index:5;
+    height:26px;display:flex;align-items:center;gap:18px;
+    padding:0 14px;font-size:13px;
+    backdrop-filter:blur(22px) saturate(160%);
+    -webkit-backdrop-filter:blur(22px) saturate(160%);
+  }
+  .theme-light .menubar{background:rgba(255,255,255,.46);color:#1d1d1f}
+  .theme-dark  .menubar{background:rgba(22,22,26,.55);color:#f3f3f5}
+  .menubar .apple{display:flex;align-items:center}
+  .menubar .apple svg{width:14px;height:14px}
+  .menubar .mb-app{font-weight:700}
+  .menubar .mb-item{opacity:.82;font-weight:500}
+  .menubar .mb-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .menubar .mb-right svg{width:16px;height:16px;opacity:.92}
+  .menubar .mb-clock{font-weight:500;font-variant-numeric:tabular-nums}
+
+  .dock{
+    position:absolute;left:50%;bottom:8px;transform:translateX(-50%);
+    z-index:6;display:flex;gap:9px;padding:7px 9px;
+    border-radius:22px;
+    backdrop-filter:blur(26px) saturate(170%);
+    -webkit-backdrop-filter:blur(26px) saturate(170%);
+  }
+  .theme-light .dock{background:rgba(255,255,255,.36);box-shadow:inset 0 0 0 1px rgba(255,255,255,.5),0 12px 34px rgba(0,0,0,.32)}
+  .theme-dark  .dock{background:rgba(48,48,54,.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 12px 34px rgba(0,0,0,.45)}
+  .dock .di{
+    width:54px;height:54px;border-radius:13px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 5px 12px rgba(0,0,0,.3);
+    transition:transform .18s cubic-bezier(.2,.8,.2,1);
+    cursor:default;
+  }
+  .dock .di:hover{transform:translateY(-12px) scale(1.14)}
+  .dock .di svg{width:30px;height:30px}
+
+  /* ============ Windows chrome ============ */
+  .taskbar{
+    position:absolute;left:0;right:0;bottom:0;z-index:5;
+    height:48px;display:flex;align-items:center;
+    padding:0 12px;
+    backdrop-filter:blur(28px) saturate(160%);
+    -webkit-backdrop-filter:blur(28px) saturate(160%);
+  }
+  .theme-light .taskbar{background:rgba(243,243,243,.84);border-top:1px solid rgba(0,0,0,.06)}
+  .theme-dark  .taskbar{background:rgba(28,28,30,.84);border-top:1px solid rgba(255,255,255,.05)}
+  .taskbar .tb-center{
+    position:absolute;left:50%;transform:translateX(-50%);
+    display:flex;gap:6px;align-items:center;
+  }
+  .taskbar .ti{
+    width:38px;height:38px;border-radius:7px;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .14s;cursor:default;
+  }
+  .taskbar .ti:hover{background:rgba(128,128,128,.18)}
+  .taskbar .ti svg{width:23px;height:23px}
+  .taskbar .tb-tray{
+    margin-left:auto;display:flex;align-items:center;gap:13px;
+    padding-right:6px;font-size:11.5px;
+  }
+  .theme-light .taskbar .tb-tray{color:#1d1d1f}
+  .theme-dark  .taskbar .tb-tray{color:#f3f3f5}
+  .taskbar .tb-tray svg{width:15px;height:15px}
+  .taskbar .tb-clock{text-align:right;line-height:1.25;font-variant-numeric:tabular-nums}
+
+  /* ============ browser window (shared) ============ */
+  .window{
+    position:absolute;z-index:4;overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .os-mac .window{
+    border-radius:11px;
+    box-shadow:0 34px 80px -20px rgba(0,0,0,.62),0 0 0 .5px rgba(0,0,0,.35);
+  }
+  .os-win .window{
+    border-radius:8px;
+    box-shadow:0 28px 64px -18px rgba(0,0,0,.6),0 0 0 1px rgba(0,0,0,.4);
+  }
+  .theme-light .window{--chrome:#eceef0;--chrome2:#f6f7f8;--ct:#3c3c43;--cd:#86868c;--pill:#ffffff;--pillb:#d6d8dc;--sep:#dfe1e4}
+  .theme-dark  .window{--chrome:#2c2c30;--chrome2:#212125;--ct:#e6e6ea;--cd:#9a9aa3;--pill:#3a3a40;--pillb:#48484f;--sep:#3a3a40}
+
+  /* macOS toolbar */
+  .mac-bar{
+    height:52px;flex:0 0 auto;background:var(--chrome);
+    display:flex;align-items:center;gap:9px;padding:0 13px;
+    border-bottom:1px solid var(--sep);
+  }
+  .traffic{display:flex;gap:8px;margin-right:6px}
+  .traffic i{
+    width:12px;height:12px;border-radius:50%;display:block;
+    position:relative;cursor:pointer;
+  }
+  .traffic .r{background:#ff5f57;box-shadow:inset 0 0 0 .5px #e0443e}
+  .traffic .y{background:#febc2e;box-shadow:inset 0 0 0 .5px #d89e26}
+  .traffic .g{background:#28c840;box-shadow:inset 0 0 0 .5px #1da831}
+  .traffic i::after{
+    content:"";position:absolute;inset:0;opacity:0;
+    transition:opacity .12s;
+    background-position:center;background-repeat:no-repeat;
+  }
+  .window:hover .traffic i::after{opacity:.55}
+  .traffic .r::after{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='7'><path d='M1 1l5 5M6 1l-5 5' stroke='%23730000' stroke-width='1.4' stroke-linecap='round'/></svg>")}
+  .traffic .y::after{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='3'><path d='M1 1.5h6' stroke='%23975500' stroke-width='1.6' stroke-linecap='round'/></svg>")}
+  .traffic .g::after{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M2 2.6h3.4M2 5.4h3.4' stroke='%23006500' stroke-width='1.5' stroke-linecap='round'/></svg>")}
+
+  .navbtn{
+    width:26px;height:26px;border-radius:6px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;color:var(--cd);
+    transition:background .12s;
+  }
+  .navbtn:hover{background:rgba(128,128,128,.16)}
+  .navbtn svg{width:16px;height:16px}
+  .navbtn.dim{opacity:.42}
+
+  .addrpill{
+    flex:1;height:30px;border-radius:7px;
+    background:var(--pill);border:1px solid var(--pillb);
+    display:flex;align-items:center;gap:7px;padding:0 11px;
+    font-size:12.5px;color:var(--ct);min-width:0;
+  }
+  .os-mac .addrpill{justify-content:center}
+  .addrpill .lock{flex:0 0 auto;display:flex;color:var(--cd)}
+  .addrpill .lock svg{width:11px;height:11px}
+  .addrpill .u{
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .addrpill .u .host{font-weight:600}
+  .addrpill .u .path{color:var(--cd)}
+
+  /* macOS tab strip */
+  .mac-tabs{
+    height:37px;flex:0 0 auto;background:var(--chrome2);
+    display:flex;align-items:flex-end;gap:1px;padding:0 8px;
+    border-bottom:1px solid var(--sep);
+  }
+  .mac-tabs .tab{
+    height:30px;display:flex;align-items:center;gap:7px;
+    padding:0 13px;font-size:12px;color:var(--ct);
+    background:var(--chrome);border-radius:7px 7px 0 0;
+    max-width:230px;
+  }
+  .mac-tabs .tab .fav{width:14px;height:14px;border-radius:3px;flex:0 0 auto}
+  .mac-tabs .tab .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mac-tabs .newt{color:var(--cd);padding:0 9px;font-size:17px;line-height:1}
+
+  /* Windows tab strip / titlebar */
+  .win-tabs{
+    height:40px;flex:0 0 auto;background:var(--chrome2);
+    display:flex;align-items:flex-end;padding-left:9px;
+  }
+  .win-tabs .tab{
+    height:33px;display:flex;align-items:center;gap:8px;
+    padding:0 12px;font-size:12px;color:var(--ct);
+    background:var(--chrome);border-radius:8px 8px 0 0;max-width:240px;
+  }
+  .win-tabs .tab .fav{width:15px;height:15px;border-radius:3px;flex:0 0 auto}
+  .win-tabs .tab .tt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .win-tabs .newt{color:var(--cd);padding:0 10px;font-size:18px;align-self:center}
+  .win-tabs .wfill{flex:1}
+  .wcontrols{display:flex;align-self:stretch}
+  .wcontrols b{
+    width:46px;display:flex;align-items:center;justify-content:center;
+    color:var(--ct);transition:background .12s;cursor:pointer;
+  }
+  .wcontrols b svg{width:11px;height:11px}
+  .wcontrols b:hover{background:rgba(128,128,128,.16)}
+  .wcontrols b.cl:hover{background:#c42b1c}
+  .wcontrols b.cl:hover svg path{stroke:#fff}
+
+  .win-bar{
+    height:46px;flex:0 0 auto;background:var(--chrome);
+    display:flex;align-items:center;gap:7px;padding:0 11px;
+    border-bottom:1px solid var(--sep);
+  }
+
+  /* the page viewport */
+  .screen-mount{
+    flex:1 1 auto;background:#fff;position:relative;overflow:hidden;
+  }
+  .screen-mount iframe{width:100%;height:100%;border:0;display:block;background:#fff}
+  .screen-mount img{
+    width:100%;height:100%;object-fit:cover;object-position:top center;
+    display:block;background:#f3f3f3;
+  }
+  .shot-overlay{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    background:#f3f3f4;color:#6b6b72;font-size:13px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .spinner{
+    width:30px;height:30px;border-radius:50%;
+    border:3px solid #d3d3d8;border-top-color:#5e8bff;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .shot-overlay.err{background:#fff3f2;color:#b4332a}
+
+  /* help overlay */
+  .help{
+    position:fixed;inset:0;z-index:50;display:none;
+    align-items:center;justify-content:center;padding:24px;
+    background:rgba(4,5,8,.72);backdrop-filter:blur(4px);
+  }
+  .help.open{display:flex}
+  .help-card{
+    background:var(--ui-panel);border:1px solid var(--ui-line);
+    border-radius:14px;max-width:540px;width:100%;
+    padding:24px 26px;max-height:86vh;overflow:auto;
+  }
+  .help-card h2{font-size:16px;margin-bottom:4px}
+  .help-card .sub{color:var(--ui-dim);font-size:12px;margin-bottom:16px}
+  .help-card h3{font-size:12.5px;color:var(--ui-accent);margin:16px 0 5px}
+  .help-card p{font-size:12.8px;color:#c5c8d2;line-height:1.6}
+  .help-card .close{
+    float:right;background:var(--ui-panel-2);border:1px solid var(--ui-line);
+    color:var(--ui-dim);border-radius:7px;width:30px;height:30px;cursor:pointer;
+    font-size:15px;margin:-4px -6px 0 0;
+  }
+  .help-card .close:hover{color:var(--ui-text)}
+  .help-card a{color:var(--ui-accent)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ TOOLBAR ============ -->
+  <header class="toolbar">
+    <div class="brand">
+      <span class="mark">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="14" rx="2.5" stroke="#fff" stroke-width="2"/><path d="M2 9h20" stroke="#fff" stroke-width="2"/><circle cx="5" cy="6.5" r=".9" fill="#fff"/></svg>
+      </span>
+      <div><b>Desktop Preview</b><span>macOS · Windows</span></div>
+    </div>
+
+    <div class="field">
+      <span class="glyph">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18"/></svg>
+      </span>
+      <input id="url" type="text" placeholder="Enter a URL  (e.g. shelvean.github.io/math-tools)" autocomplete="off" spellcheck="false">
+      <button id="go">Preview</button>
+    </div>
+
+    <div class="seg" role="group" aria-label="Operating system">
+      <button id="osMac" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.9-3-.8c-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.6 2.3 2.8 2.2 1.1 0 1.6-.7 2.9-.7s1.8.7 3 .7c1.2 0 2-1.1 2.8-2.2.5-.8.9-1.6 1.2-2.5-2.4-.9-2.5-3.3-2.5-3.3zM14.3 5.5c.6-.8 1-1.8.9-2.9-.9 0-2 .6-2.6 1.4-.6.7-1 1.7-.9 2.7 1 .1 2-.5 2.6-1.2z"/></svg>
+        macOS
+      </button>
+      <button id="osWin" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.7l8-1.1v7.6H3zM3 13.1h8v7.6L3 19.6zM12 4.4L21 3v9.2h-9zM12 13.1h9V21l-9-1.3z"/></svg>
+        Windows
+      </button>
+    </div>
+
+    <div class="seg" role="group" aria-label="Render mode">
+      <button id="mLive" class="on-accent" aria-pressed="true">Live</button>
+      <button id="mShot" class="on-accent" aria-pressed="false">Screenshot</button>
+    </div>
+
+    <select id="res" class="ctl" aria-label="Screen resolution"></select>
+
+    <div class="seg" role="group" aria-label="Appearance">
+      <button id="tLight" aria-pressed="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+        Light
+      </button>
+      <button id="tDark" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></svg>
+        Dark
+      </button>
+    </div>
+
+    <button id="fsBtn" class="iconbtn" title="Fullscreen (F)" aria-label="Toggle fullscreen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <button id="maxBtn" class="iconbtn" title="Toggle maximized window" aria-label="Toggle maximized window">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+    </button>
+    <button id="refreshBtn" class="iconbtn" title="Reload preview" aria-label="Reload preview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 0115.5-6.3M21 12a9 9 0 01-15.5 6.3"/><path d="M18 3v5h-5M6 21v-5h5"/></svg>
+    </button>
+    <button id="helpBtn" class="iconbtn" title="Help" aria-label="Help">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.7" stroke-linecap="round"/><circle cx="12" cy="17.4" r="1.1" fill="currentColor" stroke="none"/></svg>
+    </button>
+  </header>
+
+  <!-- ============ MODE STRIP ============ -->
+  <div class="strip">
+    <span class="dot" id="modeDot"></span>
+    <span id="modeText"></span>
+    <span class="spacer"></span>
+    <span class="meta" id="metaText"></span>
+  </div>
+
+  <!-- ============ STAGE ============ -->
+  <main class="stage" id="stage">
+    <div class="scaler" id="scaler">
+      <div class="desktop" id="desktop"></div>
+    </div>
+  </main>
+</div>
+
+<!-- floating exit, only shown when body.fs is active -->
+<button class="fs-exit" id="fsExit" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+</button>
+
+<!-- ============ HELP ============ -->
+<div class="help" id="help">
+  <div class="help-card">
+    <button class="close" id="helpClose" aria-label="Close">×</button>
+    <h2>How this preview works</h2>
+    <div class="sub">It frames a real webpage inside an authentic macOS or Windows desktop at true wide-screen resolutions.</div>
+
+    <h3>Live mode</h3>
+    <p>Embeds the actual site in an interactive frame. Many large sites (Google, Facebook, X, most banks, and others) send security headers that forbid embedding - for those, the page area will appear blank. That is the site's policy, not a bug. Switch such sites to Screenshot mode.</p>
+
+    <h3>Screenshot mode</h3>
+    <p>Captures any public URL as a static image using WordPress mShots. The very first capture of a fresh URL can take several seconds and may briefly show a grey panel - the tool retries automatically, and you can also press the reload button. It shows the top of the page only and is not interactive. Very high resolutions are captured at up to 2400px wide and scaled up.</p>
+
+    <h3>Resolution presets</h3>
+    <p>Changing the resolution changes the page's actual viewport width, so responsive layouts reflow exactly as they would on that real display. The current page viewport size is shown in the strip above the desktop.</p>
+
+    <h3>Fullscreen</h3>
+    <p>Press <b>F</b> or click the fullscreen button to hide the tool's chrome and fill your monitor - useful for client presentations or seeing a site at true wide-screen scale. The OS desktop itself enlarges to fill the available space. Press <b>Esc</b> or the floating exit button to come back.</p>
+
+    <h3>Window controls</h3>
+    <p>The green macOS button and the Windows maximize button toggle between a framed window and a maximized one. To save the composed preview, use your system screenshot shortcut (⌘⇧4 on macOS, Win+Shift+S on Windows).</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   STATE
+   ============================================================ */
+var PRESETS = {
+  mac: [
+    {label:'MacBook Air 13"  ·  1470×956',  w:1470, h:956},
+    {label:'MacBook Pro 14"  ·  1512×982',  w:1512, h:982},
+    {label:'MacBook Pro 16"  ·  1728×1117', w:1728, h:1117},
+    {label:'iMac 24"  ·  2240×1260',        w:2240, h:1260},
+    {label:'Studio Display  ·  2560×1440',  w:2560, h:1440}
+  ],
+  win: [
+    {label:'Laptop HD  ·  1366×768',   w:1366, h:768},
+    {label:'Laptop  ·  1536×864',      w:1536, h:864},
+    {label:'HD+  ·  1600×900',         w:1600, h:900},
+    {label:'Full HD  ·  1920×1080',    w:1920, h:1080},
+    {label:'QHD  ·  2560×1440',        w:2560, h:1440},
+    {label:'4K UHD  ·  3840×2160',     w:3840, h:2160}
+  ]
+};
+
+var state = {
+  os:'mac', mode:'live', theme:'light',
+  maximized:false, fullscreen:false,
+  url:'https://shelvean.github.io/math-tools',
+  preset: PRESETS.mac[2]   // MacBook Pro 16"
+};
+
+var contentNode = null;     // persistent <iframe> or screenshot wrapper
+var lastBuildKey = '';      // detects when content must be rebuilt
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function el(id){ return document.getElementById(id); }
+
+function normalizeUrl(raw){
+  raw = (raw||'').trim();
+  if(!raw) return null;
+  if(!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
+  try{ var u = new URL(raw); return u.href; }
+  catch(e){ return null; }
+}
+function parts(href){
+  try{
+    var u = new URL(href);
+    return { host:u.host, path:(u.pathname==='/'?'':u.pathname)+u.search };
+  }catch(e){ return { host:href, path:'' }; }
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+
+/* ---- clocks ---- */
+function clockBits(){
+  var d = new Date();
+  var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var mons=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var h=d.getHours(), m=d.getMinutes();
+  var ap = h>=12?'PM':'AM';
+  var h12 = h%12; if(h12===0) h12=12;
+  var mm = (m<10?'0':'')+m;
+  return {
+    mac: days[d.getDay()]+' '+d.getDate()+' '+mons[d.getMonth()]+'  '+h12+':'+mm+' '+ap,
+    winTime: h12+':'+mm+' '+ap,
+    winDate: (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear()
+  };
+}
+
+/* ============================================================
+   ICONS  (compact inline SVG)
+   ============================================================ */
+var I = {
+  apple:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.9-3-.8c-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.6 2.3 2.8 2.2 1.1 0 1.6-.7 2.9-.7s1.8.7 3 .7c1.2 0 2-1.1 2.8-2.2.5-.8.9-1.6 1.2-2.5-2.4-.9-2.5-3.3-2.5-3.3zM14.3 5.5c.6-.8 1-1.8.9-2.9-.9 0-2 .6-2.6 1.4-.6.7-1 1.7-.9 2.7 1 .1 2-.5 2.6-1.2z"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5" stroke-linecap="round"/></svg>',
+  wifi:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 18.5a1.8 1.8 0 100 3.6 1.8 1.8 0 000-3.6zM12 13c1.9 0 3.6.8 4.9 2l2-2A11 11 0 003.1 13l2 2A6.9 6.9 0 0112 13zM12 6c3.6 0 6.9 1.4 9.4 3.7l2-2A16.5 16.5 0 00.6 7.7l2 2A13.4 13.4 0 0112 6z"/></svg>',
+  battery:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="8" width="17" height="9" rx="2.2"/><rect x="4" y="10" width="11" height="5" rx="1" fill="currentColor" stroke="none"/><path d="M21 11v3" stroke-linecap="round"/></svg>',
+  ctrl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h16M4 16h16" stroke-linecap="round"/><circle cx="9" cy="8" r="2.4" fill="currentColor"/><circle cx="15" cy="16" r="2.4" fill="currentColor"/></svg>',
+  speaker:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 4L6 8H3v8h3l5 4zM15.5 8.5a5 5 0 010 7M18 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  /* nav */
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  fwd:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+  reload:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12a8 8 0 0113.7-5.6M20 12a8 8 0 01-13.7 5.6"/><path d="M17 2v5h-5M7 22v-5h5"/></svg>',
+  sidebar:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>',
+  share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 12v7a1 1 0 001 1h12a1 1 0 001-1v-7"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 10V8a6 6 0 1112 0v2h1a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1V11a1 1 0 011-1h1zm2 0h8V8a4 4 0 10-8 0v2z"/></svg>',
+  menu:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
+  /* window controls (windows) */
+  wmin:'<svg viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  wmax:'<svg viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+  wcl:'<svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
+};
+
+/* dock icons (macOS) */
+function dockIcon(grad, glyph){
+  return '<div class="di" style="background:'+grad+'">'+glyph+'</div>';
+}
+var DOCK = [
+  dockIcon('linear-gradient(180deg,#bfe4ff 0 50%,#1f8efb 50% 100%)',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M9 10v1M15 10v1M9 15c1 1.4 5 1.4 6 0"/></svg>'),
+  dockIcon('radial-gradient(circle at 50% 38%,#7fd0ff,#1d7ef0)',
+    '<svg viewBox="0 0 24 24" fill="#fff"><path d="M12 4l-1.5 6L4 12l6.5 1.5L12 20l1.5-6.5L20 12l-6.5-1.5z" opacity=".95"/><circle cx="12" cy="12" r="9" fill="none" stroke="#fff" stroke-width="1.5" opacity=".7"/></svg>'),
+  dockIcon('linear-gradient(180deg,#4fb7ff,#1f74f0)',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9"><rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M4 8l8 6 8-6"/></svg>'),
+  dockIcon('linear-gradient(180deg,#5ef07a,#16b94a)',
+    '<svg viewBox="0 0 24 24" fill="#fff"><path d="M5 4h14a2 2 0 012 2v8a2 2 0 01-2 2H10l-5 4v-4H5a2 2 0 01-2-2V6a2 2 0 012-2z"/></svg>'),
+  dockIcon('conic-gradient(from 0deg,#ff5b5b,#ffb13d,#ffe24d,#5be07a,#3db8ff,#9b6bff,#ff5b5b)',
+    '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4" fill="#fff"/></svg>'),
+  dockIcon('linear-gradient(180deg,#d6d8de,#9a9da6)',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="3.3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg>')
+];
+
+/* taskbar icons (Windows) */
+function taskIcon(glyph){ return '<div class="ti">'+glyph+'</div>'; }
+var TASK = [
+  taskIcon('<svg viewBox="0 0 24 24"><rect x="3" y="3" width="8.4" height="8.4" rx="1" fill="#0c8ce9"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="1" fill="#0c8ce9"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="1" fill="#0c8ce9"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="1" fill="#0c8ce9"/></svg>'),
+  taskIcon('<svg viewBox="0 0 24 24" fill="none" stroke="#3aa0ff" stroke-width="2"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5" stroke-linecap="round"/></svg>'),
+  taskIcon('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#1f9bff"/><path d="M12 3a9 9 0 000 18c5-3 5-15 0-18z" fill="#56c2ff"/></svg>'),
+  taskIcon('<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h5l2 2.4h7a2 2 0 012 2V18a2 2 0 01-2 2H5a2 2 0 01-2-2z" fill="#ffc24b"/><path d="M3 9.4h18V18a2 2 0 01-2 2H5a2 2 0 01-2-2z" fill="#ffd87a"/></svg>'),
+  taskIcon('<svg viewBox="0 0 24 24"><path d="M6 8h12l-1 11a2 2 0 01-2 1.8H9A2 2 0 017 19z" fill="#3aa0ff"/><path d="M8.5 8V7a3.5 3.5 0 117 0v1" fill="none" stroke="#1f74d0" stroke-width="2"/></svg>'),
+  taskIcon('<svg viewBox="0 0 24 24" fill="none" stroke="#9aa0ad" stroke-width="2"><circle cx="12" cy="12" r="3.3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg>')
+];
+
+/* ============================================================
+   GEOMETRY  - compute the window box & page viewport in screen px
+   ============================================================ */
+function geometry(){
+  var W = state.preset.w, H = state.preset.h;
+  var menubar = 26, dockReserve = 86, taskbar = 48;
+  var top, bottom, side, chrome;
+
+  if(state.os==='mac'){
+    chrome = 52 + 37;                         // toolbar + tab strip
+    if(state.maximized){ top = menubar; bottom = 0; side = 0; }
+    else { top = menubar + 28; bottom = dockReserve + 18; side = Math.round(W*0.045); }
+  } else {
+    chrome = 40 + 46;                         // titlebar/tabs + toolbar
+    if(state.maximized){ top = 0; bottom = taskbar; side = 0; }
+    else { top = 30; bottom = taskbar + 22; side = Math.round(W*0.05); }
+  }
+  var winW = W - side*2;
+  var winH = H - top - bottom;
+  return {
+    W:W, H:H, top:top, side:side,
+    winW:winW, winH:winH, chrome:chrome,
+    viewW:winW, viewH:winH - chrome
+  };
+}
+
+/* ============================================================
+   CONTENT NODE  (iframe  /  screenshot)
+   ============================================================ */
+function buildContent(g){
+  if(state.mode==='live'){
+    var f = document.createElement('iframe');
+    f.src = state.url;
+    f.title = 'Live preview of ' + parts(state.url).host;
+    f.setAttribute('referrerpolicy','no-referrer-when-downgrade');
+    f.setAttribute('loading','eager');
+    return f;
+  }
+  /* screenshot mode */
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'width:100%;height:100%;position:relative';
+  var shotW = Math.min(g.viewW, 2400);
+  var shotH = Math.round(shotW * (g.viewH / g.viewW));
+
+  var img = document.createElement('img');
+  img.alt = 'Screenshot of ' + parts(state.url).host;
+  var ov = document.createElement('div');
+  ov.className = 'shot-overlay';
+  ov.innerHTML = '<div class="spinner"></div><div>Capturing screenshot…</div>';
+  wrap.appendChild(img);
+  wrap.appendChild(ov);
+
+  var attempt = 0, MAX = 4, done = false;
+  function request(){
+    attempt++;
+    img.src = 'https://s.wordpress.com/mshots/v1/' +
+      encodeURIComponent(state.url) +
+      '?w=' + shotW + '&h=' + shotH + '&r=' + attempt;
+  }
+  img.onload = function(){
+    if(done) return;
+    /* mShots serves a small placeholder while rendering */
+    if(img.naturalWidth < 240 && attempt < MAX){
+      setTimeout(request, 2600 + attempt*900);
+    } else {
+      done = true;
+      ov.style.display = 'none';
+    }
+  };
+  img.onerror = function(){
+    if(attempt < MAX){ setTimeout(request, 2400); }
+    else {
+      ov.className = 'shot-overlay err';
+      ov.innerHTML = '<div>Could not capture this URL.</div>' +
+        '<div style="font-size:11.5px;opacity:.8">Check the address, or try Live mode.</div>';
+    }
+  };
+  request();
+  return wrap;
+}
+
+/* ============================================================
+   DESKTOP TEMPLATES
+   ============================================================ */
+function favHtml(host, size){
+  return '<img class="fav" style="width:'+size+'px;height:'+size+'px" ' +
+    'src="https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) +
+    '&sz=64" alt="" onerror="this.style.visibility=\'hidden\'">';
+}
+
+function macDesktop(g, p, ck){
+  return ''+
+  '<div class="wall"></div>'+
+  '<div class="menubar">'+
+    '<span class="apple">'+I.apple+'</span>'+
+    '<span class="mb-app">'+escapeHtml(p.host)+'</span>'+
+    '<span class="mb-item">File</span><span class="mb-item">Edit</span>'+
+    '<span class="mb-item">View</span><span class="mb-item">History</span>'+
+    '<span class="mb-item">Bookmarks</span><span class="mb-item">Window</span>'+
+    '<span class="mb-item">Help</span>'+
+    '<span class="mb-right">'+I.battery+I.wifi+I.search+I.ctrl+
+      '<span class="mb-clock">'+ck.mac+'</span>'+
+    '</span>'+
+  '</div>'+
+  '<div class="window" id="winEl" style="top:'+g.top+'px;left:'+g.side+'px;'+
+       'width:'+g.winW+'px;height:'+g.winH+'px">'+
+    '<div class="mac-bar">'+
+      '<div class="traffic"><i class="r"></i><i class="y"></i><i class="g" id="macGreen" title="Maximize"></i></div>'+
+      '<div class="navbtn">'+I.sidebar+'</div>'+
+      '<div class="navbtn">'+I.back+'</div>'+
+      '<div class="navbtn dim">'+I.fwd+'</div>'+
+      '<div class="addrpill"><span class="lock">'+I.lock+'</span>'+
+        '<span class="u"><span class="host">'+escapeHtml(p.host)+'</span>'+
+        '<span class="path">'+escapeHtml(p.path)+'</span></span></div>'+
+      '<div class="navbtn">'+I.share+'</div>'+
+      '<div class="navbtn">'+I.plus+'</div>'+
+    '</div>'+
+    '<div class="mac-tabs">'+
+      '<div class="tab">'+favHtml(p.host,14)+'<span class="tt">'+escapeHtml(p.host)+'</span></div>'+
+      '<span class="newt">+</span>'+
+    '</div>'+
+    '<div class="screen-mount" id="screenMount"></div>'+
+  '</div>'+
+  '<div class="dock">'+DOCK.join('')+'</div>';
+}
+
+function winDesktop(g, p, ck){
+  return ''+
+  '<div class="wall"></div>'+
+  '<div class="window" id="winEl" style="top:'+g.top+'px;left:'+g.side+'px;'+
+       'width:'+g.winW+'px;height:'+g.winH+'px">'+
+    '<div class="win-tabs">'+
+      '<div class="tab">'+favHtml(p.host,15)+'<span class="tt">'+escapeHtml(p.host)+'</span></div>'+
+      '<span class="newt">+</span>'+
+      '<span class="wfill"></span>'+
+      '<div class="wcontrols">'+
+        '<b>'+I.wmin+'</b>'+
+        '<b id="winMax" title="Restore / maximize">'+I.wmax+'</b>'+
+        '<b class="cl">'+I.wcl+'</b>'+
+      '</div>'+
+    '</div>'+
+    '<div class="win-bar">'+
+      '<div class="navbtn">'+I.back+'</div>'+
+      '<div class="navbtn dim">'+I.fwd+'</div>'+
+      '<div class="navbtn">'+I.reload+'</div>'+
+      '<div class="addrpill"><span class="lock">'+I.lock+'</span>'+
+        '<span class="u"><span class="host">'+escapeHtml(p.host)+'</span>'+
+        '<span class="path">'+escapeHtml(p.path)+'</span></span></div>'+
+      '<div class="navbtn">'+I.menu+'</div>'+
+    '</div>'+
+    '<div class="screen-mount" id="screenMount"></div>'+
+  '</div>'+
+  '<div class="taskbar">'+
+    '<div class="tb-center">'+TASK.join('')+'</div>'+
+    '<div class="tb-tray">'+I.wifi+I.speaker+I.battery+
+      '<span class="tb-clock">'+ck.winTime+'<br>'+ck.winDate+'</span>'+
+    '</div>'+
+  '</div>';
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function fit(){
+  var stage = el('stage');
+  var availW = stage.clientWidth  - 24;
+  var availH = stage.clientHeight - 24;
+  var p = state.preset;
+  var s = Math.min(1, availW/p.w, availH/p.h);
+  var sc = el('scaler'), dt = el('desktop');
+  sc.style.width  = (p.w*s) + 'px';
+  sc.style.height = (p.h*s) + 'px';
+  dt.style.width  = p.w + 'px';
+  dt.style.height = p.h + 'px';
+  dt.style.transform = 'scale(' + s + ')';
+  el('metaText').textContent =
+    'Screen ' + p.w + '×' + p.h + '   ·   ' + Math.round(s*100) + '% scale';
+}
+
+function render(){
+  var g  = geometry();
+  var p  = parts(state.url);
+  var ck = clockBits();
+
+  /* rebuild the content node only when its inputs changed */
+  var key = state.mode + '|' + state.url + '|' + state.preset.w +
+            '|' + (state.mode==='shot' ? state.maximized : '');
+  if(!contentNode || key !== lastBuildKey){
+    contentNode = buildContent(g);
+    lastBuildKey = key;
+  }
+
+  var desktop = el('desktop');
+  desktop.className = 'desktop os-' + state.os + ' theme-' + state.theme;
+  desktop.innerHTML = (state.os==='mac' ? macDesktop : winDesktop)(g, p, ck);
+  desktop.querySelector('#screenMount').appendChild(contentNode);
+
+  /* wire window maximize controls */
+  var toggleMax = function(){ state.maximized = !state.maximized; render(); };
+  var gm = desktop.querySelector('#macGreen');
+  var wm = desktop.querySelector('#winMax');
+  if(gm) gm.addEventListener('click', toggleMax);
+  if(wm) wm.addEventListener('click', toggleMax);
+
+  el('maxBtn').classList.toggle('active', state.maximized);
+
+  /* mode strip */
+  var dot = el('modeDot'), mt = el('modeText');
+  if(state.mode==='live'){
+    dot.style.background = '#36c75a';
+    mt.innerHTML = '<b>Live embed.</b> Interactive - but sites that block framing ' +
+      '(Google, Facebook, X, banks…) will show blank. Use Screenshot for those.';
+  } else {
+    dot.style.background = '#f5a623';
+    mt.innerHTML = '<b>Screenshot.</b> Works for any public URL · static, top-of-page · ' +
+      'first capture may take a few seconds - press reload if blank.';
+  }
+  el('metaText').setAttribute('data-vp', g.viewW + '×' + g.viewH);
+  fit();
+  el('metaText').textContent =
+    'Page viewport ' + g.viewW + '×' + g.viewH + '   ·   ' +
+    el('metaText').textContent;
+}
+
+/* rebuild content explicitly (URL / reload) */
+function reloadContent(){ contentNode = null; lastBuildKey = ''; render(); }
+
+/* ============================================================
+   FULLSCREEN  (presentation mode)
+   Hides the tool's own toolbar/strip and requests browser
+   fullscreen so the OS preview fills the whole monitor.
+   Fullscreen API may be denied; the chrome-hidden state still
+   works on its own and the floating exit button stays usable.
+   ============================================================ */
+function setFullscreen(on){
+  state.fullscreen = !!on;
+  document.body.classList.toggle('fs', state.fullscreen);
+  el('fsBtn').classList.toggle('active', state.fullscreen);
+
+  if(state.fullscreen){
+    var de  = document.documentElement;
+    var req = de.requestFullscreen || de.webkitRequestFullscreen ||
+              de.mozRequestFullScreen || de.msRequestFullscreen;
+    if(req){ try{ req.call(de); }catch(e){} }
+  } else {
+    if(document.fullscreenElement || document.webkitFullscreenElement ||
+       document.mozFullScreenElement || document.msFullscreenElement){
+      var ex = document.exitFullscreen || document.webkitExitFullscreen ||
+               document.mozCancelFullScreen || document.msExitFullscreen;
+      if(ex){ try{ ex.call(document); }catch(e){} }
+    }
+  }
+  /* the stage just resized - recompute scale on the next frame, and once more
+     after the browser's fullscreen animation settles. */
+  requestAnimationFrame(fit);
+  setTimeout(fit, 120);
+}
+
+/* Sync with browser-driven exits (user pressed Esc on the Fullscreen API
+   itself, or the OS revoked fullscreen). */
+function syncFullscreen(){
+  var isFS = !!(document.fullscreenElement || document.webkitFullscreenElement ||
+                document.mozFullScreenElement || document.msFullscreenElement);
+  if(!isFS && state.fullscreen){
+    state.fullscreen = false;
+    document.body.classList.remove('fs');
+    el('fsBtn').classList.remove('active');
+    requestAnimationFrame(fit);
+  }
+}
+
+/* ============================================================
+   CONTROLS WIRING
+   ============================================================ */
+function buildResSelect(){
+  var sel = el('res');
+  sel.innerHTML = '';
+  PRESETS[state.os].forEach(function(pr, i){
+    var o = document.createElement('option');
+    o.value = i; o.textContent = pr.label;
+    if(pr === state.preset) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function setOS(os){
+  if(state.os===os) return;
+  state.os = os;
+  state.preset = PRESETS[os][ os==='mac' ? 2 : 3 ];   // sensible wide default
+  el('osMac').setAttribute('aria-pressed', os==='mac');
+  el('osWin').setAttribute('aria-pressed', os==='win');
+  buildResSelect();
+  reloadContent();
+}
+function setMode(m){
+  if(state.mode===m) return;
+  state.mode = m;
+  el('mLive').setAttribute('aria-pressed', m==='live');
+  el('mShot').setAttribute('aria-pressed', m==='shot');
+  reloadContent();
+}
+function setTheme(t){
+  if(state.theme===t) return;
+  state.theme = t;
+  el('tLight').setAttribute('aria-pressed', t==='light');
+  el('tDark').setAttribute('aria-pressed', t==='dark');
+  render();                       // theme reuses the content node - no reload
+}
+
+function submitUrl(){
+  var v = normalizeUrl(el('url').value);
+  if(!v){
+    el('url').focus();
+    el('url').style.color = '#ff6b6b';
+    setTimeout(function(){ el('url').style.color=''; }, 1100);
+    return;
+  }
+  el('url').value = v;
+  state.url = v;
+  reloadContent();
+}
+
+el('go').addEventListener('click', submitUrl);
+el('url').addEventListener('keydown', function(e){
+  if(e.key==='Enter') submitUrl();
+});
+el('osMac').addEventListener('click', function(){ setOS('mac'); });
+el('osWin').addEventListener('click', function(){ setOS('win'); });
+el('mLive').addEventListener('click', function(){ setMode('live'); });
+el('mShot').addEventListener('click', function(){ setMode('shot'); });
+el('tLight').addEventListener('click', function(){ setTheme('light'); });
+el('tDark').addEventListener('click', function(){ setTheme('dark'); });
+el('res').addEventListener('change', function(){
+  state.preset = PRESETS[state.os][ parseInt(this.value,10) ];
+  reloadContent();
+});
+el('maxBtn').addEventListener('click', function(){
+  state.maximized = !state.maximized; render();
+});
+el('refreshBtn').addEventListener('click', reloadContent);
+
+el('fsBtn').addEventListener('click', function(){ setFullscreen(!state.fullscreen); });
+el('fsExit').addEventListener('click', function(){ setFullscreen(false); });
+document.addEventListener('fullscreenchange',       syncFullscreen);
+document.addEventListener('webkitfullscreenchange', syncFullscreen);
+document.addEventListener('mozfullscreenchange',    syncFullscreen);
+document.addEventListener('MSFullscreenChange',     syncFullscreen);
+
+el('helpBtn').addEventListener('click', function(){ el('help').classList.add('open'); });
+el('helpClose').addEventListener('click', function(){ el('help').classList.remove('open'); });
+el('help').addEventListener('click', function(e){
+  if(e.target === el('help')) el('help').classList.remove('open');
+});
+
+document.addEventListener('keydown', function(e){
+  /* Esc cascades: close help first, then exit fullscreen */
+  if(e.key === 'Escape'){
+    if(el('help').classList.contains('open')){
+      el('help').classList.remove('open');
+    } else if(state.fullscreen){
+      setFullscreen(false);
+    }
+    return;
+  }
+  /* don't capture keys while the user is typing a URL */
+  var t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  if(e.key === 'f' || e.key === 'F'){
+    e.preventDefault();
+    setFullscreen(!state.fullscreen);
+  }
+});
+
+window.addEventListener('resize', fit);
+setInterval(render, 60000);        // keep the desktop clocks fresh
+
+/* ============================================================
+   INIT
+   ============================================================ */
+el('url').value = state.url;
+buildResSelect();
+render();
+</script>
+</body>
+</html>

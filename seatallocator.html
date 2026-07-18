@@ -1,0 +1,1177 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="theme-color" content="#1d4ed8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Apportionment calculator. Allocate seats using the Hamilton, Jefferson, Webster, and Huntington-Hill methods with worked steps.">
+  <meta name="keywords" content="seat allocator, classroom seating, random seat assignment, exam seating, student seating chart">
+<title>Seat Allocator</title>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
+<script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js"></script>
+<script src="vendor/jspdf@2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;--info:#eff6ff;--inf-b:#93c5fd;
+  --txt:#111827;--txt2:#374151;--muted:#6b7280;--bdr:#6b7280;--bdr2:#d1d5db;--focus:#1d4ed8;
+  --blue:#1d4ed8;--bl2:#1e3a8a;--teal:#0f766e;--vio:#6d28d9;--green:#15803d;--red:#dc2626;--link:#1e40af;
+  --r:.5rem;--r2:.75rem;--sh:0 1px 3px rgba(0,0,0,.10);--sh2:0 4px 12px rgba(0,0,0,.12);
+}
+.hc{--bg:#fff;--card:#fff;--sect:#eee;--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--bdr2:#555;--focus:#00f;--blue:#00c;--bl2:#000080;--teal:#004d40;--vio:#4a0080;--green:#003000;--red:#8b0000;--link:#00c;}
+@media(prefers-contrast:more){:root{--txt:#000;--txt2:#000;--blue:#00c;--link:#00c;}}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;line-height:1.6;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:2px;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow-x:auto;overflow-y:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;padding:.75rem 1.5rem;z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;}
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;display:flex;justify-content:center;}
+.nav-list{list-style:none;display:flex;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a,.nav-list span{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;padding:.625rem .5rem;border-radius:.3rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover{text-decoration:underline;}
+.nav-brand{color:var(--bl2);}
+.card{background:var(--card);padding:1.25rem 1rem;border-radius:var(--r2);max-width:1400px;width:100%;margin:1rem auto 1.5rem;box-shadow:var(--sh2);overflow:visible;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:var(--txt);}
+.cbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.6rem;margin-bottom:.75rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);padding:.65rem .875rem;}
+.cf{display:flex;flex-direction:column;gap:.2rem;}
+.cf label{font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.cf select,.cf input{min-height:40px;padding:.3rem .5rem;font-size:.9375rem;font-weight:500;border:2px solid var(--bdr);border-radius:.4rem;background:var(--card);color:var(--txt);width:100%;}
+.cf-room{flex:0 1 180px;}.cf-num{flex:0 1 130px;}.cf-excl{flex:1 1 200px;}
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.875rem;padding:.5rem .875rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+.btn{display:inline-flex;align-items:center;gap:.35rem;padding:.5rem 1.1rem;min-height:44px;min-width:90px;border:none;border-radius:.5rem;font-size:.9375rem;font-weight:700;cursor:pointer;transition:background .15s;}
+.btn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+.btn-go{background:var(--blue);color:#fff;} .btn-go:not(:disabled):hover{background:var(--bl2);}
+.btn-cl{background:var(--red);color:#fff;}  .btn-cl:not(:disabled):hover{background:#b91c1c;}
+.btn-tx{background:var(--teal);color:#fff;} .btn-tx:not(:disabled):hover{background:#0c5f58;}
+.btn-pd{background:var(--vio);color:#fff;}  .btn-pd:not(:disabled):hover{background:#5b21b6;}
+.status{padding:.6rem 1rem;border-radius:var(--r);font-size:.9375rem;font-weight:600;margin-bottom:.75rem;display:none;border:2px solid transparent;}
+.status.on{display:block;}
+.s-err{background:rgba(220,38,38,.08);border-color:var(--red);color:#7f1d1d;}
+.s-ok{background:rgba(21,128,61,.08);border-color:var(--green);color:#14532d;}
+.stats{display:flex;flex-wrap:wrap;margin-bottom:.875rem;background:var(--card);border:2px solid var(--bdr2);border-radius:var(--r);overflow-x:auto;overflow-y:hidden;box-shadow:var(--sh);}
+.stats dt,.stats dd{margin:0;padding:0;}
+.sc{flex:1;text-align:center;padding:.45rem .3rem;border-right:1px solid var(--bdr2);min-width:68px;}
+.sc:last-child{border-right:none;}
+.sl{font-size:.7rem;color:var(--txt2);font-weight:700;line-height:1.3;}
+.sv{font-size:1rem;font-weight:800;font-family:Georgia,serif;}
+.legend{display:flex;flex-wrap:wrap;gap:.4rem .9rem;padding:.5rem .875rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);margin-bottom:.875rem;align-items:center;display:none;}
+.leg-t{font-size:.8125rem;font-weight:800;color:var(--txt2);}
+.leg-i{display:flex;align-items:center;gap:.3rem;font-size:.8125rem;color:var(--txt2);}
+.leg-s{width:18px;height:18px;border-radius:.25rem;border:1px solid rgba(0,0,0,.18);display:inline-block;flex-shrink:0;}
+.viz{border:2px solid var(--bdr2);border-radius:var(--r);overflow-x:auto;overflow-y:hidden;background:var(--card);margin-bottom:.875rem;display:flex;flex-direction:column;align-items:center;width:100vw;position:relative;left:50%;transform:translateX(-50%);border-radius:0;}
+.viz-hd{padding:.4rem .875rem;background:var(--sect);border-bottom:1px solid var(--bdr2);font-size:.875rem;font-weight:700;color:var(--txt2);text-align:center;width:100%;box-sizing:border-box;}
+.footer{margin-top:1.5rem;border-top:2px solid var(--bdr2);padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer p{margin:.45rem 0;}
+.footer a{color:var(--link);text-decoration:underline;}
+.footer-modified{font-size:.8125rem;color:var(--muted);}
+.hctog{position:fixed;bottom:1rem;right:1rem;z-index:200;background:var(--txt);color:var(--card);border:2px solid var(--bdr);border-radius:50%;width:48px;height:48px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+@media(max-width:600px){.card{padding:.5rem;margin:1rem .25rem 1.5rem;}.abar{flex-direction:column;align-items:stretch;}.btn{justify-content:center;}.viz{overflow-x:auto;-webkit-overflow-scrolling:touch;}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+
+.blurb{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);
+  padding:.75rem 1rem;margin-bottom:1rem;font-size:.9375rem;color:var(--txt2);}
+.blurb p{margin:.2rem 0;}
+.blurb strong{color:var(--txt);}
+.blurb-rooms{font-size:.9375rem;color:var(--txt2);margin:.4rem 0 0;line-height:1.6;}
+.blurb-howto{margin-top:.75rem;font-size:.9375rem;color:var(--txt2);}
+.blurb-howto>summary{cursor:pointer;font-weight:700;color:var(--txt);padding:.25rem 0;
+  list-style:none;display:inline-flex;align-items:center;gap:.4rem;}
+.blurb-howto>summary::before{content:"▸";display:inline-block;transition:transform .15s;color:var(--inf-b);}
+.blurb-howto[open]>summary::before{transform:rotate(90deg);}
+.blurb-howto ol{margin:.4rem 0 .25rem 1.4rem;line-height:1.55;}
+.blurb-howto li{margin-bottom:.25rem;}
+.blurb-howto code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;
+  font-family:ui-monospace,Consolas,Menlo,monospace;font-size:.875em;}
+.blurb-howto kbd{background:var(--card);border:1px solid var(--bdr2);border-bottom-width:2px;
+  border-radius:3px;padding:0 5px;font-family:inherit;font-size:.875em;color:var(--txt);}
+.blurb-howto pre{background:rgba(0,0,0,.05);border-radius:var(--r);padding:.4rem .6rem;
+  margin:.35rem 0;overflow-x:auto;font-family:ui-monospace,Consolas,Menlo,monospace;
+  font-size:.85rem;line-height:1.4;color:var(--txt);}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/seatallocator.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Seat Allocator">
+    <meta property="og:description" content="Apportionment calculator. Allocate seats using the Hamilton, Jefferson, Webster, and Huntington-Hill methods with worked steps.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/seatallocator.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Seat Allocator">
+    <meta name="twitter:description" content="Apportionment calculator. Allocate seats using the Hamilton, Jefferson, Webster, and Huntington-Hill methods with worked steps.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Seat Allocator",
+  "description": "Apportionment calculator. Allocate seats using the Hamilton, Jefferson, Webster, and Huntington-Hill methods with worked steps.",
+  "url": "https://shelvean.github.io/math-tools/seatallocator.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+        <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main id="main" class="card" role="main">
+  <h1>Seat Allocator</h1>
+
+
+  <div class="blurb" role="note">
+    <p>
+      <strong>Only the number of students is required.</strong>
+      Select your classroom, enter enrollment, and click <em>Allocate Seats</em> -
+      the tool spreads students evenly across the room, avoids broken seats,
+      and produces a fresh random arrangement on every press - press <em>Allocate Seats</em> again at any time to generate a new assignment.
+      <strong>Left-handed seats are assigned individually</strong> as needed.
+    </p>
+    <p class="blurb-rooms"><strong>Supported classrooms:</strong>
+      BLOC 102 &middot; BLOC 117 &middot; BLOC 128 &middot; BLOC 149 &middot;
+      BLOC 160 &middot; BLOC 161 &middot; BLOC 164 &middot; BLOC 166 &middot; BLOC 169 &middot;
+      BSBE 115 &middot; CHEM 100 &middot;
+      HECC 105 &middot; HECC 108 &middot; HECC 110 &middot;
+      HECC 200 &middot; HECC 203 &middot; HECC 207 &middot; HECC 209 &middot;
+      HELD 100 &middot; HELD 107 &middot; HELD 109 &middot; HELD 111 &middot;
+      HELD 113 &middot; HELD 200 &middot;
+      ILSB 1105 &middot; RICH 114
+    </p>
+    <details class="blurb-howto">
+      <summary>How to paste seat assignments into a column of your Excel roster</summary>
+      <p style="margin:.4rem 0 .25rem;">After allocating, click <strong>↓ Roster (TXT)</strong> above the seating chart to download <code>allocated_seats.txt</code>.</p>
+      <p style="margin:.4rem 0 .25rem;">Each line of the file is a sequence number followed by a tab and the seat ID. The list is already shuffled, so <strong>line <em>k</em> is the seat for student <em>k</em></strong> in your roster.</p>
+<pre>1	A14
+2	B7
+3	M3
+…</pre>
+      <ol>
+        <li>Open <code>allocated_seats.txt</code> in any text editor (Notepad, TextEdit, VS Code), press <kbd>Ctrl</kbd>+<kbd>A</kbd> (or <kbd>⌘</kbd>+<kbd>A</kbd>) to select all, then <kbd>Ctrl</kbd>+<kbd>C</kbd> (<kbd>⌘</kbd>+<kbd>C</kbd>) to copy.</li>
+        <li>In Excel, click the cell next to your first student's name and paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> (<kbd>⌘</kbd>+<kbd>V</kbd>). Excel splits at the tab automatically - the sequence numbers go into one column and the seat IDs into the next.</li>
+        <li>Delete the sequence-number column. The remaining column is your seat assignments aligned with the roster.</li>
+      </ol>
+      <p style="margin:.35rem 0 .1rem;"><strong>Alternative (Excel for Windows):</strong> <em>Data → From Text/CSV</em>, choose the file, set the delimiter to <em>Tab</em>, then untick the first column in the preview before clicking <em>Load</em>.</p>
+    </details>
+  </div>
+  <div class="cbar" role="group" aria-label="Inputs">
+    <div class="cf cf-room">
+      <label for="roomSel">Classroom</label>
+      <select id="roomSel">
+        <option value="HELD_100">HELD 100</option>
+        <option value="HECC_108">HECC 108</option>
+        <option value="HECC_110">HECC 110</option>
+        <option value="HECC_200">HECC 200</option>
+        <option value="HECC_203">HECC 203</option>
+        <option value="HECC_207">HECC 207</option>
+        <option value="HECC_209">HECC 209</option>
+        <option value="ILSB_1105">ILSB 1105</option>
+      
+      <option value="HELD_107">HELD 107</option>
+      <option value="HELD_109">HELD 109</option>
+      <option value="HELD_111">HELD 111</option>
+      <option value="HELD_113">HELD 113</option>
+      <option value="HELD_200">HELD 200</option>
+      <option value="RICH_114">RICH 114</option>
+      <option value="BLOC_166">BLOC 166</option>
+      <option value="BLOC_169">BLOC 169</option>
+      <option value="BSBE_115">BSBE 115</option>
+      
+      <option value="CHEM_100">CHEM 100</option>
+      <option value="HECC_105">HECC 105</option>
+      <option value="BLOC_164">BLOC 164</option>
+      <option value="BLOC_161">BLOC 161</option>
+      <option value="BLOC_160">BLOC 160</option>
+      <option value="BLOC_149">BLOC 149</option>
+      <option value="BLOC_128">BLOC 128</option>
+      <option value="BLOC_117">BLOC 117</option>
+      <option value="BLOC_102">BLOC 102</option>
+      </select>
+    </div>
+    <div class="cf cf-num">
+      <label for="numStu">Students</label>
+      <input type="number" id="numStu" min="1" max="999" placeholder="e.g. 130">
+    </div>
+    <div class="cf cf-excl">
+      <label for="excl">Leave empty <span style="font-weight:400;color:var(--muted)">(e.g. A5, H12)</span></label>
+      <input type="text" id="excl" placeholder="A5, H12 …">
+    </div>
+  </div>
+
+  <div class="abar" role="group" aria-label="Actions">
+    <button id="goBtn"  class="btn btn-go" type="button">⬡ Allocate Seats</button>
+    <button id="clBtn"  class="btn btn-cl" type="button">✕ Clear</button>
+    <button id="txBtn"  class="btn btn-tx" type="button" disabled>↓ Roster (TXT)</button>
+    <button id="pdBtn"  class="btn btn-pd" type="button" disabled>↓ Map (PDF)</button>
+  </div>
+
+  <div id="status" class="status" role="alert" aria-live="assertive"></div>
+
+  <dl class="stats" id="stats" style="display:none" role="region" aria-label="Statistics" aria-live="polite">
+    <div class="sc"><dt class="sl">Seats</dt>      <dd class="sv" style="color:#1e40af" id="s-tot">-</dd></div>
+    <div class="sc"><dt class="sl">Left-hand</dt>  <dd class="sv" style="color:#92400e" id="s-lh">-</dd></div>
+    <div class="sc"><dt class="sl">Moveable</dt>   <dd class="sv" style="color:#0e7490" id="s-mv">-</dd></div>
+    <div class="sc"><dt class="sl">Broken</dt>     <dd class="sv" style="color:#b91c1c" id="s-br">-</dd></div>
+    <div class="sc"><dt class="sl">Excluded</dt>   <dd class="sv" style="color:#92400e" id="s-ex">-</dd></div>
+    <div class="sc"><dt class="sl">Available</dt>  <dd class="sv" style="color:#1e40af" id="s-av">-</dd></div>
+    <div class="sc"><dt class="sl">Allocated</dt>  <dd class="sv" style="color:#15803d" id="s-al">-</dd></div>
+    <div class="sc"><dt class="sl">Empty</dt>      <dd class="sv" style="color:#b91c1c" id="s-em">-</dd></div>
+    <div class="sc"><dt class="sl">Fill rate</dt>  <dd class="sv" style="color:#5b21b6" id="s-fr">-</dd></div>
+  </dl>
+
+  <!-- Legend appears above chart when chart is shown -->
+  <div class="legend" id="legend" role="region" aria-label="Colour key">
+    <span class="leg-t">Key:</span>
+    <span class="leg-i"><span class="leg-s" style="background:#f0f2f5;border-color:#ccc"></span>Empty</span>
+    <span class="leg-i"><span class="leg-s" style="background:#475569"></span>Aisle</span>
+    <span class="leg-i"><span class="leg-s" style="background:#4e342e"></span>Table</span>
+    <span class="leg-i"><span class="leg-s" style="background:#4b5563"></span>Excluded</span>
+    <span class="leg-i"><span class="leg-s" style="background:#b91c1c"></span>Broken</span>
+    <span class="leg-i"><span class="leg-s" style="background:#1d4ed8"></span>Available</span>
+    <span class="leg-i"><span class="leg-s" style="background:#15803d"></span>Allocated</span>
+    <span class="leg-i"><span class="leg-s" style="background:#7c3aed"></span>Left-handed</span>
+    <span class="leg-i"><span class="leg-s" style="background:#0e7490"></span>Moveable chair</span>
+  </div>
+
+  <div class="viz" id="vizWrap" style="display:none" role="region" aria-label="Seat map">
+    <div class="viz-hd">Classroom Map - hover a cell for details</div>
+    <div id="chart" role="img" aria-label="Classroom heatmap"></div>
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981374">https://doi.org/10.5281/zenodo.20981374</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Seat Allocator. Math Tools. https://doi.org/10.5281/zenodo.20981374</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Seat Allocator." Math Tools, 2026, doi.org/10.5281/zenodo.20981374.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026seatallocator,
+  author       = {Shelvean Kapita},
+  title        = {{Seat Allocator}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981374},
+  url          = {https://doi.org/10.5281/zenodo.20981374}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: July 1, 2026.</p>
+</footer>
+</main>
+
+<button class="hctog" id="hctog" type="button" aria-label="Toggle high-contrast mode">&#9681;</button>
+
+<script>
+'use strict';
+document.getElementById('hctog').addEventListener('click',function(){document.documentElement.classList.toggle('hc');say('High-contrast '+(document.documentElement.classList.contains('hc')?'on':'off'));});
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},60);}
+function showStatus(msg,type){var e=document.getElementById('status');e.textContent=msg;e.className='status on '+(type==='err'?'s-err':'s-ok');say(msg);}
+function clearStatus(){var e=document.getElementById('status');e.textContent='';e.className='status';}
+
+
+/* ══════════════════════════════════════════════════════
+   CLASSROOM LAYOUTS  (hardcoded from rendered XLSX images)
+   Each room is verified from LibreOffice render + openpyxl.
+   Add new rooms in the same format.
+══════════════════════════════════════════════════════ */
+function normalRow(lh){lh=lh||[7,19,26];var c=[];for(var n=1;n<=7;n++)c.push(lh.indexOf(n)>=0?{type:'seat',num:n,leftHanded:true}:{type:'seat',num:n});c.push({type:'aisle'});for(var n=8;n<=19;n++)c.push(lh.indexOf(n)>=0?{type:'seat',num:n,leftHanded:true}:{type:'seat',num:n});c.push({type:'aisle'});for(var n=20;n<=26;n++)c.push(lh.indexOf(n)>=0?{type:'seat',num:n,leftHanded:true}:{type:'seat',num:n});return c;}
+
+var LAYOUTS={
+  'HELD_100':{label:'HELD 100',rows:['M','L','K','J','H','G','F','E','D','C','B','A'],grid:{'M':[{type:'table',label:'Table (1 seat)',width:4},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'aisle'},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'table',label:'Table (2 seats)',width:4},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'aisle'},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14,leftHanded:true},{type:'table',label:'Table',width:4}],'L':normalRow(),'K':normalRow(),'J':normalRow(),'H':normalRow(),'G':normalRow(),'F':normalRow(),'E':normalRow(),'D':normalRow(),'C':normalRow(),'B':normalRow(),'A':normalRow()}},
+  'HECC_108':{"label":"HECC 108","rows":["L","K","J","H","G","F","E","D","C","B","A"],"grid":{"L":[{"type":"table","label":"Table (3 seats)","width":5},{"type":"table","label":"Table (1 seat)","width":2},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"empty"},{"type":"empty"},{"type":"table","label":"Table (2 seats)","width":3}],"K":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24}],"J":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24}],"H":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"G":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"F":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"E":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"D":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"C":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"B":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"A":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}]}},
+  'HECC_110':{"label":"HECC 110","rows":["K","J","H","G","F","E","D","C","B","A"],"grid":{"K":[{"type":"table","label":"Table (2 seats)","width":3},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"empty"},{"type":"empty"},{"type":"table","label":"Table (2 seats)","width":3}],"J":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16}],"H":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16}],"G":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}],"F":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}],"E":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}],"D":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}],"C":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}],"B":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}],"A":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16,"leftHanded":true}]}},
+  'HECC_200':{"label":"HECC 200","rows":["H","G","F","E","D","C","B","A"],"grid":{"H":[{"type":"empty"},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true},{"type":"empty"}],"G":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"F":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"E":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"D":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"C":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"B":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4,"leftHanded":true},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"A":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4,"leftHanded":true},{"type":"empty"},{"type":"empty"},{"type":"empty"}]}},
+  'HECC_203':{"label":"HECC 203","rows":["H","G","F","E","D","C","B","A"],"grid":{"H":[{"type":"empty"},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true},{"type":"empty"}],"G":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"F":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"E":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"D":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"C":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"B":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"seat","num":15},{"type":"seat","num":14},{"type":"seat","num":13},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}],"A":[{"type":"seat","num":17},{"type":"seat","num":16},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":12},{"type":"seat","num":11},{"type":"seat","num":10},{"type":"seat","num":9},{"type":"seat","num":8},{"type":"seat","num":7},{"type":"seat","num":6},{"type":"seat","num":5},{"type":"seat","num":4},{"type":"seat","num":3},{"type":"seat","num":2},{"type":"seat","num":1,"leftHanded":true}]}},
+  'HECC_207':{"label":"HECC 207","rows":["L","K","J","H","G","F","E","D","C","B","A"],"grid":{"L":[{"type":"table","label":"Table (3 seats)","width":5},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"empty"},{"type":"chair","label":"Chair"},{"type":"table","label":"Table (2 seats)","width":3}],"K":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18,"broken":true},{"type":"seat","num":19,"broken":true},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24}],"J":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24}],"H":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24}],"G":[{"type":"seat","num":1,"broken":true},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"F":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"E":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"D":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"C":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"B":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}],"A":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24,"leftHanded":true}]}},
+  'HECC_209':{"label":"HECC 209","rows":["H","G","F","E","F2","E2","D","C","B","A"],"rowLabels":{"F":"F (Up)","E":"E (Up)","F2":"F (Lo)","E2":"E (Lo)"},"grid":{"H":[{"type":"table","label":"Table / Stairs","width":3},{"type":"seat","num":5},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":6},{"type":"table","label":"Table / Stairs","width":3}],"G":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15,"leftHanded":true},{"type":"seat","num":16,"leftHanded":true}],"F":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15,"leftHanded":true},{"type":"seat","num":16,"leftHanded":true}],"E":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13,"leftHanded":true},{"type":"seat","num":14,"leftHanded":true}],"F2":[{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12,"leftHanded":true},{"type":"seat","num":13,"leftHanded":true}],"E2":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14,"leftHanded":true},{"type":"seat","num":15,"leftHanded":true}],"D":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14,"leftHanded":true},{"type":"seat","num":15,"leftHanded":true}],"C":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14,"leftHanded":true},{"type":"seat","num":15,"leftHanded":true}],"B":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14,"leftHanded":true},{"type":"seat","num":15,"leftHanded":true}],"A":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14,"leftHanded":true},{"type":"seat","num":15,"leftHanded":true}]}},
+  'ILSB_1105':{"label":"ILSB 1105","rows":["A","B","C","D","E","F","G","_walk","H","I","J","K","L","M","N"],"grid":{"A":[{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"aisle"},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24},{"type":"seat","num":25},{"type":"empty"}],"B":[{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"aisle"},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24},{"type":"seat","num":25}],"C":[{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"aisle"},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24},{"type":"empty"}],"D":[{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"aisle"},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"seat","num":23},{"type":"seat","num":24},{"type":"empty"}],"E":[{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"aisle"},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"empty"},{"type":"empty"}],"F":[{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"aisle"},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"empty"},{"type":"empty"}],"G":[{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"aisle"},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"seat","num":22},{"type":"empty"},{"type":"empty"}],"H":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"aisle"},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"seat","num":21},{"type":"empty"},{"type":"empty"}],"I":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"aisle"},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"J":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"seat","num":10},{"type":"aisle"},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"seat","num":20},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"K":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"aisle"},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"seat","num":19},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"L":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"aisle"},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"M":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8},{"type":"seat","num":9},{"type":"aisle"},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"seat","num":17},{"type":"seat","num":18},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"N":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"seat","num":1},{"type":"seat","num":2},{"type":"seat","num":3},{"type":"seat","num":4},{"type":"seat","num":5},{"type":"seat","num":6},{"type":"seat","num":7},{"type":"seat","num":8,"moveable":true},{"type":"aisle"},{"type":"seat","num":9,"moveable":true},{"type":"seat","num":10},{"type":"seat","num":11},{"type":"seat","num":12},{"type":"seat","num":13},{"type":"seat","num":14},{"type":"seat","num":15},{"type":"seat","num":16},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"empty"}],"_walk":[{"type":"empty"},{"type":"empty"},{"type":"empty"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"aisle"},{"type":"empty"},{"type":"empty"}]},"rowLabels":{"_walk":"\u2500\u2500"}},
+
+  'HELD_107':{label:'HELD 107',rows:['H','G','F','E','D','C','B','A'],grid:{H:[{type:'seat',num:1},{type:'seat',num:2},{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'table',width:3,label:'Table (2 seats)'},{type:'seat',num:10},{type:'seat',num:11,leftHanded:true}],G:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],F:[{type:'seat',num:1},{type:'seat',num:2,broken:true},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],E:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],D:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12,broken:true},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],C:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],B:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4,broken:true},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],A:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8,broken:true},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}]}},
+  'HELD_109':{label:'HELD 109',rows:['H','G','F','E','D','C','B','A'],grid:{H:[{type:'seat',num:10},{type:'seat',num:11},{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'table',width:3,label:'Table (1 seat)'},{type:'seat',num:1},{type:'seat',num:2}],G:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],F:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],E:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],D:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],C:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],B:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],A:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}]}},
+  'HELD_111':{label:'HELD 111',rows:['H','G','F','E','D','C','B','A'],grid:{H:[{type:'seat',num:1},{type:'seat',num:2},{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'table',width:3,label:'Table (1 seat)'},{type:'seat',num:10},{type:'seat',num:11,leftHanded:true}],G:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],F:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],E:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],D:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],C:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],B:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],A:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}]}},
+  'HELD_113':{label:'HELD 113',rows:['H','G','F','E','D','C','B','A'],grid:{H:[{type:'seat',num:1},{type:'seat',num:2},{type:'table',width:4,label:'Table (1 seat)'},{type:'seat',num:5,broken:true},{type:'seat',num:6},{type:'seat',num:7},{type:'table',width:3,label:'Table (1 seat)'},{type:'seat',num:10,broken:true},{type:'seat',num:11,leftHanded:true}],G:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],F:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true,broken:true}],E:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],D:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true,broken:true}],C:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],B:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}],A:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13,leftHanded:true},{type:'seat',num:14,leftHanded:true}]}},
+  'HELD_200':{label:'HELD 200',rows:['M','L','K','J','H','G','F','E','D','C','B','A'],grid:{M:[{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'aisle'},{type:'seat',num:4},{type:'seat',num:5,broken:true},{type:'seat',num:6},{type:'seat',num:7},{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'aisle'},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14,leftHanded:true},{type:'table',width:4,label:'Table (1 seat)'}],L:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],K:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],J:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],H:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],G:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],F:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],E:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],D:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],C:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],B:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}],A:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7,leftHanded:true},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19,leftHanded:true},{type:'aisle'},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true}]}},
+  'RICH_114':{label:'RICH 114',rows:['H','G','F','E','D','C','B','A'],grid:{H:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5,broken:true},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12,broken:true},{type:'empty'}],G:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14}],F:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14}],E:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14}],D:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'empty'}],C:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'empty'},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'empty'},{type:'empty'}]}},
+  'BLOC_166':{label:'BLOC 166',rows:['G','F','E','D','C','B','A'],grid:{G:[{type:'seat',num:121},{type:'seat',num:122},{type:'empty'},{type:'table',width:2,label:'Table'},{type:'empty'},{type:'seat',num:123,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:124},{type:'empty'},{type:'table',width:2,label:'Table'},{type:'empty'},{type:'seat',num:125,leftHanded:true},{type:'empty'},{type:'empty'}],F:[{type:'seat',num:93},{type:'seat',num:94},{type:'seat',num:95},{type:'seat',num:96},{type:'seat',num:97},{type:'seat',num:98},{type:'seat',num:99},{type:'seat',num:100},{type:'seat',num:101},{type:'seat',num:102},{type:'seat',num:103},{type:'seat',num:104},{type:'seat',num:105},{type:'seat',num:106,leftHanded:true},{type:'aisle'},{type:'seat',num:107},{type:'seat',num:108},{type:'seat',num:109},{type:'seat',num:110},{type:'seat',num:111},{type:'seat',num:112},{type:'seat',num:113},{type:'seat',num:114},{type:'seat',num:115},{type:'seat',num:116},{type:'seat',num:117},{type:'seat',num:118},{type:'seat',num:119},{type:'seat',num:120,leftHanded:true},{type:'empty'}],E:[{type:'empty'},{type:'empty'},{type:'seat',num:69},{type:'seat',num:70},{type:'seat',num:71},{type:'seat',num:72},{type:'seat',num:73},{type:'seat',num:74},{type:'seat',num:75},{type:'seat',num:76},{type:'seat',num:77},{type:'seat',num:78},{type:'seat',num:79},{type:'seat',num:80,leftHanded:true},{type:'aisle'},{type:'seat',num:81},{type:'seat',num:82},{type:'seat',num:83},{type:'seat',num:84},{type:'seat',num:85},{type:'seat',num:86},{type:'seat',num:87},{type:'seat',num:88},{type:'seat',num:89},{type:'seat',num:90},{type:'seat',num:91},{type:'seat',num:92,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'}],D:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:47},{type:'seat',num:48},{type:'seat',num:49},{type:'seat',num:50},{type:'seat',num:51},{type:'seat',num:52},{type:'seat',num:53},{type:'seat',num:54},{type:'seat',num:55},{type:'seat',num:56},{type:'seat',num:57,leftHanded:true},{type:'aisle'},{type:'seat',num:58},{type:'seat',num:59},{type:'seat',num:60},{type:'seat',num:61},{type:'seat',num:62},{type:'seat',num:63},{type:'seat',num:64},{type:'seat',num:65},{type:'seat',num:66},{type:'seat',num:67},{type:'seat',num:68,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],C:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:29},{type:'seat',num:30},{type:'seat',num:31},{type:'seat',num:32},{type:'seat',num:33},{type:'seat',num:34},{type:'seat',num:35},{type:'seat',num:36},{type:'seat',num:37,leftHanded:true},{type:'aisle'},{type:'seat',num:38},{type:'seat',num:39},{type:'seat',num:40},{type:'seat',num:41},{type:'seat',num:42},{type:'seat',num:43},{type:'seat',num:44},{type:'seat',num:45},{type:'seat',num:46,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20,leftHanded:true},{type:'aisle'},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26},{type:'seat',num:27},{type:'seat',num:28,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6,leftHanded:true},{type:'aisle'},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+  'BLOC_169':{label:'BLOC 169',rows:['G','F','E','D','C','B','A'],grid:{G:[{type:'empty'},{type:'seat',num:121},{type:'empty'},{type:'table',width:2,label:'Table'},{type:'empty'},{type:'seat',num:122},{type:'empty'},{type:'table',width:2,label:'Table'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:123,leftHanded:true},{type:'empty'},{type:'table',width:2,label:'Table'},{type:'empty'},{type:'seat',num:124},{type:'seat',num:125},{type:'empty'}],F:[{type:'seat',num:93},{type:'seat',num:94},{type:'seat',num:95},{type:'seat',num:96},{type:'seat',num:97},{type:'seat',num:98},{type:'seat',num:99},{type:'seat',num:100},{type:'seat',num:101},{type:'seat',num:102},{type:'seat',num:103},{type:'seat',num:104},{type:'seat',num:105},{type:'seat',num:106,leftHanded:true},{type:'aisle'},{type:'seat',num:107},{type:'seat',num:108},{type:'seat',num:109},{type:'seat',num:110},{type:'seat',num:111},{type:'seat',num:112},{type:'seat',num:113},{type:'seat',num:114},{type:'seat',num:115},{type:'seat',num:116},{type:'seat',num:117},{type:'seat',num:118},{type:'seat',num:119},{type:'seat',num:120,leftHanded:true},{type:'empty'}],E:[{type:'empty'},{type:'empty'},{type:'seat',num:69},{type:'seat',num:70},{type:'seat',num:71},{type:'seat',num:72},{type:'seat',num:73},{type:'seat',num:74},{type:'seat',num:75},{type:'seat',num:76},{type:'seat',num:77},{type:'seat',num:78},{type:'seat',num:79},{type:'seat',num:80,leftHanded:true},{type:'aisle'},{type:'seat',num:81},{type:'seat',num:82},{type:'seat',num:83},{type:'seat',num:84},{type:'seat',num:85},{type:'seat',num:86},{type:'seat',num:87},{type:'seat',num:88},{type:'seat',num:89},{type:'seat',num:90},{type:'seat',num:91},{type:'seat',num:92,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'}],D:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:47},{type:'seat',num:48},{type:'seat',num:49},{type:'seat',num:50},{type:'seat',num:51},{type:'seat',num:52},{type:'seat',num:53},{type:'seat',num:54},{type:'seat',num:55},{type:'seat',num:56},{type:'seat',num:57,leftHanded:true},{type:'aisle'},{type:'seat',num:58},{type:'seat',num:59},{type:'seat',num:60},{type:'seat',num:61},{type:'seat',num:62},{type:'seat',num:63},{type:'seat',num:64},{type:'seat',num:65},{type:'seat',num:66},{type:'seat',num:67},{type:'seat',num:68,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],C:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:29},{type:'seat',num:30},{type:'seat',num:31},{type:'seat',num:32},{type:'seat',num:33},{type:'seat',num:34},{type:'seat',num:35},{type:'seat',num:36},{type:'seat',num:37,leftHanded:true},{type:'aisle'},{type:'seat',num:38},{type:'seat',num:39},{type:'seat',num:40},{type:'seat',num:41},{type:'seat',num:42},{type:'seat',num:43},{type:'seat',num:44},{type:'seat',num:45},{type:'seat',num:46,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20,leftHanded:true},{type:'aisle'},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26},{type:'seat',num:27},{type:'seat',num:28,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6,leftHanded:true},{type:'aisle'},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+  'BSBE_115':{label:'BSBE 115',rows:['N','M','L','K','J','I','H','G','F','E','D','C','B','A'],grid:{N:[{type:'seat',num:266},{type:'seat',num:267},{type:'seat',num:268},{type:'seat',num:269},{type:'seat',num:270},{type:'seat',num:271},{type:'seat',num:272},{type:'seat',num:273},{type:'seat',num:274},{type:'seat',num:275},{type:'seat',num:276},{type:'seat',num:277},{type:'seat',num:278},{type:'seat',num:279},{type:'seat',num:280},{type:'seat',num:281,leftHanded:true},{type:'empty'},{type:'seat',num:282},{type:'seat',num:283},{type:'seat',num:284},{type:'seat',num:285},{type:'seat',num:286},{type:'seat',num:287},{type:'seat',num:288},{type:'seat',num:289},{type:'seat',num:290,leftHanded:true}],M:[{type:'empty'},{type:'empty'},{type:'seat',num:246},{type:'seat',num:247},{type:'seat',num:248},{type:'seat',num:249},{type:'seat',num:250},{type:'seat',num:251},{type:'seat',num:252},{type:'seat',num:253},{type:'seat',num:254},{type:'seat',num:255,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:256},{type:'seat',num:257},{type:'seat',num:258},{type:'seat',num:259},{type:'seat',num:260},{type:'seat',num:261},{type:'seat',num:262},{type:'seat',num:263},{type:'seat',num:264},{type:'seat',num:265},{type:'seat',num:266,leftHanded:true}],L:[{type:'empty'},{type:'seat',num:223},{type:'seat',num:224},{type:'seat',num:225},{type:'seat',num:226},{type:'seat',num:227},{type:'seat',num:228},{type:'seat',num:229},{type:'seat',num:230},{type:'seat',num:231},{type:'seat',num:232,leftHanded:true},{type:'seat',num:233,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:234},{type:'seat',num:235},{type:'seat',num:236},{type:'seat',num:237},{type:'seat',num:238},{type:'seat',num:239},{type:'seat',num:240},{type:'seat',num:241},{type:'seat',num:242},{type:'seat',num:243},{type:'seat',num:244,leftHanded:true}],K:[{type:'empty'},{type:'seat',num:201},{type:'seat',num:202},{type:'seat',num:203},{type:'seat',num:204},{type:'seat',num:205},{type:'seat',num:206},{type:'seat',num:207},{type:'seat',num:208},{type:'seat',num:209},{type:'seat',num:210,leftHanded:true},{type:'seat',num:211,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:212},{type:'seat',num:213},{type:'seat',num:214},{type:'seat',num:215},{type:'seat',num:216},{type:'seat',num:217},{type:'seat',num:218},{type:'seat',num:219},{type:'seat',num:220},{type:'seat',num:221},{type:'seat',num:222,leftHanded:true}],J:[{type:'empty'},{type:'seat',num:179},{type:'seat',num:180},{type:'seat',num:181},{type:'seat',num:182},{type:'seat',num:183},{type:'seat',num:184},{type:'seat',num:185},{type:'seat',num:186},{type:'seat',num:187},{type:'seat',num:188,leftHanded:true},{type:'seat',num:189,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:190},{type:'seat',num:191},{type:'seat',num:192},{type:'seat',num:193},{type:'seat',num:194},{type:'seat',num:195},{type:'seat',num:196},{type:'seat',num:197},{type:'seat',num:198},{type:'seat',num:199},{type:'seat',num:200,leftHanded:true}],I:[{type:'empty'},{type:'seat',num:157},{type:'seat',num:158},{type:'seat',num:159},{type:'seat',num:160},{type:'seat',num:161},{type:'seat',num:162},{type:'seat',num:163},{type:'seat',num:164},{type:'seat',num:165},{type:'seat',num:166,leftHanded:true},{type:'seat',num:167,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:168},{type:'seat',num:169},{type:'seat',num:170},{type:'seat',num:171},{type:'seat',num:172},{type:'seat',num:173},{type:'seat',num:174},{type:'seat',num:175},{type:'seat',num:176},{type:'seat',num:177},{type:'seat',num:178,leftHanded:true}],H:[{type:'empty'},{type:'seat',num:135},{type:'seat',num:136},{type:'seat',num:137},{type:'seat',num:138},{type:'seat',num:139},{type:'seat',num:140},{type:'seat',num:141},{type:'seat',num:142},{type:'seat',num:143},{type:'seat',num:144,leftHanded:true},{type:'seat',num:145,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:146},{type:'seat',num:147},{type:'seat',num:148},{type:'seat',num:149},{type:'seat',num:150},{type:'seat',num:151},{type:'seat',num:152},{type:'seat',num:153},{type:'seat',num:154},{type:'seat',num:155},{type:'seat',num:156,leftHanded:true}],G:[{type:'empty'},{type:'seat',num:113},{type:'seat',num:114},{type:'seat',num:115},{type:'seat',num:116},{type:'seat',num:117},{type:'seat',num:118},{type:'seat',num:119},{type:'seat',num:120},{type:'seat',num:121},{type:'seat',num:122,leftHanded:true},{type:'seat',num:123,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:124},{type:'seat',num:125},{type:'seat',num:126},{type:'seat',num:127},{type:'seat',num:128},{type:'seat',num:129},{type:'seat',num:130},{type:'seat',num:131},{type:'seat',num:132},{type:'seat',num:133},{type:'seat',num:134,leftHanded:true}],F:[{type:'empty'},{type:'seat',num:91},{type:'seat',num:92},{type:'seat',num:93},{type:'seat',num:94},{type:'seat',num:95},{type:'seat',num:96},{type:'seat',num:97},{type:'seat',num:98},{type:'seat',num:99},{type:'seat',num:100,leftHanded:true},{type:'seat',num:101,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:102},{type:'seat',num:103},{type:'seat',num:104},{type:'seat',num:105},{type:'seat',num:106},{type:'seat',num:107},{type:'seat',num:108},{type:'seat',num:109},{type:'seat',num:110},{type:'seat',num:111},{type:'seat',num:112,leftHanded:true}],E:[{type:'empty'},{type:'seat',num:69},{type:'seat',num:70},{type:'seat',num:71},{type:'seat',num:72},{type:'seat',num:73},{type:'seat',num:74},{type:'seat',num:75},{type:'seat',num:76},{type:'seat',num:77},{type:'seat',num:78,leftHanded:true},{type:'seat',num:79,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:80},{type:'seat',num:81},{type:'seat',num:82},{type:'seat',num:83},{type:'seat',num:84},{type:'seat',num:85},{type:'seat',num:86},{type:'seat',num:87},{type:'seat',num:88},{type:'seat',num:89},{type:'seat',num:90,leftHanded:true}],D:[{type:'empty'},{type:'seat',num:47},{type:'seat',num:48},{type:'seat',num:49},{type:'seat',num:50},{type:'seat',num:51},{type:'seat',num:52},{type:'seat',num:53},{type:'seat',num:54},{type:'seat',num:55},{type:'seat',num:56,leftHanded:true},{type:'seat',num:57,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:58},{type:'seat',num:59},{type:'seat',num:60},{type:'seat',num:61},{type:'seat',num:62},{type:'seat',num:63},{type:'seat',num:64},{type:'seat',num:65},{type:'seat',num:66},{type:'seat',num:67},{type:'seat',num:68,leftHanded:true}],C:[{type:'empty'},{type:'empty'},{type:'seat',num:27},{type:'seat',num:28},{type:'seat',num:29},{type:'seat',num:30},{type:'seat',num:31},{type:'seat',num:32},{type:'seat',num:33},{type:'seat',num:34},{type:'seat',num:35,leftHanded:true},{type:'seat',num:36,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:37},{type:'seat',num:38},{type:'seat',num:39},{type:'seat',num:40},{type:'seat',num:41},{type:'seat',num:42},{type:'seat',num:43},{type:'seat',num:44},{type:'seat',num:45},{type:'seat',num:46,leftHanded:true},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'seat',num:17,leftHanded:true},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26,leftHanded:true},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'table',width:2,label:'Table (2 seats)'},{type:'seat',num:3},{type:'seat',num:4,leftHanded:true},{type:'empty'},{type:'empty'},{type:'aisle'},{type:'aisle'},{type:'aisle'},{type:'empty'},{type:'empty'},{type:'seat',num:5},{type:'seat',num:6,leftHanded:true},{type:'empty'},{type:'empty'},{type:'seat',num:7},{type:'seat',num:8},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+
+  'CHEM_100':{label:'CHEM 100',rows:['N','M','L','K','J','I','H','G','F','E','D','C','B','A'],grid:{N:[{type:'empty'},{type:'empty'},{type:'table',width:6,label:'Table (5 seats)'},{type:'seat',num:296},{type:'seat',num:297},{type:'seat',num:298},{type:'seat',num:299},{type:'seat',num:300},{type:'seat',num:301},{type:'aisle'},{type:'seat',num:302},{type:'seat',num:303},{type:'seat',num:304},{type:'seat',num:305},{type:'seat',num:306},{type:'seat',num:307},{type:'seat',num:308},{type:'seat',num:309},{type:'seat',num:310},{type:'seat',num:311},{type:'seat',num:312},{type:'seat',num:313},{type:'empty'}],M:[{type:'empty'},{type:'seat',num:271,leftHanded:true},{type:'seat',num:272},{type:'seat',num:273},{type:'seat',num:274},{type:'seat',num:275},{type:'seat',num:276},{type:'seat',num:277},{type:'seat',num:278},{type:'seat',num:279},{type:'seat',num:280},{type:'seat',num:281},{type:'seat',num:282},{type:'seat',num:283},{type:'aisle'},{type:'seat',num:284},{type:'seat',num:285},{type:'seat',num:286},{type:'seat',num:287},{type:'seat',num:288},{type:'seat',num:289},{type:'seat',num:290},{type:'seat',num:291},{type:'seat',num:292},{type:'seat',num:293},{type:'seat',num:294},{type:'seat',num:295,leftHanded:true},{type:'empty'}],L:[{type:'empty'},{type:'seat',num:246},{type:'seat',num:247},{type:'seat',num:248},{type:'seat',num:249},{type:'seat',num:250},{type:'seat',num:251},{type:'seat',num:252},{type:'seat',num:253},{type:'seat',num:254},{type:'seat',num:255},{type:'seat',num:256},{type:'seat',num:257},{type:'seat',num:258},{type:'aisle'},{type:'seat',num:259},{type:'seat',num:260},{type:'seat',num:261},{type:'seat',num:262},{type:'seat',num:263},{type:'seat',num:264},{type:'seat',num:265},{type:'seat',num:266},{type:'seat',num:267},{type:'seat',num:268},{type:'seat',num:269},{type:'seat',num:270},{type:'empty'}],K:[{type:'empty'},{type:'seat',num:221},{type:'seat',num:222},{type:'seat',num:223},{type:'seat',num:224},{type:'seat',num:225},{type:'seat',num:226},{type:'seat',num:227},{type:'seat',num:228},{type:'seat',num:229},{type:'seat',num:230},{type:'seat',num:231},{type:'seat',num:232},{type:'seat',num:233},{type:'aisle'},{type:'seat',num:234},{type:'seat',num:235},{type:'seat',num:236},{type:'seat',num:237},{type:'seat',num:238},{type:'seat',num:239},{type:'seat',num:240},{type:'seat',num:241},{type:'seat',num:242},{type:'seat',num:243},{type:'seat',num:244},{type:'seat',num:245},{type:'empty'}],J:[{type:'empty'},{type:'seat',num:196},{type:'seat',num:197},{type:'seat',num:198},{type:'seat',num:199},{type:'seat',num:200},{type:'seat',num:201},{type:'seat',num:202},{type:'seat',num:203},{type:'seat',num:204},{type:'seat',num:205},{type:'seat',num:206},{type:'seat',num:207},{type:'seat',num:208},{type:'aisle'},{type:'seat',num:209},{type:'seat',num:210},{type:'seat',num:211},{type:'seat',num:212},{type:'seat',num:213},{type:'seat',num:214},{type:'seat',num:215},{type:'seat',num:216},{type:'seat',num:217},{type:'seat',num:218},{type:'seat',num:219},{type:'seat',num:220},{type:'empty'}],I:[{type:'empty'},{type:'seat',num:171,leftHanded:true},{type:'seat',num:172},{type:'seat',num:173},{type:'seat',num:174},{type:'seat',num:175},{type:'seat',num:176},{type:'seat',num:177},{type:'seat',num:178},{type:'seat',num:179},{type:'seat',num:180},{type:'seat',num:181},{type:'seat',num:182},{type:'seat',num:183},{type:'aisle'},{type:'seat',num:184},{type:'seat',num:185},{type:'seat',num:186},{type:'seat',num:187},{type:'seat',num:188},{type:'seat',num:189},{type:'seat',num:190},{type:'seat',num:191},{type:'seat',num:192},{type:'seat',num:193},{type:'seat',num:194},{type:'seat',num:195,leftHanded:true},{type:'empty'}],H:[{type:'empty'},{type:'seat',num:146},{type:'seat',num:147},{type:'seat',num:148},{type:'seat',num:149},{type:'seat',num:150},{type:'seat',num:151},{type:'seat',num:152},{type:'seat',num:153},{type:'seat',num:154},{type:'seat',num:155},{type:'seat',num:156},{type:'seat',num:157},{type:'seat',num:158},{type:'aisle'},{type:'seat',num:159},{type:'seat',num:160},{type:'seat',num:161},{type:'seat',num:162},{type:'seat',num:163},{type:'seat',num:164},{type:'seat',num:165},{type:'seat',num:166},{type:'seat',num:167},{type:'seat',num:168},{type:'seat',num:169},{type:'seat',num:170},{type:'empty'}],G:[{type:'empty'},{type:'seat',num:121},{type:'seat',num:122},{type:'seat',num:123},{type:'seat',num:124},{type:'seat',num:125},{type:'seat',num:126},{type:'seat',num:127},{type:'seat',num:128},{type:'seat',num:129},{type:'seat',num:130},{type:'seat',num:131},{type:'seat',num:132},{type:'seat',num:133},{type:'aisle'},{type:'seat',num:134},{type:'seat',num:135},{type:'seat',num:136},{type:'seat',num:137},{type:'seat',num:138},{type:'seat',num:139},{type:'seat',num:140},{type:'seat',num:141},{type:'seat',num:142},{type:'seat',num:143},{type:'seat',num:144},{type:'seat',num:145},{type:'empty'}],F:[{type:'empty'},{type:'seat',num:96,leftHanded:true},{type:'seat',num:97},{type:'seat',num:98},{type:'seat',num:99},{type:'seat',num:100},{type:'seat',num:101},{type:'seat',num:102},{type:'seat',num:103},{type:'seat',num:104},{type:'seat',num:105},{type:'seat',num:106},{type:'seat',num:107},{type:'seat',num:108},{type:'aisle'},{type:'seat',num:109},{type:'seat',num:110},{type:'seat',num:111},{type:'seat',num:112},{type:'seat',num:113},{type:'seat',num:114},{type:'seat',num:115},{type:'seat',num:116},{type:'seat',num:117},{type:'seat',num:118},{type:'seat',num:119},{type:'seat',num:120,leftHanded:true},{type:'empty'}],E:[{type:'empty'},{type:'empty'},{type:'seat',num:73},{type:'seat',num:74},{type:'seat',num:75},{type:'seat',num:76},{type:'seat',num:77},{type:'seat',num:78},{type:'seat',num:79},{type:'seat',num:80},{type:'seat',num:81},{type:'seat',num:82},{type:'seat',num:83},{type:'seat',num:84},{type:'aisle'},{type:'seat',num:85},{type:'seat',num:86},{type:'seat',num:87},{type:'seat',num:88},{type:'seat',num:89},{type:'seat',num:90},{type:'seat',num:91},{type:'seat',num:92},{type:'seat',num:93},{type:'seat',num:94},{type:'seat',num:95},{type:'empty'},{type:'empty'}],D:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:52,leftHanded:true},{type:'seat',num:53},{type:'seat',num:54},{type:'seat',num:55},{type:'seat',num:56},{type:'seat',num:57},{type:'seat',num:58},{type:'seat',num:59},{type:'seat',num:60},{type:'seat',num:61},{type:'seat',num:62},{type:'aisle'},{type:'seat',num:63},{type:'seat',num:64},{type:'seat',num:65},{type:'seat',num:66},{type:'seat',num:67},{type:'seat',num:68},{type:'seat',num:69},{type:'seat',num:70},{type:'seat',num:71},{type:'seat',num:72,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'}],C:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:33},{type:'seat',num:34},{type:'seat',num:35},{type:'seat',num:36},{type:'seat',num:37},{type:'seat',num:38},{type:'seat',num:39},{type:'seat',num:40},{type:'seat',num:41},{type:'seat',num:42},{type:'aisle'},{type:'seat',num:43},{type:'seat',num:44},{type:'seat',num:45},{type:'seat',num:46},{type:'seat',num:47},{type:'seat',num:48},{type:'seat',num:49},{type:'seat',num:50},{type:'seat',num:51},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:16,leftHanded:true},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'aisle'},{type:'seat',num:25},{type:'seat',num:26},{type:'seat',num:27},{type:'seat',num:28},{type:'seat',num:29},{type:'seat',num:30},{type:'seat',num:31},{type:'seat',num:32,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2,moveable:true},{type:'empty'},{type:'empty'},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'aisle'},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+  'HECC_105':{label:'HECC 105',rows:['K','J','L','G','F','E','D','C','B','A'],grid:{K:[{type:'empty'},{type:'table',width:6,label:'Table (4 seats)'},{type:'seat',num:1},{type:'seat',num:2},{type:'empty'},{type:'empty'},{type:'table',width:6,label:'Table (4 seats)'},{type:'empty'}],J:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'empty'}],L:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],G:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],F:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],E:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],D:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],C:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],B:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}],A:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16,leftHanded:true},{type:'empty'}]}},
+  'BLOC_164':{label:'BLOC 164',rows:['C','B','A'],grid:{C:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'aisle'},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'aisle'},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'aisle'},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+  'BLOC_161':{label:'BLOC 161',rows:['D','C','B','A'],grid:{D:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'empty'},{type:'empty'}],C:[{type:'empty'},{type:'seat',num:1},{type:'empty'},{type:'seat',num:2},{type:'empty'},{type:'seat',num:3},{type:'empty'},{type:'seat',num:4},{type:'empty'},{type:'seat',num:5},{type:'empty'},{type:'seat',num:6},{type:'empty'},{type:'seat',num:7},{type:'empty'},{type:'seat',num:8},{type:'empty'},{type:'seat',num:9},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:2},{type:'empty'},{type:'seat',num:3},{type:'empty'},{type:'seat',num:4},{type:'empty'},{type:'seat',num:5},{type:'empty'},{type:'seat',num:6},{type:'empty'},{type:'seat',num:7},{type:'empty'},{type:'seat',num:8},{type:'empty'},{type:'empty'}]}},
+  'BLOC_160':{label:'BLOC 160',rows:['D','C','B','A'],grid:{D:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'empty'},{type:'empty'}],C:[{type:'empty'},{type:'seat',num:1},{type:'empty'},{type:'seat',num:2},{type:'empty'},{type:'seat',num:3},{type:'empty'},{type:'seat',num:4},{type:'empty'},{type:'seat',num:5},{type:'empty'},{type:'seat',num:6},{type:'empty'},{type:'seat',num:7},{type:'empty'},{type:'seat',num:8},{type:'empty'},{type:'seat',num:9},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12,broken:true},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'seat',num:1},{type:'empty'},{type:'seat',num:2,broken:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:6},{type:'empty'},{type:'seat',num:7},{type:'empty'},{type:'seat',num:8},{type:'empty'},{type:'seat',num:9},{type:'empty'}]}},
+  'BLOC_149':{label:'BLOC 149',rows:['H','G','F','E','D','C','B','A'],grid:{A:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13}],B:[{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26}],C:[{type:'seat',num:27},{type:'seat',num:28},{type:'seat',num:29},{type:'seat',num:30},{type:'seat',num:31},{type:'seat',num:32},{type:'seat',num:33},{type:'seat',num:34},{type:'seat',num:35},{type:'seat',num:36},{type:'seat',num:37},{type:'seat',num:38},{type:'seat',num:39}],D:[{type:'seat',num:40},{type:'seat',num:41},{type:'seat',num:42},{type:'seat',num:43},{type:'seat',num:44},{type:'seat',num:45},{type:'seat',num:46},{type:'seat',num:47},{type:'seat',num:48},{type:'seat',num:49},{type:'seat',num:50},{type:'seat',num:51},{type:'seat',num:52}],E:[{type:'seat',num:53},{type:'seat',num:54},{type:'seat',num:55},{type:'seat',num:56},{type:'seat',num:57},{type:'seat',num:58},{type:'seat',num:59},{type:'seat',num:60},{type:'seat',num:61},{type:'seat',num:62},{type:'seat',num:63},{type:'seat',num:64},{type:'seat',num:65}],F:[{type:'seat',num:66},{type:'seat',num:67},{type:'seat',num:68},{type:'seat',num:69},{type:'seat',num:70},{type:'seat',num:71},{type:'seat',num:72},{type:'seat',num:73},{type:'seat',num:74},{type:'seat',num:75},{type:'seat',num:76},{type:'seat',num:77},{type:'seat',num:78}],G:[{type:'seat',num:79},{type:'seat',num:80},{type:'seat',num:81},{type:'seat',num:82},{type:'seat',num:83},{type:'seat',num:84},{type:'seat',num:85},{type:'seat',num:86},{type:'seat',num:87},{type:'seat',num:88},{type:'seat',num:89},{type:'seat',num:90},{type:'empty'}],H:[{type:'empty'},{type:'empty'},{type:'seat',num:91},{type:'seat',num:92},{type:'seat',num:93},{type:'seat',num:94},{type:'aisle'},{type:'seat',num:95},{type:'seat',num:96},{type:'seat',num:97},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+  'BLOC_128':{label:'BLOC 128',rows:['D','C','B','A'],grid:{D:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'empty'}],C:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'empty'}],B:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'empty'}],A:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'aisle'},{type:'seat',num:8},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'empty'},{type:'empty'}]}},
+  'BLOC_117':{label:'BLOC 117',rows:['D','C','B','A'],grid:{D:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'aisle'},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'empty'},{type:'empty'}],C:[{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'seat',num:9},{type:'aisle'},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'seat',num:17},{type:'seat',num:18},{type:'empty'},{type:'empty'}],B:[{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'aisle'},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15},{type:'seat',num:16},{type:'empty'},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'aisle'},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+  'BLOC_102':{label:'BLOC 102',rows:['L','K','J','H','G','F','E','D','C','B','A'],grid:{L:[{type:'empty'},{type:'empty'},{type:'seat',num:281},{type:'seat',num:282,leftHanded:true},{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:283},{type:'seat',num:284},{type:'table',width:4,label:'Table (2 seats)'},{type:'seat',num:285,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:286},{type:'seat',num:287},{type:'seat',num:288},{type:'seat',num:289,leftHanded:true},{type:'table',width:3,label:'Table (2 seats)'},{type:'seat',num:290},{type:'seat',num:291},{type:'seat',num:292},{type:'seat',num:293},{type:'seat',num:294,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'}],K:[{type:'empty'},{type:'seat',num:247},{type:'seat',num:248},{type:'seat',num:249},{type:'seat',num:250},{type:'seat',num:251},{type:'seat',num:252},{type:'seat',num:253},{type:'seat',num:254},{type:'empty'},{type:'seat',num:255},{type:'empty'},{type:'seat',num:256},{type:'seat',num:257},{type:'seat',num:258},{type:'seat',num:259},{type:'seat',num:260},{type:'seat',num:261},{type:'seat',num:262,leftHanded:true},{type:'aisle'},{type:'seat',num:264},{type:'seat',num:265},{type:'seat',num:266},{type:'seat',num:267},{type:'seat',num:268},{type:'seat',num:269},{type:'seat',num:270},{type:'seat',num:271},{type:'seat',num:272},{type:'seat',num:273},{type:'seat',num:274},{type:'seat',num:275},{type:'seat',num:276},{type:'seat',num:277},{type:'seat',num:278},{type:'seat',num:279},{type:'seat',num:280,leftHanded:true},{type:'empty'},{type:'empty'}],J:[{type:'empty'},{type:'seat',num:211},{type:'seat',num:212},{type:'seat',num:213},{type:'seat',num:214},{type:'seat',num:215},{type:'seat',num:216},{type:'seat',num:217},{type:'seat',num:218},{type:'seat',num:219},{type:'seat',num:220},{type:'seat',num:221},{type:'seat',num:222},{type:'seat',num:223},{type:'seat',num:224},{type:'seat',num:225},{type:'seat',num:226},{type:'seat',num:227},{type:'seat',num:228},{type:'aisle'},{type:'seat',num:229},{type:'seat',num:230},{type:'seat',num:231},{type:'seat',num:232},{type:'seat',num:233},{type:'seat',num:234},{type:'seat',num:235},{type:'seat',num:236},{type:'seat',num:237},{type:'seat',num:238},{type:'seat',num:239},{type:'seat',num:240},{type:'seat',num:241},{type:'seat',num:242},{type:'seat',num:243},{type:'seat',num:244},{type:'seat',num:245},{type:'seat',num:246},{type:'empty'}],H:[{type:'empty'},{type:'seat',num:175},{type:'seat',num:176},{type:'seat',num:177},{type:'seat',num:178},{type:'seat',num:179},{type:'seat',num:180},{type:'seat',num:181},{type:'seat',num:182},{type:'seat',num:183},{type:'seat',num:184},{type:'seat',num:185},{type:'seat',num:186},{type:'seat',num:187},{type:'seat',num:188},{type:'seat',num:189},{type:'seat',num:190},{type:'seat',num:191},{type:'seat',num:192},{type:'aisle'},{type:'seat',num:193},{type:'seat',num:194},{type:'seat',num:195},{type:'seat',num:196},{type:'seat',num:197},{type:'seat',num:198},{type:'seat',num:199},{type:'seat',num:200},{type:'seat',num:201},{type:'seat',num:202},{type:'seat',num:203},{type:'seat',num:204},{type:'seat',num:205},{type:'seat',num:206},{type:'seat',num:207},{type:'seat',num:208},{type:'seat',num:209},{type:'seat',num:210,broken:true},{type:'empty'}],G:[{type:'empty'},{type:'empty'},{type:'seat',num:141},{type:'seat',num:142},{type:'seat',num:143},{type:'seat',num:144},{type:'seat',num:145},{type:'seat',num:146},{type:'seat',num:147},{type:'seat',num:148},{type:'seat',num:149},{type:'seat',num:150},{type:'seat',num:151},{type:'seat',num:152},{type:'seat',num:153},{type:'seat',num:154},{type:'seat',num:155},{type:'seat',num:156},{type:'seat',num:157},{type:'aisle'},{type:'seat',num:158},{type:'seat',num:159},{type:'seat',num:160},{type:'seat',num:161},{type:'seat',num:162},{type:'seat',num:163},{type:'seat',num:164},{type:'seat',num:165},{type:'seat',num:166},{type:'seat',num:167},{type:'seat',num:168},{type:'seat',num:169},{type:'seat',num:170},{type:'seat',num:171},{type:'seat',num:172},{type:'seat',num:173},{type:'seat',num:174},{type:'empty'},{type:'empty'}],F:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:111},{type:'seat',num:112},{type:'seat',num:113},{type:'seat',num:114},{type:'seat',num:115},{type:'seat',num:116},{type:'seat',num:117},{type:'seat',num:118},{type:'seat',num:119},{type:'seat',num:120},{type:'seat',num:121},{type:'seat',num:122},{type:'seat',num:123},{type:'seat',num:124},{type:'seat',num:125},{type:'aisle'},{type:'seat',num:126},{type:'seat',num:127},{type:'seat',num:128},{type:'seat',num:129},{type:'seat',num:130},{type:'seat',num:131},{type:'seat',num:132},{type:'seat',num:133},{type:'seat',num:134},{type:'seat',num:135},{type:'seat',num:136},{type:'seat',num:137},{type:'seat',num:138},{type:'seat',num:139},{type:'seat',num:140},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],E:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:83},{type:'seat',num:84},{type:'seat',num:85},{type:'seat',num:86},{type:'seat',num:87},{type:'seat',num:88},{type:'seat',num:89},{type:'seat',num:90},{type:'seat',num:91},{type:'seat',num:92},{type:'seat',num:93},{type:'seat',num:94},{type:'seat',num:95},{type:'seat',num:96},{type:'aisle'},{type:'seat',num:97},{type:'seat',num:98},{type:'seat',num:99},{type:'seat',num:100},{type:'seat',num:101},{type:'seat',num:102},{type:'seat',num:103},{type:'seat',num:104},{type:'seat',num:105},{type:'seat',num:106},{type:'seat',num:107},{type:'seat',num:108},{type:'seat',num:109},{type:'seat',num:110},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],D:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:59},{type:'seat',num:60},{type:'seat',num:61},{type:'seat',num:62},{type:'seat',num:63},{type:'seat',num:64},{type:'seat',num:65},{type:'seat',num:66},{type:'seat',num:67},{type:'seat',num:68},{type:'seat',num:69},{type:'seat',num:70},{type:'aisle'},{type:'seat',num:71},{type:'seat',num:72},{type:'seat',num:73},{type:'seat',num:74},{type:'seat',num:75},{type:'seat',num:76},{type:'seat',num:77},{type:'seat',num:78},{type:'seat',num:79},{type:'seat',num:80},{type:'seat',num:81,leftHanded:true},{type:'seat',num:82,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],C:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:37},{type:'seat',num:38},{type:'seat',num:39},{type:'seat',num:40},{type:'seat',num:41},{type:'seat',num:42},{type:'seat',num:43},{type:'seat',num:44},{type:'seat',num:45},{type:'seat',num:46},{type:'seat',num:47},{type:'aisle'},{type:'seat',num:48},{type:'seat',num:49},{type:'seat',num:50},{type:'seat',num:51},{type:'seat',num:52},{type:'seat',num:53},{type:'seat',num:54},{type:'seat',num:55},{type:'seat',num:56},{type:'seat',num:57,broken:true},{type:'seat',num:58,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],B:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:17},{type:'seat',num:18},{type:'seat',num:19},{type:'seat',num:20},{type:'seat',num:21},{type:'seat',num:22},{type:'seat',num:23},{type:'seat',num:24},{type:'seat',num:25},{type:'seat',num:26},{type:'aisle'},{type:'seat',num:27},{type:'seat',num:28},{type:'seat',num:29},{type:'seat',num:30},{type:'seat',num:31},{type:'seat',num:32},{type:'seat',num:33},{type:'seat',num:34},{type:'seat',num:35,leftHanded:true},{type:'seat',num:36,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}],A:[{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'seat',num:1},{type:'seat',num:2},{type:'seat',num:3},{type:'seat',num:4},{type:'seat',num:5},{type:'seat',num:6},{type:'seat',num:7},{type:'seat',num:8},{type:'aisle'},{type:'seat',num:9},{type:'seat',num:10},{type:'seat',num:11},{type:'seat',num:12},{type:'seat',num:13},{type:'seat',num:14},{type:'seat',num:15,leftHanded:true},{type:'seat',num:16,leftHanded:true},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'},{type:'empty'}]}},
+};
+
+
+/* ── stats helpers ── */
+function countType(layout,key){var n=0;layout.rows.forEach(function(r){(layout.grid[r]||[]).forEach(function(c){if(c.type==='seat'&&c[key])n++;});});return n;}
+function countSeats(layout){var n=0;layout.rows.forEach(function(r){(layout.grid[r]||[]).forEach(function(c){if(c.type==='seat')n++;});});return n;}
+
+/* ── usable seats ── */
+function buildUsable(layout,excluded){
+  /* Regular seats only - left-handed excluded here, used as last resort in allocate() */
+  var usable=[];
+  layout.rows.forEach(function(r){
+    (layout.grid[r]||[]).forEach(function(c){
+      if(c.type!=='seat')return;
+      if(c.leftHanded||c.broken)return;
+      var id=r+c.num;
+      if(excluded.includes(id))return;
+      usable.push(id);
+    });
+  });
+  return usable;
+}
+function buildUsableLH(layout,excluded){
+  /* Left-handed seats available as last resort */
+  var usable=[];
+  layout.rows.forEach(function(r){
+    (layout.grid[r]||[]).forEach(function(c){
+      if(c.type!=='seat')return;
+      if(!c.leftHanded||c.broken)return;
+      var id=r+c.num;
+      if(excluded.includes(id))return;
+      usable.push(id);
+    });
+  });
+  return usable;
+}
+
+/* ── allocation ── */
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}}
+
+/* Build per-row list of {col, id} for every usable seat.
+   'col' is the cell's index in the grid array = physical column position.
+   The aisle cell naturally creates a gap (e.g. left seats at cols 0-12,
+   aisle at col 13, right seats at cols 14-25). */
+function buildColMap(layout,usableSet){
+  var map={};
+  layout.rows.forEach(function(r){
+    var entries=[];
+    (layout.grid[r]||[]).forEach(function(cell,ci){
+      if(cell.type!=='seat') return;
+      var id=r+cell.num;
+      if(usableSet.has(id)) entries.push({col:ci,id:id});
+    });
+    map[r]=entries;
+  });
+  return map;
+}
+
+/* Pick k seats whose physical column positions are evenly distributed
+   across the row's span. 'phase' (0 or 0.5) staggers alternate rows
+   so students in adjacent rows are not in the same column. */
+function pickByPosition(entries,k,phase){
+  /* phase is a fractional offset [0,1) that shifts the whole interval grid.
+     Different phase per row → columns spread across rows, not stacked. */
+  if(!entries.length||k<=0) return [];
+  k=Math.min(k,entries.length);
+  if(k===entries.length) return entries.map(function(e){return e.id;});
+  var minC=entries[0].col, maxC=entries[entries.length-1].col;
+  var span=maxC-minC||1;
+  var interval=span/k;
+  var picked=[],pickedSet={};
+  for(var j=0;j<k;j++){
+    /* target wraps within row span so the full phase range is usable */
+    var rawTarget=minC+interval*(j+phase);
+    var target=minC+((rawTarget-minC)%span+span)%span;
+    var best=null,bestD=Infinity;
+    entries.forEach(function(e){
+      if(pickedSet[e.id]) return;
+      /* circular distance so wrapping target finds the nearest seat */
+      var d=Math.min(Math.abs(e.col-target), span+1-Math.abs(e.col-target));
+      if(d<bestD){bestD=d;best=e;}
+    });
+    if(!best) entries.forEach(function(e){if(!pickedSet[e.id]&&!best)best=e;});
+    if(best){picked.push(best.id);pickedSet[best.id]=true;}
+  }
+  return picked;
+}
+
+function allocate(usable,n,layout,lhSeats){
+  /* Build 2D coordinates {r:rowIndex, c:colIndex} for every seat.
+     Distances in this space are true Manhattan distances in the classroom grid. */
+  var coords={};
+  layout.rows.forEach(function(r,ri){
+    (layout.grid[r]||[]).forEach(function(cell,ci){
+      if(cell.type!=='seat') return;
+      coords[r+cell.num]={r:ri,c:ci};
+    });
+  });
+  function mdist(a,b){
+    var ca=coords[a],cb=coords[b];
+    return Math.abs(ca.r-cb.r)+Math.abs(ca.c-cb.c);
+  }
+
+  /* Pool: regular seats first; LH seats appended only if still short */
+  var pool=usable.slice();
+  if(pool.length<n&&lhSeats) lhSeats.forEach(function(s){pool.push(s);});
+
+  var nRows=layout.rows.length;
+  /* Column index is the layout cell index (interleaves seats with aisles
+     and tables), so |Δc|=1 in this space means two seats with no
+     separator between them.  nCols is just the widest row's cell count. */
+  var nCols=0;
+  layout.rows.forEach(function(r){
+    var len=(layout.grid[r]||[]).length;
+    if(len>nCols) nCols=len;
+  });
+
+  /* ── Per-row usable capacity, used to keep at least one empty seat per row.
+     If n ≤ Σ(rowCap[r] − 1) over non-empty rows, we treat "no row fully
+     filled" as a hard constraint inside the greedy step.  This replaces the
+     previous front-row bias, which had the side-effect of packing the front
+     of the room when allocations approached capacity. */
+  var rowCap=new Array(nRows).fill(0);
+  pool.forEach(function(s){ rowCap[coords[s].r]++; });
+  var nonEmptyRows=0;
+  for(var rIdx=0;rIdx<nRows;rIdx++) if(rowCap[rIdx]>0) nonEmptyRows++;
+  var keepOneEmpty=(n<=pool.length-nonEmptyRows);
+
+  /* ── Greedy farthest-first traversal (k-dispersion) ─────────────────
+     At each step, pick the available seat that maximises a layered score
+     constructed from an additive PENALTY (constraint cost) plus the
+     min-distance to the already-selected set plus a small random
+     tiebreaker.  The penalty dominates min-distance differences, so
+     harder constraints always win, but within a penalty class the
+     algorithm still spreads picks as far apart as possible.
+
+     The penalty sums independent costs along the row and column axes;
+     each cost is gated by "slack" in its own axis (some other row /
+     other column has ≥ 2 unselected seats - i.e., we have room to
+     redirect there instead of crowding here):
+
+         keepOneEmpty violated     +100   (worst - last-resort only)
+         row 3-run created (slack)   +4
+         row pair  created (slack)   +1
+         col 3-run created (slack)   +4
+         col pair  created (slack)   +1
+
+     Two pairs (one row, one col) cost 1+1 = 2, still strictly better
+     than a single 3-run (cost 4) - so the greedy never chooses to form
+     a triple to avoid two pairs, but happily accepts isolated pairs
+     once slack runs out.
+
+     "with-slack" means some other row / column still has ≥ 2 unselected
+     seats; once both axes are out of slack the rules relax automatically
+     and only the keepOneEmpty constraint remains. */
+  function greedyRun(seedIdx){
+    var avail=pool.slice();
+    var sel=[avail.splice(seedIdx,1)[0]];
+    /* minD[s] = distance from s to its nearest selected neighbour */
+    var minD={};
+    avail.forEach(function(s){minD[s]=mdist(s,sel[0]);});
+    var selectedInRow=new Array(nRows).fill(0);
+    selectedInRow[coords[sel[0]].r]++;
+    /* selByRow[r] / selByCol[c]: plain objects used as sets of
+       selected column / row indices, so adjacency and 3-run tests are
+       O(1) per candidate. */
+    var selByRow=new Array(nRows);
+    for(var rr=0;rr<nRows;rr++) selByRow[rr]=Object.create(null);
+    selByRow[coords[sel[0]].r][coords[sel[0]].c]=true;
+    var selByCol=new Array(nCols);
+    for(var cc=0;cc<nCols;cc++) selByCol[cc]=Object.create(null);
+    selByCol[coords[sel[0]].c][coords[sel[0]].r]=true;
+
+    while(sel.length<n&&avail.length){
+      /* Per-iteration: count available seats per row and per column,
+         find top two of each - enough to answer "does some other
+         row / column have ≥ 2 empties?" in O(1) per candidate. */
+      var rowAvail=new Array(nRows).fill(0);
+      var colAvail=new Array(nCols).fill(0);
+      for(var ai=0;ai<avail.length;ai++){
+        rowAvail[coords[avail[ai]].r]++;
+        colAvail[coords[avail[ai]].c]++;
+      }
+      var topR1=-1,topR2=-1;
+      for(var rIt=0;rIt<nRows;rIt++){
+        if(topR1<0||rowAvail[rIt]>rowAvail[topR1]){topR2=topR1;topR1=rIt;}
+        else if(topR2<0||rowAvail[rIt]>rowAvail[topR2]){topR2=rIt;}
+      }
+      var topC1=-1,topC2=-1;
+      for(var cIt=0;cIt<nCols;cIt++){
+        if(topC1<0||colAvail[cIt]>colAvail[topC1]){topC2=topC1;topC1=cIt;}
+        else if(topC2<0||colAvail[cIt]>colAvail[topC2]){topC2=cIt;}
+      }
+      function otherRowSlack(ri){
+        if(topR1>=0 && topR1!==ri && rowAvail[topR1]>=2) return true;
+        if(topR2>=0 && topR2!==ri && rowAvail[topR2]>=2) return true;
+        return false;
+      }
+      function otherColSlack(ci){
+        if(topC1>=0 && topC1!==ci && colAvail[topC1]>=2) return true;
+        if(topC2>=0 && topC2!==ci && colAvail[topC2]>=2) return true;
+        return false;
+      }
+      function rowPair(s){
+        var cs=coords[s], row=selByRow[cs.r];
+        return row[cs.c-1]===true || row[cs.c+1]===true;
+      }
+      function rowRun3(s){
+        var cs=coords[s], row=selByRow[cs.r], c=cs.c;
+        return (row[c-1]===true && row[c-2]===true) ||
+               (row[c-1]===true && row[c+1]===true) ||
+               (row[c+1]===true && row[c+2]===true);
+      }
+      function colPair(s){
+        var cs=coords[s], col=selByCol[cs.c];
+        return col[cs.r-1]===true || col[cs.r+1]===true;
+      }
+      function colRun3(s){
+        var cs=coords[s], col=selByCol[cs.c], r=cs.r;
+        return (col[r-1]===true && col[r-2]===true) ||
+               (col[r-1]===true && col[r+1]===true) ||
+               (col[r+1]===true && col[r+2]===true);
+      }
+      function penalty(s){
+        var ri=coords[s].r, ci=coords[s].c, p=0;
+        if(keepOneEmpty && selectedInRow[ri]+1>=rowCap[ri]) p+=100;
+        if(otherRowSlack(ri)){
+          if(rowRun3(s)) p+=4;
+          else if(rowPair(s)) p+=1;
+        }
+        if(otherColSlack(ci)){
+          if(colRun3(s)) p+=4;
+          else if(colPair(s)) p+=1;
+        }
+        return p;
+      }
+
+      var best=-Infinity,bi=0;
+      for(var i=0;i<avail.length;i++){
+        var s=avail[i];
+        /* −penalty × 1000 dominates any min-distance difference (Manhattan
+           distance on a classroom grid is well under 100); the random
+           offset < 0.5 only breaks ties so all rows / columns are treated
+           equally. */
+        var sc=-penalty(s)*1000 + minD[s] + Math.random()*0.5;
+        if(sc>best){best=sc;bi=i;}
+      }
+      var pick=avail.splice(bi,1)[0];
+      sel.push(pick);
+      selectedInRow[coords[pick].r]++;
+      selByRow[coords[pick].r][coords[pick].c]=true;
+      selByCol[coords[pick].c][coords[pick].r]=true;
+      /* Update minimum distances now that 'pick' is selected */
+      avail.forEach(function(s){
+        var d=mdist(s,pick);
+        if(d<minD[s]) minD[s]=d;
+      });
+    }
+    return sel;
+  }
+
+  /* Score = minimum pairwise distance achieved (higher = better spread) */
+  function score(sel){
+    var m=Infinity;
+    for(var i=0;i<sel.length;i++)
+      for(var j=i+1;j<sel.length;j++){
+        var d=mdist(sel[i],sel[j]);
+        if(d<m) m=d;
+      }
+    return m;
+  }
+
+  /* Run three times from random seeds, keep the best */
+  var best=null,bestScore=-1;
+  for(var t=0;t<3;t++){
+    var si=Math.floor(Math.random()*pool.length);
+    var sel=greedyRun(si);
+    var sc=score(sel);
+    if(sc>bestScore){bestScore=sc;best=sel;}
+  }
+
+  shuffle(best);
+  return best;
+}
+
+/* ── colorscale: z 0-7 (8 bands) ── */
+/* z0=bg, z1=excl, z2=avail, z3=alloc, z4=table, z5=aisle, z6=LH, z7=moveable */
+var CS=[
+  [0,'#f0f2f5'],[0.124,'#f0f2f5'],
+  [0.125,'#4b5563'],[0.249,'#4b5563'],
+  [0.250,'#1d4ed8'],[0.374,'#1d4ed8'],
+  [0.375,'#15803d'],[0.499,'#15803d'],
+  [0.500,'#4e342e'],[0.624,'#4e342e'],
+  [0.625,'#475569'],[0.749,'#475569'],
+  [0.750,'#7c3aed'],[0.874,'#7c3aed'],
+  [0.875,'#0e7490'],[1.000,'#0e7490']
+];
+
+/* ── render ── */
+function seatLabel(rowKey, num) {
+  /* Use rowKey directly (not display label) so text fits in cell.
+     Multi-char keys get a hyphen: F2-1, E2-13; single-char: A1, M14. */
+  return rowKey.length > 1 ? rowKey + '-' + num : rowKey + num;
+}
+
+function render(layout, selected, excluded) {
+  var displayRows = (layout.rows || []).slice().reverse();
+  var rowLabels = layout.rowLabels || {};
+  var yLabels = displayRows.map(function(r) { return rowLabels[r] || r; });
+
+  var maxW = 0;
+  layout.rows.forEach(function(r) { maxW = Math.max(maxW, (layout.grid[r] || []).length); });
+
+  var z = [], disp = [], hover = [];
+  displayRows.forEach(function(rowKey) {
+    var cells = layout.grid[rowKey] || [];
+    var zR = [], dR = [], hR = [];
+    cells.forEach(function(c) {
+      var rl = rowLabels[rowKey] || rowKey;
+      if (c.type === 'table' || c.type === 'chair') {
+        var w = (c.type === 'table' ? c.width : 1) || 1;
+        for (var i = 0; i < w; i++) {
+          zR.push(4); dR.push('');
+          hR.push('<b>' + (c.label || 'Table') + '</b><br><i>' + (c.type === 'chair' ? 'Chair' : 'Table') + '</i>');
+        }
+      } else if (c.type === 'aisle') {
+        zR.push(5); dR.push(''); hR.push('<i>Aisle</i>');
+      } else if (c.type === 'empty') {
+        zR.push(0); dR.push(''); hR.push('');
+      } else if (c.type === 'seat') {
+        var id  = rowKey + c.num;          /* allocation key  e.g. F21  */
+        var lbl = seatLabel(rowKey, c.num);/* display label   e.g. F2-1 */
+        if (c.broken) {
+          zR.push(1); dR.push(lbl); hR.push('<b>' + lbl + '</b><br><i>Broken (excluded)</i>');
+        } else if (c.leftHanded) {
+          if (selected.includes(id))       { var sn=selected.indexOf(id)+1; zR.push(3); dR.push(lbl); hR.push('<b>'+lbl+'</b><br>Student '+sn+'<br><i>Allocated (left-handed)</i>'); }
+          else if (excluded.includes(id))  { zR.push(1); dR.push(lbl); hR.push('<b>'+lbl+'</b><br><i>Excluded</i>'); }
+          else                             { zR.push(6); dR.push(lbl); hR.push('<b>' + lbl + '</b><br><i>Left-handed</i>'); }
+        } else if (c.moveable) {
+          if (excluded.includes(id))            { zR.push(1); dR.push(lbl); hR.push('<b>'+lbl+'</b><br><i>Excluded</i>'); }
+          else if (selected.includes(id))       { var sn=selected.indexOf(id)+1; zR.push(3); dR.push(lbl); hR.push('<b>'+lbl+'</b><br>Student '+sn+'<br><i>Allocated (moveable chair)</i>'); }
+          else                                  { zR.push(7); dR.push(lbl); hR.push('<b>'+lbl+'</b><br><i>Moveable chair (available)</i>'); }
+        } else if (excluded.includes(id))       { zR.push(1); dR.push(lbl); hR.push('<b>'+lbl+'</b><br><i>Excluded</i>'); }
+        else if (selected.includes(id))         { var sn=selected.indexOf(id)+1; zR.push(3); dR.push(lbl); hR.push('<b>'+lbl+'</b><br>Student '+sn+'<br><i>Allocated</i>'); }
+        else                                    { zR.push(2); dR.push(lbl); hR.push('<b>'+lbl+'</b><br><i>Available</i>'); }
+      } else { zR.push(0); dR.push(''); hR.push(''); }
+    });
+    while (zR.length < maxW) { zR.push(0); dR.push(''); hR.push(''); }
+    z.push(zR); disp.push(dR); hover.push(hR);
+  });
+
+  /* Cell dimensions: compact so map fits without scrolling */
+  var cellW = 38, cellH = 34;
+  var mL = 40, mR = 8, mT = 30, mB = 30;
+  var chartW = maxW * cellW + mL + mR;
+  var chartH = displayRows.length * cellH + mT + mB;
+
+  var xLabels = Array.from({ length: maxW }, function(_, i) { return String(i + 1); });
+
+  Plotly.newPlot('chart', [{
+    z: z, x: xLabels, y: yLabels,
+    type: 'heatmap', colorscale: CS, zmin: 0, zmax: 7, showscale: false,
+    text: disp, texttemplate: '%{text}',
+    textfont: { size: 11, color: '#fff', family: 'Menlo,Consolas,monospace' },
+    customdata: hover, hovertemplate: '%{customdata}<extra></extra>',
+    xgap: 2, ygap: 2
+  }], {
+    title: { text: 'Classroom Map', font: { size: 14, color: '#111827' } },
+    xaxis: { title: { text: 'Column', font: { size: 11 } }, tickfont: { size: 9 }, automargin: true, fixedrange: true },
+    yaxis: { title: { text: 'Row', font: { size: 11 } }, tickfont: { size: 10 }, automargin: true, fixedrange: true },
+    margin: { t: mT, b: mB, l: mL, r: mR },
+    width: chartW, height: chartH,
+    paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: '#fafafa',
+    font: { family: '-apple-system,Arial,sans-serif', color: '#374151' }
+  }, { responsive: false, displaylogo: false, displayModeBar: false, scrollZoom: false });
+}
+
+/* ── parse excluded ── */
+function parseExcluded(raw){
+  return raw.split(',').map(function(s){
+    s=s.trim().toUpperCase();var m=s.match(/^([A-Z0-9]+?)(\d+)$/);
+    return m?m[1]+parseInt(m[2],10):'';
+  }).filter(Boolean);
+}
+
+var APP={selected:[],outputData:[]};
+
+document.getElementById('goBtn').addEventListener('click',function(){
+  clearStatus();
+  var key=document.getElementById('roomSel').value;
+  var layout=LAYOUTS[key];
+  if(!layout){showStatus('Unknown classroom.','err');return;}
+  var numRaw=document.getElementById('numStu').value;
+  if(!numRaw){showStatus('Enter the number of students.','err');return;}
+  var n=parseInt(numRaw,10);
+  if(isNaN(n)||n<1){showStatus('Enter a valid number ≥ 1.','err');return;}
+  var excluded=parseExcluded(document.getElementById('excl').value);
+  var usable=buildUsable(layout,excluded);
+  var lhSeats=buildUsableLH(layout,excluded);
+  var totalAvail=usable.length+lhSeats.length;
+  if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+lhSeats.length+' left-handed) - '+n+' requested.','err');return;}
+  var selected=allocate(usable,n,layout,lhSeats);
+  APP.selected=selected;
+  APP.outputData=selected.map(function(s,i){return (i+1)+'	'+s;});
+  /* stats */
+  var tot=countSeats(layout),lh=countType(layout,'leftHanded'),
+      mv=countType(layout,'moveable'),br=countType(layout,'broken');
+  document.getElementById('s-tot').textContent=tot;
+  document.getElementById('s-lh').textContent=lh||'-';  /* shown amber; used as last resort */
+  document.getElementById('s-mv').textContent=mv||'-';
+  document.getElementById('s-br').textContent=br||'-';
+  document.getElementById('s-ex').textContent=excluded.length||'0';
+  document.getElementById('s-av').textContent=totalAvail;
+  document.getElementById('s-al').textContent=n;
+  document.getElementById('s-em').textContent=totalAvail-n;
+  document.getElementById('s-fr').textContent=Math.round(n/totalAvail*100)+'%';
+  document.getElementById('stats').style.display='flex';
+  render(layout,selected,excluded);
+  document.getElementById('legend').style.display='flex';
+  document.getElementById('vizWrap').style.display='flex';
+  document.getElementById('txBtn').disabled=false;
+  document.getElementById('pdBtn').disabled=false;
+  var msg='Allocated '+n+' student'+(n!==1?'s':'')+'.';
+  showStatus(msg,'ok');say(msg);
+});
+
+document.getElementById('clBtn').addEventListener('click',function(){
+  ['numStu','excl'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('stats').style.display='none';
+  document.getElementById('legend').style.display='none';
+  document.getElementById('vizWrap').style.display='none';
+  document.getElementById('txBtn').disabled=true;
+  document.getElementById('pdBtn').disabled=true;
+  clearStatus();Plotly.purge('chart');
+  APP.selected=[];APP.outputData=[];say('Cleared.');
+});
+
+document.getElementById('txBtn').addEventListener('click',function(){
+  if(!APP.outputData.length)return;
+  var url=URL.createObjectURL(new Blob([APP.outputData.join('\n')],{type:'text/plain'}));
+  var a=document.createElement('a');a.href=url;a.download='allocated_seats.txt';a.click();
+  URL.revokeObjectURL(url);say('Roster downloaded.');
+});
+
+document.getElementById('pdBtn').addEventListener('click',async function(){
+  var btn=this,orig=btn.innerHTML;btn.innerHTML='⏳ …';btn.disabled=true;
+  try{
+    /* Use chart's rendered size for pixel-perfect PDF export */
+    var chartDiv=document.getElementById('chart');
+    var pxW=chartDiv.offsetWidth||1400, pxH=chartDiv.offsetHeight||700;
+    var img=await Plotly.toImage('chart',{format:'png',width:pxW,height:pxH,scale:2});
+    var pdf=new window.jspdf.jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
+    var pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight(),m=28;
+    var iw=pw-2*m,ih=iw*(700/1400);
+    if(ih>ph-2*m-20){ih=ph-2*m-20;iw=ih*(1400/700);}
+    pdf.addImage(img,'PNG',(pw-iw)/2,m,iw,ih);
+    pdf.setFontSize(8);pdf.setTextColor(120);
+    pdf.text('Seat Allocator - Shelvean Kapita - '+new Date().toLocaleDateString(),pw/2,m+ih+14,{align:'center'});
+    pdf.save('seat_allocation.pdf');say('PDF saved.');
+  }catch(e){showStatus('PDF error: '+e.message,'err');}
+  finally{btn.innerHTML=orig;btn.disabled=false;}
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

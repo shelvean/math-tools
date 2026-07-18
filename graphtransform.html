@@ -1,0 +1,2009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Graph transformation visualizer. See how y = a·f(b(x - h)) + k transforms a parent function with shifts, scales, reflections, and dilations side by side.">
+  <meta name="keywords" content="graph transformations, function transformations, parent functions, shifts, reflections, stretches, dilations, accessible math tool">
+  <title>Graph Transformation Visualizer</title>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer=window.dataLayer||[];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js',new Date()); gtag('config','G-LEQE004C92');
+  </script>
+
+  <script src="vendor/d3@7.8.5/d3.min.js"></script>
+
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+
+  <style>
+/* -- tokens ----------------------------- */
+:root{
+  --bg:#f0f2f5; --card:#fff; --sect:#f8f9fb;
+  --info:#eff6ff; --inf-b:#93c5fd; --inf-hd:#1e3a8a;
+  --txt:#111827; --txt2:#374151; --muted:#4b5563;
+  --bdr:#9ca3af; --bdr2:#d1d5db; --focus:#1d4ed8;
+  --blue:#1d4ed8; --bl2:#1e3a8a; --teal:#0f766e;
+  --vio:#6d28d9; --ora:#b45309; --green:#15803d;
+  --link:#1e40af;
+  --r:.5rem; --r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10); --sh2:0 4px 12px rgba(0,0,0,.12);
+  /* trace colours */
+  --cparent:#9ca3af;   /* parent ghost - grey  */
+  --ctrans:#1d4ed8;    /* transformed - blue   */
+  --cbefore:#6d28d9;   /* before formula        */
+  --cafter:#0f766e;    /* after formula         */
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;
+  --txt:#000;--txt2:#000;--muted:#111;--inf-hd:#00006b;
+  --bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--ora:#7a3000;--link:#00c;
+  --cparent:#555;--ctrans:#00c;--cbefore:#5500aa;--cafter:#005500;
+}
+@media(prefers-contrast:more){
+  :root{--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;
+    --blue:#00c;--bl2:#000099;--link:#00c;--focus:#00f;}
+}
+
+/* -- reset & base ----------------------- */
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;font-size:1rem;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:2px;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+/* -- skip & nav ------------------------- */
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;
+  z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;}
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;
+  background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;
+  font-size:1rem;padding:.25rem .5rem;border-radius:.3rem;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+
+/* -- card & headings -------------------- */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:1000px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
+  color:var(--txt);letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* -- info panel ------------------------- */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);
+  border-radius:var(--r);margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-icon{font-size:1.25rem;font-weight:700;flex-shrink:0;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p{font-size:.9375rem;color:var(--txt2);margin-bottom:.5rem;line-height:1.65;}
+.info-body ul{font-size:.9375rem;color:var(--txt2);margin:0 0 .5rem 1.5rem;}
+.info-body li{margin-bottom:.3rem;line-height:1.65;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+
+/* -- definition bar --------------------- */
+.defn{text-align:center;padding:.7rem 1rem;
+  background:linear-gradient(135deg,#eff6ff,#f8faff);
+  border:1px solid #bfdbfe;border-left:4px solid var(--blue);
+  border-radius:var(--r);margin-bottom:1.25rem;}
+
+/* -- section heading -------------------- */
+.section-h{font-size:1rem;font-weight:700;color:var(--txt);
+  margin:1rem 0 .5rem;padding-bottom:.25rem;border-bottom:2px solid var(--bdr2);}
+
+/* -- parent gallery --------------------- */
+.gallery{display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(118px,1fr));
+  gap:.5rem;margin-bottom:1rem;}
+.pcard{position:relative;background:var(--card);border:2px solid var(--bdr2);
+  border-radius:var(--r);padding:.4rem .5rem .35rem;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:.15rem;
+  transition:transform .12s,border-color .12s,box-shadow .12s;
+  min-height:96px;}
+.pcard:hover{border-color:var(--blue);transform:translateY(-1px);box-shadow:var(--sh);}
+.pcard:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.pcard[aria-pressed="true"]{border-color:var(--blue);background:rgba(29,78,216,.06);
+  box-shadow:0 0 0 1px var(--blue) inset;}
+.pcard svg{display:block;width:100%;height:48px;}
+.pcard .pname{font-size:.78rem;font-weight:700;color:var(--txt2);text-align:center;line-height:1.15;}
+.pcard .peq{font-size:.78rem;color:var(--muted);text-align:center;line-height:1.15;}
+.pcard .peq mjx-container{font-size:.95em !important;vertical-align:middle;}
+
+/* -- compact controls bar --------------- */
+.cbar{
+  display:flex;flex-wrap:wrap;align-items:flex-end;
+  gap:.6rem;margin-bottom:.6rem;
+  background:var(--sect);border:2px solid var(--bdr2);
+  border-radius:var(--r);padding:.55rem .75rem;
+}
+.cbar-pair{flex:3 1 240px;min-width:200px;}
+.param-field{flex:1 1 100px;min-width:90px;}
+.cfield{display:flex;flex-direction:column;gap:.18rem;}
+.cfield label,.cfield .clbl{
+  font-size:.8125rem;font-weight:700;color:var(--muted);
+  white-space:nowrap;
+}
+.cfield label mjx-container,.cfield .clbl mjx-container{
+  font-size:1em !important;vertical-align:middle;
+}
+.cfield input[type=number]{
+  width:100%;min-height:36px;padding:.2rem .35rem;
+  font-size:.9375rem;font-weight:600;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);text-align:center;
+}
+.cfield input[type=number]:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+
+/* -- toggle row ------------------------- */
+.tbar{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.6rem;
+  padding:.5rem .7rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);align-items:center;}
+.tlbl{font-size:.8125rem;font-weight:700;color:var(--muted);margin-right:.25rem;}
+.tchk{display:inline-flex;align-items:center;gap:.35rem;
+  font-size:.875rem;font-weight:600;color:var(--txt2);
+  background:var(--card);border:2px solid var(--bdr2);
+  border-radius:.4rem;padding:.3rem .6rem;cursor:pointer;
+  min-height:36px;}
+.tchk:hover{border-color:var(--blue);}
+.tchk input{margin:0;cursor:pointer;width:16px;height:16px;}
+.tchk input:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.tchk[data-on="1"]{background:rgba(29,78,216,.08);border-color:var(--blue);color:var(--blue);}
+
+/* -- animation row ---------------------- */
+.abar{
+  display:flex;align-items:center;justify-content:center;
+  gap:.75rem;flex-wrap:wrap;
+  margin-bottom:.75rem;
+  padding:.6rem .75rem;
+  background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);
+}
+.abar-speed{display:flex;align-items:center;gap:.4rem;margin-left:.5rem;}
+.abtn{
+  display:inline-flex;align-items:center;gap:.45rem;
+  padding:.55rem 1.4rem;min-height:44px;min-width:96px;
+  border:none;border-radius:.5rem;
+  font-size:1rem;font-weight:700;cursor:pointer;
+  letter-spacing:.01em;
+  transition:background .12s,transform .08s;
+}
+.abtn:active{transform:scale(.97);}
+.abtn-play {background:var(--green);color:#fff;box-shadow:0 2px 6px rgba(21,128,61,.35);}
+.abtn-play:hover,.abtn-play:focus-visible{background:#166534;}
+.abtn-stop {background:var(--ora);color:#fff;box-shadow:0 2px 6px rgba(180,83,9,.30);}
+.abtn-stop:hover,.abtn-stop:focus-visible{background:#92400e;}
+.abtn-reset{background:var(--muted);color:#fff;box-shadow:0 2px 6px rgba(75,85,99,.25);}
+.abtn-reset:hover,.abtn-reset:focus-visible{background:#374151;}
+.speed-lbl{font-size:.875rem;font-weight:600;color:var(--muted);white-space:nowrap;}
+.speed-sel{padding:.3rem .5rem;border:2px solid var(--bdr2);border-radius:.375rem;
+  font-size:.9rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+
+/* -- progress slider -------------------- */
+.prog-row{display:flex;align-items:center;gap:.6rem;
+  padding:.55rem .75rem;background:var(--card);
+  border:2px solid var(--bdr2);border-radius:var(--r);
+  margin-bottom:.75rem;}
+.prog-row label{font-size:.8125rem;font-weight:700;color:var(--muted);white-space:nowrap;}
+.prog-row input[type=range]{flex:1;min-width:100px;}
+.prog-row .pct{font-size:.875rem;font-weight:700;color:var(--blue);
+  font-family:'Georgia','Times New Roman',serif;min-width:48px;text-align:right;}
+
+/* -- plot wrapper ----------------------- */
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);
+  overflow:hidden;background:var(--card);margin-bottom:.875rem;}
+.phdr{padding:.4rem .75rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.phdr mjx-container{font-size:1.05em !important;vertical-align:middle;}
+.pdot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.pdash{width:14px;height:0;border-top:2.5px dashed var(--cparent);flex-shrink:0;}
+.pplot{height:420px;}
+@media(max-width:640px){.pplot{height:340px;}}
+
+/* -- formula box ------------------------ */
+.fbox{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;
+  margin-bottom:.875rem;}
+@media(max-width:640px){.fbox{grid-template-columns:1fr;}}
+.fcell{padding:.65rem .85rem;border:2px solid var(--bdr2);border-radius:var(--r);
+  background:var(--card);text-align:center;min-height:80px;
+  display:flex;flex-direction:column;justify-content:center;}
+.fcell .flbl{font-size:.78rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;margin-bottom:.25rem;}
+.fcell .feq{font-size:1.05rem;color:var(--txt);}
+.fcell .feq mjx-container{font-size:1.15em !important;}
+.fcell.before{border-left:4px solid var(--cbefore);}
+.fcell.before .flbl{color:var(--cbefore);}
+.fcell.after{border-left:4px solid var(--cafter);}
+.fcell.after .flbl{color:var(--cafter);}
+
+/* -- custom LaTeX listbox --------------- */
+.csel-wrap{position:relative;}
+.csel-btn{
+  width:100%;min-height:44px;padding:.4rem .6rem .4rem .7rem;
+  border:2px solid var(--bdr);border-radius:.4rem;
+  background:var(--card);color:var(--txt);
+  display:flex;align-items:center;justify-content:space-between;gap:.4rem;
+  cursor:pointer;font-size:.9375rem;text-align:left;
+}
+.csel-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.csel-btn mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+.csel-arrow{font-size:.8rem;color:var(--muted);flex-shrink:0;}
+.csel-list{
+  display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:600;
+  background:var(--card);border:2px solid var(--bdr);border-radius:.4rem;
+  box-shadow:var(--sh2);max-height:380px;overflow-y:auto;
+}
+.csel-list.open{display:block;}
+.csel-grp{
+  padding:.3rem .75rem .15rem;
+  font-size:.78rem;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em;
+  border-top:1px solid var(--bdr2);background:var(--sect);
+}
+.csel-grp:first-child{border-top:none;}
+.csel-opt{
+  padding:.4rem .875rem;min-height:40px;cursor:pointer;
+  display:flex;align-items:center;font-size:.875rem;color:var(--txt);
+}
+.csel-opt:hover{background:rgba(29,78,216,.07);}
+.csel-opt[aria-selected="true"]{background:rgba(29,78,216,.12);font-weight:600;}
+.csel-opt:focus-visible{outline:3px solid var(--focus);outline-offset:-3px;}
+.csel-opt mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+
+/* -- contrast toggle & footer ----------- */
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;
+  background:var(--txt);color:var(--card);border:2px solid var(--bdr);
+  border-radius:50%;width:48px;height:48px;font-size:1.25rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+.footer{margin-top:1.5rem;border-top:2px solid var(--bdr2);
+  padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);}
+
+/* -- responsive & motion ---------------- */
+@media(max-width:640px){
+  .card{padding:1rem;margin:1rem .5rem 1.5rem;}
+}
+@media(prefers-reduced-motion:reduce){
+  .abtn,.pcard{transition:none;}
+}
+
+/* -- d3 plot ---------------------------- */
+.pplot{padding:0;background:#fafafa;}
+.pplot svg{display:block;width:100%;height:100%;}
+.pplot .axis path.domain{stroke:#6b7280;stroke-width:1;}
+.pplot .axis .tick line{stroke:#e5e7eb;stroke-width:1;}
+.pplot .axis .tick text{fill:#374151;font-size:11px;}
+.pplot .zero{stroke:#6b7280;stroke-width:1.6;}
+.pplot .curve{fill:none;}
+.pplot .curve.parent{stroke-width:2.2;stroke-dasharray:6 5;}
+.pplot .curve.trans{stroke-width:3;stroke-linecap:round;stroke-linejoin:round;}
+.pplot .axlbl{fill:#374151;font-size:13px;font-weight:600;font-style:italic;}
+.pplot .inv-line{stroke:rgba(15,118,110,.55);stroke-width:1.2;stroke-dasharray:2 4;}
+.pplot .zoom-pad{cursor:grab;}
+.pplot .zoom-pad:active{cursor:grabbing;}
+.hc .pplot .axis path.domain,.hc .pplot .zero{stroke:#000;}
+.hc .pplot .axis .tick text{fill:#000;}
+.hc .pplot .axlbl{fill:#000;}
+
+/* -- view bar --------------------------- */
+.vbar{
+  display:flex;flex-wrap:wrap;align-items:flex-end;gap:.55rem;
+  padding:.55rem .75rem;background:var(--sect);
+  border:2px solid var(--bdr2);border-radius:var(--r);
+  margin-bottom:.75rem;
+}
+.vbar .vlbl{font-size:.8125rem;font-weight:700;color:var(--muted);
+  align-self:center;margin-right:.25rem;white-space:nowrap;}
+.vfield{display:flex;flex-direction:column;gap:.18rem;min-width:74px;flex:0 1 90px;}
+.vfield label{font-size:.78rem;font-weight:700;color:var(--muted);}
+.vfield input{
+  width:100%;min-height:34px;padding:.18rem .3rem;
+  font-size:.875rem;font-weight:600;
+  border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);text-align:center;
+}
+.vfield input:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.vbtn{
+  min-height:34px;padding:.3rem .7rem;
+  border:2px solid var(--bdr2);background:var(--card);color:var(--txt);
+  border-radius:.4rem;font-weight:700;cursor:pointer;
+  font-size:.95rem;line-height:1;
+}
+.vbtn:hover,.vbtn:focus-visible{border-color:var(--blue);color:var(--blue);}
+.vbtn-reset{background:var(--muted);color:#fff;border-color:var(--muted);font-size:.85rem;}
+.vbtn-reset:hover,.vbtn-reset:focus-visible{background:#374151;border-color:#374151;color:#fff;}
+
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/graphtransform.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Graph Transformation Visualizer">
+    <meta property="og:description" content="Graph transformation visualizer. See how y = a·f(b(x - h)) + k transforms a parent function with shifts, scales, reflections, and dilations side by side.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/graphtransform.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Graph Transformation Visualizer">
+    <meta name="twitter:description" content="Graph transformation visualizer. See how y = a·f(b(x - h)) + k transforms a parent function with shifts, scales, reflections, and dilations side by side.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Graph Transformation Visualizer",
+  "description": "Graph transformation visualizer. See how y = a·f(b(x - h)) + k transforms a parent function with shifts, scales, reflections, and dilations side by side.",
+  "url": "https://shelvean.github.io/math-tools/graphtransform.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Nav -->
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html" aria-current="page">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+      <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+      <li><a href="calculus.html">Calculus</a></li>
+      <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+<a href="teaching.html" class="back-link" aria-label="Back to Teaching">&larr; Back to Teaching</a>
+
+<main id="main" class="card" role="main">
+
+  <h1>Graph Transformation Visualizer</h1>
+  <p class="subtitle">
+    Watch parent functions \(f(x)\) morph into \(g(x)=a\,f\!\bigl(b(x-h)\bigr)+k\) - shifts, reflections, stretches, and dilations animated step by step.
+  </p>
+
+  <!-- About -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
+      <span>About This Visualization</span>
+      <span class="info-icon" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <p>A <strong>graph transformation</strong> takes a parent function \(f(x)\) and produces a related function</p>
+      <div class="defn-box">
+        \[g(x) \;=\; a\,f\!\bigl(b\,(x-h)\bigr) + k.\]
+      </div>
+      <p>Each parameter has a geometric meaning, and the transformations compose in a fixed order: <em>horizontal stretch &rarr; horizontal shift &rarr; vertical stretch &rarr; vertical shift</em>.</p>
+
+      <h2>The four parameters</h2>
+      <ul>
+        <li><strong>\(h\) - horizontal shift:</strong> \(g(x)=f(x-h)\) slides the graph <em>right</em> by \(h\) (left if \(h&lt;0\)).</li>
+        <li><strong>\(k\) - vertical shift:</strong> \(g(x)=f(x)+k\) slides the graph <em>up</em> by \(k\) (down if \(k&lt;0\)).</li>
+        <li><strong>\(a\) - vertical stretch / x-axis reflection:</strong> \(g(x)=a\,f(x)\) stretches vertically by \(|a|\); if \(a&lt;0\) it also reflects across the \(x\)-axis.</li>
+        <li><strong>\(b\) - horizontal stretch / y-axis reflection:</strong> \(g(x)=f(b\,x)\) compresses horizontally by \(|b|\) (stretches if \(|b|&lt;1\)); if \(b&lt;0\) it also reflects across the \(y\)-axis.</li>
+      </ul>
+
+      <h2>Special cases</h2>
+      <ul>
+        <li><strong>Reflection across \(y=x\) (inverse):</strong> when \(f\) is one-to-one, swap \(x\) and \(y\) to obtain \(f^{-1}(x)\). Toggle the “Reflect over y = x” option.</li>
+        <li><strong>Dilation:</strong> a uniform scale \(a=b=s\) (with \(h=k=0\)) zooms the graph by factor \(s\) about the origin in both directions.</li>
+        <li><strong>Pure shift / pure reflection / pure stretch:</strong> set the other parameters to their identity values (\(a=b=1,\,h=k=0\)).</li>
+      </ul>
+
+      <h2>How the animation works</h2>
+      <p>The progress slider \(t\in[0,1]\) interpolates each parameter from its identity value to its target. At \(t=0\) you see the parent \(f(x)\) (the dashed grey ghost); at \(t=1\) you see the full transformation. Hit <strong>Play</strong> to morph automatically.</p>
+
+      <h2>Tips</h2>
+      <ul>
+        <li>Click any parent in the gallery to switch the base function.</li>
+        <li>Pick an example from the dropdown to load preset parameters grouped by transformation type.</li>
+        <li>Edit \(a,b,h,k\) directly to design your own transformation.</li>
+        <li>Toggle high-contrast mode (bottom-right) for stronger colour separation.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Definition bar -->
+  <div class="defn" role="math" aria-label="General transformation formula">
+    \[g(x) \;=\; a\,f\!\bigl(b\,(x-h)\bigr) + k\]
+  </div>
+
+  <!-- Parent gallery -->
+  <h2 class="section-h" id="galleryHd">Parent function gallery</h2>
+  <div id="gallery" class="gallery" role="radiogroup" aria-labelledby="galleryHd"></div>
+
+  <!-- Before / after formula box -->
+  <div class="fbox" role="region" aria-label="Before and after formulas" aria-live="polite">
+    <div class="fcell before">
+      <div class="flbl">Before - parent</div>
+      <div class="feq" id="fmBefore">\(f(x) = x\)</div>
+    </div>
+    <div class="fcell after">
+      <div class="flbl">After - transformation</div>
+      <div class="feq" id="fmAfter">\(g(x) = x\)</div>
+    </div>
+  </div>
+
+  <!-- Transformation parameters -->
+  <h2 class="section-h">Transformation parameters</h2>
+  <div class="cbar" role="group" aria-label="Transformation parameters">
+    <div class="param-field cfield">
+      <label for="pA">\(a\) (vert.&nbsp;scale)</label>
+      <input type="number" id="pA" step="0.5" value="1" aria-label="a vertical scale">
+    </div>
+    <div class="param-field cfield">
+      <label for="pB">\(b\) (horiz.&nbsp;scale)</label>
+      <input type="number" id="pB" step="0.5" value="1" aria-label="b horizontal scale">
+    </div>
+    <div class="param-field cfield">
+      <label for="pH">\(h\) (horiz.&nbsp;shift)</label>
+      <input type="number" id="pH" step="0.5" value="0" aria-label="h horizontal shift">
+    </div>
+    <div class="param-field cfield">
+      <label for="pK">\(k\) (vert.&nbsp;shift)</label>
+      <input type="number" id="pK" step="0.5" value="0" aria-label="k vertical shift">
+    </div>
+  </div>
+
+  <!-- Toggle row -->
+  <div class="tbar" role="group" aria-label="Reflection toggles">
+    <span class="tlbl">Quick toggles:</span>
+    <label class="tchk" id="rxBox" data-on="0">
+      <input type="checkbox" id="rxChk" aria-describedby="rxLbl">
+      <span id="rxLbl">Reflect over \(x\)-axis</span>
+    </label>
+    <label class="tchk" id="ryBox" data-on="0">
+      <input type="checkbox" id="ryChk" aria-describedby="ryLbl">
+      <span id="ryLbl">Reflect over \(y\)-axis</span>
+    </label>
+    <label class="tchk" id="invBox" data-on="0">
+      <input type="checkbox" id="invChk" aria-describedby="invLbl">
+      <span id="invLbl">Reflect over \(y = x\) (inverse, 1-1 only)</span>
+    </label>
+    <label class="tchk" id="ghostBox" data-on="1">
+      <input type="checkbox" id="ghostChk" checked aria-describedby="ghostLbl">
+      <span id="ghostLbl">Show parent ghost</span>
+    </label>
+  </div>
+
+  <!-- Animation controls -->
+  <div class="abar" role="group" aria-label="Animation controls">
+    <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play animation">
+      <span aria-hidden="true">&#9654;</span> Play
+    </button>
+    <button class="abtn abtn-stop"  id="btnStop"  type="button" aria-label="Stop animation">
+      <span aria-hidden="true">&#9632;</span> Stop
+    </button>
+    <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset to parent function">
+      <span aria-hidden="true">&#8635;</span> Reset
+    </button>
+    <div class="abar-speed">
+      <label class="speed-lbl" for="speedSel">Speed</label>
+      <select id="speedSel" class="speed-sel" aria-label="Animation speed">
+        <option value="60">Slow</option>
+        <option value="30" selected>Normal</option>
+        <option value="15">Fast</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Progress slider -->
+  <div class="prog-row">
+    <label for="progSld">Progress \(t\)</label>
+    <input type="range" id="progSld" min="0" max="1" step="0.01" value="1"
+           aria-label="Transformation progress, 0 means parent function, 1 means full transformation">
+    <span class="pct" id="progPct">100%</span>
+  </div>
+
+  <!-- View / range controls -->
+  <div class="vbar" role="group" aria-label="Plot view and zoom controls">
+    <span class="vlbl">View:</span>
+    <div class="vfield">
+      <label for="xMin">x min</label>
+      <input type="number" id="xMin" step="0.5" value="-5" aria-label="x minimum">
+    </div>
+    <div class="vfield">
+      <label for="xMax">x max</label>
+      <input type="number" id="xMax" step="0.5" value="5" aria-label="x maximum">
+    </div>
+    <div class="vfield">
+      <label for="yMin">y min</label>
+      <input type="number" id="yMin" step="0.5" value="-5" aria-label="y minimum">
+    </div>
+    <div class="vfield">
+      <label for="yMax">y max</label>
+      <input type="number" id="yMax" step="0.5" value="5" aria-label="y maximum">
+    </div>
+    <button type="button" class="vbtn" id="btnZoomIn"  aria-label="Zoom in">&plus;</button>
+    <button type="button" class="vbtn" id="btnZoomOut" aria-label="Zoom out">&minus;</button>
+    <button type="button" class="vbtn vbtn-reset" id="btnViewReset"
+            aria-label="Reset view to default for this parent">Reset view</button>
+  </div>
+
+  <!-- Plot -->
+  <div class="pwrap" role="region" aria-label="Graph plot">
+    <div class="phdr">
+      <span class="pdash" aria-hidden="true"></span>
+      <span style="color:var(--cparent)">parent \(f(x)\)</span>
+      <span style="margin-left:.5rem"></span>
+      <span class="pdot" style="background:var(--ctrans)" aria-hidden="true"></span>
+      <span style="color:var(--ctrans)">transformed \(g(x)\)</span>
+    </div>
+    <div id="plotMain" class="pplot" role="img"
+         aria-label="Graph showing dashed parent function and animated transformed function"></div>
+  </div>
+
+  <!-- Example dropdown -->
+  <h2 class="section-h">Choose an example</h2>
+  <div class="cbar" role="group" aria-label="Example transformation">
+    <div class="cbar-pair cfield">
+      <span class="clbl" id="exLbl">Example transformation</span>
+      <div class="csel-wrap" id="cselWrap">
+        <button type="button" id="cselBtn" class="csel-btn"
+                role="combobox" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="exLbl" aria-controls="cselList">
+          <span id="cselDisplay"></span>
+          <span class="csel-arrow" aria-hidden="true">&#9660;</span>
+        </button>
+        <div id="cselList" class="csel-list" role="listbox" aria-labelledby="exLbl"></div>
+      </div>
+    </div>
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981235">https://doi.org/10.5281/zenodo.20981235</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Graph Transformation Visualizer. Math Tools. https://doi.org/10.5281/zenodo.20981235</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Graph Transformation Visualizer." Math Tools, 2026, doi.org/10.5281/zenodo.20981235.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026graphtransform,
+  author       = {Shelvean Kapita},
+  title        = {{Graph Transformation Visualizer}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981235},
+  url          = {https://doi.org/10.5281/zenodo.20981235}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: May 4, 2026.</p>
+</footer>
+
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode" aria-pressed="false">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* ---------------------------------------------------
+   Utilities
+--------------------------------------------------- */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+function linspace(a,b,n){var r=[];for(var i=0;i<n;i++)r.push(a+(b-a)*i/(n-1));return r;}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function fmt(v,d){d=d==null?3:d;if(!isFinite(v))return '-';if(Math.abs(v)<1e-5&&v!==0)return v.toExponential(2);return (+v).toFixed(d);}
+function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* Sign helpers ---------------------------- */
+function signedPow(x,p){return x<0?-Math.pow(-x,p):Math.pow(x,p);}
+
+/* ---------------------------------------------------
+   Parent function registry
+--------------------------------------------------- */
+var PARENTS = {
+  'const': {
+    name:'Constant', latex:'1',
+    f:function(x){return 1;},
+    domain:[-Infinity,Infinity], oneToOne:false,
+    natRange:[-3,3], natY:[-3,3]
+  },
+  'lin': {
+    name:'Identity', latex:'x',
+    f:function(x){return x;},
+    domain:[-Infinity,Infinity], oneToOne:true,
+    natRange:[-3,3], natY:[-3,3]
+  },
+  'quad': {
+    name:'Quadratic', latex:'x^{2}',
+    f:function(x){return x*x;},
+    domain:[-Infinity,Infinity], oneToOne:false,
+    natRange:[-3,3], natY:[-1,9]
+  },
+  'cubic': {
+    name:'Cubic', latex:'x^{3}',
+    f:function(x){return x*x*x;},
+    domain:[-Infinity,Infinity], oneToOne:true,
+    natRange:[-2.2,2.2], natY:[-8,8]
+  },
+  'recip': {
+    name:'Reciprocal', latex:'\\dfrac{1}{x}',
+    f:function(x){return Math.abs(x)<1e-9?null:1/x;},
+    domain:[-Infinity,Infinity], hasSing:true,
+    oneToOne:true,
+    natRange:[-4,4], natY:[-4,4]
+  },
+  'sqrt': {
+    name:'Square root', latex:'\\sqrt{x}',
+    f:function(x){return x<0?null:Math.sqrt(x);},
+    domain:[0,Infinity], oneToOne:true,
+    natRange:[-1,8], natY:[-1,3]
+  },
+  'cbrt': {
+    name:'Cube root', latex:'\\sqrt[3]{x}',
+    f:function(x){return Math.cbrt(x);},
+    domain:[-Infinity,Infinity], oneToOne:true,
+    natRange:[-8,8], natY:[-2.5,2.5]
+  },
+  'abs': {
+    name:'Absolute value', latex:'|x|',
+    f:function(x){return Math.abs(x);},
+    domain:[-Infinity,Infinity], oneToOne:false,
+    natRange:[-4,4], natY:[-1,4]
+  },
+  'exp': {
+    name:'Exponential', latex:'e^{x}',
+    f:function(x){return Math.exp(x);},
+    domain:[-Infinity,Infinity], oneToOne:true,
+    natRange:[-3,3], natY:[-1,8]
+  },
+  'log': {
+    name:'Natural log', latex:'\\ln x',
+    f:function(x){return x<=0?null:Math.log(x);},
+    domain:[0,Infinity], oneToOne:true,
+    natRange:[-1,8], natY:[-3,3]
+  }
+};
+var PARENT_ORDER = ['const','lin','quad','cubic','recip','sqrt','cbrt','abs','exp','log'];
+
+/* ---------------------------------------------------
+   Example registry  (grouped by transformation type)
+--------------------------------------------------- */
+/* Each example sets a parent and target {a,b,h,k,rx,ry,inv}
+   with identity values a=1,b=1,h=0,k=0,rx=0,ry=0,inv=0. */
+var EX = {
+  /* ---- Vertical shift ---- */
+  'vshift_up': {
+    parent:'quad', group:'Vertical shift',
+    drop:'\\(g(x)=x^2+2\\) - up 2',
+    a:1,b:1,h:0,k:2, rx:0,ry:0,inv:0
+  },
+  'vshift_dn': {
+    parent:'sqrt', group:'Vertical shift',
+    drop:'\\(g(x)=\\sqrt{x}-3\\) - down 3',
+    a:1,b:1,h:0,k:-3, rx:0,ry:0,inv:0
+  },
+
+  /* ---- Horizontal shift ---- */
+  'hshift_r': {
+    parent:'quad', group:'Horizontal shift',
+    drop:'\\(g(x)=(x-3)^2\\) - right 3',
+    a:1,b:1,h:3,k:0, rx:0,ry:0,inv:0
+  },
+  'hshift_l': {
+    parent:'abs', group:'Horizontal shift',
+    drop:'\\(g(x)=|x+2|\\) - left 2',
+    a:1,b:1,h:-2,k:0, rx:0,ry:0,inv:0
+  },
+
+  /* ---- Reflection x-axis ---- */
+  'rx_quad': {
+    parent:'quad', group:'Reflection across x-axis',
+    drop:'\\(g(x)=-x^2\\)',
+    a:1,b:1,h:0,k:0, rx:1,ry:0,inv:0
+  },
+  'rx_sqrt': {
+    parent:'sqrt', group:'Reflection across x-axis',
+    drop:'\\(g(x)=-\\sqrt{x}\\)',
+    a:1,b:1,h:0,k:0, rx:1,ry:0,inv:0
+  },
+
+  /* ---- Reflection y-axis ---- */
+  'ry_sqrt': {
+    parent:'sqrt', group:'Reflection across y-axis',
+    drop:'\\(g(x)=\\sqrt{-x}\\)',
+    a:1,b:1,h:0,k:0, rx:0,ry:1,inv:0
+  },
+  'ry_log': {
+    parent:'log', group:'Reflection across y-axis',
+    drop:'\\(g(x)=\\ln(-x)\\)',
+    a:1,b:1,h:0,k:0, rx:0,ry:1,inv:0
+  },
+  'ry_exp': {
+    parent:'exp', group:'Reflection across y-axis',
+    drop:'\\(g(x)=e^{-x}\\)',
+    a:1,b:1,h:0,k:0, rx:0,ry:1,inv:0
+  },
+
+  /* ---- Reflection y=x (inverse, 1-1 only) ---- */
+  'inv_exp': {
+    parent:'exp', group:'Reflection over y=x (inverse)',
+    drop:'\\(g(x)=\\ln x\\) - inverse of \\(e^x\\)',
+    a:1,b:1,h:0,k:0, rx:0,ry:0,inv:1
+  },
+  'inv_cubic': {
+    parent:'cubic', group:'Reflection over y=x (inverse)',
+    drop:'\\(g(x)=\\sqrt[3]{x}\\) - inverse of \\(x^3\\)',
+    a:1,b:1,h:0,k:0, rx:0,ry:0,inv:1
+  },
+  'inv_lin': {
+    parent:'lin', group:'Reflection over y=x (inverse)',
+    drop:'\\(g(x)=x\\) - self-inverse',
+    a:1,b:1,h:0,k:0, rx:0,ry:0,inv:1
+  },
+
+  /* ---- Vertical stretch ---- */
+  'vstr_2': {
+    parent:'quad', group:'Vertical stretch / compression',
+    drop:'\\(g(x)=2x^2\\) - stretch by 2',
+    a:2,b:1,h:0,k:0, rx:0,ry:0,inv:0
+  },
+  'vstr_half': {
+    parent:'abs', group:'Vertical stretch / compression',
+    drop:'\\(g(x)=\\tfrac{1}{2}|x|\\) - compress by 1/2',
+    a:0.5,b:1,h:0,k:0, rx:0,ry:0,inv:0
+  },
+
+  /* ---- Horizontal stretch ---- */
+  'hstr_2': {
+    parent:'quad', group:'Horizontal stretch / compression',
+    drop:'\\(g(x)=(2x)^2\\) - compress by 1/2',
+    a:1,b:2,h:0,k:0, rx:0,ry:0,inv:0
+  },
+  'hstr_half': {
+    parent:'sqrt', group:'Horizontal stretch / compression',
+    drop:'\\(g(x)=\\sqrt{x/2}\\) - stretch by 2',
+    a:1,b:0.5,h:0,k:0, rx:0,ry:0,inv:0
+  },
+
+  /* ---- Dilation ---- */
+  'dil_2': {
+    parent:'cubic', group:'Dilation (uniform scaling)',
+    drop:'\\(g(x)=2(2x)^3\\) - uniform dilate by 2',
+    a:2,b:2,h:0,k:0, rx:0,ry:0,inv:0
+  },
+  'dil_half': {
+    parent:'abs', group:'Dilation (uniform scaling)',
+    drop:'\\(g(x)=\\tfrac12|x/2|\\) - uniform dilate by 1/2',
+    a:0.5,b:0.5,h:0,k:0, rx:0,ry:0,inv:0
+  },
+
+  /* ---- Combined ---- */
+  'combo_quad': {
+    parent:'quad', group:'Combined transformation',
+    drop:'\\(g(x)=-2(x-1)^2+3\\)',
+    a:2,b:1,h:1,k:3, rx:1,ry:0,inv:0
+  },
+  'combo_sqrt': {
+    parent:'sqrt', group:'Combined transformation',
+    drop:'\\(g(x)=2\\sqrt{x+4}-1\\)',
+    a:2,b:1,h:-4,k:-1, rx:0,ry:0,inv:0
+  },
+  'combo_recip': {
+    parent:'recip', group:'Combined transformation',
+    drop:'\\(g(x)=\\dfrac{1}{x-2}+1\\)',
+    a:1,b:1,h:2,k:1, rx:0,ry:0,inv:0
+  }
+};
+var EX_GROUPS = [
+  {label:'Vertical shift',                  ids:['vshift_up','vshift_dn']},
+  {label:'Horizontal shift',                ids:['hshift_r','hshift_l']},
+  {label:'Reflection across x-axis',        ids:['rx_quad','rx_sqrt']},
+  {label:'Reflection across y-axis',        ids:['ry_sqrt','ry_log','ry_exp']},
+  {label:'Reflection over y=x (inverse)',   ids:['inv_exp','inv_cubic','inv_lin']},
+  {label:'Vertical stretch / compression',  ids:['vstr_2','vstr_half']},
+  {label:'Horizontal stretch / compression',ids:['hstr_2','hstr_half']},
+  {label:'Dilation (uniform scaling)',      ids:['dil_2','dil_half']},
+  {label:'Combined transformation',         ids:['combo_quad','combo_sqrt','combo_recip']}
+];
+
+/* ---------------------------------------------------
+   State
+--------------------------------------------------- */
+var ST = {
+  parent:'quad',
+  exId:'vshift_up',
+  a:1, b:1, h:0, k:0,
+  rx:0, ry:0, inv:0,
+  t:1,                  /* progress 0..1 */
+  showGhost:true,
+  animating:false
+};
+var animTimer=null;
+
+/* ---------------------------------------------------
+   Info panel
+--------------------------------------------------- */
+(function(){
+  var btn=document.getElementById('infoBtn');
+  var body=document.getElementById('infoBody');
+  var icon=btn.querySelector('.info-icon');
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    icon.innerHTML=exp?'+':'&minus;';
+    if(!exp)mj([body]);
+  });
+})();
+
+/* High-contrast toggle */
+(function(){
+  var btn=document.getElementById('ctog');
+  btn.addEventListener('click',function(){
+    document.documentElement.classList.toggle('hc');
+    var on=document.documentElement.classList.contains('hc');
+    btn.setAttribute('aria-pressed',String(on));
+    say('High-contrast '+(on?'enabled':'disabled'));
+    redraw();
+  });
+})();
+
+/* ---------------------------------------------------
+   Parent gallery - render thumbnails as inline SVG
+--------------------------------------------------- */
+function renderThumb(id){
+  var p=PARENTS[id];
+  var W=110, H=48, pad=4;
+  var xMin=p.natRange[0], xMax=p.natRange[1];
+  var yMin=p.natY[0],     yMax=p.natY[1];
+  var n=80;
+  var seg=[]; var cur=[];
+  for(var i=0;i<n;i++){
+    var x=xMin+(xMax-xMin)*i/(n-1);
+    var y=p.f(x);
+    if(y==null||!isFinite(y)){ if(cur.length){seg.push(cur);cur=[];} continue; }
+    if(y<yMin-1e6||y>yMax+1e6){ if(cur.length){seg.push(cur);cur=[];} continue; }
+    var sx=pad+(W-2*pad)*(x-xMin)/(xMax-xMin);
+    var sy=H-pad-(H-2*pad)*(clamp(y,yMin,yMax)-yMin)/(yMax-yMin);
+    cur.push([sx,sy]);
+  }
+  if(cur.length)seg.push(cur);
+  var x0=pad+(W-2*pad)*(0-xMin)/(xMax-xMin);
+  var y0=H-pad-(H-2*pad)*(0-yMin)/(yMax-yMin);
+  var paths=seg.map(function(s){
+    return '<path d="M'+s.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' L ')+
+           '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+  }).join('');
+  return '<svg viewBox="0 0 '+W+' '+H+'" aria-hidden="true" focusable="false" '+
+         'style="color:var(--ctrans)">'+
+    '<line x1="0" x2="'+W+'" y1="'+y0.toFixed(1)+'" y2="'+y0.toFixed(1)+
+      '" stroke="#d1d5db" stroke-width="1"/>'+
+    '<line x1="'+x0.toFixed(1)+'" x2="'+x0.toFixed(1)+'" y1="0" y2="'+H+
+      '" stroke="#d1d5db" stroke-width="1"/>'+
+    paths+'</svg>';
+}
+
+function buildGallery(){
+  var g=document.getElementById('gallery');
+  g.innerHTML='';
+  PARENT_ORDER.forEach(function(id){
+    var p=PARENTS[id];
+    var b=document.createElement('button');
+    b.type='button';
+    b.className='pcard';
+    b.setAttribute('role','radio');
+    b.setAttribute('data-id',id);
+    b.setAttribute('aria-pressed',id===ST.parent?'true':'false');
+    b.setAttribute('aria-checked',id===ST.parent?'true':'false');
+    b.setAttribute('aria-label',p.name+' parent function, f of x equals '+p.name);
+    b.innerHTML=renderThumb(id)+
+      '<span class="pname">'+p.name+'</span>'+
+      '<span class="peq">\\(f(x)='+p.latex+'\\)</span>';
+    b.addEventListener('click',function(){selectParent(id);});
+    b.addEventListener('keydown',function(e){
+      var idx=PARENT_ORDER.indexOf(id);
+      if(e.key==='ArrowRight'||e.key==='ArrowDown'){
+        e.preventDefault();
+        var nxt=PARENT_ORDER[(idx+1)%PARENT_ORDER.length];
+        selectParent(nxt);
+        document.querySelector('.pcard[data-id="'+nxt+'"]').focus();
+      } else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){
+        e.preventDefault();
+        var prv=PARENT_ORDER[(idx-1+PARENT_ORDER.length)%PARENT_ORDER.length];
+        selectParent(prv);
+        document.querySelector('.pcard[data-id="'+prv+'"]').focus();
+      }
+    });
+    g.appendChild(b);
+  });
+  mj([g]);
+}
+
+function selectParent(id){
+  if(!PARENTS[id])return;
+  ST.parent=id;
+  document.querySelectorAll('.pcard').forEach(function(el){
+    var on=el.getAttribute('data-id')===id;
+    el.setAttribute('aria-pressed',on?'true':'false');
+    el.setAttribute('aria-checked',on?'true':'false');
+  });
+  /* Disable inverse if not 1-1 */
+  var allowInv=!!PARENTS[id].oneToOne;
+  var ic=document.getElementById('invChk');
+  if(!allowInv&&ic.checked){
+    ic.checked=false; ST.inv=0;
+    document.getElementById('invBox').setAttribute('data-on','0');
+  }
+  ic.disabled=!allowInv;
+  document.getElementById('invBox').style.opacity=allowInv?'1':'.5';
+  /* reset plot view to this parent's natural window */
+  setView(defaultViewForParent(id), false);
+  say('Parent function: '+PARENTS[id].name);
+  redraw();
+}
+
+/* ---------------------------------------------------
+   Numeric inputs (a, b, h, k)
+--------------------------------------------------- */
+function bindNum(id,key,lo,hi){
+  var el=document.getElementById(id);
+  function s(){
+    var v=parseFloat(el.value);
+    if(!isFinite(v))v=key==='a'||key==='b'?1:0;
+    if(lo!=null)v=Math.max(lo,v);
+    if(hi!=null)v=Math.min(hi,v);
+    if(key==='b'&&Math.abs(v)<1e-3)v=v<0?-1e-3:1e-3; /* avoid b=0 */
+    el.value=v;
+    ST[key]=v;
+    /* keep reflection toggles in sync with sign of a/b */
+    if(key==='a'){ ST.rx=(v<0)?1:0;
+      document.getElementById('rxChk').checked=ST.rx===1;
+      document.getElementById('rxBox').setAttribute('data-on',ST.rx?'1':'0'); }
+    if(key==='b'){ ST.ry=(v<0)?1:0;
+      document.getElementById('ryChk').checked=ST.ry===1;
+      document.getElementById('ryBox').setAttribute('data-on',ST.ry?'1':'0'); }
+    redraw();
+  }
+  el.addEventListener('change',s);
+  el.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();s();}
+  });
+}
+bindNum('pA','a',-10,10);
+bindNum('pB','b',-10,10);
+bindNum('pH','h',-10,10);
+bindNum('pK','k',-10,10);
+
+/* ---------------------------------------------------
+   Reflection toggles
+--------------------------------------------------- */
+function bindToggle(id,boxId,key){
+  var el=document.getElementById(id);
+  var box=document.getElementById(boxId);
+  el.addEventListener('change',function(){
+    ST[key]=el.checked?1:0;
+    box.setAttribute('data-on',ST[key]?'1':'0');
+    /* sync sign of a/b when rx/ry is toggled */
+    if(key==='rx'){
+      var cur=Math.abs(parseFloat(document.getElementById('pA').value)||1);
+      if(cur===0)cur=1;
+      ST.a=ST.rx?-cur:cur;
+      document.getElementById('pA').value=ST.a;
+    } else if(key==='ry'){
+      var curB=Math.abs(parseFloat(document.getElementById('pB').value)||1);
+      if(curB===0)curB=1;
+      ST.b=ST.ry?-curB:curB;
+      document.getElementById('pB').value=ST.b;
+    }
+    redraw();
+  });
+}
+bindToggle('rxChk','rxBox','rx');
+bindToggle('ryChk','ryBox','ry');
+bindToggle('invChk','invBox','inv');
+
+document.getElementById('ghostChk').addEventListener('change',function(){
+  ST.showGhost=this.checked;
+  document.getElementById('ghostBox').setAttribute('data-on',this.checked?'1':'0');
+  redraw();
+});
+
+/* ---------------------------------------------------
+   Progress slider
+--------------------------------------------------- */
+(function(){
+  var sld=document.getElementById('progSld');
+  var pct=document.getElementById('progPct');
+  function s(){
+    var v=parseFloat(sld.value);
+    if(!isFinite(v))v=1;
+    v=clamp(v,0,1);
+    ST.t=v;
+    pct.textContent=Math.round(v*100)+'%';
+    redraw();
+  }
+  sld.addEventListener('input',s);
+})();
+
+/* ---------------------------------------------------
+   Animation
+--------------------------------------------------- */
+function stopAnim(){
+  ST.animating=false;
+  if(animTimer){clearInterval(animTimer);animTimer=null;}
+  say('Animation stopped');
+}
+function startAnim(){
+  if(ST.animating)return;
+  if(ST.t>=1){ ST.t=0; document.getElementById('progSld').value=0; }
+  ST.animating=true;
+  var ms=parseInt(document.getElementById('speedSel').value)||30;
+  var step=0.012;
+  animTimer=setInterval(function(){
+    if(!ST.animating){clearInterval(animTimer);return;}
+    ST.t=Math.min(ST.t+step,1);
+    document.getElementById('progSld').value=ST.t;
+    document.getElementById('progPct').textContent=Math.round(ST.t*100)+'%';
+    redraw();
+    if(ST.t>=1){stopAnim();say('Animation complete');}
+  },ms);
+  say('Animation started');
+}
+document.getElementById('btnPlay').addEventListener('click',startAnim);
+document.getElementById('btnStop').addEventListener('click',stopAnim);
+document.getElementById('btnReset').addEventListener('click',function(){
+  stopAnim();
+  ST.t=0;
+  document.getElementById('progSld').value=0;
+  document.getElementById('progPct').textContent='0%';
+  redraw();
+  say('Reset to parent');
+});
+
+/* ---------------------------------------------------
+   Transformation evaluation
+--------------------------------------------------- */
+/* Linear interpolate parameter from identity to target by progress t */
+function curParams(){
+  var t=ST.t;
+  /* identity values */
+  var a0=1,b0=1,h0=0,k0=0;
+  /* If reflections checked but a/b haven't been adjusted, force sign */
+  var aT=ST.a, bT=ST.b;
+  if(ST.rx===1&&aT>0)aT=-Math.abs(aT)||-1;
+  if(ST.ry===1&&bT>0)bT=-Math.abs(bT)||-1;
+  return {
+    a: a0+(aT-a0)*t,
+    b: b0+(bT-b0)*t,
+    h: h0+(ST.h-h0)*t,
+    k: k0+(ST.k-k0)*t,
+    invFrac: ST.inv?t:0
+  };
+}
+
+/* Evaluate g(x) = a f(b(x-h)) + k */
+function gEval(x,parent,P){
+  var p=PARENTS[parent];
+  var u=P.b*(x-P.h);
+  var y=p.f(u);
+  if(y==null||!isFinite(y))return null;
+  return P.a*y+P.k;
+}
+
+/* ---------------------------------------------------
+   Plot - D3
+--------------------------------------------------- */
+var DEFAULT_VIEW={xMin:-5, xMax:5, yMin:-5, yMax:5};
+var VIEW={xMin:-5, xMax:5, yMin:-5, yMax:5};
+
+var D3PLOT={
+  svg:null, g:null, gXAxis:null, gYAxis:null,
+  gZeroX:null, gZeroY:null, gParent:null, gTrans:null, gInv:null,
+  zoomPad:null,
+  xScale:null, yScale:null,
+  W:0, H:0, plotW:0, plotH:0,
+  margin:{top:14, right:18, bottom:50, left:58},
+  zoom:null
+};
+
+function colorOf(varName){
+  var s=getComputedStyle(document.documentElement);
+  return s.getPropertyValue(varName).trim()||'#1d4ed8';
+}
+
+function defaultViewForParent(id){
+  var p=PARENTS[id];
+  if(!p||!p.natRange||!p.natY) return {xMin:-5,xMax:5,yMin:-5,yMax:5};
+  return {xMin:p.natRange[0], xMax:p.natRange[1],
+          yMin:p.natY[0],     yMax:p.natY[1]};
+}
+
+function syncViewInputs(){
+  function fx(v){return (Math.round(v*100)/100).toString();}
+  document.getElementById('xMin').value=fx(VIEW.xMin);
+  document.getElementById('xMax').value=fx(VIEW.xMax);
+  document.getElementById('yMin').value=fx(VIEW.yMin);
+  document.getElementById('yMax').value=fx(VIEW.yMax);
+}
+
+function setView(v, redraw){
+  VIEW.xMin=+v.xMin; VIEW.xMax=+v.xMax;
+  VIEW.yMin=+v.yMin; VIEW.yMax=+v.yMax;
+  if(!isFinite(VIEW.xMin)||!isFinite(VIEW.xMax)||VIEW.xMax<=VIEW.xMin){
+    VIEW.xMin=-5; VIEW.xMax=5;
+  }
+  if(!isFinite(VIEW.yMin)||!isFinite(VIEW.yMax)||VIEW.yMax<=VIEW.yMin){
+    VIEW.yMin=-5; VIEW.yMax=5;
+  }
+  syncViewInputs();
+  if(redraw!==false) drawPlot();
+}
+
+function plotInit(){
+  var P=D3PLOT;
+  var container=document.getElementById('plotMain');
+  d3.select(container).selectAll('*').remove();
+
+  var box=container.getBoundingClientRect();
+  P.W=Math.max(320, Math.round(box.width||800));
+  P.H=Math.max(260, Math.round(box.height||420));
+  P.plotW=P.W - P.margin.left - P.margin.right;
+  P.plotH=P.H - P.margin.top - P.margin.bottom;
+
+  P.svg=d3.select(container).append('svg')
+    .attr('width','100%').attr('height','100%')
+    .attr('viewBox','0 0 '+P.W+' '+P.H)
+    .attr('preserveAspectRatio','xMidYMid meet')
+    .attr('role','img')
+    .attr('aria-label','Graph showing dashed parent function and animated transformed function');
+
+  P.svg.append('defs').append('clipPath').attr('id','pclip')
+    .append('rect').attr('width',P.plotW).attr('height',P.plotH);
+
+  P.g=P.svg.append('g')
+    .attr('transform','translate('+P.margin.left+','+P.margin.top+')');
+
+  P.gXAxis=P.g.append('g').attr('class','axis x-axis')
+    .attr('transform','translate(0,'+P.plotH+')');
+  P.gYAxis=P.g.append('g').attr('class','axis y-axis');
+  P.gZeroX=P.g.append('line').attr('class','zero zero-x');
+  P.gZeroY=P.g.append('line').attr('class','zero zero-y');
+
+  var gClip=P.g.append('g').attr('clip-path','url(#pclip)');
+  P.gInv   =gClip.append('line').attr('class','inv-line').style('display','none');
+  P.gParent=gClip.append('path').attr('class','curve parent');
+  P.gTrans =gClip.append('path').attr('class','curve trans');
+
+  /* axis labels */
+  P.svg.append('text').attr('class','axlbl x-lbl')
+    .attr('x', P.margin.left + P.plotW/2)
+    .attr('y', P.H - 12)
+    .attr('text-anchor','middle')
+    .text('x');
+  P.svg.append('text').attr('class','axlbl y-lbl')
+    .attr('transform','translate(16,'+(P.margin.top + P.plotH/2)+') rotate(-90)')
+    .attr('text-anchor','middle')
+    .text('y');
+
+  P.xScale=d3.scaleLinear().range([0, P.plotW]);
+  P.yScale=d3.scaleLinear().range([P.plotH, 0]);
+
+  /* zoom overlay (mouse wheel + drag pan) */
+  P.zoomPad=P.g.append('rect').attr('class','zoom-pad')
+    .attr('width',P.plotW).attr('height',P.plotH)
+    .attr('fill','none').attr('pointer-events','all');
+
+  P.zoom=d3.zoom().scaleExtent([0.02, 500]).on('zoom', function(ev){
+    var t=ev.transform;
+    var bx=d3.scaleLinear().domain([VIEW.xMin,VIEW.xMax]).range([0,P.plotW]);
+    var by=d3.scaleLinear().domain([VIEW.yMin,VIEW.yMax]).range([P.plotH,0]);
+    var nx=t.rescaleX(bx), ny=t.rescaleY(by);
+    var dx=nx.domain(), dy=ny.domain();
+    VIEW.xMin=dx[0]; VIEW.xMax=dx[1];
+    VIEW.yMin=dy[0]; VIEW.yMax=dy[1];
+    syncViewInputs();
+    P.zoomPad.call(P.zoom.transform, d3.zoomIdentity); /* avoid compounding */
+    drawPlot();
+  });
+  P.zoomPad.call(P.zoom);
+}
+
+function makeLine(xs, ys){
+  var P=D3PLOT;
+  var data=[];
+  for(var i=0;i<xs.length;i++) data.push([xs[i], ys[i]]);
+  /* break the path across asymptotes / out-of-view spikes */
+  var ySpan=VIEW.yMax-VIEW.yMin;
+  var yLo=VIEW.yMin - ySpan*8, yHi=VIEW.yMax + ySpan*8;
+  return d3.line()
+    .defined(function(d){
+      if(d[0]==null||d[1]==null||!isFinite(d[1])) return false;
+      return d[1]>=yLo && d[1]<=yHi;
+    })
+    .x(function(d){return P.xScale(d[0]);})
+    .y(function(d){return P.yScale(d[1]);})
+    .curve(d3.curveMonotoneX)
+    (data);
+}
+
+function drawPlot(){
+  if(!D3PLOT.svg) plotInit();
+  var P=D3PLOT;
+  var p=PARENTS[ST.parent];
+  var prm=curParams();
+
+  /* sample x over the visible window plus a small padding */
+  var span=VIEW.xMax-VIEW.xMin;
+  var xLo=VIEW.xMin - span*0.05, xHi=VIEW.xMax + span*0.05;
+  var N=720;
+  var xs=linspace(xLo, xHi, N);
+
+  /* parent ghost */
+  var ghostY=xs.map(function(x){var y=p.f(x);return (y==null||!isFinite(y))?null:y;});
+
+  /* transformed g(x) blended with inverse swap by invFrac */
+  var alpha=prm.invFrac;
+  var gX=new Array(N), gY=new Array(N);
+  for(var i=0;i<N;i++){
+    var x=xs[i];
+    var y=gEval(x,ST.parent,prm);
+    if(y==null){gX[i]=null;gY[i]=null;continue;}
+    gX[i]=(1-alpha)*x+alpha*y;
+    gY[i]=(1-alpha)*y+alpha*x;
+  }
+
+  /* update scales */
+  P.xScale.domain([VIEW.xMin, VIEW.xMax]);
+  P.yScale.domain([VIEW.yMin, VIEW.yMax]);
+
+  /* axes + grid (negative tickSize draws grid) */
+  P.gXAxis.call(d3.axisBottom(P.xScale).ticks(8)
+    .tickSizeInner(-P.plotH).tickPadding(8));
+  P.gYAxis.call(d3.axisLeft(P.yScale).ticks(8)
+    .tickSizeInner(-P.plotW).tickPadding(8));
+
+  /* zero lines */
+  if(VIEW.yMin<=0 && VIEW.yMax>=0){
+    P.gZeroX.style('display',null)
+      .attr('x1',0).attr('x2',P.plotW)
+      .attr('y1',P.yScale(0)).attr('y2',P.yScale(0));
+  } else P.gZeroX.style('display','none');
+  if(VIEW.xMin<=0 && VIEW.xMax>=0){
+    P.gZeroY.style('display',null)
+      .attr('y1',0).attr('y2',P.plotH)
+      .attr('x1',P.xScale(0)).attr('x2',P.xScale(0));
+  } else P.gZeroY.style('display','none');
+
+  /* y = x reference line for inverse mode */
+  if(ST.inv===1){
+    var lo=Math.min(VIEW.xMin, VIEW.yMin), hi=Math.max(VIEW.xMax, VIEW.yMax);
+    P.gInv.style('display',null)
+      .attr('x1',P.xScale(lo)).attr('y1',P.yScale(lo))
+      .attr('x2',P.xScale(hi)).attr('y2',P.yScale(hi));
+  } else P.gInv.style('display','none');
+
+  /* parent ghost */
+  if(ST.showGhost){
+    P.gParent.style('display',null)
+      .attr('stroke',colorOf('--cparent'))
+      .attr('d', makeLine(xs, ghostY));
+  } else P.gParent.style('display','none');
+
+  /* transformed */
+  P.gTrans.attr('stroke',colorOf('--ctrans'))
+          .attr('d', makeLine(gX, gY));
+}
+
+/* ---------------------------------------------------
+   View / range controls
+--------------------------------------------------- */
+function bindView(id, key){
+  var el=document.getElementById(id);
+  function s(){
+    var v=parseFloat(el.value);
+    if(!isFinite(v))return;
+    VIEW[key]=v;
+    if(VIEW.xMax<=VIEW.xMin){VIEW.xMax=VIEW.xMin+1;}
+    if(VIEW.yMax<=VIEW.yMin){VIEW.yMax=VIEW.yMin+1;}
+    syncViewInputs();
+    drawPlot();
+  }
+  el.addEventListener('change', s);
+  el.addEventListener('keydown', function(e){if(e.key==='Enter'){e.preventDefault();s();}});
+}
+bindView('xMin','xMin'); bindView('xMax','xMax');
+bindView('yMin','yMin'); bindView('yMax','yMax');
+
+document.getElementById('btnZoomIn').addEventListener('click', function(){
+  var cx=(VIEW.xMin+VIEW.xMax)/2, cy=(VIEW.yMin+VIEW.yMax)/2;
+  var hx=(VIEW.xMax-VIEW.xMin)/2, hy=(VIEW.yMax-VIEW.yMin)/2;
+  setView({xMin:cx-hx*0.7, xMax:cx+hx*0.7, yMin:cy-hy*0.7, yMax:cy+hy*0.7});
+});
+document.getElementById('btnZoomOut').addEventListener('click', function(){
+  var cx=(VIEW.xMin+VIEW.xMax)/2, cy=(VIEW.yMin+VIEW.yMax)/2;
+  var hx=(VIEW.xMax-VIEW.xMin)/2, hy=(VIEW.yMax-VIEW.yMin)/2;
+  setView({xMin:cx-hx/0.7, xMax:cx+hx/0.7, yMin:cy-hy/0.7, yMax:cy+hy/0.7});
+});
+document.getElementById('btnViewReset').addEventListener('click', function(){
+  setView(defaultViewForParent(ST.parent));
+  say('View reset');
+});
+
+/* Re-init plot on resize */
+(function(){
+  var to=null;
+  window.addEventListener('resize', function(){
+    if(to)clearTimeout(to);
+    to=setTimeout(function(){plotInit();drawPlot();},150);
+  });
+})();
+
+/* ---------------------------------------------------
+   Formula generation
+--------------------------------------------------- */
+function fmtNum(v){
+  if(Math.abs(v)<1e-10)return '0';
+  /* prefer simple fractions for halves and quarters */
+  var halves=[
+    [0.5,'\\tfrac12'],[1.5,'\\tfrac32'],[-0.5,'-\\tfrac12'],[-1.5,'-\\tfrac32'],
+    [0.25,'\\tfrac14'],[0.75,'\\tfrac34'],[-0.25,'-\\tfrac14'],[-0.75,'-\\tfrac34'],
+    [1/3,'\\tfrac13'],[-1/3,'-\\tfrac13']
+  ];
+  for(var i=0;i<halves.length;i++)if(Math.abs(v-halves[i][0])<1e-3)return halves[i][1];
+  if(Math.abs(v-Math.round(v))<1e-9)return String(Math.round(v));
+  return (+v.toFixed(3)).toString();
+}
+
+/* Returns LaTeX for f(<inner>) given a parent id and inner expr string.
+   Suppress redundant parens when inner is a single token (just "x" or "-x"). */
+function applyParent(parentId,inner){
+  var simple=(inner==='x'||inner==='-x');
+  function paren(s){return simple?s:'\\left('+s+'\\right)';}
+  switch(parentId){
+    case 'const': return '1';
+    case 'lin':   return inner;
+    case 'quad':  return simple?inner+'^{2}':paren(inner)+'^{2}';
+    case 'cubic': return simple?inner+'^{3}':paren(inner)+'^{3}';
+    case 'recip': return '\\dfrac{1}{'+inner+'}';
+    case 'sqrt':  return '\\sqrt{'+inner+'}';
+    case 'cbrt':  return '\\sqrt[3]{'+inner+'}';
+    case 'abs':   return '\\left|'+inner+'\\right|';
+    case 'exp':   return 'e^{'+inner+'}';
+    case 'log':   return simple?'\\ln '+inner:'\\ln\\!\\left('+inner+'\\right)';
+  }
+  return inner;
+}
+
+function buildInner(){
+  /* b(x - h) - simplify when b=1 or h=0 */
+  var b=ST.b, h=ST.h;
+  var xpart;
+  if(Math.abs(h)<1e-9)        xpart='x';
+  else if(h>0)                xpart='x-'+fmtNum(Math.abs(h));
+  else                        xpart='x+'+fmtNum(Math.abs(h));
+
+  if(Math.abs(b-1)<1e-9)      return xpart;
+  if(Math.abs(b+1)<1e-9){
+    if(xpart==='x')return '-x';
+    return '-\\left('+xpart+'\\right)';
+  }
+  /* b!=±1 */
+  var bs=fmtNum(b);
+  if(xpart==='x')return bs+'x';
+  return bs+'\\left('+xpart+'\\right)';
+}
+
+function buildAfterFormula(){
+  if(ST.inv===1){
+    /* When inverse is on, write g = f^{-1} of the inner form */
+    var pName=PARENTS[ST.parent].name;
+    /* simple inverses for common parents */
+    var inv={
+      'lin':'x','cubic':'\\sqrt[3]{x}','exp':'\\ln x','log':'e^{x}',
+      'sqrt':'x^{2},\\;x\\ge 0','cbrt':'x^{3}','recip':'\\dfrac{1}{x}'
+    };
+    var s=inv[ST.parent];
+    if(s)return 'g(x)\\;=\\;f^{-1}(x)\\;=\\;'+s;
+    return 'g(x)\\;=\\;f^{-1}(x)';
+  }
+  var inner=buildInner();
+  var fpart=applyParent(ST.parent,inner);
+  /* a multiplier */
+  var a=ST.a, k=ST.k, body;
+  if(Math.abs(a-1)<1e-9)        body=fpart;
+  else if(Math.abs(a+1)<1e-9)   body='-'+fpart;
+  else                          body=fmtNum(a)+'\\,'+fpart;
+  /* k addition */
+  if(Math.abs(k)<1e-9)          return 'g(x)\\;=\\;'+body;
+  if(k>0)                       return 'g(x)\\;=\\;'+body+'+'+fmtNum(Math.abs(k));
+  return 'g(x)\\;=\\;'+body+'-'+fmtNum(Math.abs(k));
+}
+
+function updateFormulas(){
+  var p=PARENTS[ST.parent];
+  var before=document.getElementById('fmBefore');
+  var after =document.getElementById('fmAfter');
+  before.innerHTML='\\(f(x) = '+p.latex+'\\)';
+  after .innerHTML='\\('+buildAfterFormula()+'\\)';
+  mj([before,after]);
+}
+
+/* ---------------------------------------------------
+   Master redraw
+--------------------------------------------------- */
+var pending=false;
+function redraw(){
+  if(pending)return; pending=true;
+  requestAnimationFrame(function(){
+    pending=false;
+    drawPlot();
+    updateFormulas();
+  });
+}
+
+/* ---------------------------------------------------
+   Custom LaTeX listbox for example selector
+--------------------------------------------------- */
+var cselCurrent='vshift_up';
+function cselBuild(){
+  var list=document.getElementById('cselList');
+  list.innerHTML='';
+  EX_GROUPS.forEach(function(grp){
+    var gl=document.createElement('div');
+    gl.className='csel-grp'; gl.textContent=grp.label;
+    list.appendChild(gl);
+    grp.ids.forEach(function(id){
+      var opt=document.createElement('div');
+      opt.className='csel-opt';
+      opt.setAttribute('role','option');
+      opt.setAttribute('tabindex','-1');
+      opt.setAttribute('data-id',id);
+      opt.setAttribute('aria-selected',id===cselCurrent?'true':'false');
+      opt.innerHTML=EX[id].drop;
+      list.appendChild(opt);
+    });
+  });
+}
+function cselSetDisplay(id){
+  var d=document.getElementById('cselDisplay');
+  d.innerHTML=EX[id].drop;
+  mj([d]);
+}
+function cselSelect(id){
+  cselCurrent=id;
+  cselSetDisplay(id);
+  document.querySelectorAll('#cselList .csel-opt').forEach(function(el){
+    el.setAttribute('aria-selected',el.getAttribute('data-id')===id?'true':'false');
+  });
+}
+function cselOpen(){
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  list.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+  var sel=list.querySelector('[aria-selected="true"]');
+  if(sel){sel.focus();sel.scrollIntoView({block:'nearest'});}
+}
+function cselClose(){
+  document.getElementById('cselList').classList.remove('open');
+  document.getElementById('cselBtn').setAttribute('aria-expanded','false');
+}
+function cselToggle(){
+  document.getElementById('cselList').classList.contains('open')?cselClose():cselOpen();
+}
+function initCsel(){
+  cselBuild();
+  cselSetDisplay(cselCurrent);
+  mj([document.getElementById('cselList'),document.getElementById('cselDisplay')]);
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  btn.addEventListener('click',function(e){e.stopPropagation();cselToggle();});
+  btn.addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();cselToggle();}
+    if(e.key==='Escape')cselClose();
+    if(e.key==='ArrowDown'){e.preventDefault();cselOpen();}
+  });
+  list.addEventListener('click',function(e){
+    var opt=e.target.closest('.csel-opt');
+    if(!opt)return;
+    var id=opt.getAttribute('data-id');
+    cselSelect(id); cselClose(); btn.focus();
+    loadExample(id);
+  });
+  list.addEventListener('keydown',function(e){
+    var opts=Array.from(list.querySelectorAll('.csel-opt'));
+    var idx=opts.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'){e.preventDefault();if(idx<opts.length-1)opts[idx+1].focus();}
+    else if(e.key==='ArrowUp'){e.preventDefault();if(idx>0)opts[idx-1].focus();else{cselClose();btn.focus();}}
+    else if(e.key==='Enter'||e.key===' '){
+      e.preventDefault();
+      var f=document.activeElement;
+      if(f&&f.dataset&&f.dataset.id){cselSelect(f.dataset.id);cselClose();btn.focus();loadExample(f.dataset.id);}
+    }
+    else if(e.key==='Escape'||e.key==='Tab'){cselClose();if(e.key==='Escape')btn.focus();}
+  });
+  document.addEventListener('click',function(e){
+    if(!document.getElementById('cselWrap').contains(e.target))cselClose();
+  });
+}
+
+function loadExample(id){
+  if(!EX[id])return;
+  var ex=EX[id];
+  stopAnim();
+  ST.parent=ex.parent;
+  ST.a=ex.a*(ex.rx?-1:1);
+  ST.b=ex.b*(ex.ry?-1:1);
+  ST.h=ex.h; ST.k=ex.k;
+  ST.rx=ex.rx?1:0; ST.ry=ex.ry?1:0;
+  ST.inv=ex.inv?1:0;
+  ST.t=0;
+
+  /* sync UI */
+  document.getElementById('pA').value=ST.a;
+  document.getElementById('pB').value=ST.b;
+  document.getElementById('pH').value=ST.h;
+  document.getElementById('pK').value=ST.k;
+  document.getElementById('rxChk').checked=ST.rx===1;
+  document.getElementById('rxBox').setAttribute('data-on',ST.rx?'1':'0');
+  document.getElementById('ryChk').checked=ST.ry===1;
+  document.getElementById('ryBox').setAttribute('data-on',ST.ry?'1':'0');
+  document.getElementById('invChk').checked=ST.inv===1;
+  document.getElementById('invBox').setAttribute('data-on',ST.inv?'1':'0');
+  document.getElementById('progSld').value=0;
+  document.getElementById('progPct').textContent='0%';
+  /* Sync gallery selection */
+  document.querySelectorAll('.pcard').forEach(function(el){
+    var on=el.getAttribute('data-id')===ST.parent;
+    el.setAttribute('aria-pressed',on?'true':'false');
+    el.setAttribute('aria-checked',on?'true':'false');
+  });
+  /* enable/disable inverse based on parent */
+  var allowInv=!!PARENTS[ST.parent].oneToOne;
+  document.getElementById('invChk').disabled=!allowInv;
+  document.getElementById('invBox').style.opacity=allowInv?'1':'.5';
+  /* reset plot view to this parent's natural window */
+  setView(defaultViewForParent(ST.parent), false);
+
+  redraw();
+  say('Loaded: '+ex.group);
+  /* auto-play */
+  setTimeout(startAnim,150);
+}
+
+/* ---------------------------------------------------
+   Init
+--------------------------------------------------- */
+document.addEventListener('DOMContentLoaded',function(){
+  buildGallery();
+
+  function init(){
+    if(window.MathJax&&MathJax.typesetPromise){
+      MathJax.startup.promise.then(function(){
+        MathJax.typesetPromise().then(function(){
+          initCsel();
+          /* Sync UI to initial state */
+          document.getElementById('pA').value=ST.a;
+          document.getElementById('pB').value=ST.b;
+          document.getElementById('pH').value=ST.h;
+          document.getElementById('pK').value=ST.k;
+          /* Load first example */
+          loadExample(cselCurrent);
+        }).catch(function(){initCsel();loadExample(cselCurrent);});
+      }).catch(function(){initCsel();loadExample(cselCurrent);});
+    } else {
+      setTimeout(init,100);
+    }
+  }
+  init();
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

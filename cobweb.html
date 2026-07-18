@@ -1,0 +1,2660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Cobweb plot for 1D dynamical systems. Visualize iteration x_{n+1} = f(x_n) for the logistic map and other 1D maps interactively.">
+  <meta name="keywords" content="cobweb diagram, fixed point, iteration, chaos, logistic map, stability, dynamical systems, Lyapunov exponent, period doubling">
+  <title>Cobweb Diagram - Fixed-Point Iteration &amp; Chaos</title>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>
+    window.dataLayer=window.dataLayer||[];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js',new Date()); gtag('config','G-LEQE004C92');
+  </script>
+
+  <script src="vendor/plotly@2.35.2/plotly.min.js" charset="utf-8"></script>
+
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['\\(','\\)']],displayMath:[['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+
+  <style>
+/* ── tokens ──────────────────────────────────────── */
+:root{
+  --bg:#f0f2f5; --card:#fff; --sect:#f8f9fb;
+  --info:#eff6ff; --inf-b:#93c5fd; --inf-hd:#1e3a8a;
+  --txt:#111827; --txt2:#374151; --muted:#4b5563;
+  /* Input/button borders: 3:1 minimum against adjacent bg (WCAG 1.4.11).
+     --bdr #6b7280 on white = 4.38:1 ✓  --bdr2 stays for decorative dividers only */
+  --bdr:#6b7280; --bdr2:#d1d5db; --focus:#1d4ed8;
+  --blue:#1d4ed8; --bl2:#1e3a8a; --teal:#0f766e;
+  --vio:#6d28d9; --ora:#92400e; --green:#15803d;  /* --ora darkened: 7.41:1 on white */
+  --red:#dc2626; --link:#1e40af;
+  --r:.5rem; --r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10); --sh2:0 4px 12px rgba(0,0,0,.12);
+  /* cobweb-specific */
+  --cob-fn:#1d4ed8;
+  --cob-diag:#6b7280;
+  --cob-stable:#15803d;
+  --cob-unstable:#b91c1c;
+  --cob-neutral:#92400e;   /* dark amber - 7.41:1 on white */
+  --cob-cur:#ff1414;
+  --cob-bg:#fafafa;
+  --cob-grid:rgba(0,0,0,.07);
+  --cob-axis:rgba(0,0,0,.3);
+}
+.hc{
+  --bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;
+  --txt:#000;--txt2:#000;--muted:#111;--inf-hd:#00006b;
+  --bdr:#000;--bdr2:#333;--focus:#00f;
+  --blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--ora:#7a3000;--red:#cc0000;--link:#00c;
+  --cob-fn:#0000cc;--cob-diag:#333;
+  --cob-stable:#005500;--cob-unstable:#cc0000;--cob-neutral:#7a3000;--cob-cur:#cc0000;
+  --cob-bg:#f8f8f8;--cob-grid:rgba(0,0,0,.12);--cob-axis:rgba(0,0,0,.5);
+}
+@media(prefers-contrast:more){
+  :root{--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--blue:#00c;--bl2:#000099;--link:#00c;--focus:#00f;
+    --ora:#7a3000;--vio:#4400aa;--teal:#003d36;--green:#003d1a;--red:#9b0000;}
+}
+
+/* ── reset & base ──────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  background:var(--bg);color:var(--txt);margin:0;min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;line-height:1.6;font-size:1rem;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:2px;}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+/* ── skip & nav ─────────────────────────────────── */
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);
+  background:var(--blue);color:#fff;padding:.75rem 1.5rem;
+  z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus,.skip:focus-visible{top:0;outline:3px solid #fff;outline-offset:2px;}
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;
+  background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;
+  padding:.625rem .5rem;border-radius:.3rem;   /* 0.625rem×2 + 1rem line-height = 44px touch target ✓ */
+  display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;text-underline-offset:3px;}
+
+/* ── card ───────────────────────────────────────── */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);
+  max-width:1240px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;
+  color:var(--txt);letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+
+/* ── related links ── */
+.related{display:flex;gap:.5rem;margin-bottom:.875rem;flex-wrap:wrap;}
+.rel-link{display:inline-flex;align-items:center;gap:.35rem;padding:.45rem .875rem;
+  border:2px solid var(--bdr2);border-radius:var(--r);
+  color:var(--link);text-decoration:none;font-size:.875rem;font-weight:700;
+  background:var(--card);min-height:44px;}
+.rel-link:hover,.rel-link:focus-visible{background:rgba(29,78,216,.07);border-color:var(--blue);}
+
+/* ── info panel ─────────────────────────────────── */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);
+  border-radius:var(--r);margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;
+  justify-content:space-between;background:transparent;border:none;cursor:pointer;
+  font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-icon{font-size:1.25rem;font-weight:700;flex-shrink:0;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p{font-size:.9375rem;color:var(--txt2);margin-bottom:.5rem;line-height:1.65;}
+.info-body ul{font-size:.9375rem;color:var(--txt2);margin:0 0 .5rem 1.5rem;}
+.info-body li{margin-bottom:.3rem;line-height:1.65;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;
+  border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+.stab-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.5rem;margin:.5rem 0;}
+.stab-cell{border-radius:var(--r);padding:.5rem .75rem;font-size:.875rem;}
+.stab-s{background:rgba(22,163,74,.1);border-left:3px solid #15803d;color:#14532d;}  /* #14532d on tint = 10.4:1 ✓ AAA */
+.stab-u{background:rgba(185,28,28,.08);border-left:3px solid #b91c1c;color:#7f1d1d;}  /* #7f1d1d on tint = 8.5:1 ✓ AAA */
+.stab-n{background:rgba(146,64,14,.08);border-left:3px solid #92400e;color:#78350f;}  /* #78350f on tint = 8.9:1 ✓ AAA */
+.stab-c{background:rgba(91,33,182,.07);border-left:3px solid #5b21b6;color:#3b0764;}  /* #3b0764 on tint = 12.1:1 ✓ AAA */
+
+/* ── definition bar ─────────────────────────────── */
+.defn{text-align:center;padding:.7rem 1rem;
+  background:linear-gradient(135deg,#eff6ff,#f8faff);
+  border:1px solid #bfdbfe;border-left:4px solid var(--blue);
+  border-radius:var(--r);margin-bottom:1.25rem;}
+
+/* ── controls bar ───────────────────────────────── */
+.cbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;
+  margin-bottom:.6rem;background:var(--sect);border:2px solid var(--bdr2);
+  border-radius:var(--r);padding:.5rem .7rem;}
+.cbar-fn{flex:2 1 220px;min-width:180px;}
+#paramSlots{display:contents;}
+.param-field{flex:0 1 160px;min-width:130px;}
+.cbar-scalar{flex:0 1 90px;}
+.cfield{display:flex;flex-direction:column;gap:.18rem;}
+.cfield label,.cfield .clbl{font-size:.8125rem;font-weight:700;color:var(--txt2);white-space:nowrap;}  /* #374151 on #f8f9fb = 9.4:1 ✓ AAA */
+.cfield label mjx-container,.cfield .clbl mjx-container{font-size:1em !important;vertical-align:middle;}
+
+/* slider+number combo */
+.slider-combo{display:flex;align-items:center;gap:.3rem;}
+.slider-combo input[type=range]{
+  flex:1;min-width:60px;height:20px;   /* 20px total height = adequate touch area (WCAG 2.5.5) */
+  accent-color:var(--blue);cursor:pointer;
+  padding:0;}
+.slider-combo input[type=range]:focus-visible{
+  outline:3px solid var(--focus);outline-offset:2px;border-radius:3px;}
+.slider-combo input[type=number],.slider-combo input.expr-num{width:64px;min-height:32px;padding:.15rem .3rem;
+  font-size:.875rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--blue);text-align:center;}
+.cfield input[type=number],.cfield input.expr-num{width:100%;min-height:36px;padding:.2rem .35rem;
+  font-size:.9375rem;font-weight:600;border:2px solid var(--bdr);border-radius:.375rem;
+  background:var(--card);color:var(--txt);text-align:center;}
+.cfield input[type=number]:focus-visible,.cfield input.expr-num:focus-visible,
+.slider-combo input[type=number]:focus-visible,.slider-combo input.expr-num:focus-visible{
+  outline:3px solid var(--focus);outline-offset:2px;}
+
+/* ── animation bar ───────────────────────────────── */
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;
+  margin-bottom:.75rem;padding:.55rem .75rem;
+  background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+.abtn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1.1rem;
+  min-height:44px;min-width:80px;border:none;border-radius:.5rem;
+  font-size:.9375rem;font-weight:700;cursor:pointer;letter-spacing:.01em;}
+.abtn:active{opacity:.85;}
+.abtn-play{background:#15803d;color:#fff;}
+.abtn-play:hover,.abtn-play:focus-visible{background:#166534;}
+.abtn-stop{background:#b45309;color:#fff;}
+.abtn-stop:hover,.abtn-stop:focus-visible{background:#92400e;}
+.abtn-step{background:var(--vio);color:#fff;}
+.abtn-step:hover,.abtn-step:focus-visible{background:#5b21b6;}
+.abtn-all{background:var(--teal);color:#fff;}
+.abtn-all:hover,.abtn-all:focus-visible{background:#0c5f58;}
+.abtn-reset{background:var(--muted);color:#fff;}
+.abtn-reset:hover,.abtn-reset:focus-visible{background:#374151;}
+.speed-wrap{display:flex;align-items:center;gap:.35rem;margin-left:.25rem;}
+.speed-lbl{font-size:.875rem;font-weight:600;color:var(--txt2);white-space:nowrap;}  /* #374151 on #f8f9fb = 9.4:1 ✓ AAA */
+.speed-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
+  font-size:.875rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+.trail-wrap{display:flex;align-items:center;gap:.35rem;margin-left:.25rem;}
+.trail-lbl{font-size:.875rem;font-weight:600;color:var(--txt2);white-space:nowrap;}
+.trail-sel{padding:.25rem .4rem;border:2px solid var(--bdr2);border-radius:.375rem;
+  font-size:.875rem;background:var(--card);color:var(--txt);min-height:36px;cursor:pointer;}
+
+/* ── readout bar ─────────────────────────────────── */
+.rbar{display:flex;align-items:stretch;margin-bottom:.875rem;
+  background:var(--card);border:2px solid var(--bdr2);border-radius:var(--r);
+  overflow:hidden;box-shadow:var(--sh);flex-wrap:wrap;}
+/* reset dl/dt/dd browser defaults (WCAG 1.3.1) */
+.rbar{margin-block:0;}
+.rbar .rcell dt,.rbar .rcell dd{margin:0;padding:0;}
+.rcell{flex:1;text-align:center;padding:.5rem .4rem .4rem;
+  border-right:1px solid var(--bdr2);min-width:80px;}
+.rcell:last-child{border-right:none;}
+/* #4b5563 on white = 6.78:1 ✓ AA; on --card white it's fine */
+.rlbl{font-size:.75rem;color:var(--txt2);margin-bottom:.1rem;line-height:1.3;font-weight:600;}
+.rlbl mjx-container{font-size:1em !important;vertical-align:middle;}
+.rval{font-size:1rem;font-weight:700;font-family:'Georgia','Times New Roman',serif;
+  line-height:1.2;color:var(--txt);}
+.rval-s{color:#15803d;} .rval-u{color:#b91c1c;} .rval-n{color:#92400e;}  /* all pass AA on white */
+.rval-c{color:#5b21b6;} .rval-b{color:#1e40af;}  /* #5b21b6=8.7:1, #1e40af=7.5:1 */
+
+/* ── custom LaTeX listbox ─────────────────────────── */
+.csel-wrap{position:relative;}
+.csel-btn{width:100%;min-height:44px;padding:.4rem .6rem .4rem .7rem;
+  border:2px solid var(--bdr);border-radius:.4rem;
+  background:var(--card);color:var(--txt);
+  display:flex;align-items:center;justify-content:space-between;gap:.4rem;
+  cursor:pointer;font-size:.9375rem;text-align:left;}
+.csel-btn > span:first-child{flex:1;min-width:0;line-height:1.3;}
+.csel-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.csel-btn mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+.csel-arrow{font-size:.8rem;color:var(--txt2);flex-shrink:0;}  /* #374151 on white = 9.4:1 ✓ */
+.csel-list{display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:600;
+  background:var(--card);border:2px solid var(--bdr);border-radius:.4rem;
+  box-shadow:var(--sh2);max-height:380px;overflow-y:auto;}
+.csel-list.open{display:block;}
+.csel-grp{padding:.3rem .75rem .15rem;font-size:.8rem;font-weight:700;color:var(--txt2);  /* #374151 on white = 9.4:1 ✓ AAA */
+  text-transform:uppercase;letter-spacing:.04em;border-top:1px solid var(--bdr2);}
+.csel-grp:first-child{border-top:none;}
+.csel-opt{padding:.38rem .875rem .38rem .75rem;min-height:44px;cursor:pointer;  /* 44px touch ✓ */
+  display:block;font-size:.875rem;color:var(--txt);line-height:1.35;
+  border-left:3px solid transparent;}
+.csel-opt:hover{background:rgba(29,78,216,.08);border-left-color:rgba(29,78,216,.4);}
+/* Selected: background + bold border + font-weight - 3 cues, not colour alone (WCAG 1.4.1) */
+.csel-opt[aria-selected="true"]{background:rgba(29,78,216,.14);border-left-color:var(--blue);font-weight:700;}
+.csel-opt:focus-visible{outline:3px solid var(--focus);outline-offset:-3px;}
+.csel-opt mjx-container{font-size:1.05em !important;vertical-align:middle;pointer-events:none;}
+.dropdesc{display:inline-block;font-size:.78rem;color:var(--txt2);font-weight:400;margin-top:.1rem;font-style:italic;}
+
+/* ── duffing-style 2-col layout: compact controls left, cobweb right, orbit graph & action bar spanning below ── */
+.main-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:.75rem;
+  align-items:start;margin-bottom:.875rem;}
+.col-controls{grid-column:1;grid-row:1 / span 2;min-width:0;display:flex;flex-direction:column;gap:.5rem;}
+.col-sim{grid-column:2;grid-row:1;min-width:0;}
+.col-graph{grid-column:2;grid-row:2;min-width:0;}
+.col-controls > .cbar,.col-controls > .rbar{margin:0;}
+/* Compact controls: keep cbar as flex-row that wraps; small inputs share rows. */
+.col-controls .cbar{flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:.4rem;
+  padding:.5rem .55rem;}
+.col-controls .cbar .cbar-fn,
+.col-controls .cbar #paramSlots,
+.col-controls .cbar .cf-wide{flex:1 1 100%;min-width:0;}
+.col-controls .cbar .cbar-scalar,
+.col-controls .cbar .cf-narrow{flex:1 1 calc(50% - .25rem);min-width:0;}
+.col-controls .cbar .cbar-scalar input,
+.col-controls .cbar .cf-narrow input{width:100%;min-width:0;}
+.col-controls .cbar .cf-action{flex:1 1 100%;}
+.col-controls .cbar .cf-action button{width:100%;}
+.col-controls .rbar{flex-wrap:wrap;}
+.col-controls .rbar .rcell{flex:1 1 calc(33% - 2px);min-width:0;border-bottom:1px solid var(--bdr2);}
+.col-controls .rbar .rcell:nth-last-child(-n+3){border-bottom:none;}
+.col-controls .rbar .rcell:nth-child(3n){border-right:none;}
+@media(max-width:900px){
+  .main-layout{grid-template-columns:1fr;}
+  .col-controls,.col-sim,.col-graph{grid-column:1;grid-row:auto;}
+}
+/* ── main visualization grid (legacy fallback) ─────────────────────── */
+.viz-grid{display:grid;grid-template-columns:minmax(300px,480px) 1fr;gap:.75rem;
+  margin-bottom:.875rem;}
+@media(max-width:860px){.viz-grid{grid-template-columns:1fr;}}
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);}
+.phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.4rem;
+  background:var(--sect);border-bottom:1px solid var(--bdr2);
+  font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.phdr mjx-container{font-size:1.05em !important;vertical-align:middle;}
+.pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+
+/* ── canvas ──────────────────────────────────────── */
+#cobwebCanvas{display:block;margin:0 auto;max-width:100%;aspect-ratio:1/1;cursor:grab;
+  background:var(--cob-bg);}
+#cobwebCanvas:active{cursor:grabbing;}
+.canvas-footer{display:flex;align-items:center;justify-content:space-between;
+  padding:.3rem .65rem;background:var(--sect);border-top:1px solid var(--bdr2);flex-wrap:wrap;gap:.35rem;}
+.zoom-hint{font-size:.8125rem;color:var(--txt2);}  /* #374151 on #f8f9fb = 9.4:1 ✓ AAA */
+.reset-view-btn{font-size:.8125rem;font-weight:700;color:var(--bl2);background:transparent;
+  border:2px solid var(--bdr);border-radius:.375rem;padding:.5rem .875rem;cursor:pointer;
+  min-height:44px;min-width:44px;}  /* touch target 44×44 ✓ WCAG 2.5.5 */
+.reset-view-btn:hover,.reset-view-btn:focus-visible{background:rgba(29,78,216,.08);border-color:var(--blue);}
+#plotOrbit{height:auto;min-height:220px;}
+
+/* ── formula box ─────────────────────────────────── */
+.fbox{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);
+  padding:1rem 1.25rem;margin-bottom:1rem;min-height:80px;}
+.fm-main{text-align:center;}
+.fm-params{text-align:center;font-size:.875rem;color:var(--txt2);margin-top:.25rem;}
+.fm-stability{margin-top:.5rem;padding:.5rem .875rem;border-radius:0 var(--r) var(--r) 0;
+  font-size:.875rem;line-height:1.65;}
+
+/* ── stability reference ─────────────────────────── */
+.ref-panel{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;margin-bottom:1rem;}
+.ref-btn{width:100%;padding:.55rem .875rem;display:flex;align-items:center;justify-content:space-between;
+  background:var(--sect);border:none;cursor:pointer;font-size:.9375rem;font-weight:700;color:var(--txt2);}
+.ref-btn:hover{background:rgba(0,0,0,.03);}
+.ref-body{padding:.75rem 1rem;}
+.ref-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.5rem;}
+.ref-card{border-radius:var(--r);padding:.6rem .875rem;border:1px solid var(--bdr2);}
+.ref-card h3{font-size:.875rem;font-weight:800;margin:0 0 .2rem;}
+.ref-card p{font-size:.8125rem;color:var(--txt2);margin:0;line-height:1.5;}
+
+/* ── footer ──────────────────────────────────────── */
+.footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);
+  padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+/* Underline links in body text so colour is not the only visual cue (WCAG 1.4.1) */
+.footer a{color:var(--link);text-decoration:underline;}
+
+/* ── contrast toggle ─────────────────────────────── */
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;
+  background:var(--txt);color:var(--card);border:2px solid var(--bdr);
+  border-radius:50%;width:48px;height:48px;font-size:1.25rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+
+@media(max-width:640px){
+  .card{padding:.875rem;margin:1rem .5rem 1.25rem;}
+  .rbar{flex-wrap:wrap;}
+}
+/* Explicit focus styles for interactive elements (WCAG 2.4.7, 2.4.11) */
+/* 3px solid outline + 2px offset = visible minimum enclosing focus indicator */
+.abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+.abtn-reset:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px #374151;}
+.info-btn:focus-visible,.ref-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.csel-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+@media(prefers-reduced-motion:reduce){
+  .abtn{transition:none;}
+  * { animation-duration:.01ms !important; animation-iteration-count:1 !important; }
+}
+  
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-links{display:flex;flex-wrap:wrap;justify-content:center;gap:.4rem 1.25rem;margin:.35rem auto;width:fit-content;max-width:100%;}
+.back-links .back-link{margin:0;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+
+/* ── Supported functions (collapsible) ── */
+.fn-panel{margin:0 0 .875rem;border:2px solid var(--bdr2);border-radius:var(--r);background:var(--sect);overflow:hidden;}
+.fn-panel > summary{list-style:none;cursor:pointer;padding:.55rem .875rem;min-height:44px;
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:.9375rem;font-weight:700;color:var(--txt2);}
+.fn-panel > summary::-webkit-details-marker{display:none;}
+.fn-panel > summary::after{content:'+';font-size:1.2rem;font-weight:700;line-height:1;}
+.fn-panel[open] > summary::after{content:'\2212';}
+.fn-panel > summary:focus-visible{outline:3px solid var(--focus);outline-offset:-3px;}
+.fn-body{padding:.5rem .75rem .75rem;}
+.fn-hint{font-size:.8125rem;color:var(--muted);margin:.1rem 0 .6rem;}
+.func-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:.35rem;}
+.func-item{display:flex;align-items:center;justify-content:space-between;gap:.4rem;
+  padding:.3rem .5rem;border:1.5px solid var(--bdr2);border-radius:.35rem;background:var(--card);
+  cursor:pointer;text-align:left;min-height:38px;width:100%;}
+.func-item:hover,.func-item:focus-visible{border-color:var(--blue);background:rgba(29,78,216,.06);outline:none;}
+.func-item .func-name{font-family:'Consolas','Courier New',monospace;font-size:.8125rem;font-weight:700;color:var(--vio);}
+.func-item .func-latex{color:var(--link);font-size:.85rem;}
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/cobweb.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Cobweb Diagram - Fixed-Point Iteration & Chaos">
+    <meta property="og:description" content="Cobweb plot for 1D dynamical systems. Visualize iteration x_{n+1} = f(x_n) for the logistic map and other 1D maps interactively.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/cobweb.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Cobweb Diagram - Fixed-Point Iteration & Chaos">
+    <meta name="twitter:description" content="Cobweb plot for 1D dynamical systems. Visualize iteration x_{n+1} = f(x_n) for the logistic map and other 1D maps interactively.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Cobweb Diagram - Fixed-Point Iteration & Chaos",
+  "description": "Cobweb plot for 1D dynamical systems. Visualize iteration x_{n+1} = f(x_n) for the logistic map and other 1D maps interactively.",
+  "url": "https://shelvean.github.io/math-tools/cobweb.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html" aria-current="page">Differential Equations</a></li>
+      <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+
+<div class="back-links" role="navigation" aria-label="Back to category pages">
+  <a href="dynamical.html" class="back-link" aria-label="Back to Dynamical Systems">&larr; Back to Dynamical Systems</a>
+  <a href="numerical.html" class="back-link" aria-label="Back to Numerical Methods">&larr; Back to Numerical Methods</a>
+</div>
+<main id="main" class="card" role="main">
+  <h1>Cobweb Diagram</h1>
+  <p class="subtitle">
+    Visualize fixed-point iteration \(x_{n+1}=f(x_n)\) - watch convergence, period-doubling, and chaos unfold step by step.
+  </p>
+
+  <!-- Related tools -->
+  <nav class="related" aria-label="Related tools">
+    <a href="logistic.html" class="rel-link">&#8594; Logistic Map Explorer</a>
+    <a href="bifurcation.html" class="rel-link">&#8594; Bifurcation Diagram</a>
+  </nav>
+
+  <!-- About -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button">
+      <span>About This Visualization - Fixed Points, Stability &amp; Chaos</span>
+      <span class="info-icon" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+
+      <h2>What is a Cobweb Diagram?</h2>
+      <p>A cobweb diagram (also called a Verhulst diagram or staircase diagram) is a graphical method for
+      visualizing the iterates of a one-dimensional map \(f : \mathbb{R} \to \mathbb{R}\). Given an
+      initial condition \(x_0\), the sequence \(x_1=f(x_0),\; x_2=f(x_1),\ldots\) is generated by
+      repeated function application. The diagram draws two curves - the graph of \(y=f(x)\) and the
+      diagonal \(y=x\) - and traces a zigzag path that encodes every iterate:</p>
+      <ul>
+        <li>Start at \((x_0, x_0)\) on the diagonal.</li>
+        <li>Move <em>vertically</em> to \((x_0, f(x_0))\) on the curve - this gives \(x_1\).</li>
+        <li>Move <em>horizontally</em> to \((x_1, x_1)\) on the diagonal - this "transfers" \(x_1\) to the \(x\)-axis.</li>
+        <li>Repeat. The path's long-term behavior reveals stability, periodicity, or chaos.</li>
+      </ul>
+
+      <h2>Fixed Points &amp; Their Location</h2>
+      <p>A <strong>fixed point</strong> \(x^*\) satisfies \(f(x^*)=x^*\), i.e., it lies at the intersection
+      of the curve \(y=f(x)\) and the diagonal \(y=x\). Every fixed point appears as a corner where
+      the cobweb path could get "stuck" permanently.</p>
+      <div class="defn-box">
+        \[f(x^*) = x^* \iff x^* \text{ is a fixed point}\]
+      </div>
+
+      <h2>Stability Classification via the Derivative</h2>
+      <p>The local stability of \(x^*\) is governed entirely by the magnitude of \(f'(x^*)\):</p>
+      <div class="stab-grid">
+        <div class="stab-cell stab-s">
+          <strong>Stable (Attracting):</strong> \(|f'(x^*)| &lt; 1\)<br>
+          Nearby orbits converge. Cobweb spirals <em>inward</em>.<br>
+          Special case \(f'(x^*)=0\): <em>superattracting</em> (e.g., Newton's method).
+        </div>
+        <div class="stab-cell stab-u">
+          <strong>Unstable (Repelling):</strong> \(|f'(x^*)| &gt; 1\)<br>
+          Nearby orbits diverge away. Cobweb spirals <em>outward</em>.
+        </div>
+        <div class="stab-cell stab-n">
+          <strong>Neutral / Non-hyperbolic:</strong> \(|f'(x^*)| = 1\)<br>
+          Stability undetermined by linearization alone. Often a bifurcation point.
+        </div>
+        <div class="stab-cell stab-c">
+          <strong>Periodic / Chaotic:</strong> \(|f'(x^*)| \gg 1\)<br>
+          Dense, unpredictable orbit. Lyapunov exponent \(\lambda &gt; 0\).
+        </div>
+      </div>
+
+      <h2>Reading the Cobweb Shape</h2>
+      <ul>
+        <li><strong>Inward spiral:</strong> \(f'(x^*) \in (-1, 0)\) - oscillatory stable convergence.</li>
+        <li><strong>Staircase to the right:</strong> \(f'(x^*) \in (0, 1)\) - monotone stable convergence.</li>
+        <li><strong>Outward spiral:</strong> \(f'(x^*) \in (-\infty,-1)\) - oscillatory divergence.</li>
+        <li><strong>Rectangle / 2-cycle:</strong> orbit bounces between two values - period-2 orbit.</li>
+        <li><strong>Dense zig-zag filling a region:</strong> chaotic orbit, sensitive to initial conditions.</li>
+      </ul>
+
+      <h2>Periodic Orbits &amp; Period-Doubling Cascade</h2>
+      <p>A <strong>period-\(n\) orbit</strong> satisfies \(f^n(x^*)=x^*\) but \(f^k(x^*)\ne x^*\) for
+      \(1 \le k &lt; n\). For the logistic map \(f(x)=rx(1-x)\), the parameter \(r\) controls behavior:</p>
+      <ul>
+        <li>\(r \in (1,3)\): unique stable fixed point \(x^*=(r-1)/r\).</li>
+        <li>\(r \in (3, 1+\sqrt{6})\approx 3.449\): stable period-2 orbit.</li>
+        <li>Successive period-doublings at \(r\approx 3.449,\,3.544,\,3.5644,\ldots\)</li>
+        <li>\(r\approx 3.5699\ldots\) (Feigenbaum constant): onset of chaos.</li>
+        <li>\(r=4\): fully chaotic; Lyapunov exponent \(\lambda=\ln 2\).</li>
+      </ul>
+
+      <h2>Lyapunov Exponent &amp; Chaos</h2>
+      <p>The <strong>Lyapunov exponent</strong> measures the average rate of separation of nearby orbits:</p>
+      <div class="defn-box">
+        \[\lambda = \lim_{N\to\infty}\frac{1}{N}\sum_{i=0}^{N-1}\ln|f'(x_i)|\]
+      </div>
+      <ul>
+        <li>\(\lambda &lt; 0\): attracting - orbits converge (stable fixed point or periodic orbit).</li>
+        <li>\(\lambda = 0\): neutral - bifurcation boundary or neutral fixed point.</li>
+        <li>\(\lambda &gt; 0\): chaos - exponential divergence of nearby orbits.</li>
+      </ul>
+      <p>The Lyapunov exponent is displayed in real time below the animation controls.</p>
+
+      <h2>How to Interact</h2>
+      <ul>
+        <li><strong>Scroll</strong> or pinch on the cobweb canvas to zoom in/out.</li>
+        <li><strong>Drag</strong> the canvas to pan the view.</li>
+        <li><strong>Double-click</strong> the canvas to reset the view.</li>
+        <li>Use <strong>Play/Step/All</strong> to animate, advance one step, or jump to all iterations.</li>
+        <li>Drag parameter sliders to see the cobweb change in real time.</li>
+        <li>Click anywhere on the cobweb canvas to set a new initial condition \(x_0\).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Definition bar -->
+  <div class="defn" role="math" aria-label="Fixed-point iteration definition">
+    \[x_{n+1} = f(x_n), \quad n=0,1,2,\ldots\]
+  </div>
+
+  <!-- Animation bar - directly above the graphs for easy manipulation -->
+  <div class="abar" role="group" aria-label="Animation controls">
+    <button class="abtn abtn-play"  id="btnPlay"  type="button" aria-label="Play animation" aria-pressed="false"><span aria-hidden="true">&#9654;</span> Play</button>
+    <button class="abtn abtn-stop"  id="btnStop"  type="button" aria-label="Stop animation"><span aria-hidden="true">&#9632;</span> Stop</button>
+    <button class="abtn abtn-step"  id="btnStep"  type="button" aria-label="Step: advance one segment"><span aria-hidden="true">&#9654;&#124;</span> Step</button>
+    <button class="abtn abtn-all"   id="btnAll"   type="button" aria-label="All: show all iterations at once"><span aria-hidden="true">&#9654;&#9654;</span> All</button>
+    <button class="abtn abtn-reset" id="btnReset" type="button" aria-label="Reset to initial condition"><span aria-hidden="true">&#8635;</span> Reset</button>
+    <div class="speed-wrap">
+      <label class="speed-lbl" for="speedSel">Speed</label>
+      <select class="speed-sel" id="speedSel">
+        <option value="1200">Very slow</option>
+        <option value="700">Slow</option>
+        <option value="350">Normal</option>
+        <option value="200" selected>Fast</option>
+      </select>
+    </div>
+    <div class="trail-wrap">
+      <label class="trail-lbl" for="trailSel">Trail</label>
+      <select class="trail-sel" id="trailSel" aria-label="Cobweb trail style: faded transients or solid trail">
+        <option value="faded">Faded</option>
+        <option value="solid" selected>Solid</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Duffing-style 2-column layout: compact controls left, cobweb right, orbit graph spanning below -->
+  <div class="main-layout">
+  <div class="col-controls">
+  <!-- Controls bar -->
+  <div class="cbar" role="group" aria-label="Visualization controls">
+    <div class="cbar-fn cfield">
+      <span class="clbl" id="fnLbl">Map \(f(x)\)</span>
+      <div class="csel-wrap" id="cselWrap">
+        <button type="button" id="cselBtn" class="csel-btn"
+                role="combobox" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="fnLbl" aria-controls="cselList">
+          <span id="cselDisplay"></span>
+          <span class="csel-arrow" aria-hidden="true">&#9660;</span>
+        </button>
+        <div id="cselList" class="csel-list" role="listbox" aria-labelledby="fnLbl"></div>
+      </div>
+    </div>
+
+    <div id="paramSlots" role="group" aria-label="Function parameters"></div>
+
+    <div class="cbar-scalar cfield">
+      <label for="x0Num">Initial \(x_0\)</label>
+      <!-- x0 input: --ora (#92400e) on white = 7.41:1 ✓ AAA; aria-label overrides visual label for AT -->
+      <input type="text" inputmode="decimal" id="x0Num" class="expr-num" value="0"
+             aria-label="Initial condition x0 (accepts expressions like pi/2)"
+             title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)/3"
+             style="color:var(--ora);">
+    </div>
+
+    <div class="cbar-scalar cfield">
+      <label for="nIterNum">Iterations \(N\)</label>
+      <input type="number" id="nIterNum" min="5" max="500" step="5" value="60"
+             aria-label="Number of iterations N">
+    </div>
+  </div>
+
+  <!-- Custom function bar -->
+  <div class="cbar" role="group" aria-label="Custom function">
+    <div class="cfield cf-wide">
+      <label for="customFnInput">Custom \(f(x)\) - e.g. <code>cos(x)</code>, <code>3.9*x*(1-x)</code></label>
+      <input type="text" id="customFnInput" placeholder="cos(x) or 3.9*x*(1-x)"
+             aria-label="Custom function expression"
+             style="width:100%;min-height:36px;padding:.25rem .5rem;border:2px solid var(--bdr);border-radius:.375rem;
+                    background:var(--card);color:var(--txt);font-size:.9375rem;font-family:monospace;">
+    </div>
+    <div class="cfield cf-narrow">
+      <label for="customDomMin">Domain min</label>
+      <input type="text" inputmode="decimal" id="customDomMin" value="-2"
+             style="min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;
+                    border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;"
+             aria-label="Domain minimum (accepts expressions like -pi)"
+             title="Accepts numbers or expressions, e.g. -pi, -sqrt(2)">
+    </div>
+    <div class="cfield cf-narrow">
+      <label for="customDomMax">Domain max</label>
+      <input type="text" inputmode="decimal" id="customDomMax" value="2"
+             style="min-height:36px;padding:.2rem .35rem;font-size:.875rem;font-weight:600;
+                    border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);text-align:center;"
+             aria-label="Domain maximum (accepts expressions like pi)"
+             title="Accepts numbers or expressions, e.g. pi, sqrt(2)">
+    </div>
+    <div class="cfield cf-action">
+      <button type="button" id="btnCustomFn"
+              style="min-height:40px;padding:.5rem 1rem;background:var(--blue);color:#fff;border:none;
+                     border-radius:.5rem;font-size:.9375rem;font-weight:700;cursor:pointer;"
+              aria-label="Plot custom function on the cobweb diagram">Plot</button>
+    </div>
+    <!-- role=status + aria-live=polite: polite announcement, not disruptive (WCAG 4.1.3) -->
+    <div id="customFnError" role="status" aria-live="polite"
+         style="flex:1 1 100%;font-size:.8125rem;color:#b91c1c;min-height:1.2em;padding:.1rem .25rem;font-weight:600;"></div>
+  </div>
+
+  <!-- Supported functions -->
+  <details class="fn-panel" id="fnPanel">
+    <summary>Supported functions</summary>
+    <div class="fn-body">
+      <p class="fn-hint">Click a function to insert it into the custom \(f(x)\) box above. Use <code>^</code> for powers and <code>*</code> for multiplication (for example <code>3.9*x*(1-x)</code> or <code>x^2 - 1</code>).</p>
+      <div class="func-grid" id="fnGrid" role="group" aria-label="Supported functions. Click a name to insert it.">
+        <button type="button" class="func-item" aria-label="Insert sqrt(x)"><span class="func-name">sqrt(x)</span><span class="func-latex">\(\sqrt{x}\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert cbrt(x)"><span class="func-name">cbrt(x)</span><span class="func-latex">\(\sqrt[3]{x}\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert abs(x)"><span class="func-name">abs(x)</span><span class="func-latex">\(|x|\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert sin(x)"><span class="func-name">sin(x)</span><span class="func-latex">\(\sin x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert cos(x)"><span class="func-name">cos(x)</span><span class="func-latex">\(\cos x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert tan(x)"><span class="func-name">tan(x)</span><span class="func-latex">\(\tan x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert cot(x)"><span class="func-name">cot(x)</span><span class="func-latex">\(\cot x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert sec(x)"><span class="func-name">sec(x)</span><span class="func-latex">\(\sec x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert csc(x)"><span class="func-name">csc(x)</span><span class="func-latex">\(\csc x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert asin(x)"><span class="func-name">asin(x)</span><span class="func-latex">\(\arcsin x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert acos(x)"><span class="func-name">acos(x)</span><span class="func-latex">\(\arccos x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert atan(x)"><span class="func-name">atan(x)</span><span class="func-latex">\(\arctan x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert sinh(x)"><span class="func-name">sinh(x)</span><span class="func-latex">\(\sinh x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert cosh(x)"><span class="func-name">cosh(x)</span><span class="func-latex">\(\cosh x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert tanh(x)"><span class="func-name">tanh(x)</span><span class="func-latex">\(\tanh x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert exp(x)"><span class="func-name">exp(x)</span><span class="func-latex">\(e^{x}\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert log(x)"><span class="func-name">log(x)</span><span class="func-latex">\(\ln x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert log10(x)"><span class="func-name">log10(x)</span><span class="func-latex">\(\log_{10} x\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert pi"><span class="func-name">pi</span><span class="func-latex">\(\pi\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert e"><span class="func-name">e</span><span class="func-latex">\(e\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert ceil(x)"><span class="func-name">ceil(x)</span><span class="func-latex">\(\lceil x\rceil\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert floor(x)"><span class="func-name">floor(x)</span><span class="func-latex">\(\lfloor x\rfloor\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert round(x)"><span class="func-name">round(x)</span><span class="func-latex">\(\operatorname{round}(x)\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert max(a,b)"><span class="func-name">max(a,b)</span><span class="func-latex">\(\max(a,b)\)</span></button>
+        <button type="button" class="func-item" aria-label="Insert min(a,b)"><span class="func-name">min(a,b)</span><span class="func-latex">\(\min(a,b)\)</span></button>
+      </div>
+    </div>
+  </details>
+
+  <!-- Readout bar: dl/dt/dd gives proper screen-reader name-value pairing (WCAG 1.3.1) -->
+  <dl class="rbar" role="region" aria-label="Iteration analysis">
+    <div class="rcell">
+      <dt class="rlbl">Step</dt>
+      <dd class="rval rval-b" id="rv-n">0</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">\(x_n\)</dt>
+      <dd class="rval rval-b" id="rv-x">-</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Fixed points</dt>
+      <dd class="rval" id="rv-fp" style="font-size:.8125rem;">-</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">\(|f'(x^*)|\)</dt>
+      <dd class="rval" id="rv-df">-</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Stability</dt>
+      <dd class="rval" id="rv-stab" aria-live="polite">-</dd>
+    </div>
+    <div class="rcell">
+      <dt class="rlbl">Lyapunov \(\lambda\)</dt>
+      <dd class="rval" id="rv-lya" aria-live="polite">-</dd>
+    </div>
+  </dl>
+
+  </div><!-- /col-controls -->
+
+  <!-- Cobweb canvas (right column) -->
+  <div class="col-sim">
+    <div class="pwrap" id="cobwebWrap" style="margin-bottom:0;">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--cob-fn)" aria-hidden="true"></span>
+        Cobweb Diagram - \(y=f(x)\) and \(y=x\)
+      </div>
+      <canvas id="cobwebCanvas"
+              role="img"
+              aria-label="Cobweb diagram. Drag to pan, scroll to zoom, double-click to reset view, click to set a new starting point x₀."
+              aria-describedby="canvasDesc"></canvas>
+      <p id="canvasDesc" class="sr-only">
+        Interactive cobweb diagram showing the orbit of the selected map under fixed-point iteration.
+        The blue curve is y=f(x), the dashed line is y=x, and the red path traces the iteration.
+        Fixed points appear as coloured dots: green for stable, red for unstable, dark amber for neutral.
+        Use the controls above to animate step by step or all at once.
+      </p>
+      <div class="canvas-footer">
+        <span class="zoom-hint" aria-hidden="true">Scroll: zoom &nbsp;&#183;&nbsp; Drag: pan &nbsp;&#183;&nbsp; Dbl-click: reset &nbsp;&#183;&nbsp; Click: set x₀</span>
+        <button class="reset-view-btn" id="resetViewBtn" type="button" aria-label="Reset cobweb view to default zoom and position">Reset view</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orbit plot spanning below cobweb (full N iterations always shown) -->
+  <div class="col-graph">
+    <div class="pwrap" style="margin-bottom:0;">
+      <div class="phdr">
+        <span class="pdot" style="background:var(--blue)" aria-hidden="true"></span>
+        Orbit - \(x_n\) vs.\ \(n\) (full duration of \(N\) iterations)
+      </div>
+      <div id="plotOrbit" style="height:240px;min-height:240px;"
+           role="img" aria-label="Orbit time series plot showing xn versus n for full N iterations"></div>
+    </div>
+  </div>
+
+  </div><!-- /main-layout -->
+
+  <!-- Formula box -->
+  <div id="formulaBox" class="fbox" role="region" aria-label="Formula and stability analysis for the current map">
+    <div style="text-align:center;color:var(--muted)">Select an example above to see the formula and analysis.</div>
+  </div>
+
+  <!-- Stability reference (collapsible) -->
+  <div class="ref-panel" role="region" aria-label="Stability classification reference">
+    <button type="button" id="refBtn" class="ref-btn" aria-expanded="true" aria-controls="refBody">
+      <span>Stability Classification - Quick Reference</span>
+      <span id="refIcon" aria-hidden="true">&minus;</span>
+    </button>
+    <div id="refBody" class="ref-body">
+      <!-- sr-only h2 fixes heading skip h1→h3 (WCAG 1.3.1, 2.4.6) -->
+      <h2 class="sr-only">Stability Classification</h2>
+      <div class="ref-grid">
+        <div class="ref-card" style="border-color:#15803d;background:rgba(22,163,74,.05)">
+          <h3 style="color:#15803d">&#9679; Stable Node</h3>
+          <p>\(0 &lt; f'(x^*) &lt; 1\)<br>Monotone approach from one side. Staircase cobweb.</p>
+        </div>
+        <div class="ref-card" style="border-color:#15803d;background:rgba(22,163,74,.05)">
+          <h3 style="color:#15803d">&#8635; Stable Spiral</h3>
+          <p>\(-1 &lt; f'(x^*) &lt; 0\)<br>Oscillatory approach, alternating sides. Inward spiral cobweb.</p>
+        </div>
+        <div class="ref-card" style="border-color:#15803d;background:rgba(22,163,74,.05)">
+          <h3 style="color:#15803d">&#9733; Superattracting</h3>
+          <p>\(f'(x^*) = 0\)<br>Fastest possible convergence (e.g., Newton's method near root).</p>
+        </div>
+        <div class="ref-card" style="border-color:#b91c1c;background:rgba(185,28,28,.05)">
+          <h3 style="color:#b91c1c">&#8599; Unstable Node</h3>  <!-- #b91c1c on white = 5.5:1 ✓ AA -->
+          <p>\(f'(x^*) &gt; 1\)<br>Monotone escape away from fixed point.</p>
+        </div>
+        <div class="ref-card" style="border-color:#b91c1c;background:rgba(185,28,28,.05)">
+          <h3 style="color:#b91c1c">&#8599; Unstable Spiral</h3>
+          <p>\(f'(x^*) &lt; -1\)<br>Oscillatory escape, alternating and growing. Outward spiral.</p>
+        </div>
+        <div class="ref-card" style="border-color:#92400e;background:rgba(146,64,14,.05)">
+          <h3 style="color:#92400e">&#8594; Neutral / Bifurcation</h3>  <!-- #92400e on white = 7.4:1 ✓ AAA -->
+          <p>\(|f'(x^*)| = 1\)<br>Stability undetermined by linearization. Period-doubling bifurcation.</p>
+        </div>
+        <div class="ref-card" style="border-color:#5b21b6;background:rgba(91,33,182,.05)">
+          <h3 style="color:#5b21b6">&#126; Period-2 Orbit</h3>  <!-- #5b21b6 on white = 8.7:1 ✓ AAA -->
+          <p>Cobweb traces a rectangle, bouncing between two values. Fixed point of \(f\circ f\).</p>
+        </div>
+        <div class="ref-card" style="border-color:#5b21b6;background:rgba(91,33,182,.05)">
+          <h3 style="color:#5b21b6">&#8767; Chaos (\(\lambda&gt;0\))</h3>
+          <p>Dense cobweb filling a region. Sensitive dependence on initial conditions. \(\lambda &gt; 0\).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981173">https://doi.org/10.5281/zenodo.20981173</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Cobweb Diagram. Math Tools. https://doi.org/10.5281/zenodo.20981173</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Cobweb Diagram." Math Tools, 2026, doi.org/10.5281/zenodo.20981173.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026cobweb,
+  author       = {Shelvean Kapita},
+  title        = {{Cobweb Diagram}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981173},
+  url          = {https://doi.org/10.5281/zenodo.20981173}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: March 24, 2026.</p>
+</footer>
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+
+<script>
+/* =====================================================
+   Utilities
+===================================================== */
+function say(m){var e=document.getElementById('live');e.textContent='';setTimeout(function(){e.textContent=m;},50);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function fmt(v,d){if(!isFinite(v))return '-';d=d==null?4:d;return v.toFixed(d);}
+function fmtSci(v){if(!isFinite(v))return '-';if(Math.abs(v)<0.001)return v.toExponential(2);return v.toFixed(4);}
+/* For divergent iterates: scientific (one decimal) for huge magnitudes;
+   regular toFixed otherwise (preserves trailing zeros for readouts). */
+function fmtBig(v,d){
+  if(!isFinite(v))return '-';
+  d=d==null?4:d;
+  if(Math.abs(v)>=1e5)return v.toExponential(1);
+  return v.toFixed(d);
+}
+/* Like fmtBig but strips trailing zeros - for axis tick labels. */
+function fmtTick(v,d){
+  if(!isFinite(v))return '-';
+  d=d==null?3:d;
+  if(Math.abs(v)>=1e5)return v.toExponential(1);
+  return String(+v.toFixed(d));
+}
+function mj(nodes){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise(nodes).catch(function(){});}
+
+/* =====================================================
+   Example Registry
+===================================================== */
+var EX = {
+
+  /* ── STABLE FIXED POINTS ── */
+  'cos_fp': {
+    dropLatex: '\\(f(x)=\\cos x\\)<br><span class="dropdesc">Dottie number</span>',
+    name: 'Cosine - stable spiral to Dottie number',
+    latex_f: '\\cos x',
+    latex_F: '\\cos x',
+    f: function(x){return Math.cos(x);},
+    df: function(x){return -Math.sin(x);},
+    params: [],
+    domain: [-1.0, 3.4],
+    x0: 0,
+    N: 60,
+    desc: 'The unique fixed point \\(x^*\\approx 0.7391\\) (the <em>Dottie number</em>) satisfies \\(\\cos(x^*)=x^*\\). Since \\(|f\'(x^*)|=|{-}\\sin(0.739)|\\approx 0.674 < 1\\), it is stable. With \\(f\'(x^*)<0\\) the cobweb spirals inward with alternating sides.',
+    category: 'stable'
+  },
+
+  'logistic_25': {
+    dropLatex: '\\(f(x)=rx(1{-}x),\\;r=2.5\\)<br><span class="dropdesc">monotone stable</span>',
+    name: 'Logistic map r=2.5 - monotone stable fixed point',
+    latex_f: 'rx(1-x)',
+    f: function(x,p){return p.r*x*(1-x);},
+    df: function(x,p){return p.r*(1-2*x);},
+    params: [{id:'r',label:'\\(r\\)',aria:'r',min:1,max:4,step:0.01,val:2.5}],
+    domain: [-0.05, 1.05],
+    x0: 0.2,
+    N: 60,
+    desc: 'Fixed points: \\(x^*=0\\) (unstable for \\(r>1\\)) and \\(x^*=\\frac{r-1}{r}\\). Derivative at the nonzero fixed point: \\(f\'(x^*)=2-r\\). For \\(r=2.5\\), \\(f\'=−0.5\\), so \\(|f\'|=0.5<1\\): <strong>stable spiral</strong>. Adjust \\(r\\) to explore the full bifurcation cascade.',
+    category: 'stable'
+  },
+
+  'cos_stable_node': {
+    dropLatex: '\\(f(x)=0.6x+0.8\\)<br><span class="dropdesc">stable node (staircase)</span>',
+    name: 'Linear map - stable node, monotone staircase',
+    latex_f: '0.6x+0.8',
+    f: function(x){return 0.6*x+0.8;},
+    df: function(){return 0.6;},
+    params: [],
+    domain: [-0.5, 5.5],
+    x0: 0.1,
+    N: 50,
+    desc: 'Fixed point: \\(x^*=2\\). Derivative \\(f\'(x)=0.6 \\in (0,1)\\) everywhere, so \\(x^*\\) is a <strong>stable node</strong> approached monotonically from either side. The cobweb is a rightward staircase converging to \\(x^*=2\\).',
+    category: 'stable'
+  },
+
+  'sqrt_fp': {
+    dropLatex: '\\(f(x)=\\sqrt{x}\\)<br><span class="dropdesc">superattracting at \\(x^*=1\\)</span>',
+    name: 'Square root - superattracting fixed point',
+    latex_f: '\\sqrt{x}',
+    f: function(x){return x>0?Math.sqrt(x):0;},
+    df: function(x){return x>0?0.5/Math.sqrt(x):1e10;},
+    params: [],
+    domain: [-0.05, 2.2],
+    x0: 0.05,
+    N: 40,
+    desc: 'Fixed point \\(x^*=1\\): \\(f\'(1)=1/2<1\\), stable. Also \\(x^*=0\\): \\(f\'(0^+)\\to+\\infty\\), unstable. Starting from small \\(x_0\\), the orbit climbs quickly toward \\(x^*=1\\) via a monotone staircase. The convergence near 1 is slow (linear rate \\(\\approx 0.5^n\\)).',
+    category: 'stable'
+  },
+
+  'x2_map': {
+    dropLatex: '\\(f(x)=x^2\\)<br><span class="dropdesc">stable at 0, unstable at 1</span>',
+    name: 'Quadratic x² - stable and unstable fixed points',
+    latex_f: 'x^2',
+    f: function(x){return x*x;},
+    df: function(x){return 2*x;},
+    params: [],
+    domain: [-0.1, 1.2],
+    x0: 0.5,
+    N: 50,
+    desc: 'Two fixed points: \\(x^*=0\\) (\\(f\'(0)=0\\), <strong>superattracting</strong>) and \\(x^*=1\\) (\\(f\'(1)=2>1\\), <strong>unstable</strong>). For \\(x_0\\in(0,1)\\) the orbit collapses rapidly to 0. Try \\(x_0\\) slightly above 1 to see escape to infinity.',
+    category: 'stable'
+  },
+
+  'neg_slope': {
+    dropLatex: '\\(f(x)=-0.7x+2\\)<br><span class="dropdesc">stable spiral (oscillatory)</span>',
+    name: 'Linear map - stable spiral, negative slope',
+    latex_f: '-0.7x+2',
+    f: function(x){return -0.7*x+2;},
+    df: function(){return -0.7;},
+    params: [],
+    domain: [-1, 5],
+    x0: 0.2,
+    N: 50,
+    desc: 'Fixed point: \\(x^*=2/1.7\\approx1.176\\). Derivative \\(f\'=-0.7\\in(-1,0)\\): <strong>stable spiral</strong>. The cobweb alternates sides of \\(x^*\\) while spiraling inward. This is the characteristic inward spiral pattern.',
+    category: 'stable'
+  },
+
+  /* ── PERIODIC ORBITS ── */
+  'logistic_p2': {
+    dropLatex: '\\(f(x)=rx(1{-}x),\\;r=3.2\\)<br><span class="dropdesc">period-2 orbit</span>',
+    name: 'Logistic map r=3.2 - period-2 cycle',
+    latex_f: 'rx(1-x)',
+    f: function(x,p){return p.r*x*(1-x);},
+    df: function(x,p){return p.r*(1-2*x);},
+    params: [{id:'r',label:'\\(r\\)',aria:'r',min:1,max:4,step:0.01,val:3.2}],
+    domain: [-0.05, 1.05],
+    x0: 0.2,
+    N: 80,
+    desc: 'For \\(r\\in(3,1+\\sqrt{6})\\approx(3,3.449)\\) the logistic map has a stable period-2 orbit. The cobweb traces a rectangle, bouncing between two values indefinitely. The fixed point \\(x^*=(r-1)/r\\) still exists but is now unstable (\\(|f\'(x^*)|=|2-r|>1\\)).',
+    category: 'periodic'
+  },
+
+  'logistic_p4': {
+    dropLatex: '\\(f(x)=rx(1{-}x),\\;r=3.5\\)<br><span class="dropdesc">period-4 orbit</span>',
+    name: 'Logistic map r=3.5 - period-4 cycle',
+    latex_f: 'rx(1-x)',
+    f: function(x,p){return p.r*x*(1-x);},
+    df: function(x,p){return p.r*(1-2*x);},
+    params: [{id:'r',label:'\\(r\\)',aria:'r',min:1,max:4,step:0.01,val:3.5}],
+    domain: [-0.05, 1.05],
+    x0: 0.2,
+    N: 120,
+    desc: 'At \\(r\\approx3.449\\) the period-2 orbit itself bifurcates, producing a period-4 cycle. The cobweb traces a more complex rectangle visiting four values. This period-doubling cascade continues at \\(r\\approx3.544\\) (period-8), \\(3.5644\\) (period-16), converging to the Feigenbaum point \\(r_\\infty\\approx3.5699\\).',
+    category: 'periodic'
+  },
+
+  'logistic_p8': {
+    dropLatex: '\\(f(x)=rx(1{-}x),\\;r=3.567\\)<br><span class="dropdesc">period-8 orbit</span>',
+    name: 'Logistic map r=3.567 - period-8 cycle',
+    latex_f: 'rx(1-x)',
+    f: function(x,p){return p.r*x*(1-x);},
+    df: function(x,p){return p.r*(1-2*x);},
+    params: [{id:'r',label:'\\(r\\)',aria:'r',min:1,max:4,step:0.01,val:3.567}],
+    domain: [-0.05, 1.05],
+    x0: 0.2,
+    N: 160,
+    desc: 'Near the Feigenbaum point \\(r_\\infty\\approx3.5699\\), the orbit has period 8. The cobweb traces a complex pattern with 8 distinct values. Adjust \\(r\\) slightly upward toward 3.5699 to see period-16 emerge, or push past to enter chaos.',
+    category: 'periodic'
+  },
+
+  'quad_p5': {
+    dropLatex: '\\(f(x)=1-1.6254x^2\\)<br><span class="dropdesc">superstable period-5</span>',
+    name: 'Quadratic 1−1.6254x² - superstable period-5 orbit',
+    latex_f: '1-1.6254x^2',
+    f: function(x){return 1 - 1.6254*x*x;},
+    df: function(x){return -2*1.6254*x;},
+    params: [],
+    domain: [-1.1, 1.1],
+    x0: 0,
+    N: 60,
+    desc: 'The map \\(f(x)=1-\\mu x^2\\) at \\(\\mu=1.6254\\) lies inside a <strong>period-5 window</strong> in the chaotic regime - the same window that appears at \\(c=-1.6254\\) in the equivalent Mandelbrot form \\(x^2+c\\) (the two are conjugate via \\(y=-x/\\mu,\\;c=-\\mu\\)). Starting from the critical point \\(x_0=0\\), the orbit visits five values and closes back to \\(\\approx 0\\): \\(0\\to1\\to-0.6254\\to0.3643\\to0.7843\\to0.0001\\). Because the critical point is itself in the cycle and \\(f\'(0)=0\\), this is a <strong>superstable</strong> 5-cycle - the multiplier \\(\\prod_{i=0}^{4}f\'(x_i)=0\\), so nearby orbits collapse onto the cycle very rapidly.',
+    category: 'periodic'
+  },
+
+  /* ── CHAOS ── */
+  'logistic_chaos': {
+    dropLatex: '\\(f(x)=4x(1{-}x)\\)<br><span class="dropdesc">full chaos, \\(\\lambda=\\ln 2\\)</span>',
+    name: 'Logistic map r=4 - full chaos',
+    latex_f: '4x(1-x)',
+    f: function(x){return 4*x*(1-x);},
+    df: function(x){return 4*(1-2*x);},
+    params: [],
+    domain: [-0.05, 1.05],
+    x0: 0.2,
+    N: 150,
+    desc: 'At \\(r=4\\) the logistic map is fully chaotic. The map conjugates to the tent map via \\(x=\\sin^2(\\pi\\theta/2)\\), giving Lyapunov exponent \\(\\lambda=\\ln 2\\approx 0.693\\). Almost every initial condition produces a dense orbit covering \\([0,1]\\). The cobweb is a dense, unpredictable zig-zag.',
+    category: 'chaos'
+  },
+
+  'logistic_39': {
+    dropLatex: '\\(f(x)=rx(1{-}x),\\;r=3.9\\)<br><span class="dropdesc">near-full chaos</span>',
+    name: 'Logistic map r=3.9 - near-full chaos with windows',
+    latex_f: 'rx(1-x)',
+    f: function(x,p){return p.r*x*(1-x);},
+    df: function(x,p){return p.r*(1-2*x);},
+    params: [{id:'r',label:'\\(r\\)',aria:'r',min:3.5,max:4,step:0.001,val:3.9}],
+    domain: [-0.05, 1.05],
+    x0: 0.2,
+    N: 150,
+    desc: 'At \\(r=3.9\\) the orbit is chaotic (\\(\\lambda>0\\)) but with narrow periodic windows visible in the bifurcation diagram (e.g., a period-3 window near \\(r\\approx3.83\\)). Slide \\(r\\) in this range to see how small changes dramatically alter the orbit structure - the hallmark of chaos.',
+    category: 'chaos'
+  },
+
+  'tent_map': {
+    dropLatex: '\\(f_\\mu(x)=\\mu\\min(x,1{-}x)\\)<br><span class="dropdesc">tent map (parametric)</span>',
+    name: 'Tent map - parametric μ, chaos at μ=2',
+    latex_f: '\\mu\\min(x,\\,1-x)',
+    f: function(x,p){ return p.mu*(x<=0.5?x:1-x); },
+    df: function(x,p){ return x===0.5?NaN:(x<0.5?p.mu:-p.mu); },
+    params: [{id:'mu',label:'\\(\\mu\\)',aria:'mu',min:0,max:2,step:0.01,val:2}],
+    domain: [-0.05, 1.05],
+    x0: 1/Math.PI,
+    N: 60,
+    desc: 'The tent map \\(f_\\mu(x)=\\mu\\min(x,1-x)\\) is defined piecewise: \\(\\mu x\\) for \\(x\\le\\tfrac12\\) and \\(\\mu(1-x)\\) for \\(x>\\tfrac12\\). '+
+      '<strong>Fixed points:</strong> \\(x^*=0\\) and \\(x^*=\\mu/(\\mu+1)\\), both unstable for \\(\\mu>1\\). '+
+      '<strong>Dynamics by \\(\\mu\\):</strong> \\(\\mu<1\\): \\(x^*=0\\) is attracting and every orbit converges to it. '+
+      '\\(\\mu=1\\): every \\(x\\le\\tfrac12\\) is a fixed point. '+
+      '\\(1<\\mu<\\sqrt{2}\\): Julia set is a Cantor-like invariant interval. '+
+      '\\(\\mu=2\\): fully chaotic - orbit is dense in \\([0,1]\\), Lyapunov exponent \\(\\lambda=\\ln 2\\approx0.693\\). '+
+      'Topologically conjugate to the logistic map with \\(r=4\\) via \\(x=\\sin^2(\\pi\\theta/2)\\). '+
+      'The derivative is \\(\\pm\\mu\\) almost everywhere, so nearby points separate by factor \\(\\mu\\) at each step.',
+    category: 'chaos'
+  },
+
+  'quad_chaos': {
+    dropLatex: '\\(f_\\mu(x)=1-\\mu x^2\\)<br><span class="dropdesc">quadratic family (parametric)</span>',
+    name: 'Quadratic family 1 − μx² - chaos at μ = 2',
+    latex_f: '1-\\mu x^2',
+    f: function(x,p){return 1 - p.mu*x*x;},
+    df: function(x,p){return -2*p.mu*x;},
+    params: [{id:'mu',label:'\\(\\mu\\)',aria:'mu',min:0,max:2,step:0.001,val:2}],
+    domain: [-1.25, 1.25],
+    x0: 0.1,
+    N: 120,
+    desc: 'The quadratic family \\(f_\\mu(x)=1-\\mu x^2\\) is the canonical one-parameter route to chaos. '+
+      '<strong>Fixed points:</strong> \\(x^*=\\dfrac{-1\\pm\\sqrt{1+4\\mu}}{2\\mu}\\), with multiplier \\(f\'(x^*)=-2\\mu x^*\\). '+
+      '<strong>Dynamics by \\(\\mu\\):</strong> \\(0<\\mu<\\tfrac34\\): the positive fixed point is attracting. '+
+      '\\(\\mu=\\tfrac34\\): period-doubling bifurcation; period-2 cycle is born. '+
+      '\\(\\mu\\approx1.401\\): Feigenbaum accumulation, onset of chaos. '+
+      '\\(\\mu=2\\): fully chaotic on \\([-1,1]\\), conjugate to the logistic map at \\(r=4\\) via \\(x=\\cos(\\pi\\theta)\\), with Lyapunov exponent \\(\\lambda=\\ln 2\\approx0.693\\). '+
+      'At \\(\\mu=2\\) the fixed points \\(x^*=\\tfrac12\\) and \\(x^*=-1\\) are both unstable. Try \\(x_0\\) and \\(x_0+\\varepsilon\\) side-by-side to see exponential divergence.',
+    category: 'chaos'
+  },
+
+  /* ── UNSTABLE ── */
+  'unstable_spiral': {
+    dropLatex: '\\(f(x)=-1.8x+4\\)<br><span class="dropdesc">unstable spiral</span>',
+    name: 'Linear map - unstable spiral (|slope| > 1)',
+    latex_f: '-1.8x+4',
+    f: function(x){return -1.8*x+4;},
+    df: function(){return -1.8;},
+    params: [],
+    domain: [-2, 8],
+    x0: 1.6,
+    N: 20,
+    desc: 'Fixed point \\(x^*=4/2.8\\approx1.429\\). Derivative \\(f\'=-1.8\\): since \\(|f\'|=1.8>1\\), the fixed point is <strong>unstable</strong> with oscillatory escape (outward spiral). Starting near \\(x^*\\) the orbit alternates sides but diverges. The cobweb spirals outward.',
+    category: 'unstable'
+  }
+};
+
+/* =====================================================
+   State
+===================================================== */
+var ST = {
+  exId: 'cos_fp',
+  params: {},
+  x0: 0.5,
+  N: 60,
+  nDraw: 0,
+  orbit: [],
+  animating: false,
+  animTimer: null,
+  trailMode: 'solid',
+  _trailKey: null,
+  view: {xMin:-1, xMax:3.4, yMin:-1, yMax:3.4},
+  defaultView: {xMin:-1, xMax:3.4, yMin:-1, yMax:3.4}
+};
+
+/* =====================================================
+   Canvas setup
+===================================================== */
+var canvas = document.getElementById('cobwebCanvas');
+var ctx = canvas.getContext('2d');
+var W_css = 400, H_css = 400; // updated by resizeCanvas
+var dpr = window.devicePixelRatio || 1;
+
+function resizeCanvas() {
+  var wrap = document.getElementById('cobwebWrap');
+  var wrapW = wrap.clientWidth - 4; // minus border
+  /* Keep cobweb square (so y=x stays at true 45°), but cap so the page is not absurdly tall. */
+  var size = Math.min(Math.max(200, wrapW), 600);
+  W_css = size;
+  H_css = size;
+  canvas.style.width  = W_css + 'px';
+  canvas.style.height = H_css + 'px';
+  canvas.width  = Math.round(W_css * dpr);
+  canvas.height = Math.round(H_css * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  render();
+}
+
+/* =====================================================
+   Coordinate transforms
+===================================================== */
+function w2c(wx, wy) {
+  var v = ST.view;
+  return [
+    (wx - v.xMin) / (v.xMax - v.xMin) * W_css,
+    H_css - (wy - v.yMin) / (v.yMax - v.yMin) * H_css
+  ];
+}
+function c2w(cx, cy) {
+  var v = ST.view;
+  return [
+    v.xMin + cx / W_css * (v.xMax - v.xMin),
+    v.yMin + (H_css - cy) / H_css * (v.yMax - v.yMin)
+  ];
+}
+
+/* =====================================================
+   Zoom & pan
+===================================================== */
+function zoomAt(cx, cy, factor) {
+  var wp = c2w(cx, cy);
+  var v = ST.view;
+  var newW = (v.xMax - v.xMin) * factor;
+  var newH = (v.yMax - v.yMin) * factor;
+  var fx = (wp[0] - v.xMin) / (v.xMax - v.xMin);
+  var fy = (wp[1] - v.yMin) / (v.yMax - v.yMin);
+  v.xMin = wp[0] - fx * newW;
+  v.xMax = v.xMin + newW;
+  v.yMin = wp[1] - fy * newH;
+  v.yMax = v.yMin + newH;
+}
+function panBy(dcx, dcy) {
+  var v = ST.view;
+  var dx = -dcx / W_css * (v.xMax - v.xMin);
+  var dy =  dcy / H_css * (v.yMax - v.yMin);
+  v.xMin += dx; v.xMax += dx;
+  v.yMin += dy; v.yMax += dy;
+}
+
+/* ── Mouse wheel ── */
+canvas.addEventListener('wheel', function(e){
+  e.preventDefault();
+  var rect = canvas.getBoundingClientRect();
+  var cx = e.clientX - rect.left;
+  var cy = e.clientY - rect.top;
+  var factor = e.deltaY > 0 ? 1.12 : 0.88;
+  zoomAt(cx, cy, factor);
+  render();
+}, {passive: false});
+
+/* ── Drag to pan ── */
+var isDrag = false, lastMX = 0, lastMY = 0;
+canvas.addEventListener('mousedown', function(e){ isDrag=true; lastMX=e.clientX; lastMY=e.clientY; });
+canvas.addEventListener('mousemove', function(e){
+  if(!isDrag)return;
+  panBy(e.clientX-lastMX, e.clientY-lastMY);
+  lastMX=e.clientX; lastMY=e.clientY;
+  render();
+});
+window.addEventListener('mouseup', function(){ isDrag=false; });
+
+/* ── Double-click: reset view ── */
+canvas.addEventListener('dblclick', function(e){
+  e.preventDefault();
+  ST.view = JSON.parse(JSON.stringify(ST.defaultView));
+  render();
+  say('View reset');
+});
+
+/* ── Click: set x0 ── */
+canvas.addEventListener('click', function(e){
+  if(Math.abs(e.clientX-lastMX)>4||Math.abs(e.clientY-lastMY)>4)return; // suppress after drag
+  var rect = canvas.getBoundingClientRect();
+  var cx = e.clientX - rect.left;
+  var cy = e.clientY - rect.top;
+  var wx = c2w(cx, cy)[0];
+  /* Honour wherever the user clicks (within the visible view), not just the
+     display domain - so a start point can be set in the margins too. */
+  wx = clamp(wx, ST.view.xMin, ST.view.xMax);
+  ST.x0 = parseFloat(wx.toFixed(4));
+  document.getElementById('x0Num').value = ST.x0;
+  stopAnim();
+  buildOrbit();
+  ST.nDraw = 0;
+  render();
+  drawOrbit();
+  updateReadout();
+  updateFormula();   /* keep the formula box's Lyapunov/stability in sync with the new x0 */
+  say('x\u2080 set to ' + ST.x0.toFixed(4));
+});
+
+/* ── Touch ── */
+var lastTouches = null;
+canvas.addEventListener('touchstart', function(e){
+  e.preventDefault();
+  lastTouches = Array.from(e.touches).map(function(t){return {x:t.clientX,y:t.clientY};});
+}, {passive:false});
+canvas.addEventListener('touchmove', function(e){
+  e.preventDefault();
+  var ts = Array.from(e.touches).map(function(t){return {x:t.clientX,y:t.clientY};});
+  if(!lastTouches)return;
+  if(ts.length===1&&lastTouches.length===1){
+    panBy(ts[0].x-lastTouches[0].x, ts[0].y-lastTouches[0].y);
+  } else if(ts.length===2&&lastTouches.length===2){
+    var d0=Math.hypot(lastTouches[0].x-lastTouches[1].x,lastTouches[0].y-lastTouches[1].y);
+    var d1=Math.hypot(ts[0].x-ts[1].x,ts[0].y-ts[1].y);
+    if(d0>1){
+      var rect=canvas.getBoundingClientRect();
+      var mcx=(ts[0].x+ts[1].x)/2-rect.left;
+      var mcy=(ts[0].y+ts[1].y)/2-rect.top;
+      zoomAt(mcx,mcy,d0/d1);
+    }
+  }
+  lastTouches=ts;
+  render();
+}, {passive:false});
+canvas.addEventListener('touchend', function(){lastTouches=null;});
+
+/* ── Reset view button ── */
+document.getElementById('resetViewBtn').addEventListener('click', function(){
+  ST.view = JSON.parse(JSON.stringify(ST.defaultView));
+  render();
+  say('View reset');
+});
+
+/* =====================================================
+   Safe example getter
+===================================================== */
+function getEx(){ return EX[ST.exId] || EX['cos_fp']; }
+
+/* =====================================================
+   Canvas color helpers (respect high-contrast)
+===================================================== */
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+/* =====================================================
+   Orbit computation
+===================================================== */
+function buildOrbit() {
+  var ex = getEx();
+  var orbit = [ST.x0];
+  var x = ST.x0;
+
+  /* find fixed points once for early-stop check */
+  var fps = [];
+  try { fps = findFixedPoints(ex.f, ST.params, ex.domain[0], ex.domain[1], 300); } catch(e){}
+
+  for(var i=0;i<ST.N;i++){
+    var xPrev = x;
+    try{ x = ex.f(x, ST.params); }
+    catch(e){ x = NaN; }
+    if(!isFinite(x)) break;
+    orbit.push(x);
+
+    /* early stop: converged within 1e-5 of any fixed point */
+    var converged = false;
+    for(var j=0;j<fps.length;j++){
+      if(Math.abs(x - fps[j]) < 1e-5){ converged=true; break; }
+    }
+    if(converged) break;
+
+    /* early stop: stalled (successive iterates identical to 1e-8) */
+    if(Math.abs(x - xPrev) < 1e-8) break;
+  }
+  ST.orbit = orbit;
+  applyDefaultTrail();
+}
+
+/* Default trail style by behaviour: solid for a fixed point (the orbit
+   settles to a single value, or the example is an unstable fixed point),
+   faded for periodic/chaotic orbits. Re-asserts on example switch or when
+   the behaviour changes (keyed), but leaves a manual choice alone within a
+   given behaviour so the Trail control still works. */
+function applyDefaultTrail(){
+  var ex = getEx();
+  var want;
+  if(ex && ex.category === 'unstable'){
+    want = 'solid';   /* unstable fixed point - solid so the outward spiral reads clearly */
+  } else {
+    /* The orbit settled to a fixed point iff its final value satisfies
+       f(x)=x. (Tail-distinctness would misread an oscillatory convergence
+       to a stable fixed point - e.g. the cosine map's Dottie spiral.) */
+    var o = ST.orbit, n = o.length, last = o[n-1], fx;
+    try{ fx = ex.f(last, ST.params); }catch(e){ fx = NaN; }
+    var isFP = isFinite(fx) && Math.abs(fx - last) < 1e-4*(Math.abs(last)+1);
+    want = isFP ? 'solid' : 'faded';
+  }
+  var key = ST.exId + ':' + want;
+  if(key !== ST._trailKey){
+    ST._trailKey = key;
+    ST.trailMode = want;
+    var sel = document.getElementById('trailSel');
+    if(sel) sel.value = want;
+  }
+}
+
+/* ── Find fixed points via grid + bisection ── */
+function findFixedPoints(f, params, xMin, xMax, nGrid) {
+  nGrid = nGrid || 400;
+  var fps = [];
+  var xs = [];
+  for(var i=0;i<=nGrid;i++) xs.push(xMin+(xMax-xMin)*i/nGrid);
+  var gs = xs.map(function(x){ try{var v=f(x,params)-x;return isFinite(v)?v:null;}catch(e){return null;} });
+  for(var i=0;i<nGrid;i++){
+    if(gs[i]===null||gs[i+1]===null)continue;
+    if(gs[i]*gs[i+1]<=0){
+      // bisect
+      var a=xs[i],b=xs[i+1];
+      for(var k=0;k<40;k++){
+        var m=(a+b)/2;
+        var gm=f(m,params)-m;
+        if(!isFinite(gm))break;
+        if(gs[i]*gm<=0)b=m;else a=m;
+      }
+      var xstar=(a+b)/2;
+      // dedup
+      var dup=false;
+      for(var j=0;j<fps.length;j++){if(Math.abs(fps[j]-xstar)<1e-6){dup=true;break;}}
+      if(!dup)fps.push(xstar);
+    }
+  }
+  return fps;
+}
+
+/* ── Lyapunov exponent ── */
+function lyapunov(f, df, params, x0, N) {
+  var x=x0, sum=0, cnt=0;
+  for(var i=0;i<N;i++){
+    try{
+      var d=df(x,params);
+      if(isFinite(d)&&Math.abs(d)>1e-15){ sum+=Math.log(Math.abs(d)); cnt++; }
+      x=f(x,params);
+      if(!isFinite(x))break;
+    }catch(e){break;}
+  }
+  return cnt>0?sum/cnt:NaN;
+}
+
+/* =====================================================
+   Canvas rendering
+===================================================== */
+function getCobColors() {
+  var hc = document.documentElement.classList.contains('hc');
+  return {
+    bg:       hc?'#f8f8f8':'#fafafa',
+    grid:     hc?'rgba(0,0,0,.14)':'rgba(0,0,0,.07)',
+    axis:     hc?'rgba(0,0,0,.55)':'rgba(0,0,0,.3)',
+    fn:       hc?'#0000cc':'#1d4ed8',     /* curve: blue - used for draw only, not text */
+    diag:     hc?'#333':'#6b7280',
+    stable:   hc?'#005500':'#15803d',
+    unstable: hc?'#cc0000':'#b91c1c',
+    neutral:  hc?'#7a3000':'#92400e',
+    cur:      hc?'#cc0000':'#ff1414'
+  };
+}
+
+function drawGrid(C) {
+  var v = ST.view;
+  ctx.save();
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  // vertical grid
+  var step = niceStep((v.xMax-v.xMin)/6);
+  var x0g = Math.ceil(v.xMin/step)*step;
+  for(var x=x0g; x<=v.xMax+1e-9; x+=step){
+    var cx=w2c(x,0)[0];
+    ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H_css); ctx.stroke();
+  }
+  // horizontal grid
+  step = niceStep((v.yMax-v.yMin)/6);
+  var y0g = Math.ceil(v.yMin/step)*step;
+  for(var y=y0g; y<=v.yMax+1e-9; y+=step){
+    var cy=w2c(0,y)[1];
+    ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(W_css,cy); ctx.stroke();
+  }
+  // axes
+  ctx.strokeStyle = C.axis;
+  ctx.lineWidth = 1.5;
+  if(v.xMin<0&&v.xMax>0){
+    var ax=w2c(0,0)[0];
+    ctx.beginPath(); ctx.moveTo(ax,0); ctx.lineTo(ax,H_css); ctx.stroke();
+  }
+  if(v.yMin<0&&v.yMax>0){
+    var ay=w2c(0,0)[1];
+    ctx.beginPath(); ctx.moveTo(0,ay); ctx.lineTo(W_css,ay); ctx.stroke();
+  }
+  // tick labels
+  ctx.fillStyle = C.axis;
+  ctx.font = '10px -apple-system,Arial,sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  step = niceStep((v.xMax-v.xMin)/6);
+  x0g = Math.ceil(v.xMin/step)*step;
+  for(var x=x0g; x<=v.xMax+1e-9; x+=step){
+    if(Math.abs(x)<step*0.01)continue;
+    var cp=w2c(x,0);
+    var yPx=Math.min(H_css-14,Math.max(2,cp[1]+3));
+    ctx.fillText(fmtTick(x,3),cp[0],yPx);
+  }
+  ctx.textAlign='right'; ctx.textBaseline='middle';
+  step = niceStep((v.yMax-v.yMin)/6);
+  y0g = Math.ceil(v.yMin/step)*step;
+  for(var y=y0g; y<=v.yMax+1e-9; y+=step){
+    if(Math.abs(y)<step*0.01)continue;
+    var cp2=w2c(0,y);
+    var xPx=Math.max(30,Math.min(W_css-2,cp2[0]-3));
+    ctx.fillText(fmtTick(y,3),xPx,cp2[1]);
+  }
+  ctx.restore();
+}
+
+function niceStep(rough){
+  var e=Math.pow(10,Math.floor(Math.log10(rough)));
+  var r=rough/e;
+  if(r<1.5)return e;
+  if(r<3.5)return 2*e;
+  if(r<7.5)return 5*e;
+  return 10*e;
+}
+
+function drawDiagonal(C) {
+  var p1=w2c(ST.view.xMin,ST.view.xMin);
+  var p2=w2c(ST.view.xMax,ST.view.xMax);
+  ctx.save();
+  ctx.strokeStyle=C.diag;
+  ctx.lineWidth=1.5;
+  ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawCurve(f, params, C) {
+  var v=ST.view;
+  var N=600;
+  ctx.save();
+  ctx.strokeStyle=C.fn;
+  ctx.lineWidth=2.6;
+  ctx.lineJoin='round';
+  ctx.beginPath();
+  var started=false;
+  for(var i=0;i<=N;i++){
+    var wx=v.xMin+(v.xMax-v.xMin)*i/N;
+    var wy;
+    try{ wy=f(wx,params); }catch(e){ wy=NaN; }
+    if(!isFinite(wy)||wy<v.yMin-5*(v.yMax-v.yMin)||wy>v.yMax+5*(v.yMax-v.yMin)){
+      started=false; continue;
+    }
+    var p=w2c(wx,wy);
+    if(!started){ctx.moveTo(p[0],p[1]);started=true;}
+    else ctx.lineTo(p[0],p[1]);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function lerp(a,b,t){return a+(b-a)*t;}
+
+/* ── ST.nDraw now counts SEGMENTS, not iterations.
+   Each iteration has 2 segments:
+     even s=2k  → vertical:   (x_k, x_k) → (x_k, x_{k+1})   [to curve]
+     odd  s=2k+1 → horizontal: (x_k, x_{k+1}) → (x_{k+1}, x_{k+1}) [to diagonal]
+   Total segments = (orbit.length - 1) * 2                        ── */
+function totalSegs(){ return Math.max(0,(ST.orbit.length-1)*2); }
+
+function drawCobweb(C) {
+  var orbit = ST.orbit;
+  var nDraw = Math.min(ST.nDraw, totalSegs());
+  if(nDraw < 1) return;
+  var solid = (ST.trailMode === 'solid');
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  for(var s = 0; s < nDraw; s++){
+    var k   = Math.floor(s / 2);   /* iteration index */
+    var xi  = orbit[k];
+    var xi1 = orbit[k + 1];
+    if(!isFinite(xi) || !isFinite(xi1)) break;
+
+    var isLast = (s === nDraw - 1);
+    var prog   = nDraw > 1 ? s / (nDraw - 1) : 1;
+
+    var alpha, lum, lw;
+    if(solid){
+      /* Solid: uniform red trail, all iterations equally visible. */
+      alpha = isLast ? 1.0 : 0.9;
+      lum   = isLast ? 255 : 230;
+      lw    = isLast ? 1.8 : 1.4;
+    } else {
+      /* Faded: early transients fade toward invisible, revealing the final orbit. */
+      alpha = isLast ? 1.0 : 0.05 + 0.9 * Math.pow(prog, 2.2);
+      lum   = isLast ? 255 : Math.round(lerp(210, 255, prog));
+      lw    = isLast ? 1.8 : 1.1 + 0.4 * prog;
+    }
+    ctx.strokeStyle = 'rgba(' + lum + ',20,20,' + alpha + ')';
+    ctx.lineWidth   = lw;
+
+    ctx.beginPath();
+    if(s % 2 === 0){
+      /* vertical: (xi, xi) → (xi, xi1) - line to graph */
+      var p0 = w2c(xi, xi);
+      var p1 = w2c(xi, xi1);
+      ctx.moveTo(p0[0], p0[1]);
+      ctx.lineTo(p1[0], p1[1]);
+    } else {
+      /* horizontal: (xi, xi1) → (xi1, xi1) - line to y=x */
+      var p0 = w2c(xi,  xi1);
+      var p1 = w2c(xi1, xi1);
+      ctx.moveTo(p0[0], p0[1]);
+      ctx.lineTo(p1[0], p1[1]);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFixedPoints(fps, dfunc, params, C) {
+  fps.forEach(function(xstar){
+    var d;
+    try{d=dfunc(xstar,params);}catch(e){d=NaN;}
+    var col = !isFinite(d)?C.neutral:Math.abs(d)<1?C.stable:Math.abs(d)>1?C.unstable:C.neutral;
+    var p=w2c(xstar,xstar);
+    // glow
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p[0],p[1],9,0,2*Math.PI);
+    ctx.fillStyle=col.replace(')',',0.18)').replace('rgb','rgba');
+    ctx.fill();
+    // dot
+    ctx.beginPath();
+    ctx.arc(p[0],p[1],4.5,0,2*Math.PI);
+    ctx.fillStyle=col;
+    ctx.fill();
+    ctx.strokeStyle='#fff';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function drawCurrentDot(C) {
+  var nDraw = ST.nDraw;
+  if(nDraw < 1) return;
+  var k  = Math.floor(nDraw / 2);
+  var xi  = ST.orbit[k];
+  var xi1 = ST.orbit[k + 1];
+  if(!isFinite(xi)) return;
+
+  var wx, wy;
+  if(nDraw % 2 === 1){
+    /* last segment was vertical → endpoint is on the CURVE: (xi, xi1) */
+    if(!isFinite(xi1)) return;
+    wx = xi; wy = xi1;
+  } else {
+    /* last segment was horizontal → endpoint is on the DIAGONAL: (xi, xi) */
+    wx = xi; wy = xi;
+  }
+  var p = w2c(wx, wy);
+  ctx.save();
+  /* small glow */
+  ctx.beginPath();
+  ctx.arc(p[0], p[1], 8, 0, 2*Math.PI);
+  ctx.fillStyle = 'rgba(255,20,20,0.15)';
+  ctx.fill();
+  /* dot */
+  ctx.beginPath();
+  ctx.arc(p[0], p[1], 4, 0, 2*Math.PI);
+  ctx.fillStyle = '#ff1414';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+/* ── x0 marker on diagonal ── */
+function drawX0Marker() {
+  var p=w2c(ST.x0, ST.x0);
+  ctx.save();
+  ctx.fillStyle='rgba(180,83,9,0.7)';
+  ctx.beginPath();
+  ctx.moveTo(p[0],p[1]-10);
+  ctx.lineTo(p[0]+7,p[1]+5);
+  ctx.lineTo(p[0]-7,p[1]+5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+/* ── Master render ── */
+function render() {
+  var ex=getEx();
+  var C=getCobColors();
+  ctx.clearRect(0,0,W_css,H_css);
+  ctx.fillStyle=C.bg;
+  ctx.fillRect(0,0,W_css,H_css);
+  drawGrid(C);
+  drawDiagonal(C);
+  drawCurve(ex.f, ST.params, C);
+  drawCobweb(C);
+  var fps=findFixedPoints(ex.f, ST.params, ST.view.xMin, ST.view.xMax, 400);
+  drawFixedPoints(fps, ex.df, ST.params, C);
+  if(ST.nDraw===0)drawX0Marker();
+  else drawCurrentDot(C);
+}
+
+/* =====================================================
+   Orbit plot (Plotly)
+===================================================== */
+var plotPending = false;
+function drawOrbit() {
+  if(plotPending)return; plotPending=true;
+  requestAnimationFrame(function(){
+    plotPending=false;
+    /* Plot the FULL orbit (all N iterations) regardless of cobweb animation step.
+       A red marker shows the current iterate the cobweb is at. */
+    var orbit=ST.orbit;
+    var ns=[],xs=[];
+    for(var i=0;i<orbit.length;i++){ns.push(i);xs.push(orbit[i]);}
+    var iterIdx=Math.min(Math.ceil(ST.nDraw/2),orbit.length-1);
+    var traces=[
+      {x:ns,y:xs,type:'scatter',mode:'lines+markers',
+       line:{color:'#1d4ed8',width:1.6},
+       marker:{color:'#1d4ed8',size:4},
+       hovertemplate:'n=%{x}<br>x\u2099=%{y:.6f}<extra></extra>',name:'orbit'}
+    ];
+    if(ST.nDraw>0&&iterIdx>=0&&iterIdx<orbit.length){
+      traces.push({x:[iterIdx],y:[orbit[iterIdx]],type:'scatter',mode:'markers',
+        marker:{color:'#dc2626',size:11,line:{color:'#fff',width:2}},
+        hovertemplate:'current n=%{x}<br>x\u2099=%{y:.6f}<extra></extra>',name:'current'});
+    }
+    var layout={
+      margin:{t:10,r:14,b:42,l:48},
+      plot_bgcolor:'#fafafa',paper_bgcolor:'rgba(0,0,0,0)',
+      font:{family:'-apple-system,Arial,sans-serif',size:11,color:'#374151'},
+      xaxis:{title:{text:'n',font:{size:12}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af'},
+      yaxis:{title:{text:'x\u2099',font:{size:12}},gridcolor:'#e5e7eb',zerolinecolor:'#9ca3af'},
+      showlegend:false,autosize:true
+    };
+    Plotly.react('plotOrbit',traces,layout,{responsive:true,displaylogo:false,displayModeBar:false});
+  });
+}
+
+/* =====================================================
+   Formula & analysis box
+===================================================== */
+var fmPending=false;
+function updateFormula() {
+  var ex=getEx();
+  var fps=findFixedPoints(ex.f,ST.params,ex.domain[0],ex.domain[1],400);
+  var lya=lyapunov(ex.f,ex.df,ST.params,ST.x0,200);
+
+  var fpLatex=fps.length?fps.map(function(x){return x.toFixed(4);}).join(',\\;'):'\\text{none found}';
+  var dfLines=fps.map(function(xstar){
+    var d=ex.df(xstar,ST.params);
+    if(!isFinite(d))return '\\(f\'('+xstar.toFixed(3)+')\\): undefined';
+    var ad=Math.abs(d);
+    var stab=ad<1?'<strong style="color:#15803d">stable</strong>':ad>1?'<strong style="color:#b91c1c">unstable</strong>':'<strong style="color:#92400e">neutral</strong>';
+    return '\\(f\'('+xstar.toFixed(3)+')='+d.toFixed(4)+'\\), \\(|f\'|='+ad.toFixed(4)+'\\) \u2192 '+stab;
+  }).join('<br>');
+
+  var lyaClass='',lyaStr=fmtSci(lya);
+  if(isFinite(lya)){
+    if(lya<-0.001)lyaClass='rval-s';
+    else if(lya>0.001)lyaClass='rval-c';
+    else lyaClass='rval-n';
+  }
+
+  var pStr='';
+  if(ex.params.length){
+    var pp=ex.params.map(function(pd){
+      var sym=pd.id==='omega'?'\\omega':pd.id==='mu'?'\\mu':pd.id;
+      var v=ST.params[pd.id]!=null?ST.params[pd.id]:pd.val;
+      return sym+'='+v.toFixed(2);
+    });
+    pStr='<div class="fm-params">\\('+pp.join(',\\quad ')+'\\)</div>';
+  }
+
+  var html=
+    '<div class="fm-main">\\[f(x)='+ex.latex_f+'\\]</div>'+
+    pStr+
+    '<div style="font-size:.875rem;color:var(--txt2);margin:.4rem 0 .1rem">'+
+    '<strong>Fixed points:</strong> \\(x^*\\in\\{'+fpLatex+'\\}\\)</div>'+
+    (dfLines?'<div style="font-size:.8125rem;color:var(--txt2);line-height:1.8">'+dfLines+'</div>':'')+
+    '<div class="fm-stability" style="background:rgba(109,40,217,.06);border-left:3px solid var(--vio);margin-top:.5rem">'+
+    '<strong>Lyapunov:</strong> \\(\\lambda\\approx '+lyaStr+'\\) - '+
+    (isFinite(lya)?(lya<-0.001?'<span style="color:#15803d">attracting (convergent)</span>':lya>0.001?'<span style="color:#5b21b6">chaotic (\\(\\lambda>0\\))</span>':'<span style="color:#92400e">neutral / bifurcation</span>'):'-')+
+    '</div>'+
+    '<div style="margin-top:.5rem;font-size:.8125rem;color:var(--txt2);line-height:1.65">'+ex.desc+'</div>';
+
+  var box=document.getElementById('formulaBox');
+  box.innerHTML=html;
+  if(!fmPending&&window.MathJax&&MathJax.typesetPromise){
+    fmPending=true;
+    MathJax.typesetPromise([box]).then(function(){fmPending=false;}).catch(function(){fmPending=false;});
+  }
+}
+
+/* =====================================================
+   Readout bar
+===================================================== */
+function updateReadout() {
+  var ex=getEx();
+  /* current iterate index = ceil(nDraw/2) - advances when vertical segment completes */
+  var iterIdx = Math.ceil(ST.nDraw / 2);
+  var xn = ST.orbit[Math.min(iterIdx, ST.orbit.length-1)];
+  document.getElementById('rv-n').textContent = iterIdx;
+  document.getElementById('rv-x').textContent = fmtBig(xn,5);
+
+  // Fixed points from domain
+  var fps=findFixedPoints(ex.f,ST.params,ex.domain[0],ex.domain[1],300);
+  document.getElementById('rv-fp').textContent=fps.length?fps.map(function(x){return x.toFixed(3);}).join(', '):'none';
+
+  // Stability of nearest fp
+  if(fps.length&&isFinite(xn)){
+    var nearest=fps.reduce(function(a,b){return Math.abs(a-xn)<Math.abs(b-xn)?a:b;});
+    var d;try{d=ex.df(nearest,ST.params);}catch(e){d=NaN;}
+    var ad=Math.abs(d);
+    document.getElementById('rv-df').textContent=isFinite(d)?ad.toFixed(4):'-';
+    var stabEl=document.getElementById('rv-stab');
+    if(!isFinite(d)){stabEl.textContent='-';stabEl.className='rval';}
+    else if(ad<1){stabEl.textContent='Stable';stabEl.className='rval rval-s';}
+    else if(ad>1){stabEl.textContent='Unstable';stabEl.className='rval rval-u';}
+    else{stabEl.textContent='Neutral';stabEl.className='rval rval-n';}
+  }
+
+  // Lyapunov
+  var lya=lyapunov(ex.f,ex.df,ST.params,ST.x0,200);
+  var lyaEl=document.getElementById('rv-lya');
+  lyaEl.textContent=fmtSci(lya);
+  lyaEl.className='rval'+(isFinite(lya)?lya<-0.001?' rval-s':lya>0.001?' rval-c':' rval-n':'');
+}
+
+/* =====================================================
+   Animation
+===================================================== */
+function stopAnim(){
+  ST.animating=false;
+  if(ST.animTimer)clearInterval(ST.animTimer);
+  ST.animTimer=null;
+  var btn=document.getElementById('btnPlay');
+  if(btn)btn.setAttribute('aria-pressed','false');
+}
+function startAnim(){
+  /* WCAG 2.3.3 - respect prefers-reduced-motion */
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    say('Animation skipped: your accessibility settings prefer reduced motion. Use Step or All instead.');
+    return;
+  }
+  if(ST.animating)return;
+  var ts=totalSegs();
+  if(ST.nDraw>=ts){ST.nDraw=0;}
+  ST.animating=true;
+  var btn=document.getElementById('btnPlay');
+  if(btn)btn.setAttribute('aria-pressed','true');
+  var ms=parseInt(document.getElementById('speedSel').value)||700;
+  ST.animTimer=setInterval(function(){
+    if(!ST.animating)return;
+    ST.nDraw=Math.min(ST.nDraw+1, totalSegs());
+    render();
+    drawOrbit();
+    updateReadout();
+    if(ST.nDraw>=totalSegs()){stopAnim();say('Animation complete - all segments drawn.');}
+  },ms);
+  say('Animation started');
+}
+
+document.getElementById('btnPlay').addEventListener('click',function(){startAnim();});
+document.getElementById('btnStop').addEventListener('click',function(){stopAnim();say('Stopped');});
+document.getElementById('btnStep').addEventListener('click',function(){
+  stopAnim();
+  var ts=totalSegs();
+  if(ST.nDraw<ts){ST.nDraw++;}
+  render();drawOrbit();updateReadout();
+  say('Segment '+ST.nDraw+' of '+ts);
+});
+document.getElementById('btnAll').addEventListener('click',function(){
+  stopAnim();
+  ST.nDraw=totalSegs();
+  render();drawOrbit();updateReadout();
+  say('Showing all segments');
+});
+document.getElementById('btnReset').addEventListener('click',function(){
+  stopAnim();
+  ST.nDraw=0;
+  render();drawOrbit();updateReadout();
+  say('Reset to start');
+});
+document.getElementById('trailSel').addEventListener('change',function(){
+  ST.trailMode=this.value;render();say('Trail: '+this.value);
+});
+
+/* =====================================================
+   Parameter controls
+===================================================== */
+function resetParams(id){
+  EX[id].params.forEach(function(pd){ST.params[pd.id]=pd.val;});
+}
+
+function buildParams(id){
+  var slot=document.getElementById('paramSlots');
+  slot.innerHTML='';
+  var ex=EX[id];
+  if(!ex.params.length)return;
+  var lblNodes=[];
+  ex.params.forEach(function(pd){
+    var val=ST.params[pd.id]!=null?ST.params[pd.id]:pd.val;
+    var div=document.createElement('div');
+    div.className='param-field cfield';
+    div.innerHTML=
+      '<label for="pN_'+pd.id+'">'+pd.label+'</label>'+
+      '<div class="slider-combo">'+
+        '<input type="range" id="pR_'+pd.id+'"'+
+          ' min="'+pd.min+'" max="'+pd.max+'" step="'+pd.step+'" value="'+val+'"'+
+          ' aria-label="'+pd.aria+' slider"'+
+          ' aria-valuetext="'+val+'"'+
+          ' aria-describedby="pN_'+pd.id+'">'+
+        '<input type="text" inputmode="decimal" id="pN_'+pd.id+'" class="expr-num"'+
+          ' value="'+val+'"'+
+          ' aria-label="'+pd.aria+' (accepts expressions like pi/2)"'+
+          ' title="Accepts numbers or expressions, e.g. pi/2, sqrt(2)"'+
+          ' style="color:var(--blue)">'+
+      '</div>';
+    slot.appendChild(div);
+    lblNodes.push(div.querySelector('label'));
+    var rng=div.querySelector('input[type=range]');
+    var num=div.querySelector('input.expr-num');
+    function sync(v){
+      var p=parseMathInput(v);
+      v=isFinite(p)?p:pd.val;
+      v=clamp(v,pd.min,pd.max);
+      rng.value=v; rng.setAttribute('aria-valuetext',v.toFixed(pd.step<0.1?2:1));
+      num.value=v;
+      ST.params[pd.id]=v;
+      stopAnim();
+      buildOrbit();
+      ST.nDraw=Math.min(ST.nDraw, totalSegs());
+      render(); drawOrbit(); updateReadout(); updateFormula();
+    }
+    rng.addEventListener('input',function(){sync(this.value);});
+    num.addEventListener('change',function(){sync(this.value);});
+    num.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();sync(this.value);}});
+  });
+  if(lblNodes.length)mj(lblNodes);
+}
+
+/* ── x0 input ── */
+document.getElementById('x0Num').addEventListener('change',function(){
+  var v=parseMathInput(this.value);
+  var ex=getEx();
+  if(!isFinite(v))return;
+  /* Honour any finite x0 - do NOT clamp to the display domain. Some examples
+     explicitly invite starting just outside a fixed point (e.g. to watch an
+     orbit escape to infinity), so clamping would silently reject those. */
+  this.value=v;
+  ST.x0=v;
+  ensureStartVisible(v,ex);
+  stopAnim(); buildOrbit(); ST.nDraw=0;
+  render(); drawOrbit(); updateReadout(); updateFormula();
+});
+
+/* Keep the starting point (x0,x0) on-screen. If x0 falls outside the current
+   view, reframe to a square window spanning the example's domain together with
+   x0 (plus a margin). If x0 is already visible, leave the user's zoom/pan alone. */
+function ensureStartVisible(x0,ex){
+  var v=ST.view;
+  if(x0>=v.xMin && x0<=v.xMax) return;
+  var lo=Math.min(ex.domain[0],x0), hi=Math.max(ex.domain[1],x0);
+  var margin=(hi-lo)*0.1 || 0.1;
+  var mn=lo-margin, mx=hi+margin;
+  ST.view={xMin:mn,xMax:mx,yMin:mn,yMax:mx};
+}
+
+/* ── N iterations ── */
+document.getElementById('nIterNum').addEventListener('change',function(){
+  var v=clamp(parseInt(this.value)||60,5,500);
+  this.value=v;
+  ST.N=v;
+  stopAnim(); buildOrbit(); ST.nDraw=0;
+  render(); drawOrbit(); updateReadout(); updateFormula();
+});
+
+/* =====================================================
+   Custom LaTeX listbox
+===================================================== */
+var CSEL_GROUPS=[
+  {label:'Stable Fixed Points - Convergent',ids:['cos_fp','logistic_25','cos_stable_node','sqrt_fp','x2_map','neg_slope']},
+  {label:'Periodic Orbits - Period-Doubling Cascade',ids:['logistic_p2','logistic_p4','logistic_p8','quad_p5']},
+  {label:'Chaos - Positive Lyapunov Exponent',ids:['logistic_chaos','logistic_39','tent_map','quad_chaos']},
+  {label:'Unstable - Repelling Fixed Points',ids:['unstable_spiral']}
+];
+var cselCurrent='cos_fp';
+
+function cselBuild(){
+  var list=document.getElementById('cselList');
+  list.innerHTML='';
+  CSEL_GROUPS.forEach(function(grp){
+    /* role=presentation: group labels are visual separators, not interactive ARIA children of listbox */
+    var gl=document.createElement('div');
+    gl.className='csel-grp';
+    gl.setAttribute('role','presentation');
+    gl.textContent=grp.label;
+    list.appendChild(gl);
+    grp.ids.forEach(function(id){
+      var opt=document.createElement('div');
+      opt.className='csel-opt';
+      opt.setAttribute('role','option');
+      opt.setAttribute('tabindex','-1');
+      opt.setAttribute('data-id',id);
+      opt.setAttribute('aria-selected',id===cselCurrent?'true':'false');
+      opt.innerHTML=EX[id].dropLatex;
+      list.appendChild(opt);
+    });
+  });
+}
+function cselSetDisplay(id){
+  var d=document.getElementById('cselDisplay');
+  d.innerHTML=EX[id].dropLatex;
+  mj([d]);
+}
+function cselSelect(id){
+  cselCurrent=id;
+  cselSetDisplay(id);
+  document.querySelectorAll('#cselList .csel-opt').forEach(function(el){
+    el.setAttribute('aria-selected',el.getAttribute('data-id')===id?'true':'false');
+  });
+}
+function cselOpen(){
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  list.classList.add('open');
+  btn.setAttribute('aria-expanded','true');
+  var sel=list.querySelector('[aria-selected="true"]');
+  if(sel){sel.focus();sel.scrollIntoView({block:'nearest'});}
+}
+function cselClose(){
+  document.getElementById('cselList').classList.remove('open');
+  document.getElementById('cselBtn').setAttribute('aria-expanded','false');
+}
+function cselToggle(){
+  document.getElementById('cselList').classList.contains('open')?cselClose():cselOpen();
+}
+
+function initCsel(){
+  cselBuild();
+  cselSetDisplay(cselCurrent);
+  mj([document.getElementById('cselList'),document.getElementById('cselDisplay')]);
+  var btn=document.getElementById('cselBtn');
+  var list=document.getElementById('cselList');
+  btn.addEventListener('click',function(e){e.stopPropagation();cselToggle();});
+  btn.addEventListener('keydown',function(e){
+    if(e.key==='Enter'||e.key===' '){e.preventDefault();cselToggle();}
+    if(e.key==='Escape')cselClose();
+    if(e.key==='ArrowDown'){e.preventDefault();cselOpen();}
+  });
+  list.addEventListener('click',function(e){
+    var opt=e.target.closest('.csel-opt');
+    if(!opt)return;
+    cselSelect(opt.getAttribute('data-id'));
+    cselClose(); btn.focus();
+    switchEx(opt.getAttribute('data-id'));
+  });
+  list.addEventListener('keydown',function(e){
+    var opts=Array.from(list.querySelectorAll('.csel-opt'));
+    var idx=opts.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'){e.preventDefault();if(idx<opts.length-1)opts[idx+1].focus();}
+    else if(e.key==='ArrowUp'){e.preventDefault();if(idx>0)opts[idx-1].focus();else{cselClose();btn.focus();}}
+    else if(e.key==='Enter'||e.key===' '){
+      e.preventDefault();
+      var f=document.activeElement;
+      if(f&&f.dataset&&f.dataset.id){cselSelect(f.dataset.id);cselClose();btn.focus();switchEx(f.dataset.id);}
+    }
+    else if(e.key==='Escape'||e.key==='Tab'){cselClose();if(e.key==='Escape')btn.focus();}
+  });
+  document.addEventListener('click',function(e){
+    if(!document.getElementById('cselWrap').contains(e.target))cselClose();
+  });
+}
+
+/* =====================================================
+   Switch example
+===================================================== */
+function setView(ex){
+  var d=ex.domain;
+  var span=d[1]-d[0];
+  var margin=span*0.1;
+  var xMin=d[0]-margin, xMax=d[1]+margin;
+  var yMin=xMin, yMax=xMax;
+  ST.view={xMin:xMin,xMax:xMax,yMin:yMin,yMax:yMax};
+  ST.defaultView={xMin:xMin,xMax:xMax,yMin:yMin,yMax:yMax};
+}
+
+function switchEx(id){
+  stopAnim();
+  if(!EX[id])return;
+  ST.exId=id;
+  var ex=EX[id];
+  resetParams(id);
+  buildParams(id);
+  ST.x0=ex.x0;
+  ST.N=ex.N;
+  document.getElementById('x0Num').value=ex.x0;
+  document.getElementById('nIterNum').value=ex.N;
+  setView(ex);
+  buildOrbit();
+  ST.nDraw=0;
+  /* Update canvas accessible name to reflect current example (WCAG 4.1.2) */
+  var canvas=document.getElementById('cobwebCanvas');
+  if(canvas) canvas.setAttribute('aria-label',
+    'Cobweb diagram for ' + ex.name +
+    '. Drag to pan, scroll to zoom, double-click to reset, click to set starting point x\u2080.');
+  render();
+  drawOrbit();
+  updateReadout();
+  updateFormula();
+  say('Loaded: '+ex.name);
+}
+
+/* =====================================================
+   Custom function
+===================================================== */
+/* Borrowed from Direction Field Visualizer pattern */
+/* Reciprocal trig helpers (cot, sec, csc are not native Math functions). */
+if(typeof Math.cot!=='function')Math.cot=function(x){return 1/Math.tan(x);};
+if(typeof Math.sec!=='function')Math.sec=function(x){return 1/Math.cos(x);};
+if(typeof Math.csc!=='function')Math.csc=function(x){return 1/Math.sin(x);};
+function preprocess(expr) {
+  return expr
+    .replace(/\^/g, '**')
+    .replace(/\b(sinh|cosh|tanh|sin|cos|tan|cot|sec|csc|asin|acos|atan|exp|log10|log|sqrt|cbrt|abs|ceil|floor|round|max|min)\b/gi,'Math.$1')
+    .replace(/\bpi\b/gi,'Math.PI')
+    .replace(/(?<![\w.])\be\b(?![\w.])/g,'Math.E');
+}
+
+/* Parse a scalar input that may be a number ("0.5") or an expression ("pi/2", "sqrt(2)", "-e/3"). */
+function parseMathInput(s) {
+  if (s == null) return NaN;
+  s = String(s).trim();
+  if (s === '') return NaN;
+  try {
+    var v = (new Function('return (' + preprocess(s) + ');'))();
+    return (typeof v === 'number' && isFinite(v)) ? v : NaN;
+  } catch (e) {
+    return NaN;
+  }
+}
+
+/* Convert a raw expression string to display LaTeX */
+function toLatex(expr) {
+  var s = expr.trim();
+
+  /* ── recursive helper that converts one level of a bracketed arg ── */
+  function latexArg(inner) { return toLx(inner); }
+
+  function toLx(s) {
+    /* sqrt(…) → \sqrt{…} */
+    s = s.replace(/\bsqrt\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\sqrt{' + latexArg(a) + '}'; });
+    /* cbrt(…) → \sqrt[3]{…} */
+    s = s.replace(/\bcbrt\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\sqrt[3]{' + latexArg(a) + '}'; });
+    /* abs(…) → |…| */
+    s = s.replace(/\babs\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\left|' + latexArg(a) + '\\right|'; });
+    /* log10(…) → \log_{10}(…) */
+    s = s.replace(/\blog10\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\log_{10}\\left(' + latexArg(a) + '\\right)'; });
+    /* exp(…) → \exp(…) */
+    s = s.replace(/\bexp\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\exp\\left(' + latexArg(a) + '\\right)'; });
+    /* log(…) → \ln(…) */
+    s = s.replace(/\blog\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\ln\\left(' + latexArg(a) + '\\right)'; });
+    /* trig / hyperbolic */
+    var fns = ['sinh','cosh','tanh','asin','acos','atan','sin','cos','tan'];
+    var lxNames = {'sinh':'\\sinh','cosh':'\\cosh','tanh':'\\tanh',
+                   'asin':'\\arcsin','acos':'\\arccos','atan':'\\arctan',
+                   'sin':'\\sin','cos':'\\cos','tan':'\\tan'};
+    fns.forEach(function(fn){
+      var re = new RegExp('\\b' + fn + '\\(([^()]*(?:\\([^()]*\\)[^()]*)*)\\)', 'g');
+      s = s.replace(re, function(_, a){ return lxNames[fn] + '\\left(' + latexArg(a) + '\\right)'; });
+    });
+    /* floor/ceil/round */
+    s = s.replace(/\bfloor\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\lfloor ' + latexArg(a) + ' \\rfloor'; });
+    s = s.replace(/\bceil\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\lceil ' + latexArg(a) + ' \\rceil'; });
+    s = s.replace(/\bround\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g, function(_, a){ return '\\operatorname{round}\\left(' + latexArg(a) + '\\right)'; });
+    /* max/min */
+    s = s.replace(/\bmax\(([^()]*),([^()]*)\)/g, function(_, a, b){ return '\\max\\left(' + latexArg(a) + ',' + latexArg(b) + '\\right)'; });
+    s = s.replace(/\bmin\(([^()]*),([^()]*)\)/g, function(_, a, b){ return '\\min\\left(' + latexArg(a) + ',' + latexArg(b) + '\\right)'; });
+    /* ^ → exponent */
+    s = s.replace(/\^/g, '^');
+    /* pi, e */
+    s = s.replace(/\bpi\b/gi, '\\pi');
+    /* bare e not followed by word chars or ^ (leave e^{...} as is) */
+    s = s.replace(/(?<![\\a-zA-Z])\be\b(?!\^)/g, 'e');
+    /* * → \cdot if between two non-space chars */
+    s = s.replace(/([^\s])\*([^\s])/g, '$1 \\cdot $2');
+    return s;
+  }
+
+  return toLx(s);
+}
+
+function numDeriv(fFn, x) {
+  var h=1e-5;
+  try{
+    var fp=fFn(x+h), fm=fFn(x-h);
+    return (isFinite(fp)&&isFinite(fm))?(fp-fm)/(2*h):NaN;
+  }catch(e){return NaN;}
+}
+
+function applyCustomFn() {
+  var exprRaw = document.getElementById('customFnInput').value.trim();
+  var errEl   = document.getElementById('customFnError');
+  errEl.textContent = '';
+  if(!exprRaw){ errEl.textContent = 'Please enter a function expression.'; return; }
+
+  var dMin = parseMathInput(document.getElementById('customDomMin').value);
+  var dMax = parseMathInput(document.getElementById('customDomMax').value);
+  if(!isFinite(dMin)||!isFinite(dMax)||dMin>=dMax){
+    errEl.textContent = 'Domain min must be less than domain max.'; return;
+  }
+
+  /* Build safe evaluator via preprocess + new Function (same as Direction Field Visualizer) */
+  var fFnRaw;
+  try {
+    fFnRaw = new Function('x', 'return ' + preprocess(exprRaw) + ';');
+    /* test at domain centre */
+    var testX = (dMin + dMax) / 2;
+    var testV = fFnRaw(testX);
+    if(typeof testV !== 'number'){ throw new Error('Expression did not return a number.'); }
+  } catch(e) {
+    errEl.textContent = 'Error: ' + e.message; return;
+  }
+
+  var fFn = function(x){ try{ return fFnRaw(x); }catch(e){ return NaN; } };
+  var lx  = toLatex(exprRaw);
+
+  /* Keep the starting point the user has already entered - only fall back to a
+     domain-appropriate default when the x0 field isn't a finite number. */
+  var curX0 = parseMathInput(document.getElementById('x0Num').value);
+  if(!isFinite(curX0)) curX0 = clamp(0, dMin, dMax);
+
+  /* register as a temporary custom example */
+  EX['custom'] = {
+    dropLatex: '\\(f(x)=' + lx + '\\)',
+    name: 'Custom: f(x) = ' + exprRaw,
+    latex_f: lx,
+    f: fFn,
+    df: function(x){ return numDeriv(fFn, x); },
+    params: [],
+    domain: [dMin, dMax],
+    x0: curX0,
+    N: 60,
+    desc: 'Custom function \\(f(x)=' + lx + '\\). Domain \\([' + dMin + ',' + dMax + ']\\). Fixed points and stability computed numerically.',
+    category: 'custom'
+  };
+
+  stopAnim();
+  ST.exId = 'custom';
+  ST.x0 = EX['custom'].x0;
+  ST.N  = 60;
+  document.getElementById('x0Num').value   = ST.x0;
+  document.getElementById('nIterNum').value = 60;
+  document.getElementById('paramSlots').innerHTML = '';
+  setView(EX['custom']);
+  ensureStartVisible(ST.x0, EX['custom']);
+  buildOrbit();
+  ST.nDraw = 0;
+  render(); drawOrbit(); updateReadout(); updateFormula();
+  say('Custom function plotted: ' + exprRaw);
+}
+
+/* =====================================================
+   Info & reference toggles
+===================================================== */
+(function(){
+  var btn=document.getElementById('infoBtn');
+  var body=document.getElementById('infoBody');
+  var icon=btn.querySelector('.info-icon');
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    icon.innerHTML=exp?'+':'&minus;';
+    if(!exp)mj([body]);
+  });
+})();
+
+(function(){
+  var btn=document.getElementById('refBtn');
+  var body=document.getElementById('refBody');
+  var icon=document.getElementById('refIcon');
+  btn.addEventListener('click',function(){
+    var exp=btn.getAttribute('aria-expanded')==='true';
+    btn.setAttribute('aria-expanded',String(!exp));
+    body.hidden=exp;
+    icon.innerHTML=exp?'+':'&minus;';
+  });
+})();
+
+/* ── High contrast ── */
+document.getElementById('ctog').addEventListener('click',function(){
+  document.documentElement.classList.toggle('hc');
+  var on=document.documentElement.classList.contains('hc');
+  say('High-contrast '+(on?'enabled':'disabled'));
+  render();
+});
+
+/* ── Readout MathJax typeset on load ── */
+function typesetReadout(){mj(Array.from(document.querySelectorAll('.rlbl')));}
+
+/* =====================================================
+   Resize handling
+===================================================== */
+var resizeTimer;
+window.addEventListener('resize',function(){
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(function(){resizeCanvas();render();},80);
+});
+
+/* =====================================================
+   Init
+===================================================== */
+document.addEventListener('DOMContentLoaded',function(){
+
+  /* ── Custom function button & Enter key ── */
+  document.getElementById('btnCustomFn').addEventListener('click', function(){ applyCustomFn(); });
+  document.getElementById('customFnInput').addEventListener('keydown', function(e){
+    if(e.key==='Enter'){e.preventDefault();applyCustomFn();}
+  });
+  document.getElementById('customDomMin').addEventListener('keydown', function(e){
+    if(e.key==='Enter'){e.preventDefault();applyCustomFn();}
+  });
+  document.getElementById('customDomMax').addEventListener('keydown', function(e){
+    if(e.key==='Enter'){e.preventDefault();applyCustomFn();}
+  });
+
+  /* ── Supported-functions list: click a name to insert it at the caret ── */
+  (function(){
+    var grid=document.getElementById('fnGrid');
+    if(!grid)return;
+    grid.addEventListener('click',function(e){
+      var item=e.target.closest('.func-item'); if(!item)return;
+      var tok=item.querySelector('.func-name').textContent.trim();
+      var input=document.getElementById('customFnInput');
+      input.focus();
+      var s=input.selectionStart, en=input.selectionEnd;
+      if(typeof s==='number' && typeof en==='number'){
+        input.value=input.value.slice(0,s)+tok+input.value.slice(en);
+        var pos=s+tok.length; input.setSelectionRange(pos,pos);
+      } else {
+        input.value+=tok;
+      }
+      say('Inserted: '+tok);
+    });
+    /* Typeset the LaTeX notation the first time the panel is opened. */
+    var panel=document.getElementById('fnPanel'), done=false;
+    if(panel) panel.addEventListener('toggle',function(){
+      if(panel.open && !done){ done=true; mj([panel]); }
+    });
+  })();
+
+  function init(){
+    if(window.MathJax&&MathJax.typesetPromise){
+      MathJax.startup.promise.then(function(){
+        MathJax.typesetPromise().then(function(){
+          typesetReadout();
+          initCsel();
+          resizeCanvas();
+          switchEx('cos_fp');
+        }).catch(function(){initCsel();resizeCanvas();switchEx('cos_fp');});
+      }).catch(function(){initCsel();resizeCanvas();switchEx('cos_fp');});
+    } else {
+      setTimeout(init,100);
+    }
+  }
+  init();
+});
+</script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>

@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="theme-color" content="#1d4ed8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Function plotter. Graph y = f(x), parametric, and polar curves with adjustable domain, zoom, and multiple overlay traces.">
+    <meta name="keywords" content="function plotter, graph calculator, plot function, math grapher, interactive plot, online graphing">
+    <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-LEQE004C92');
+</script>
+    <title>Function Plotter</title>
+    <!-- KaTeX CDN links -->
+    <!-- d3.js and function-plot.js -->
+    <script src="vendor/d3@7.8.5/d3.min.js"></script>
+    <script src="vendor/function-plot@1.22.4/function-plot.js"></script>
+    <!-- math.js for symbolic computation -->
+    <script src="vendor/mathjs@13.1.1/math.js"></script>
+    <link rel="stylesheet" href="vendor/tailwindcss@3.4.17/tailwind.build.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+        .katex-display {
+            overflow-x: auto;
+            padding: 1rem 0;
+        }
+        .current-function {
+            font-size: 1.25rem;
+            padding: 0.5rem;
+            text-align: center;
+            background-color: #f1f5f9;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
+        .control-panel {
+            background-color: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            width: 400px;
+        }
+        #graph {
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            width: 700px;
+            height: 400px;
+        }
+        .function-button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        .instructions {
+            text-align: center;
+            color: #4b5563;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        .analysis-output div {
+            font-size: 1rem;
+        }
+        .analysis-output ul {
+            margin-left: 1.5rem;
+        }
+        .color-0 { color: #00008b; } /* Navy */
+        .color-1 { color: #006400; } /* Forest Green */
+        .color-2 { color: #8B0000; } /* Dark Red */
+        .color-3 { color: #2F4F4F; } /* Dark Slate Gray */
+        .color-4 { color: #4B0082; } /* Indigo */
+        .results-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .results-grid li {
+            flex: 1;
+            min-width: 150px;
+        }
+    
+/* ===== Site Nav ===== */
+.main-nav{position:sticky;top:0;left:0;width:100%;z-index:1000;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.nav-inner{max-width:72rem;margin:0 auto;padding:.5rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:1rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:#4338ca;text-decoration:none;font-weight:700;font-size:1.05rem;
+  padding:.5rem .5rem;border-radius:.25rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{color:#3730a3;text-decoration:underline;}
+@media(max-width:640px){.nav-list{gap:.4rem;}.nav-list a{font-size:.9rem;padding:.4rem .35rem;}}
+
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+input[type=number]{-moz-appearance:textfield;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/plotfunction.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Function Plotter">
+    <meta property="og:description" content="Function plotter. Graph y = f(x), parametric, and polar curves with adjustable domain, zoom, and multiple overlay traces.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/plotfunction.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Function Plotter">
+    <meta name="twitter:description" content="Function plotter. Graph y = f(x), parametric, and polar curves with adjustable domain, zoom, and multiple overlay traces.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Function Plotter",
+  "description": "Function plotter. Graph y = f(x), parametric, and polar curves with adjustable domain, zoom, and multiple overlay traces.",
+  "url": "https://shelvean.github.io/math-tools/plotfunction.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+  <!-- Math: MathJax (CHTML) + assistive MathML for screen readers (replaces KaTeX).
+       Legacy katex.* / renderMathInElement calls are shimmed to MathJax. -->
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady:function(){return MathJax.startup.defaultPageReady();}}
+    };
+    function renderMathInElement(el){if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el||document.body]).catch(function(){});}
+    window.katex={render:function(t,el,o){if(!el)return;el.innerHTML=(o&&o.displayMode?'\\[':'\\(')+t+(o&&o.displayMode?'\\]':'\\)');if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([el]).catch(function(){});},renderToString:function(t,o){return (o&&o.displayMode?'\\[':'\\(')+t+(o&&o.displayMode?'\\]':'\\)');}};
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+</head>
+<body class="bg-gray-100">
+<nav class="main-nav" aria-label="Main navigation">
+  <div class="nav-inner">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+        <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+
+<a href="numerical.html" class="back-link" aria-label="Back to Numerical Methods">&larr; Back to Numerical Methods</a>
+    <div class="container">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">Function Plotter</h1>
+        </header>
+        <div class="bg-white rounded-lg shadow p-6 mb-6 flex flex-row gap-4">
+            <div class="flex-1">
+                <div id="current-function" class="current-function">\[ f(x) = x^2 - 2*cosh(x/4) \]</div>
+                <div id="graph-container" class="relative w-full h-[500px] flex justify-center">
+                    <div id="graph"></div>
+                </div>
+            </div>
+            <div class="control-panel">
+                <div class="mb-4">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Enter Function(s)</h3>
+                    <div class="flex items-center mb-2">
+                        <span class="mr-2">\[ f(x) = \]</span>
+                        <input type="text" id="function-input" class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., x^2, sin(x)">
+                    </div>
+                    <div class="flex gap-2 mb-2">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">\[ x \text{ min} \]</label>
+                            <input type="number" step="any" id="x-min" value="-10" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">\[ x \text{ max} \]</label>
+                            <input type="number" step="any" id="x-max" value="10" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <button onclick="plotFunction()" class="w-full function-button bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200">Plot Function(s)</button>
+                </div>
+                <div class="mb-4">
+                    <div class="grid grid-cols-1 gap-2">
+                        <button onclick="findYIntercept()" class="function-button bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 text-left">Find \( y\text{-intercept} \)</button>
+                        <button onclick="findXIntercepts()" class="function-button bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-blue-200 text-left">Find \( x\text{-intercepts} \)</button>
+                        <button onclick="findCriticalPoints()" class="function-button bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-blue-200 text-left">Find Critical Points</button>
+                        <button onclick="findAsymptotes()" class="function-button bg-yellow-50 hover:bg-yellow-100 text-yellow-700 rounded-md border border-blue-200 text-left">Find Asymptotes</button>
+                    </div>
+                </div>
+                <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-md hidden text-sm"></div>
+            </div>
+        </div>
+        <div class="mt-6 bg-white rounded-lg shadow p-6 analysis-output">
+            <div id="y-intercept" class="mb-2"></div>
+            <div id="x-intercepts" class="mb-2"></div>
+            <div id="critical-points" class="mb-2"></div>
+            <div id="asymptotes" class="mb-2"></div>
+        </div>
+    </div>
+    <script>
+        let nodes = [], fs = [], derivNodes = [], dfs = [], denomFs = [], xMin = -10, xMax = 10;
+        const colors = ['#00008b', '#006400', '#8B0000', '#2F4F4F', '#4B0082']; // Dark colors: navy, forest green, dark red, dark slate gray, indigo
+        const PI = Math.PI;
+        const PI_TOLERANCE = 1e-6; // Tolerance for detecting multiples of π
+        function formatNumber(n) {
+            if (!isFinite(n)) return n.toString();
+            const decimalStr = n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+            if (Math.abs(n - parseFloat(decimalStr)) < 1e-4) return decimalStr;
+            const quotient = n / PI;
+            const roundedQuotient = Math.round(quotient * 10000) / 10000;
+            if (Math.abs(quotient - roundedQuotient) < PI_TOLERANCE) {
+                if (Math.abs(roundedQuotient) < PI_TOLERANCE) return '0';
+                let sign = '';
+                let absQuot = Math.abs(roundedQuotient);
+                if (roundedQuotient < 0) sign = '-';
+                if (absQuot === 1) return `${sign}\\pi`;
+                if (Number.isInteger(absQuot)) return `${sign}${absQuot}\\pi`;
+                let intPart = Math.floor(absQuot);
+                let fracPart = absQuot - intPart;
+                if (fracPart < PI_TOLERANCE) return `${sign}${intPart}\\pi`;
+                let denom = Math.round(1 / fracPart);
+                let numer = 1;
+                if (Math.abs(fracPart - 1/denom) < PI_TOLERANCE) {
+                    numer = intPart * denom + 1;
+                    return `${sign}\\dfrac{${numer}\\pi}{${denom}}`;
+                }
+            }
+            return decimalStr;
+        }
+        function renderKaTeX() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: "$$", right: "$$", display: true },
+                    { left: "\\[", right: "\\]", display: true },
+                    { left: "\\(", right: "\\)", display: false }
+                ],
+                throwOnError: false,
+                output: 'html'
+            });
+        }
+        function init() {
+            document.getElementById('function-input').value = 'x^2-2*cosh(x/4)';
+            document.getElementById('x-min').value = -10;
+            document.getElementById('x-max').value = 10;
+            plotFunction();
+            renderKaTeX();
+        }
+        function bisect(func, a, b, tol = 1e-6, maxIter = 100) {
+            let fa = func(a), fb = func(b);
+            if (isNaN(fa) || isNaN(fb) || fa * fb > 0) return null;
+            while (Math.abs(b - a) > tol && maxIter--) {
+                let m = (a + b) / 2;
+                let fm = func(m);
+                if (isNaN(fm)) return null;
+                if (fm * fa < 0) {
+                    b = m;
+                    fb = fm;
+                } else {
+                    a = m;
+                    fa = fm;
+                }
+            }
+            return (a + b) / 2;
+        }
+        function findRoots(func, min, max, steps = 1000, tol = 1e-6) {
+            const dx = (max - min) / steps;
+            const roots = [];
+            let prevX = min;
+            let prevF = func(min);
+            for (let i = 1; i <= steps; i++) {
+                const x = min + i * dx;
+                const currF = func(x);
+                if (isNaN(currF) || isNaN(prevF)) {
+                    prevX = x;
+                    prevF = currF;
+                    continue;
+                }
+                if (prevF * currF < 0) {
+                    const root = bisect(func, prevX, x, tol);
+                    if (root !== null && !roots.some(r => Math.abs(r - root) < tol)) {
+                        roots.push(root);
+                    }
+                } else if (currF === 0 && !roots.some(r => Math.abs(r - x) < tol)) {
+                    roots.push(x);
+                }
+                prevX = x;
+                prevF = currF;
+            }
+            return roots.sort((a, b) => a - b);
+        }
+        function plotFunction() {
+            hideError();
+            const input = document.getElementById('function-input').value.trim();
+            if (!input) {
+                showError('Please enter at least one function');
+                return;
+            }
+            const minStr = document.getElementById('x-min').value;
+            const maxStr = document.getElementById('x-max').value;
+            xMin = parseFloat(minStr) || -10;
+            xMax = parseFloat(maxStr) || 10;
+            if (xMin >= xMax) {
+                showError('Invalid domain: \\( x \\text{ min} \\) must be less than \\( x \\text{ max} \\)');
+                return;
+            }
+            const functionStrings = input.split(/[,;\s]+/).filter(str => str.trim() !== '');
+            nodes = [];
+            fs = [];
+            derivNodes = [];
+            dfs = [];
+            denomFs = [];
+            const currentFunctionDiv = document.getElementById('current-function');
+            let latexStr = '';
+            try {
+                functionStrings.forEach((fnStr, index) => {
+                    const node = math.parse(fnStr);
+                    nodes.push(node);
+                    fs.push(x => node.evaluate({ x }));
+                    derivNodes.push(math.derivative(node, 'x'));
+                    dfs.push(x => derivNodes[index].evaluate({ x }));
+                    const simplified = math.simplify(node);
+                    denomFs.push(null);
+                    if (simplified.isOperatorNode && simplified.op === '/') {
+                        const denomNode = simplified.args[1];
+                        denomFs[index] = x => denomNode.evaluate({ x });
+                    }
+                    latexStr += `f_${index + 1}(x) = ${node.toTex()}`;
+                    if (index < functionStrings.length - 1) {
+                        latexStr += ',\\quad ';
+                    }
+                });
+                currentFunctionDiv.innerHTML = `\\[ ${latexStr} \\]`;
+                renderKaTeX();
+                drawGraph(functionStrings);
+                document.getElementById('y-intercept').innerHTML = '';
+                document.getElementById('x-intercepts').innerHTML = '';
+                document.getElementById('critical-points').innerHTML = '';
+                document.getElementById('asymptotes').innerHTML = '';
+            } catch (e) {
+                showError(`Invalid function: ${e.message}`);
+            }
+        }
+        function drawGraph(fnStrings) {
+            const graphContainer = document.getElementById('graph');
+            graphContainer.innerHTML = ''; // Clear previous plot
+            // Calculate y-domain
+            let yMin = Infinity, yMax = -Infinity;
+            const samples = 2000; // Match nSamples
+            const dx = (xMax - xMin) / (samples - 1);
+            fs.forEach(f => {
+                for (let i = 0; i < samples; i++) {
+                    const x = xMin + i * dx;
+                    try {
+                        const y = f(x);
+                        if (isFinite(y)) {
+                            yMin = Math.min(yMin, y);
+                            yMax = Math.max(yMax, y);
+                        }
+                    } catch {}
+                }
+            });
+            // Add padding (e.g., 10% of the range) and handle edge cases
+            if (!isFinite(yMin) || !isFinite(yMax) || yMin === yMax) {
+                yMin = -10; // Default fallback
+                yMax = 10;
+            } else {
+                const padding = (yMax - yMin) * 0.1 || 1; // Ensure non-zero padding
+                yMin -= padding;
+                yMax += padding;
+            }
+            let data = fnStrings.map((fnStr, index) => ({
+                fn: fnStr,
+                color: colors[index % colors.length],
+                sampler: 'builtIn',
+                graphType: 'polyline',
+                attr: { 'stroke-width': 1, 'opacity': 1 },
+                nSamples: 2000 // Increased for better resolution
+            }));
+            try {
+                functionPlot({
+                    target: '#graph',
+                    width: 700,
+                    height: 400,
+                    xAxis: { domain: [xMin, xMax], label: 'x', labelColor: '#000000', labelWeight: 'bold' },
+                    yAxis: { domain: [yMin, yMax], label: 'y', labelColor: '#000000', labelWeight: 'bold' },
+                    grid: true,
+                    disableZoom: false, // Enable zooming and panning
+                    data: data
+                });
+                const graphElement = document.getElementById('graph');
+                renderMathInElement(graphElement, {
+                    delimiters: [
+                        { left: "$$", right: "$$", display: true },
+                        { left: "\\[", right: "\\]", display: true },
+                        { left: "\\(", right: "\\)", display: false }
+                    ],
+                    throwOnError: false,
+                    output: 'html'
+                });
+            } catch (e) {
+                console.error('Graph rendering error:', e);
+                showError(`Graph rendering failed: ${e.message}`);
+            }
+        }
+        function findYIntercept() {
+            if (!fs.length) return;
+            const yIntDiv = document.getElementById('y-intercept');
+            let output = `\\[ \\mathbf{\\underline{y\\text{-intercepts}}:} \\]`;
+            let items = [];
+            fs.forEach((f, index) => {
+                try {
+                    const y = f(0);
+                    const formattedY = formatNumber(y);
+                    const fnTex = nodes[index].toTex();
+                    if (isFinite(y)) {
+                        items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\left(0, ${formattedY}\\right) \\]</span></li>`);
+                    } else {
+                        items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None or undefined} \\]</span></li>`);
+                    }
+                } catch {
+                    const fnTex = nodes[index].toTex();
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None or undefined} \\]</span></li>`);
+                }
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            }
+            yIntDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function findXIntercepts() {
+            if (!fs.length) return;
+            const xIntDiv = document.getElementById('x-intercepts');
+            let output = `\\[ \\mathbf{\\underline{x\\text{-intercepts}}:} \\]`;
+            let items = [];
+            fs.forEach((f, index) => {
+                const roots = findRoots(f, xMin, xMax);
+                const fnTex = nodes[index].toTex();
+                if (roots.length === 0) {
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None found in domain} \\]</span></li>`);
+                } else {
+                    let str = `f_${index + 1}(x) = ${fnTex}: `;
+                    str += roots.map(r => `\\left(${formatNumber(r)}, 0\\right)`).join(',\\quad ');
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ ${str} \\]</span></li>`);
+                }
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            }
+            xIntDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function findCriticalPoints() {
+            if (!dfs.length) return;
+            const critDiv = document.getElementById('critical-points');
+            let output = `\\[ \\mathbf{\\underline{\\text{Critical Points}}:} \\]`;
+            let items = [];
+            dfs.forEach((df, index) => {
+                const roots = findRoots(df, xMin, xMax);
+                const fnTex = nodes[index].toTex();
+                if (roots.length === 0) {
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: \\text{None found in domain} \\]</span></li>`);
+                } else {
+                    let str = `f_${index + 1}(x) = ${fnTex}: `;
+                    str += roots.map(r => {
+                        const fr = fs[index](r);
+                        return `\\left(${formatNumber(r)}, ${formatNumber(fr)}\\right)`;
+                    }).join(',\\quad ');
+                    items.push(`<li class="color-${index % colors.length}"><span>\\[ ${str} \\]</span></li>`);
+                }
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            }
+            critDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function findAsymptotes() {
+            if (!nodes.length) return;
+            const asyDiv = document.getElementById('asymptotes');
+            let output = `\\[ \\mathbf{\\underline{\\text{Asymptotes}}:} \\]`;
+            let items = [];
+            nodes.forEach((node, index) => {
+                let fnItems = [];
+                let hasAny = false;
+                const fnTex = node.toTex();
+                try {
+                    let limP = math.limit(node, 'x', Infinity);
+                    if (typeof limP !== 'number') limP = limP.valueOf();
+                    if (isFinite(limP)) {
+                        fnItems.push(`\\text{Horizontal: } y = ${formatNumber(limP)} \\text{ (as } x \\to +\\infty\\text{)}`);
+                        hasAny = true;
+                    } else if (limP === Infinity || limP === -Infinity) {
+                        fnItems.push(`\\text{Approaches } ${limP > 0 ? '+\\infty' : '-\\infty'} \\text{ as } x \\to +\\infty`);
+                        hasAny = true;
+                    }
+                } catch {}
+                try {
+                    let limN = math.limit(node, 'x', -Infinity);
+                    if (typeof limN !== 'number') limN = limN.valueOf();
+                    if (isFinite(limN)) {
+                        fnItems.push(`\\text{Horizontal: } y = ${formatNumber(limN)} \\text{ (as } x \\to -\\infty\\text{)}`);
+                        hasAny = true;
+                    } else if (limN === Infinity || limN === -Infinity) {
+                        fnItems.push(`\\text{Approaches } ${limN > 0 ? '+\\infty' : '-\\infty'} \\text{ as } x \\to -\\infty`);
+                        hasAny = true;
+                    }
+                } catch {}
+                if (denomFs[index]) {
+                    const poles = findRoots(denomFs[index], xMin, xMax);
+                    poles.forEach(p => {
+                        try {
+                            const fp = fs[index](p);
+                            if (!isFinite(fp)) {
+                                fnItems.push(`\\text{Vertical: } x = ${formatNumber(p)}`);
+                                hasAny = true;
+                            }
+                        } catch {}
+                    });
+                }
+                if (!hasAny) {
+                    fnItems.push(`\\text{None found}`);
+                }
+                items.push(`<li class="color-${index % colors.length}"><span>\\[ f_${index + 1}(x) = ${fnTex}: ${fnItems.join(',\\quad ')} \\]</span></li>`);
+            });
+            if (items.length > 0) {
+                output += `<ul class="results-grid">${items.join('')}</ul>`;
+            } else {
+                output += `\\[ \\text{None found} \\]`;
+            }
+            asyDiv.innerHTML = output;
+            renderKaTeX();
+        }
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.innerHTML = message;
+            errorDiv.classList.remove('hidden');
+            renderKaTeX();
+        }
+        function hideError() {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.classList.add('hidden');
+        }
+        window.addEventListener('load', init);
+    </script>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981340">https://doi.org/10.5281/zenodo.20981340</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Function Plotter. Math Tools. https://doi.org/10.5281/zenodo.20981340</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Function Plotter." Math Tools, 2026, doi.org/10.5281/zenodo.20981340.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026plotfunction,
+  author       = {Shelvean Kapita},
+  title        = {{Function Plotter}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981340},
+  url          = {https://doi.org/10.5281/zenodo.20981340}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+</footer>
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+
+</html>

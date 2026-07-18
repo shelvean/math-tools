@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Polynomial interpolation calculator. Build Lagrange, Newton's divided differences, and natural cubic spline interpolants from data points step by step.">
+  <title>Polynomial Interpolation - Numerical Methods</title>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-LEQE004C92"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
+  <script>
+    window.MathJax = {
+      tex: {inlineMath:[['$','$'],['\\(','\\)']],displayMath:[['$$','$$'],['\\[','\\]']]},
+      options: { enableAssistiveMml: true, skipHtmlTags: ['script','noscript','style','textarea','pre','code'] },
+      startup: {pageReady:function(){return MathJax.startup.defaultPageReady();}}
+    };
+  </script>
+  <script src="vendor/mathjax@3.2.2/es5/tex-chtml.js" async></script>
+  <script src="vendor/d3@7.8.5/d3.min.js"></script>
+  <script src="vendor/mathjs@14.6.0/math.js"></script>
+  <style>
+:root{
+  --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;
+  --info:#eff6ff;--inf-b:#1d4ed8;--inf-hd:#1e3a8a;
+  --txt:#111827;--txt2:#374151;--muted:#4b5563;
+  --bdr:#6b7280;--bdr2:#d1d5db;--focus:#1d4ed8;
+  --blue:#1d4ed8;--bl2:#1e3a8a;--teal:#0f766e;
+  --vio:#6d28d9;--ora:#92400e;--green:#15803d;--red:#dc2626;--link:#1e40af;
+  --r:.5rem;--r2:.75rem;
+  --sh:0 1px 3px rgba(0,0,0,.10);--sh2:0 4px 12px rgba(0,0,0,.12);
+}
+.hc{--bg:#fff;--card:#fff;--sect:#f0f0f0;--info:#e8eeff;--inf-b:#00c;--inf-hd:#00006b;--txt:#000;--txt2:#000;--muted:#111;--bdr:#000;--bdr2:#333;--focus:#00f;--blue:#00c;--bl2:#000099;--teal:#005500;--vio:#5500aa;--red:#cc0000;--link:#00c;}
+@media(prefers-contrast:more){:root{--txt:#000;--txt2:#000;--bdr:#000;--blue:#00c;--link:#00c;}}
+*,*::before,*::after{box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;line-height:1.6;}
+*:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.skip{position:absolute;top:-100%;left:50%;transform:translateX(-50%);background:var(--blue);color:#fff;padding:.75rem 1.5rem;z-index:1000;border-radius:0 0 var(--r) var(--r);font-weight:700;text-decoration:none;}
+.skip:focus{top:0;outline:3px solid #fff;outline-offset:2px;}
+/* Nav */
+.nav{position:sticky;top:0;left:0;width:100%;z-index:100;background:var(--card);border-bottom:2px solid var(--bdr);box-shadow:var(--sh);}
+.nav-in{max-width:72rem;margin:0 auto;padding:.45rem 1rem;}
+.nav-list{list-style:none;display:flex;justify-content:center;gap:.75rem;margin:0;padding:0;flex-wrap:wrap;}
+.nav-list a{color:var(--link);text-decoration:none;font-weight:700;font-size:1rem;padding:.625rem .5rem;border-radius:.3rem;display:inline-flex;align-items:center;min-height:44px;}
+.nav-list a:hover,.nav-list a:focus-visible{text-decoration:underline;}
+/* Card */
+.card{background:var(--card);padding:1.1rem 1.25rem;border-radius:var(--r2);max-width:1080px;width:100%;margin:1rem auto 1.5rem;}
+h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-spacing:-.02em;}
+.subtitle{font-size:.9375rem;color:var(--txt2);text-align:center;margin-bottom:1.25rem;}
+/* Info panel */
+.info-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);margin-bottom:1.25rem;overflow:hidden;}
+.info-btn{width:100%;padding:.875rem 1rem;display:flex;align-items:center;justify-content:space-between;background:transparent;border:none;cursor:pointer;font-size:1rem;font-weight:700;color:var(--inf-hd);text-align:left;}
+.info-btn:hover{background:rgba(0,0,0,.03);}
+.info-btn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}
+.info-body{padding:0 1.1rem 1rem;}
+.info-body p,.info-body li{font-size:.9375rem;color:var(--txt2);line-height:1.65;}
+.info-body ul{margin:0 0 .5rem 1.5rem;}.info-body li{margin-bottom:.3rem;}
+.info-body h2{font-size:1rem;font-weight:700;color:var(--txt);margin:.9rem 0 .3rem;}
+.defn-box{text-align:center;background:rgba(29,78,216,.06);padding:.6rem .5rem;border-radius:var(--r);margin:.5rem 0;border-left:3px solid var(--blue);}
+/* Method grid */
+.method-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.4rem;margin-bottom:.875rem;}
+.mbtn{padding:.5rem .5rem;min-height:40px;border:2px solid var(--bdr2);border-radius:.4rem;background:var(--card);color:var(--txt2);font-size:.875rem;font-weight:600;cursor:pointer;text-align:center;transition:background .12s,color .12s,border-color .12s;}
+.mbtn:hover{background:rgba(29,78,216,.07);border-color:var(--blue);color:var(--blue);}
+.mbtn.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.mbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+/* Two-col layout */
+.two-col{display:flex;gap:1.25rem;align-items:flex-start;margin-bottom:.875rem;}
+.col-main{flex:1;min-width:0;}
+.col-side{width:220px;flex-shrink:0;}
+@media(max-width:700px){.two-col{flex-direction:column;}.col-side{width:100%;}}
+/* Examples sidebar */
+.ex-panel{background:var(--info);border:2px solid var(--inf-b);border-radius:var(--r);padding:.75rem;}
+.ex-panel h3{font-size:.9375rem;font-weight:700;color:var(--inf-hd);text-align:center;margin:0 0 .6rem;}
+.ex-btn-list{display:flex;flex-direction:column;gap:.4rem;}
+.exbtn{width:100%;padding:.45rem .65rem;min-height:40px;border:1px solid var(--inf-b);border-radius:.375rem;background:var(--card);color:var(--txt2);font-size:.8125rem;font-weight:600;cursor:pointer;text-align:center;}
+.exbtn:hover{background:rgba(29,78,216,.08);color:var(--blue);}
+.exbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+/* Input type toggle */
+.itype-row{display:flex;gap:1.5rem;margin-bottom:.875rem;align-items:center;font-size:.9375rem;}
+.itype-row label{display:flex;align-items:center;gap:.4rem;cursor:pointer;color:var(--txt2);font-weight:600;}
+/* Control bars */
+.cbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;margin-bottom:.6rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);padding:.5rem .7rem;}
+.cfield{display:flex;flex-direction:column;gap:.18rem;flex:1 1 180px;}
+.cfield-sm{flex:0 1 100px;}
+.cfield label,.cfield .clbl{font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.cfield input[type=text],.cfield input[type=number],.cfield select{width:100%;min-height:36px;padding:.25rem .45rem;font-size:.9375rem;border:2px solid var(--bdr);border-radius:.375rem;background:var(--card);color:var(--txt);}
+.cfield input[type=number]{text-align:center;font-weight:600;}
+/* Node type */
+.node-wrap{display:flex;flex-wrap:wrap;gap:.35rem;}
+.nbtn{flex:0 0 auto;padding:.3rem .8rem;min-height:34px;border:2px solid var(--bdr2);border-radius:.375rem;background:var(--card);color:var(--txt2);font-size:.8125rem;font-weight:600;cursor:pointer;}
+.nbtn.active{border-color:var(--teal);background:rgba(15,118,110,.08);color:var(--teal);}
+.nbtn:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 1px #fff,0 0 0 5px var(--focus);}
+/* Action bar */
+.abar{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.875rem;padding:.5rem .75rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+.abtn{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem 1.1rem;min-height:44px;border:none;border-radius:.5rem;font-size:.9375rem;font-weight:700;cursor:pointer;}
+.abtn svg{width:1.15em;height:1.15em;flex-shrink:0;}
+.abtn-go{background:var(--blue);color:#fff;}.abtn-go:hover{background:var(--bl2);}
+.abtn-clear{background:var(--muted);color:#fff;}.abtn-clear:hover{background:#374151;}
+.abtn-dl{background:var(--teal);color:#fff;}.abtn-dl:hover{background:#0c5f58;}
+.abtn:focus-visible{outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 5px var(--focus);}
+/* Output toggles */
+.tog-row{display:flex;flex-wrap:wrap;justify-content:center;gap:.75rem;margin:.6rem 0;font-size:.9375rem;}
+.tog-row label{display:flex;align-items:center;gap:.4rem;cursor:pointer;color:var(--txt2);}
+/* Output / plot area */
+.out-box{margin-top:.875rem;padding:.75rem 1rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);overflow-x:auto;min-height:2rem;}
+.plot-wrap{display:flex;justify-content:center;margin:.875rem 0;}
+/* Polynomial scroll box - no per-term breaking, only scroll if overflows */
+.poly-scroll-box{
+  max-height:200px;overflow-y:auto;overflow-x:auto;
+  border:1px solid var(--bdr2);border-radius:var(--r);
+  background:var(--card);padding:.5rem .75rem;margin:.4rem 0;
+}
+.poly-scroll-box::-webkit-scrollbar{width:6px;height:6px;}
+.poly-scroll-box::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px;}
+/* Panel: pwrap/phdr for plot and output panels */
+.pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);margin-bottom:.875rem;}
+.phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.4rem;background:var(--sect);border-bottom:1px solid var(--bdr2);font-size:.8125rem;font-weight:700;color:var(--txt2);}
+.pdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+/* DD table */
+.dd-wrap{overflow-x:auto;margin:.4rem 0;}
+.dd-wrap table{border-collapse:collapse;background:var(--card);}
+.dd-wrap th,.dd-wrap td{border:1px solid var(--bdr);padding:.3rem .6rem;font-size:.8125rem;white-space:nowrap;}
+.dd-wrap th{background:var(--sect);font-weight:700;text-align:center;}
+.dd-wrap td.diag{color:#dc2626;font-weight:700;}
+/* Eval */
+.eval-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.5rem;margin:.875rem 0;padding:.5rem .7rem;background:var(--sect);border:2px solid var(--bdr2);border-radius:var(--r);}
+/* Footer */
+.footer{margin-top:1.25rem;border-top:2px solid var(--bdr2);padding-top:1rem;text-align:center;color:var(--txt2);font-size:.875rem;}
+.footer a{color:var(--link);text-decoration:underline;}
+.ctoggle{position:fixed;bottom:1rem;right:1rem;z-index:200;background:var(--txt);color:var(--card);border:2px solid var(--bdr);border-radius:50%;width:48px;height:48px;font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:var(--sh2);}
+.ctoggle:focus-visible{outline:3px solid var(--focus);}
+@media(max-width:640px){.card{padding:.875rem;margin:1rem .5rem 1.25rem;}.method-grid{grid-template-columns:repeat(2,1fr);}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important;}}
+  
+/* ── Divided Differences Table ── */
+.dd-wrap table { border-collapse:collapse; background:var(--card); font-size:.8125rem; }
+.dd-hdr { background:var(--sect); font-weight:700; text-align:center; padding:.35rem .65rem; border:1px solid var(--bdr2); color:var(--txt2); white-space:nowrap; }
+.dd-cell { padding:.3rem .65rem; border:1px solid var(--bdr2); text-align:center; white-space:nowrap; color:var(--txt); }
+.dd-node { background:rgba(29,78,216,.04); font-weight:600; color:var(--bl2); }
+.dd-coef { background:rgba(127,29,29,.07); font-weight:800; color:#6b1010; border-color:#d1a0a0; }
+.dd-empty { padding:.3rem .65rem; border:1px solid transparent; background:rgba(0,0,0,.015); }
+
+/* ===== Back link ===== */
+.back-link{display:flex;width:fit-content;align-items:center;gap:6px;font-size:.85rem;font-weight:500;
+  color:#4338ca;text-decoration:none;margin:0.5rem auto;transition:transform .2s;}
+.back-link:hover{transform:translateX(-3px);color:#3730a3;}
+/* feedback-mark-css:start */
+.fb-btn{position:fixed;right:1rem;bottom:1rem;z-index:9999;
+  display:inline-flex;align-items:center;gap:.4rem;
+  padding:.55rem .85rem;border:0;border-radius:999px;cursor:pointer;
+  background:#4338ca;color:#fff;font:600 .9rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.18);
+  transition:transform .15s ease,background .15s ease,box-shadow .15s ease;}
+.fb-btn:hover,.fb-btn:focus-visible{background:#3730a3;color:#fff;
+  transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.22);text-decoration:none;}
+.fb-btn:focus-visible{outline:3px solid #fff;outline-offset:2px;}
+.fb-btn svg{flex-shrink:0;}
+@media(max-width:480px){.fb-btn span{display:none;}
+  .fb-btn{padding:.6rem;border-radius:50%;}}
+@media print{.fb-btn,.fb-bd,.fb-link{display:none!important;}}
+
+.fb-link{display:inline;font:inherit;font-weight:700;color:#4338ca;
+  background:#eef2ff;padding:.05rem .5rem;border-radius:.3rem;
+  border:1px solid #c7d2fe;cursor:pointer;text-decoration:none;
+  vertical-align:baseline;line-height:inherit;}
+.fb-link:hover,.fb-link:focus-visible{background:#e0e7ff;color:#3730a3;
+  border-color:#a5b4fc;text-decoration:underline;}
+.fb-link:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+
+.fb-bd{position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.55);
+  display:flex;align-items:center;justify-content:center;padding:1rem;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  font:400 1rem/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.fb-bd.fb-open{opacity:1;pointer-events:auto;}
+.fb-dlg{background:#fff;color:#111827;border-radius:.75rem;max-width:32rem;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,.3);transform:translateY(8px);
+  transition:transform .15s ease;max-height:calc(100vh - 2rem);overflow:auto;}
+.fb-bd.fb-open .fb-dlg{transform:translateY(0);}
+.fb-hd{display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb;}
+.fb-hd h2{margin:0;font-size:1.1rem;font-weight:700;color:#111827;}
+.fb-x{background:none;border:0;font-size:1.4rem;line-height:1;cursor:pointer;
+  color:#6b7280;padding:.25rem .5rem;border-radius:.25rem;}
+.fb-x:hover,.fb-x:focus-visible{color:#111827;background:#f3f4f6;}
+.fb-bd label{display:block;font-weight:600;font-size:.9rem;margin:.85rem 0 .3rem;color:#374151;}
+.fb-bd label .fb-opt{font-weight:400;color:#6b7280;}
+.fb-bd textarea,.fb-bd input[type=email]{width:100%;font:inherit;color:#111827;
+  padding:.55rem .65rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;
+  resize:vertical;}
+.fb-bd textarea:focus,.fb-bd input[type=email]:focus{outline:0;border-color:#4338ca;
+  box-shadow:0 0 0 3px rgba(67,56,202,.18);}
+.fb-bd textarea{min-height:7rem;}
+.fb-body{padding:0 1.25rem 1rem;}
+.fb-hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0;}
+.fb-ft{display:flex;justify-content:flex-end;gap:.5rem;
+  padding:.85rem 1.25rem;border-top:1px solid #e5e7eb;background:#f9fafb;
+  border-radius:0 0 .75rem .75rem;}
+.fb-ft button{font:600 .9rem/1 inherit;padding:.55rem 1rem;border-radius:.4rem;
+  cursor:pointer;border:1px solid transparent;}
+.fb-cancel{background:#fff;color:#374151;border-color:#d1d5db;}
+.fb-cancel:hover{background:#f3f4f6;}
+.fb-send{background:#4338ca;color:#fff;}
+.fb-send:hover:not(:disabled){background:#3730a3;}
+.fb-send:disabled{opacity:.6;cursor:not-allowed;}
+.fb-msg{padding:.6rem .75rem;border-radius:.4rem;font-size:.9rem;margin-top:.5rem;display:none;}
+.fb-msg.fb-err{display:block;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.fb-msg.fb-ok{display:block;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+/* feedback-mark-css:end */
+/* cite-mark-css:start */
+.cite-box{max-width:44rem;margin:.75rem auto;border:1px solid #d1d5db;
+  border-radius:.4rem;background:#f9fafb;font-size:.85rem;text-align:left;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;}
+.cite-box[open]{background:#fff;}
+.cite-summary{cursor:pointer;font-weight:600;color:#374151;
+  padding:.5rem .75rem;user-select:none;list-style:none;
+  display:flex;align-items:center;gap:.4rem;}
+.cite-summary::-webkit-details-marker{display:none;}
+.cite-summary::before{content:"\25B8";font-size:.75rem;color:#6b7280;
+  transition:transform .15s ease;display:inline-block;}
+.cite-box[open] .cite-summary::before{transform:rotate(90deg);}
+.cite-summary:hover{color:#111827;}
+.cite-summary:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.3rem;}
+.cite-content{padding:.15rem .75rem .75rem;display:flex;flex-direction:column;gap:.5rem;}
+.cite-tabs{display:flex;gap:.1rem;border-bottom:1px solid #e5e7eb;margin-bottom:.15rem;}
+.cite-tab{appearance:none;background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:.45rem .85rem;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  color:#6b7280;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease;}
+.cite-tab:hover{color:#374151;}
+.cite-tab[aria-selected="true"]{color:#4338ca;border-bottom-color:#4338ca;}
+.cite-tab:focus-visible{outline:2px solid #4338ca;outline-offset:1px;
+  border-radius:.2rem 0 0 0;}
+.cite-text{margin:0;padding:.55rem .7rem;background:#f3f4f6;
+  border:1px solid #e5e7eb;border-radius:.3rem;
+  font:.825rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#111827;white-space:pre-wrap;word-break:break-word;
+  user-select:text;}
+.cite-pane[hidden]{display:none;}
+.cite-copy{align-self:flex-start;padding:.4rem .85rem;border:1px solid #d1d5db;
+  border-radius:.35rem;background:#fff;color:#374151;
+  font:600 .8rem/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+.cite-copy:hover{background:#f3f4f6;color:#111827;}
+.cite-copy:focus-visible{outline:2px solid #4338ca;outline-offset:1px;}
+.cite-copy.cite-ok{background:#ecfdf5;color:#166534;border-color:#bbf7d0;}
+.cite-doi{font-size:.8rem;color:#374151;margin:.1rem 0 .25rem;}
+.cite-doi a{color:#4338ca;word-break:break-all;}
+@media print{.cite-box{display:none;}}
+/* cite-mark-css:end */
+</style>
+    <meta name="author" content="Shelvean Kapita">
+    <link rel="canonical" href="https://shelvean.github.io/math-tools/interpolation.html">
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Math Tools - Shelvean Kapita">
+    <meta property="og:title" content="Polynomial Interpolation - Numerical Methods">
+    <meta property="og:description" content="Polynomial interpolation calculator. Build Lagrange, Newton's divided differences, and natural cubic spline interpolants from data points step by step.">
+    <meta property="og:url" content="https://shelvean.github.io/math-tools/interpolation.html">
+    <meta property="og:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+    <meta property="og:locale" content="en_US">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Polynomial Interpolation - Numerical Methods">
+    <meta name="twitter:description" content="Polynomial interpolation calculator. Build Lagrange, Newton's divided differences, and natural cubic spline interpolants from data points step by step.">
+    <meta name="twitter:image" content="https://shelvean.github.io/math-tools/android-chrome-192x192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Polynomial Interpolation - Numerical Methods",
+  "description": "Polynomial interpolation calculator. Build Lagrange, Newton's divided differences, and natural cubic spline interpolants from data points step by step.",
+  "url": "https://shelvean.github.io/math-tools/interpolation.html",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Any (web browser)",
+  "browserRequirements": "Requires JavaScript. Modern browser.",
+  "isAccessibleForFree": true,
+  "inLanguage": "en",
+  "image": "https://shelvean.github.io/math-tools/android-chrome-192x192.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Shelvean Kapita",
+    "url": "https://shelvean.github.io/math-tools/"
+  }
+}
+</script>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<div id="live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+<nav class="nav" aria-label="Main navigation">
+  <div class="nav-in">
+    <ul class="nav-list" role="list">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="catalog.html">Catalog</a></li>
+      <li><a href="teaching.html">Teaching</a></li>
+      <li><a href="projects.html">Differential Equations</a></li>
+        <li><a href="dynamical.html">Dynamical Systems</a></li>
+      <li><a href="linear.html">Linear Algebra</a></li>
+      <li><a href="optim.html">Optimization</a></li>
+      <li><a href="numerical.html" aria-current="page">Numerical Methods</a></li>
+        <li><a href="calculus.html">Calculus</a></li>
+        <li><a href="businessmath.html">Business Math</a></li>
+    </ul>
+  </div>
+</nav>
+
+
+<a href="numerical.html" class="back-link" aria-label="Back to Numerical Methods">&larr; Back to Numerical Methods</a>
+<main id="main" class="card" role="main">
+  <h1>Polynomial Interpolation</h1>
+  <p class="subtitle">Construct interpolating polynomials through data points - Monomial, Lagrange, Newton divided differences, Hermite, Natural and Clamped Cubic Splines.</p>
+
+  <!-- About -->
+  <div class="info-panel">
+    <button id="infoBtn" class="info-btn" aria-expanded="false" aria-controls="infoBody" type="button" aria-label="About interpolation: expand or collapse">
+      <span>About - Interpolation Methods &amp; Theory</span>
+      <span id="infoIcon" style="font-size:1.25rem;font-weight:700;flex-shrink:0;" aria-hidden="true">+</span>
+    </button>
+    <div id="infoBody" class="info-body" role="region" aria-labelledby="infoBtn" hidden>
+      <h2>The Interpolation Problem</h2>
+      <p>
+        Given \(n+1\) distinct data points \((x_0,y_0),(x_1,y_1),\ldots,(x_n,y_n)\),
+        the <strong>polynomial interpolation problem</strong> asks for a polynomial \(p(x)\)
+        of degree at most \(n\) that passes exactly through every point:
+      </p>
+      <div class="defn-box">\[p(x_i)=y_i,\quad i=0,1,\ldots,n.\]</div>
+      <p>
+        The nodes \(x_i\) must be <em>distinct</em> (no repeated \(x\)-values).
+        A foundational theorem guarantees that such a polynomial <strong>exists and is unique</strong>:
+        it is the unique element of the \((n+1)\)-dimensional space \(\mathcal{P}_n\)
+        of polynomials of degree \(\le n\) satisfying the \(n+1\) interpolation conditions.
+        Different methods&nbsp;- Monomial, Lagrange, Newton, Hermite, splines&nbsp;-
+        are simply different ways of <em>representing or computing</em> the same object
+        (or, in the case of Hermite and splines, solving a related but distinct problem).
+      </p>
+
+      <h2>Monomial Basis (Vandermonde System)</h2>
+      <p>
+        Write \(p(x)=a_0+a_1 x+a_2 x^2+\cdots+a_n x^n\).
+        Imposing the interpolation conditions \(p(x_i)=y_i\) gives the linear system
+        \(Va=y\), where \(V\) is the <strong>Vandermonde matrix</strong>
+        \(V_{ij}=x_i^j\).  The system has a unique solution whenever all nodes are
+        distinct (the Vandermonde determinant is \(\prod_{i>j}(x_i-x_j)\neq0\)).
+        Although conceptually direct, the Vandermonde system is notoriously
+        <strong>ill-conditioned</strong> for large \(n\) or widely spaced nodes:
+        small perturbations in the data can produce large changes in the coefficients.
+        The condition number grows exponentially in \(n\).
+        Use this method for small \(n\) (say \(n\le6\)) where exactness and simplicity
+        matter more than numerical stability.
+      </p>
+
+      <h2>Lagrange Form</h2>
+      <p>
+        The Lagrange representation avoids solving any linear system.
+        Define the <strong>cardinal basis polynomials</strong>
+      </p>
+      <div class="defn-box">
+        \[\ell_i(x)=\prod_{\substack{j=0\\j\neq i}}^{n}\frac{x-x_j}{x_i-x_j},
+        \qquad i=0,1,\ldots,n.\]
+      </div>
+      <p>
+        Each \(\ell_i\) satisfies \(\ell_i(x_j)=\delta_{ij}\) (Kronecker delta),
+        so \(p(x)=\sum_{i=0}^n y_i\,\ell_i(x)\) interpolates by construction.
+        The Lagrange form is explicit and elegant, ideal for theoretical analysis and for
+        adding a single new node (though adding a node requires recomputing all
+        \(\ell_i\) from scratch).  Each \(\ell_i\) is a degree-\(n\) polynomial
+        involving a product of \(n\) linear factors.
+      </p>
+
+      <h2>Newton Divided Differences</h2>
+      <p>
+        The Newton form expresses \(p\) in the <strong>Newton basis</strong>
+        \(\{1,\,(x-x_0),\,(x-x_0)(x-x_1),\,\ldots\}\):
+      </p>
+      <div class="defn-box">
+        \[p(x)=f[x_0]+f[x_0,x_1](x-x_0)+f[x_0,x_1,x_2](x-x_0)(x-x_1)+\cdots\]
+      </div>
+      <p>
+        The coefficients are <strong>divided differences</strong>, defined recursively:
+        \(f[x_i]=y_i\) and
+        \(f[x_i,\ldots,x_k]=(f[x_{i+1},\ldots,x_k]-f[x_i,\ldots,x_{k-1}])/(x_k-x_i)\).
+        The divided difference table (shown highlighted in this tool) organises these
+        computations in a triangular array; the <strong>first row of diagonal entries</strong>
+        (marked in maroon) are precisely the Newton coefficients.
+        A key advantage: adding a new node \(x_{n+1}\) requires only one new column
+        appended to the existing table, making Newton&rsquo;s form <em>incremental</em>
+        and numerically efficient.
+      </p>
+
+      <h2>Hermite Interpolation</h2>
+      <p>
+        Hermite interpolation matches both <em>function values</em> \(f(x_i)=y_i\)
+        and <em>derivative values</em> \(f'(x_i)=y'_i\) at each node,
+        producing a polynomial of degree at most \(2n+1\) through \(n+1\) points.
+        The construction uses a <strong>doubled-node divided difference table</strong>:
+        each \(x_i\) appears twice in the sequence
+        \(z_0\le z_1\le\cdots\le z_{2n+1}\),
+        and coincident entries \(f[z_{2i},z_{2i+1}]\) are defined to equal \(y'_i\)
+        rather than the usual divided difference (which would be \(0/0\)).
+        The result is a smoother interpolant that respects the local slope at each data
+        point&nbsp;- particularly valuable when fitting physical measurements
+        where velocities or gradients are known alongside positions.
+      </p>
+
+      <h2>Cubic Splines - Natural and Clamped</h2>
+      <p>
+        For large data sets, a single high-degree polynomial oscillates wildly
+        (Runge&rsquo;s phenomenon, below). <strong>Cubic splines</strong> solve this
+        by fitting a separate cubic polynomial \(S_i(x)\) on each subinterval
+        \([x_i,x_{i+1}]\), subject to continuity conditions at the internal knots:
+      </p>
+      <div class="defn-box">
+        \[S_i(x_{i+1})=S_{i+1}(x_{i+1}),\quad S'_i(x_{i+1})=S'_{i+1}(x_{i+1}),\quad S''_i(x_{i+1})=S''_{i+1}(x_{i+1}).\]
+      </div>
+      <p>
+        These \(C^2\) continuity conditions, combined with the interpolation
+        requirements, leave exactly 2 free parameters&nbsp;- the boundary conditions.
+        Two standard choices:
+      </p>
+      <ul>
+        <li>
+          <strong>Natural spline:</strong> \(S''(x_0)=S''(x_n)=0\).
+          The spline is &ldquo;free&rdquo; at the ends&nbsp;- physically, a thin
+          elastic beam supported but not clamped at the endpoints.
+          This minimises \(\int(S'')^2\,dx\) among all interpolating functions,
+          giving the <em>minimum-curvature</em> interpolant.
+        </li>
+        <li>
+          <strong>Clamped spline:</strong> \(S'(x_0)=f'_0,\;S'(x_n)=f'_n\).
+          The endpoint slopes are prescribed (from known derivatives or estimates).
+          Clamped splines are generally more accurate than natural splines
+          when derivative information is available.
+        </li>
+      </ul>
+      <p>
+        Both variants reduce to solving a <strong>tridiagonal linear system</strong>
+        for the second-derivative values \(M_i=S''(x_i)\),
+        which can be solved in \(O(n)\) operations.
+      </p>
+
+      <h2>Runge&rsquo;s Phenomenon and Chebyshev Nodes</h2>
+      <p>
+        The canonical cautionary example is \(f(x)=1/(1+25x^2)\) on \([-1,1]\)
+        (Runge, 1901).  With \(n+1\) equispaced nodes, the interpolation error
+        \(\max|f(x)-p_n(x)|\to\infty\) as \(n\to\infty\), driven by wild
+        oscillations near the endpoints despite \(f\) being perfectly smooth.
+        The root cause is the Lebesgue function \(\Lambda_n(x)=\sum|\ell_i(x)|\):
+        for equispaced nodes it grows exponentially near the boundary.
+      </p>
+      <p>
+        <strong>Chebyshev nodes</strong> are the minimisers of
+        \(\max_{x\in[-1,1]}\prod_{i=0}^n|x-x_i|\):
+      </p>
+      <div class="defn-box">
+        \[x_k=\cos\!\left(\frac{(2k+1)\pi}{2(n+1)}\right),\quad k=0,1,\ldots,n.\]
+      </div>
+      <p>
+        They cluster near \(\pm1\), counteracting the endpoint oscillations.
+        The Chebyshev interpolation error satisfies
+        \(\max|f-p_n|\le\|f^{(n+1)}\|_\infty/(2^n(n+1)!)\),
+        and for analytic \(f\) the error decreases <em>geometrically</em> in \(n\).
+        Select <strong>Chebyshev</strong> in the node type to see the contrast
+        with equispaced nodes on the Runge example.
+      </p>
+
+      <h2>Interpolation Error</h2>
+      <p>
+        For a function \(f\in C^{n+1}[a,b]\), the interpolation error at \(x\) is:
+      </p>
+      <div class="defn-box">
+        \[f(x)-p_n(x)=\frac{f^{(n+1)}(\xi)}{(n+1)!}\prod_{i=0}^n(x-x_i)\]
+      </div>
+      <p>
+        for some \(\xi\) between \(\min(x,x_i)\) and \(\max(x,x_i)\).
+        The error depends on two factors: how large the \((n+1)\)th derivative of \(f\)
+        is, and how small the <strong>nodal polynomial</strong> \(\omega_{n+1}(x)=\prod(x-x_i)\)
+        can be made by the choice of nodes.  Chebyshev nodes minimise the sup-norm
+        of \(\omega_{n+1}\) over all choices of \(n+1\) nodes in \([a,b]\).
+      </p>
+
+      <h2>How to Use This Tool</h2>
+      <ul>
+        <li>
+          <strong>Choose a method</strong> using the six buttons at the top.
+          The method determines how the polynomial is represented and displayed.
+        </li>
+        <li>
+          <strong>Custom points:</strong> Enter \(x\) and \(y\) values as
+          comma-separated lists.  Expressions like <code>pi/6</code>, <code>sin(pi/3)</code>,
+          or <code>exp(2)</code> are accepted.  For Hermite, also supply \(f'(x_i)\).
+          For Clamped Spline, supply the two endpoint derivatives.
+        </li>
+        <li>
+          <strong>From function:</strong> Enter a function expression, a domain \([a,b]\),
+          and the number of interpolation nodes.  Choose <em>Equispaced</em> or
+          <em>Chebyshev</em> nodes.  For Hermite and Clamped Spline in function mode,
+          derivatives are computed automatically via symbolic differentiation
+          (falling back to central differences if the symbolic attempt fails).
+        </li>
+        <li>
+          <strong>Display options</strong> appear after computing: toggle the polynomial
+          expression, the divided differences table, the Vandermonde matrix system,
+          or the interpolation points on and off independently.
+        </li>
+        <li>
+          <strong>Evaluate:</strong> Query the computed interpolant at any \(x\) values
+          by entering them in the Evaluate field.  When a function is known, absolute
+          errors \(|f(x)-p(x)|\) are displayed alongside the interpolated values.
+        </li>
+        <li>
+          <strong>Download:</strong> Save the graph as a PNG file using the Download button.
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Two-column: controls + examples -->
+  <div class="two-col">
+    <div class="col-main">
+      <!-- Method selection -->
+      <div class="method-grid" role="group" aria-label="Interpolation method">
+        <button type="button" data-method="monomial"            class="mbtn active">Monomial</button>
+        <button type="button" data-method="lagrange"            class="mbtn">Lagrange</button>
+        <button type="button" data-method="newton"              class="mbtn">Newton</button>
+        <button type="button" data-method="hermite"             class="mbtn">Hermite</button>
+        <button type="button" data-method="cubic_spline"        class="mbtn">Natural Spline</button>
+        <button type="button" data-method="clamped_cubic_spline" class="mbtn">Clamped Spline</button>
+      </div>
+
+      <!-- Input type -->
+      <div class="itype-row" role="group" aria-label="Input type">
+        <label><input type="radio" id="custom" name="input_type" value="custom" checked> Custom points</label>
+        <label><input type="radio" id="function" name="input_type" value="function"> From function</label>
+      </div>
+
+      <!-- Custom inputs -->
+      <div id="custom-inputs">
+        <div class="cbar">
+          <div class="cfield">
+            <label for="x_values">\(x\) values (comma separated)</label>
+            <input type="text" id="x_values" placeholder="e.g. -1, 0, pi/6, 1">
+          </div>
+        </div>
+        <div class="cbar">
+          <div class="cfield">
+            <label for="f_values">\(y = f(x)\) values (comma separated)</label>
+            <input type="text" id="f_values" placeholder="e.g. 1, 0, sin(pi/3), 1">
+          </div>
+        </div>
+        <div class="cbar" id="fp_input" style="display:none;">
+          <div class="cfield">
+            <label for="fp_values">\(f'(x)\) values (comma separated, blank for missing)</label>
+            <input type="text" id="fp_values" placeholder="e.g. 0, 2, cos(pi/3), 1">
+          </div>
+        </div>
+        <div class="cbar" id="endpoint_fp_input" style="display:none;">
+          <div class="cfield">
+            <label for="endpoint_fp_values">\(f'\) at endpoints (first, last)</label>
+            <input type="text" id="endpoint_fp_values" value="0, 0" placeholder="e.g. 0, exp(2)">
+          </div>
+        </div>
+      </div>
+
+      <!-- From-function inputs -->
+      <div id="function-inputs" style="display:none;">
+        <div class="cbar">
+          <div class="cfield">
+            <label for="func_str">Function - e.g. \(\sin(x)\) or \(1/(1+x^2)\)</label>
+            <input type="text" id="func_str" value="sin(x)">
+          </div>
+          <div class="cfield cfield-sm">
+            <label for="a">Start \(a\)</label>
+            <input type="text" id="a" value="-5">
+          </div>
+          <div class="cfield cfield-sm">
+            <label for="b">End \(b\)</label>
+            <input type="text" id="b" value="5">
+          </div>
+          <div class="cfield cfield-sm">
+            <label for="n_points">Points (2&ndash;16)</label>
+            <input type="number" id="n_points" value="5" min="2" max="16">
+          </div>
+        </div>
+        <div class="cbar">
+          <div class="cfield">
+            <label class="clbl">Node Type</label>
+            <div class="node-wrap">
+              <button type="button" data-node-type="equispaced" class="nbtn active">Equispaced Nodes</button>
+              <button type="button" data-node-type="chebyshev"  class="nbtn">Chebyshev Nodes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="abar">
+        <button class="abtn abtn-go"    onclick="computeInterpolation()" type="button" aria-label="Compute interpolation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>Compute</button>
+        <button class="abtn abtn-clear" onclick="clearAll()"             type="button" aria-label="Clear all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>Clear</button>
+        <button class="abtn abtn-dl"    id="download-btn"                type="button" aria-label="Download graph as PNG" style="display:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>PNG</button>
+      </div>
+    </div>
+
+    <!-- Examples sidebar -->
+    <div class="col-side">
+      <div class="ex-panel">
+        <h3>Examples</h3>
+        <div class="ex-btn-list">
+          <button id="example-points-data"  class="exbtn" type="button">Points Data</button>
+          <button id="example-runge"        class="exbtn" type="button">Runge&rsquo;s Phenomenon</button>
+          <button id="example-hermite-func" class="exbtn" type="button">Function + Derivative (Hermite)</button>
+          <button id="example-newton-func"  class="exbtn" type="button">Function Only (Newton)</button>
+          <button id="example-spline"       class="exbtn" type="button">Runge + Cubic Spline</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Output toggles -->
+  <div id="output-toggles" class="tog-row" style="display:none;">
+    <label><input type="checkbox" id="show_polynomial" checked> Display Interpolating Polynomial</label>
+    <label><input type="checkbox" id="show_table"> Display Divided Differences Table</label>
+    <label><input type="checkbox" id="show_matrix"           > Display Matrix System</label>
+    <label><input type="checkbox" id="show_points"          > Display Interpolation Points</label>
+  </div>
+
+  <!-- Output area (polynomial, matrix, DD table) -->
+  <div id="output" class="out-box" style="display:none;"></div>
+
+  <!-- Plot -->
+  <div class="plot-wrap">
+    <div id="plot"></div>
+  </div>
+
+  <!-- Evaluate -->
+  <div id="eval-container" style="display:none;">
+    <div class="eval-row">
+      <div class="cfield" style="flex:2 1 220px;">
+        <label for="eval_x">Evaluate interpolant at \(x\) values (comma separated)</label>
+        <input type="text" id="eval_x" placeholder="e.g. 0.5, 1, 1.5">
+      </div>
+      <div style="padding-top:1.3rem;">
+        <button id="eval-btn" class="abtn abtn-go" type="button">Evaluate</button>
+      </div>
+    </div>
+    <div id="eval-output" class="out-box" style="min-height:1rem;"></div>
+  </div>
+
+    <!-- cite-mark:start -->
+<details class="cite-box">
+  <summary class="cite-summary">Cite this tool</summary>
+  <div class="cite-content">
+    <div class="cite-doi">DOI: <a href="https://doi.org/10.5281/zenodo.20981239">https://doi.org/10.5281/zenodo.20981239</a></div>
+    <div class="cite-tabs" role="tablist" aria-label="Citation format">
+      <button type="button" class="cite-tab" role="tab" aria-selected="true"
+              aria-controls="cite-pane-apa" id="cite-tab-apa">APA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-mla" id="cite-tab-mla" tabindex="-1">MLA</button>
+      <button type="button" class="cite-tab" role="tab" aria-selected="false"
+              aria-controls="cite-pane-bib" id="cite-tab-bib" tabindex="-1">BibTeX</button>
+    </div>
+    <pre class="cite-text cite-pane" id="cite-pane-apa" role="tabpanel"
+         aria-labelledby="cite-tab-apa">Kapita, S. (2026). Polynomial Interpolation. Math Tools. https://doi.org/10.5281/zenodo.20981239</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-mla" role="tabpanel"
+         aria-labelledby="cite-tab-mla" hidden>Kapita, Shelvean. "Polynomial Interpolation." Math Tools, 2026, doi.org/10.5281/zenodo.20981239.</pre>
+    <pre class="cite-text cite-pane" id="cite-pane-bib" role="tabpanel"
+         aria-labelledby="cite-tab-bib" hidden>@online{kapita2026interpolation,
+  author       = {Shelvean Kapita},
+  title        = {{Polynomial Interpolation}},
+  year         = {2026},
+  organization = {Math Tools},
+  doi          = {10.5281/zenodo.20981239},
+  url          = {https://doi.org/10.5281/zenodo.20981239}
+}</pre>
+    <button type="button" class="cite-copy" data-cite-copy
+            aria-label="Copy active citation to clipboard">Copy citation</button>
+  </div>
+</details>
+<script>
+(function(){
+  /* Tab switching with arrow-key navigation, scoped per cite-box. */
+  document.querySelectorAll('.cite-box').forEach(function(box){
+    var tabs  = Array.prototype.slice.call(box.querySelectorAll('.cite-tab'));
+    var panes = box.querySelectorAll('.cite-pane');
+    function activate(tab){
+      var target = tab.getAttribute('aria-controls');
+      tabs.forEach(function(t){
+        var on = (t === tab);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        t.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panes.forEach(function(p){
+        if (p.id === target) p.removeAttribute('hidden');
+        else p.setAttribute('hidden', '');
+      });
+    }
+    tabs.forEach(function(tab, i){
+      tab.addEventListener('click', function(){ activate(tab); });
+      tab.addEventListener('keydown', function(e){
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' &&
+            e.key !== 'Home' && e.key !== 'End') return;
+        e.preventDefault();
+        var next = i;
+        if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        tabs[next].focus(); activate(tabs[next]);
+      });
+    });
+  });
+
+  /* Copy the text of the currently-visible pane. */
+  document.querySelectorAll('[data-cite-copy]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var box = btn.closest('.cite-box');
+      if (!box) return;
+      var pane = box.querySelector('.cite-pane:not([hidden])');
+      if (!pane) return;
+      var text = (pane.textContent || '').trim();
+      function showOk(){
+        var orig = btn.getAttribute('data-orig') || btn.textContent;
+        btn.setAttribute('data-orig', orig);
+        btn.textContent = 'Copied!';
+        btn.classList.add('cite-ok');
+        setTimeout(function(){
+          btn.textContent = orig;
+          btn.classList.remove('cite-ok');
+        }, 1600);
+      }
+      function fallback(){
+        try{
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showOk();
+        } catch(e) {
+          var orig = btn.getAttribute('data-orig') || btn.textContent;
+          btn.setAttribute('data-orig', orig);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = orig; }, 1800);
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showOk, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+<!-- cite-mark:end -->
+<footer class="footer" role="contentinfo">
+  <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
+  <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
+  <p class="footer-modified">Last modified: March 2026.</p>
+</footer>
+</main>
+
+<button class="ctoggle" id="ctog" type="button" aria-label="Toggle high-contrast mode">
+  <span aria-hidden="true">&#9681;</span>
+</button>
+<script>
+
+    // ===== MathJax shim =====
+    // MathJax loads async: typeset now if ready, else wait for startup, else poll
+    // until the script parses. Prevents the race where math inserted before
+    // MathJax is ready silently never typesets.
+    function __typesetWhenReady(el) {
+      if (!el) return;
+      function go(){ if (MathJax.typesetClear) MathJax.typesetClear([el]);
+        MathJax.typesetPromise([el]).catch(function(e){ console.warn('MathJax error:', e); }); }
+      if (window.MathJax && MathJax.typesetPromise) { go(); }
+      else if (window.MathJax && MathJax.startup && MathJax.startup.promise) { MathJax.startup.promise.then(go); }
+      else { var iv = setInterval(function(){ if (window.MathJax && MathJax.typesetPromise) { clearInterval(iv); go(); } }, 50);
+             setTimeout(function(){ clearInterval(iv); }, 15000); }
+    }
+    var katex = {
+      render: function(tex, el, opts) {
+        if (!el) return;
+        var display = opts && opts.displayMode;
+        el.innerHTML = (display ? '\\[' : '\\(') + tex + (display ? '\\]' : '\\)');
+        __typesetWhenReady(el);
+      },
+      renderToString: function(tex) { return '\\(' + tex + '\\)'; }
+    };
+    function renderMathInElement(el, opts) { __typesetWhenReady(el); }
+
+    function gcd(a, b) {
+        a = Math.abs(a); b = Math.abs(b);
+        while (b !== 0) { let temp = b; b = a % b; a = temp; }
+        return a;
+    }
+
+    function toFraction(num, tolerance, maxIterations) {
+        tolerance = tolerance || 1e-10; maxIterations = maxIterations || 100;
+        if (isNaN(num)) return '\\text{NaN}';
+        if (!isFinite(num)) return num > 0 ? '\\infty' : '-\\infty';
+        if (Math.abs(num) < 1e-13) return '0';
+        const piMultiples = [
+            { value: Math.PI, tex: '\\pi' },
+            { value: Math.PI / 2, tex: '\\frac{\\pi}{2}' },
+            { value: Math.PI / 3, tex: '\\frac{\\pi}{3}' },
+            { value: Math.PI / 4, tex: '\\frac{\\pi}{4}' },
+            { value: Math.PI / 6, tex: '\\frac{\\pi}{6}' },
+            { value: 2 * Math.PI / 3, tex: '\\frac{2\\pi}{3}' },
+            { value: 3 * Math.PI / 4, tex: '\\frac{3\\pi}{4}' },
+            { value: 5 * Math.PI / 6, tex: '\\frac{5\\pi}{6}' },
+            { value: 2 * Math.PI, tex: '2\\pi' },
+        ];
+        for (const { value, tex } of piMultiples) {
+            if (Math.abs(num - value) < tolerance) return tex;
+            if (Math.abs(num + value) < tolerance) return `-${tex}`;
+        }
+        if (Math.abs(num - Math.sqrt(3)/2) < tolerance) return '\\frac{\\sqrt{3}}{2}';
+        if (Math.abs(num - Math.exp(2)) < tolerance) return 'e^{2}';
+        if (Math.abs(num) < 1e-3 && Math.abs(num) >= 1e-13) {
+            const sign = num < 0 ? '-' : '';
+            const absNum = Math.abs(num);
+            const exponent = Math.floor(Math.log10(absNum));
+            const coefficient = absNum / Math.pow(10, exponent);
+            const coeffRounded = Math.round(coefficient * 100) / 100;
+            return `${sign}${coeffRounded} \\cdot 10^{${exponent}}`;
+        }
+        const sign = num < 0 ? '-' : '';
+        num = Math.abs(num);
+        let h1 = 1, h2 = 0, k1 = 0, k2 = 1, b = num;
+        for (let i = 0; i < maxIterations; i++) {
+            const a = Math.floor(b);
+            const h = a * h1 + h2;
+            const k = a * k1 + k2;
+            if (Math.abs(num - h / k) < tolerance) {
+                const g = gcd(h, k);
+                const numFinal = h / g;
+                const denFinal = k / g;
+                if (denFinal > 100) {
+                    return sign + parseFloat(num).toFixed(4).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+                }
+                if (denFinal === 1) return sign + numFinal;
+                return sign + '\\dfrac{' + numFinal + '}{' + denFinal + '}';
+            }
+            h2 = h1; h1 = h; k2 = k1; k1 = k; b = 1 / (b - a);
+        }
+        return sign + parseFloat(num).toFixed(4).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+    }
+
+    function formatNumber(num) { return toFraction(num); }
+
+    function formatTerm(xVal) {
+        if (xVal === 0) return 'x';
+        const valStr = formatNumber(xVal);
+        if (xVal > 0) return `\\left( x - ${valStr} \\right)`;
+        return `\\left( x + ${formatNumber(-xVal)} \\right)`;
+    }
+
+    function groupFactors(factors) {
+        const termCounts = new Map();
+        factors.forEach(term => { termCounts.set(term, (termCounts.get(term) || 0) + 1); });
+        const getXVal = (term) => {
+            if (term === 'x') return 0;
+            if (term.startsWith('\\left( x - ')) {
+                try { return parseFloat(term.slice(11, -8)) || math.evaluate(term.slice(11, -8)); } catch { return 0; }
+            }
+            if (term.startsWith('\\left( x + ')) {
+                try { return -(parseFloat(term.slice(11, -8)) || math.evaluate(term.slice(11, -8))); } catch { return 0; }
+            }
+            return 0;
+        };
+        const uniqueTerms = Array.from(termCounts.keys()).sort((a, b) => getXVal(a) - getXVal(b));
+        return uniqueTerms.map(term => {
+            const count = termCounts.get(term);
+            return count > 1 ? term + '^{' + count + '}' : term;
+        }).join('');
+    }
+
+    function solveLinearSystem(A, b) {
+        const n = A.length;
+        const aug = A.map((row, i) => [...row, b[i]]);
+        for (let p = 0; p < n; p++) {
+            let max = p;
+            for (let i = p + 1; i < n; i++) if (Math.abs(aug[i][p]) > Math.abs(aug[max][p])) max = i;
+            [aug[p], aug[max]] = [aug[max], aug[p]];
+            if (Math.abs(aug[p][p]) < 1e-12) throw new Error('Matrix is singular or near-singular');
+            for (let i = p + 1; i < n; i++) {
+                const alpha = aug[i][p] / aug[p][p];
+                for (let j = p; j <= n; j++) aug[i][j] -= alpha * aug[p][j];
+            }
+        }
+        const x = new Array(n).fill(0);
+        for (let i = n - 1; i >= 0; i--) {
+            let sum = 0;
+            for (let j = i + 1; j < n; j++) sum += aug[i][j] * x[j];
+            x[i] = (aug[i][n] - sum) / aug[i][i];
+            if (!isFinite(x[i])) throw new Error('Non-finite solution detected');
+        }
+        return x;
+    }
+
+    // ===== Polynomial display: single equation, scroll only if overflows =====
+    // Renders p(x) = ... as one MathJax display equation inside a
+    // scrollable container. No per-term line breaking.
+    function renderPolyScrollBox(terms, prefixTex) {
+        const box = document.createElement('div');
+        box.className = 'poly-scroll-box';
+        box.setAttribute('role', 'region');
+        box.setAttribute('aria-label', 'Interpolating polynomial');
+
+        if (terms.length === 0) {
+            katex.render(prefixTex + ' 0', box, { throwOnError: false, displayMode: true });
+        } else {
+            // Reassemble terms into one equation string
+            let eqn = prefixTex + ' ';
+            terms.forEach(function(t, i) {
+                if (i === 0) {
+                    eqn += (t.sign === '-' ? '-' : '') + t.tex;
+                } else {
+                    eqn += (t.sign === '-' ? ' - ' : ' + ') + t.tex;
+                }
+            });
+            katex.render(eqn, box, { throwOnError: false, displayMode: true });
+        }
+        return box;
+    }
+
+    // DOM cache
+    const domCache = {
+        output: null, outputToggles: null, downloadContainer: null,
+        evalContainer: null, evalOutput: null, plot: null,
+        xValues: null, fValues: null, fpValues: null, endpointFpValues: null,
+        fpInput: null, endpointFpInput: null, funcStr: null, a: null, b: null,
+        nPoints: null, showPolynomial: null, showTable: null, showMatrix: null,
+        showPoints: null, evalX: null, downloadBtn: null,
+        custom: null, functionRadio: null, customInputs: null, functionInputs: null
+    };
+
+    function initDOMCache() {
+        domCache.output = document.getElementById('output');
+        domCache.outputToggles = document.getElementById('output-toggles');
+        domCache.downloadContainer = document.getElementById('download-btn');
+        domCache.evalContainer = document.getElementById('eval-container');
+        domCache.evalOutput = document.getElementById('eval-output');
+        domCache.plot = document.getElementById('plot');
+        domCache.xValues = document.getElementById('x_values');
+        domCache.fValues = document.getElementById('f_values');
+        domCache.fpValues = document.getElementById('fp_values');
+        domCache.endpointFpValues = document.getElementById('endpoint_fp_values');
+        domCache.fpInput = document.getElementById('fp_input');
+        domCache.endpointFpInput = document.getElementById('endpoint_fp_input');
+        domCache.funcStr = document.getElementById('func_str');
+        domCache.a = document.getElementById('a');
+        domCache.b = document.getElementById('b');
+        domCache.nPoints = document.getElementById('n_points');
+        domCache.showPolynomial = document.getElementById('show_polynomial');
+        domCache.showTable = document.getElementById('show_table');
+        domCache.showMatrix = document.getElementById('show_matrix');
+        domCache.showPoints = document.getElementById('show_points');
+        domCache.evalX = document.getElementById('eval_x');
+        domCache.downloadBtn = document.getElementById('download-btn');
+        domCache.custom = document.getElementById('custom');
+        domCache.functionRadio = document.getElementById('function');
+        domCache.customInputs = document.getElementById('custom-inputs');
+        domCache.functionInputs = document.getElementById('function-inputs');
+    }
+
+    let pFunc = null;
+    let originalFunc = null;
+
+    function computeInterpolation() {
+        const output = domCache.output;
+        output.innerHTML = '<div class="text-blue-500">Computing\u2026</div>';
+        domCache.outputToggles.style.display='none';
+        domCache.downloadBtn.style.display='none';
+        domCache.evalContainer.style.display='none';
+        domCache.evalOutput.innerHTML = '';
+        pFunc = null; originalFunc = null;
+
+        try {
+            const method = selectedMethod;
+            const inputType = document.querySelector('input[name="input_type"]:checked').value;
+            let x = [], y = [], yp = null, yp0, ypn, func = null, rangeA, rangeB;
+
+            if (inputType === 'custom') {
+                const xStr = domCache.xValues.value.trim();
+                const yStr = domCache.fValues.value.trim();
+                if (!xStr || !yStr) { output.innerHTML = '<div class="text-red-500">Error: Please enter x and f(x) values</div>'; return; }
+                x = xStr.split(',').map(s => { const v = math.evaluate(s.trim()); if (!isFinite(v)) throw new Error('Invalid x: ' + s.trim()); return v; });
+                y = yStr.split(',').map(s => { const v = math.evaluate(s.trim()); if (!isFinite(v)) throw new Error('Invalid y: ' + s.trim()); return v; });
+                if (x.length !== y.length || x.length < 2 || x.length > 16) { output.innerHTML = '<div class="text-red-500">Error: Need 2-16 points, same length</div>'; return; }
+                if (method === 'hermite' && domCache.fpInput.style.display!=='none') {
+                    const ypStr = domCache.fpValues.value.trim();
+                    yp = ypStr ? ypStr.split(',').map(s => { const e = s.trim(); return e === '' ? NaN : math.evaluate(e); }) : new Array(x.length).fill(NaN);
+                    if (yp.length !== x.length) { output.innerHTML = '<div class="text-red-500">Error: f\'(x) must match length of x</div>'; return; }
+                }
+                if (method === 'clamped_cubic_spline' && domCache.endpointFpInput.style.display!=='none') {
+                    const ypStr = domCache.endpointFpValues.value.trim();
+                    const ep = ypStr.split(',').map(s => math.evaluate(s.trim()));
+                    if (ep.length !== 2) { output.innerHTML = '<div class="text-red-500">Error: Need exactly 2 endpoint derivatives</div>'; return; }
+                    yp0 = ep[0]; ypn = ep[1];
+                }
+            } else {
+                const funcStr = domCache.funcStr.value.trim();
+                rangeA = math.evaluate(domCache.a.value.trim());
+                rangeB = math.evaluate(domCache.b.value.trim());
+                const nPoints = parseInt(domCache.nPoints.value);
+                if (!isFinite(rangeA) || !isFinite(rangeB) || rangeA >= rangeB || nPoints < 2 || nPoints > 16) {
+                    output.innerHTML = '<div class="text-red-500">Error: Invalid range or number of points</div>'; return;
+                }
+                func = (xx) => math.evaluate(funcStr, { x: xx });
+                if (!isFinite(func(rangeA))) throw new Error('Function invalid at range start');
+
+                if (selectedNodeType === 'equispaced') {
+                    const step = (rangeB - rangeA) / (nPoints - 1);
+                    for (let i = 0; i < nPoints; i++) x.push(rangeA + i * step);
+                } else {
+                    for (let k = 0; k < nPoints; k++) x.push((rangeA+rangeB)/2 + (rangeB-rangeA)/2 * Math.cos(Math.PI*(2*k+1)/(2*nPoints)));
+                    x.sort((a,b) => a-b);
+                }
+                y = x.map(xi => { const v = func(xi); if (!isFinite(v)) throw new Error('Function undefined at x='+xi); return v; });
+
+                if (method === 'hermite') {
+                    try {
+                        const node = math.parse(funcStr); const deriv = math.derivative(node, 'x');
+                        yp = x.map(xi => deriv.evaluate({x:xi}));
+                    } catch(e) {
+                        const h = 1e-6; yp = x.map(xi => (func(xi+h)-func(xi-h))/(2*h));
+                    }
+                }
+                if (method === 'clamped_cubic_spline') {
+                    try {
+                        const node = math.parse(funcStr); const deriv = math.derivative(node, 'x');
+                        yp0 = deriv.evaluate({x:x[0]}); ypn = deriv.evaluate({x:x[x.length-1]});
+                    } catch(e) {
+                        const h = 1e-6;
+                        yp0 = (func(x[0]+h)-func(x[0]-h))/(2*h);
+                        ypn = (func(x[x.length-1]+h)-func(x[x.length-1]-h))/(2*h);
+                    }
+                }
+                originalFunc = func;
+            }
+
+            // Sort by x
+            const indices = x.map((_,i)=>i).sort((a,b)=>x[a]-x[b]);
+            x = indices.map(i=>x[i]); y = indices.map(i=>y[i]);
+            if (yp) yp = indices.map(i=>yp[i]);
+            const n = x.length;
+
+            // Plot domain: exactly [min(x), max(x)] - no padding
+            const xmin = x[0], xmax = x[x.length-1];
+            const plotRange = [xmin, xmax];
+
+            output.innerHTML='';output.style.display='block';
+
+            // Points display
+            const pointsDiv = document.createElement('div');
+            pointsDiv.id = 'points-section'; pointsDiv.style.display = 'none';
+            let ptTex = x.map((xi,i) => `\\left(${formatNumber(xi)},\\,${toFraction(y[i])}\\right)`).join('\\quad');
+            katex.render(ptTex, pointsDiv, {throwOnError:false, displayMode:true});
+            output.appendChild(pointsDiv);
+
+            let splineFuncs = null, polynomialDiv = null, tableDiv = null, matrixDiv = null;
+            let hasPolynomial = false, hasTable = false, hasMatrix = false;
+
+            // ── Monomial ──
+            if (method === 'monomial') {
+                const V = x.map(xi => Array.from({length:n}, (_,j) => Math.pow(xi,j)));
+                const coeffs = solveLinearSystem(V, y);
+                // Matrix
+                matrixDiv = document.createElement('div'); matrixDiv.id = 'matrix-section';
+                let vRows = V.map(row => row.map(v=>formatNumber(v)).join(' & ')+' \\\\ ');
+                let vMat = '\\begin{pmatrix}'+vRows.join('')+'\\end{pmatrix}\\begin{pmatrix}'+
+                    Array.from({length:n},(_,i)=>'a_'+i).join(' \\\\ ')+'\\end{pmatrix}=\\begin{pmatrix}'+
+                    y.map(yy=>toFraction(yy)).join(' \\\\ ')+'\\end{pmatrix}';
+                const vanDiv = document.createElement('div');
+                katex.render(vMat, vanDiv, {throwOnError:false, displayMode:true});
+                matrixDiv.appendChild(vanDiv); hasMatrix = true;
+                // Polynomial scroll box
+                polynomialDiv = document.createElement('div'); polynomialDiv.id = 'polynomial-section';
+                const rawTerms = [];
+                for (let j = n-1; j >= 0; j--) {
+                    const a = coeffs[j]; if (Math.abs(a) < 1e-12) continue;
+                    let ct = toFraction(a); if (ct === '0') continue;
+                    const sign = ct.startsWith('-') ? '-' : '+';
+                    ct = ct.replace(/^-/,'');
+                    const cs = (ct==='1'&&j!==0)?'':ct;
+                    const vt = j===0?'':(j===1?'x':'x^{'+j+'}');
+                    rawTerms.push({ sign, tex: cs+vt });
+                }
+                polynomialDiv.appendChild(renderPolyScrollBox(rawTerms, 'p(x) ='));
+                // coefficients line
+                const cDiv = document.createElement('div');
+                katex.render(coeffs.map((a,j)=>'a_{'+j+'}='+toFraction(a)).join(',\\quad'), cDiv, {throwOnError:false,displayMode:true});
+                polynomialDiv.appendChild(cDiv); hasPolynomial = true;
+                pFunc = (xx) => { let r=0; for(let j=0;j<n;j++) r+=coeffs[j]*Math.pow(xx,j); return isFinite(r)?r:NaN; };
+            }
+
+            // ── Lagrange ──
+            else if (method === 'lagrange') {
+                polynomialDiv = document.createElement('div'); polynomialDiv.id = 'polynomial-section';
+                const rawTerms2 = [], lPolys = [];
+                for (let j = 0; j < n; j++) {
+                    let denom = 1;
+                    for (let k = 0; k < n; k++) { if (k!==j) { const d=x[j]-x[k]; if(Math.abs(d)<1e-12) throw new Error('Duplicate x'); denom*=d; } }
+                    let constTex = toFraction(1/denom), prodTex = '';
+                    for (let k = 0; k < n; k++) { if (k!==j) prodTex += formatTerm(x[k]); }
+                    let lTex = '\\ell_{'+j+'}(x)='+(Math.abs(1/denom)===1?(1/denom<0?'-':''):constTex);
+                    if (prodTex) lTex += (Math.abs(1/denom)===1?'':'\\cdot ')+prodTex;
+                    lPolys.push(lTex);
+                    const yj = y[j]; if (Math.abs(yj)<1e-12) continue;
+                    let yt = toFraction(yj); if(yt==='0') continue;
+                    const sign = yt.startsWith('-')?'-':'+';
+                    yt = yt.replace(/^-/,'');
+                    rawTerms2.push({ sign, tex: (yt==='1'?'':yt)+'\\ell_'+j+'(x)' });
+                }
+                polynomialDiv.appendChild(renderPolyScrollBox(rawTerms2, 'p(x) ='));
+                const cardsDiv = document.createElement('div'); cardsDiv.className = 'flex flex-col space-y-2';
+                for (let j = 0; j < n; j++) {
+                    const card = document.createElement('div'); card.className = 'w-full p-4 rounded bg-gray-50';
+                    katex.render(lPolys[j], card, {throwOnError:false, displayMode:true});
+                    cardsDiv.appendChild(card);
+                }
+                polynomialDiv.appendChild(cardsDiv); hasPolynomial = true;
+                pFunc = (xx) => { let r=0; for(let j=0;j<n;j++){let l=1;for(let k=0;k<n;k++){if(k!==j)l*=(xx-x[k])/(x[j]-x[k]);}r+=y[j]*l;} return isFinite(r)?r:NaN; };
+            }
+
+            // ── Newton ──
+            else if (method === 'newton') {
+                const dd = Array.from({length:n}, ()=>new Array(n).fill(0));
+                for (let i=0;i<n;i++) dd[i][0]=y[i];
+                for (let k=1;k<n;k++) for(let i=0;i<n-k;i++) { const d=x[i+k]-x[i]; if(Math.abs(d)<1e-12) throw new Error('Duplicate x for Newton'); dd[i][k]=(dd[i+1][k-1]-dd[i][k-1])/d; }
+                // DD table
+                tableDiv = document.createElement('div'); tableDiv.id='divided-differences-table';
+                const tbl=document.createElement('table'); tbl.className='min-w-full bg-white border border-gray-300';
+                let hcells=['<th class="dd-hdr">'+katex.renderToString('x')+'</th>','<th class="dd-hdr">'+katex.renderToString('f[\\cdot]')+'</th>'];
+                for(let k=1;k<n;k++) hcells.push('<th class="dd-hdr">'+katex.renderToString('f['+'\\cdot,'.repeat(k)+'\\cdot]')+'</th>');
+                let rows=['<tr>'+hcells.join('')+'</tr>'];
+                for(let i=0;i<n;i++){
+                    let rc=['<td class="dd-cell dd-node">'+katex.renderToString('x_{'+i+'}='+formatNumber(x[i]))+'</td>'];
+                    for(let k=0;k<n;k++){
+                        if(k<=i){
+                          const isCoef=(i===k);
+                          const sty=isCoef?'class="dd-cell dd-coef"':'class="dd-cell"';
+                          rc.push('<td '+sty+'>'+katex.renderToString(toFraction(dd[i-k][k]))+'</td>');
+                        } else {
+                          rc.push('<td class="dd-empty"></td>');
+                        }
+                    }
+                    rows.push('<tr>'+rc.join('')+'</tr>');
+                }
+                tbl.innerHTML=rows.join(''); tableDiv.appendChild(tbl); renderMathInElement(tableDiv); hasTable=true;
+                // Polynomial scroll box
+                polynomialDiv=document.createElement('div'); polynomialDiv.id='polynomial-section';
+                const rawTerms3=[];
+                for(let k=0;k<n;k++){
+                    const cn=dd[0][k]; if(Math.abs(cn)<1e-12) continue;
+                    let ct=toFraction(cn); if(ct==='0') continue;
+                    const sign=ct.startsWith('-')?'-':'+'; ct=ct.replace(/^-/,'');
+                    const cs=(ct==='1'&&k>0)?'':ct;
+                    const facs=[]; for(let m=0;m<k;m++) facs.push(formatTerm(x[m]));
+                    rawTerms3.push({ sign, tex: cs+groupFactors(facs) });
+                }
+                polynomialDiv.appendChild(renderPolyScrollBox(rawTerms3,'p(x) =')); hasPolynomial=true;
+                pFunc=(function(dd2){return function(xx){let r=dd2[0][0],prod=1;for(let k=1;k<n;k++){prod*=(xx-x[k-1]);r+=dd2[0][k]*prod;}return isFinite(r)?r:NaN;};})(dd);
+            }
+
+            // ── Hermite ──
+            else if (method === 'hermite') {
+                let z=[], Q=Array.from({length:2*n},()=>new Array(2*n).fill(0)), pm=[], totalRows=0;
+                for(let j=0;j<n;j++){z.push(x[j]);Q[totalRows][0]=y[j];pm.push(j);totalRows++;if(yp&&!isNaN(yp[j])){z.push(x[j]);Q[totalRows][0]=y[j];pm.push(j);totalRows++;}}
+                for(let k=1;k<totalRows;k++) for(let i=0;i<totalRows-k;i++){
+                    if(Math.abs(z[i+k]-z[i])<1e-12){if(k===1)Q[i][k]=yp[pm[i]];else{output.innerHTML='<div class="text-red-500">Higher multiplicity not supported</div>';return;}}
+                    else Q[i][k]=(Q[i+1][k-1]-Q[i][k-1])/(z[i+k]-z[i]);
+                }
+                // Hermite DD table
+                tableDiv=document.createElement('div');tableDiv.id='divided-differences-table';
+                const tbl2=document.createElement('table');tbl2.className='min-w-full bg-white border border-gray-300';
+                let hc2=['<th class="dd-hdr">'+katex.renderToString('z')+'</th>','<th class="dd-hdr">'+katex.renderToString('f[\\cdot]')+'</th>'];
+                for(let k=1;k<totalRows;k++) hc2.push('<th class="dd-hdr">'+katex.renderToString('f['+'\\cdot,'.repeat(k)+'\\cdot]')+'</th>');
+                let rows2=['<tr>'+hc2.join('')+'</tr>'];
+                for(let i=0;i<totalRows;i++){
+                    let rc2=['<td class="dd-cell dd-node">'+katex.renderToString('z_{'+i+'}='+formatNumber(z[i]))+'</td>'];
+                    for(let k=0;k<totalRows;k++){if(k<=i){
+                          const isCoef2=(i===k);
+                          const st2=isCoef2?'class="dd-cell dd-coef"':'class="dd-cell"';
+                          rc2.push('<td '+st2+'>'+katex.renderToString(toFraction(Q[i-k][k]))+'</td>');
+                        } else {
+                          rc2.push('<td class="dd-empty"></td>');
+                        }}
+                    rows2.push('<tr>'+rc2.join('')+'</tr>');
+                }
+                tbl2.innerHTML=rows2.join('');tableDiv.appendChild(tbl2);renderMathInElement(tableDiv);hasTable=true;
+                // Polynomial scroll box
+                polynomialDiv=document.createElement('div');polynomialDiv.id='polynomial-section';
+                const rawTerms4=[];
+                for(let k=0;k<totalRows;k++){const cn=Q[0][k];if(Math.abs(cn)<1e-12)continue;let ct=toFraction(cn);if(ct==='0')continue;const sign=ct.startsWith('-')?'-':'+';ct=ct.replace(/^-/,'');const cs=(ct==='1'&&k>0)?'':ct;const facs=[];for(let m=0;m<k;m++)facs.push(formatTerm(z[m]));rawTerms4.push({sign,tex:cs+groupFactors(facs)});}
+                polynomialDiv.appendChild(renderPolyScrollBox(rawTerms4,'H(x) ='));hasPolynomial=true;
+                pFunc=(function(Q2,z2,tr){return function(xx){let r=Q2[0][0]||0,prod=1;for(let k=1;k<tr;k++){prod*=(xx-z2[k-1]);r+=(Q2[0][k]||0)*prod;}return isFinite(r)?r:NaN;};})(Q,z,totalRows);
+            }
+
+            // ── Natural cubic spline ──
+            else if (method === 'cubic_spline') {
+                if(n<3){output.innerHTML='<div class="text-red-500">At least 3 points required</div>';return;}
+                const h=[];for(let i=0;i<n-1;i++){h.push(x[i+1]-x[i]);if(h[i]<=0)throw new Error('Non-positive interval');}
+                const nn2=n-2,A2=Array.from({length:nn2},()=>new Array(nn2).fill(0)),b2=new Array(nn2);
+                for(let ii=0;ii<nn2;ii++){const ix=ii+1;if(ii>0)A2[ii][ii-1]=h[ix-1];A2[ii][ii]=2*(h[ix-1]+h[ix]);if(ii<nn2-1)A2[ii][ii+1]=h[ix];b2[ii]=6*((y[ix+1]-y[ix])/h[ix]-(y[ix]-y[ix-1])/h[ix-1]);}
+                const m_mid=solveLinearSystem(A2,b2);const m=[0,...m_mid,0];
+                polynomialDiv=document.createElement('div');polynomialDiv.id='polynomial-section';
+                splineFuncs=[];
+                let pieceTex='S(x)=\\begin{cases}';
+                for(let i=0;i<n-1;i++){
+                    const a=y[i],bc=(y[i+1]-y[i])/h[i]-h[i]*(2*m[i]+m[i+1])/6,c=m[i]/2,d=(m[i+1]-m[i])/(6*h[i]);
+                    pieceTex+=buildSplineTex(a,bc,c,d,x[i])+'&x\\in['+formatNumber(x[i])+','+formatNumber(x[i+1])+']';
+                    if(i<n-2)pieceTex+='\\\\';
+                    splineFuncs.push({a,b:bc,c,d,xi:x[i]});
+                }
+                pieceTex+='\\end{cases}';
+                const pieceDiv=document.createElement('div');
+                // Wrap spline in scrollbox
+                const scrollBox=document.createElement('div');scrollBox.className='poly-scroll-box';scrollBox.setAttribute('role','region');scrollBox.setAttribute('aria-label','Spline polynomial, scrollable');
+                katex.render(pieceTex,scrollBox,{throwOnError:false,displayMode:true});
+                polynomialDiv.appendChild(scrollBox);hasPolynomial=true;
+                pFunc=makeSplineFunc(x,y,splineFuncs,n);
+            }
+
+            // ── Clamped cubic spline ──
+            else if (method === 'clamped_cubic_spline') {
+                if(n<3){output.innerHTML='<div class="text-red-500">At least 3 points required</div>';return;}
+                const h=[];for(let i=0;i<n-1;i++){h.push(x[i+1]-x[i]);if(h[i]<=0)throw new Error('Non-positive interval');}
+                const A=Array.from({length:n},()=>new Array(n).fill(0)),b=new Array(n);
+                A[0][0]=2*h[0];A[0][1]=h[0];b[0]=6*((y[1]-y[0])/h[0]-yp0);
+                for(let i=1;i<n-1;i++){A[i][i-1]=h[i-1];A[i][i]=2*(h[i-1]+h[i]);A[i][i+1]=h[i];b[i]=6*((y[i+1]-y[i])/h[i]-(y[i]-y[i-1])/h[i-1]);}
+                A[n-1][n-2]=h[n-2];A[n-1][n-1]=2*h[n-2];b[n-1]=6*(ypn-(y[n-1]-y[n-2])/h[n-2]);
+                const m=solveLinearSystem(A,b);
+                polynomialDiv=document.createElement('div');polynomialDiv.id='polynomial-section';
+                splineFuncs=[];
+                let pieceTex2='S(x)=\\begin{cases}';
+                for(let i=0;i<n-1;i++){
+                    const a=y[i],bc=(y[i+1]-y[i])/h[i]-h[i]*(2*m[i]+m[i+1])/6,c=m[i]/2,d=(m[i+1]-m[i])/(6*h[i]);
+                    pieceTex2+=buildSplineTex(a,bc,c,d,x[i])+'&x\\in['+formatNumber(x[i])+','+formatNumber(x[i+1])+']';
+                    if(i<n-2)pieceTex2+='\\\\';
+                    splineFuncs.push({a,b:bc,c,d,xi:x[i]});
+                }
+                pieceTex2+='\\end{cases}';
+                const scrollBox2=document.createElement('div');scrollBox2.className='poly-scroll-box';scrollBox2.setAttribute('role','region');scrollBox2.setAttribute('aria-label','Clamped spline polynomial, scrollable');
+                katex.render(pieceTex2,scrollBox2,{throwOnError:false,displayMode:true});
+                polynomialDiv.appendChild(scrollBox2);hasPolynomial=true;
+                pFunc=makeSplineFunc(x,y,splineFuncs,n);
+            }
+
+            // Append sections
+            if(matrixDiv) output.appendChild(matrixDiv);
+            if(polynomialDiv) output.appendChild(polynomialDiv);
+            if(tableDiv) output.appendChild(tableDiv);
+
+            // Toggles
+            if(hasPolynomial||hasTable||hasMatrix||true){
+                domCache.outputToggles.style.display='flex';
+                domCache.showPolynomial.parentElement.style.display=hasPolynomial?'':'none';
+                domCache.showTable.parentElement.style.display=hasTable?'':'none';
+                domCache.showMatrix.parentElement.style.display=hasMatrix?'':'none';
+                if(hasPolynomial){polynomialDiv.style.display=domCache.showPolynomial.checked?'block':'none';domCache.showPolynomial.onchange=()=>{polynomialDiv.style.display=domCache.showPolynomial.checked?'block':'none';};}
+                if(hasTable){tableDiv.style.display=domCache.showTable.checked?'block':'none';domCache.showTable.onchange=()=>{tableDiv.style.display=domCache.showTable.checked?'block':'none';};}
+                if(hasMatrix){matrixDiv.style.display=domCache.showMatrix.checked?'block':'none';domCache.showMatrix.onchange=()=>{matrixDiv.style.display=domCache.showMatrix.checked?'block':'none';};}
+                pointsDiv.style.display=domCache.showPoints.checked?'block':'none';
+                domCache.showPoints.onchange=()=>{pointsDiv.style.display=domCache.showPoints.checked?'block':'none';};
+            }
+
+            // ── Plot (D3 SVG, original style) ──
+            if (pFunc) {
+                const plotDiv=domCache.plot; plotDiv.innerHTML='';
+                const numSamples=50;
+                let sampleX=[], pY=[];
+                if(method==='cubic_spline'||method==='clamped_cubic_spline'){
+                    for(let i=0;i<n-1;i++){const sub=d3.range(x[i],x[i+1],(x[i+1]-x[i])/numSamples);if(i===n-2)sub.push(x[i+1]);sub.forEach(xx=>{sampleX.push(xx);pY.push(pFunc(xx));});}
+                } else {
+                    sampleX=d3.range(plotRange[0],plotRange[1],(plotRange[1]-plotRange[0])/(numSamples*(n-1)));
+                    if(sampleX[sampleX.length-1]!==plotRange[1])sampleX.push(plotRange[1]);
+                    pY=sampleX.map(pFunc);
+                }
+                let funcY=null;
+                if(originalFunc&&inputType==='function') funcY=sampleX.map(xi=>{const v=originalFunc(xi);return isFinite(v)?v:NaN;});
+
+                let allY=[...y,...pY.filter(isFinite)];
+                if(funcY) allY.push(...funcY.filter(isFinite));
+                let ymin=Math.min(...allY),ymax=Math.max(...allY);
+                let ybuf=0.05*(ymax-ymin);
+                if(ymax-ymin<0.2){const mid=(ymax+ymin)/2;ymin=mid-0.1;ymax=mid+0.1;ybuf=0;}
+                else{if(ybuf===0)ybuf=0.1;ymin-=ybuf;ymax+=ybuf;}
+
+                const width=400,height=300,margin={top:20,right:120,bottom:30,left:50};
+                const svg=d3.select('#plot').append('svg')
+                    .attr('width',width+margin.left+margin.right)
+                    .attr('height',height+margin.top+margin.bottom)
+                    .append('g').attr('transform',`translate(${margin.left},${margin.top})`);
+                const xScale=d3.scaleLinear().domain(plotRange).range([0,width]);
+                const yScale=d3.scaleLinear().domain([ymin,ymax]).range([height,0]);
+
+                svg.append('rect').attr('width',width).attr('height',height).attr('fill','#f7f7f7');
+                svg.append('g').attr('class','grid').attr('transform',`translate(0,${height})`).call(d3.axisBottom(xScale).tickSize(-height).tickFormat('')).selectAll('line').attr('stroke','#dde3ea').attr('stroke-width',0.5);
+                svg.append('g').attr('class','grid').call(d3.axisLeft(yScale).tickSize(-width).tickFormat('')).selectAll('line').attr('stroke','#dde3ea').attr('stroke-width',0.5);
+                svg.append('g').attr('transform',`translate(0,${height})`).call(d3.axisBottom(xScale));
+                svg.append('g').call(d3.axisLeft(yScale));
+
+                // Interpolant
+                const line=d3.line().x((_,i)=>xScale(sampleX[i])).y((_,i)=>yScale(pY[i])).defined((_,i)=>isFinite(pY[i]));
+                svg.append('path').datum(pY).attr('fill','none').attr('stroke','blue').attr('stroke-width',1.5).attr('d',line);
+
+                // Data points
+                svg.selectAll('circle').data(x).enter().append('circle').attr('cx',d=>xScale(d)).attr('cy',(_,i)=>yScale(y[i])).attr('r',5).attr('fill','red').attr('stroke','#111');
+
+                // Original function
+                if(funcY){
+                    const fLine=d3.line().x((_,i)=>xScale(sampleX[i])).y((_,i)=>yScale(funcY[i])).defined((_,i)=>isFinite(funcY[i]));
+                    svg.append('path').datum(funcY).attr('fill','none').attr('stroke','#27AE60').attr('stroke-width',1.5).attr('stroke-dasharray','5,5').attr('d',fLine);
+                }
+
+                // Hermite slopes
+                let hasSlope=false;
+                if(method==='hermite'&&yp){
+                    const dx=(plotRange[1]-plotRange[0])/50;
+                    yp.forEach((slope,j)=>{if(!isNaN(slope)&&isFinite(slope)){hasSlope=true;const lx=[x[j]-dx,x[j]+dx],ly=[y[j]-dx*slope,y[j]+dx*slope];const sl=d3.line().x((_,i)=>xScale(lx[i])).y((_,i)=>yScale(ly[i]));svg.append('path').datum([0,1]).attr('fill','none').attr('stroke','black').attr('stroke-width',1.5).attr('d',sl);}});
+                }
+
+                // Legend
+                const legend=svg.append('g').attr('transform',`translate(${width+20},0)`);
+                let ly=0;
+                legend.append('rect').attr('x',0).attr('y',ly).attr('width',10).attr('height',10).attr('fill','blue');
+                legend.append('text').attr('x',15).attr('y',ly+8).text('Interpolant');ly+=20;
+                legend.append('circle').attr('cx',5).attr('cy',ly+5).attr('r',5).attr('fill','red').attr('stroke','#111');
+                legend.append('text').attr('x',15).attr('y',ly+8).text('Points');ly+=20;
+                if(funcY){legend.append('line').attr('x1',0).attr('y1',ly+5).attr('x2',10).attr('y2',ly+5).attr('stroke','#27AE60').attr('stroke-width',1.5).attr('stroke-dasharray','5,5');legend.append('text').attr('x',15).attr('y',ly+8).text('Function');ly+=20;}
+                if(hasSlope){legend.append('line').attr('x1',0).attr('y1',ly+5).attr('x2',10).attr('y2',ly+5).attr('stroke','black').attr('stroke-width',1.5);legend.append('text').attr('x',15).attr('y',ly+8).text('Slopes');}
+
+                // Download
+                domCache.downloadBtn.style.display='inline-flex';
+                domCache.downloadBtn.onclick=function(){
+                    const svgEl=plotDiv.querySelector('svg');
+                    const svgData=new XMLSerializer().serializeToString(svgEl);
+                    const canvas=document.createElement('canvas');
+                    const sz=svgEl.getBoundingClientRect();
+                    canvas.width=sz.width;canvas.height=sz.height;
+                    const ctx2=canvas.getContext('2d');const img=new Image();
+                    img.onload=function(){ctx2.drawImage(img,0,0);const png=canvas.toDataURL('image/png');const a=document.createElement('a');a.download='interpolation_'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.png';a.href=png;a.click();};
+                    img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svgData)));
+                };
+                domCache.evalContainer.style.display='block';
+            }
+        } catch(e) {
+            console.error(e);
+            domCache.output.innerHTML='<div class="text-red-500">Error: '+e.message+'</div>';
+        }
+    }
+
+    function buildSplineTex(a,b,c,d,xi){
+        const terms=[];
+        function addT(v,pow){
+            if(Math.abs(v)<1e-12)return;
+            let vt=toFraction(v);const sign=vt.startsWith('-')?'-':(terms.length?'+':'');
+            vt=vt.replace(/^-/,'');const vs=(vt==='1'&&pow>0)?'':vt;
+            const ft=pow===0?'':pow===1?formatTerm(xi):formatTerm(xi)+'^{'+pow+'}';
+            terms.push(sign+vs+ft);
+        }
+        addT(d,3);addT(c,2);addT(b,1);
+        if(Math.abs(a)>1e-12||terms.length===0)addT(a,0);
+        let s=terms.join('').replace(/\+-/g,'-').replace(/[-]+/g,'-').replace(/--/g,'+');
+        if(s.startsWith('+'))s=s.slice(1);
+        return s;
+    }
+    function makeSplineFunc(x,y,spFuncs,n){
+        return function(xx){
+            let i=n-2;for(let k=0;k<n-1;k++){if(xx<=x[k+1]){i=k;break;}}
+            const dx=xx-spFuncs[i].xi;
+            const r=spFuncs[i].a+spFuncs[i].b*dx+spFuncs[i].c*dx*dx+spFuncs[i].d*dx*dx*dx;
+            return isFinite(r)?r:NaN;
+        };
+    }
+
+    function clearAll() {
+        domCache.xValues.value=''; domCache.fValues.value=''; domCache.fpValues.value='';
+        domCache.endpointFpValues.value=''; domCache.funcStr.value='sin(x)';
+        domCache.a.value='-5'; domCache.b.value='5'; domCache.nPoints.value='5';
+        domCache.output.innerHTML='';domCache.output.style.display='none'; domCache.plot.innerHTML='';
+        domCache.outputToggles.style.display='none';
+        domCache.downloadBtn.style.display='none';
+        domCache.evalContainer.style.display='none';
+        domCache.evalOutput.innerHTML=''; pFunc=null; originalFunc=null;
+        updateInputDisplay();
+    }
+
+    let selectedMethod='monomial', selectedNodeType='equispaced';
+
+    function updateInputDisplay() {
+        if(domCache.custom.checked){domCache.functionInputs.style.display='none';domCache.customInputs.style.display='block';}
+        else{domCache.customInputs.style.display='none';domCache.functionInputs.style.display='block';}
+        domCache.fpInput.style.display=(selectedMethod==='hermite'&&domCache.custom.checked)?'block':'none';
+        domCache.endpointFpInput.style.display=(selectedMethod==='clamped_cubic_spline'&&domCache.custom.checked)?'block':'none';
+        domCache.output.innerHTML='';domCache.output.style.display='none'; domCache.plot.innerHTML='';
+        domCache.downloadBtn.style.display='none'; domCache.evalContainer.style.display='none';
+        domCache.evalOutput.innerHTML=''; pFunc=null; originalFunc=null;
+    }
+
+    function initEventListeners() {
+        domCache.custom.addEventListener('change', updateInputDisplay);
+        domCache.functionRadio.addEventListener('change', updateInputDisplay);
+    }
+
+    document.querySelectorAll('.mbtn').forEach(btn => {
+        btn.addEventListener('click',()=>{
+            document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedMethod=btn.dataset.method; updateInputDisplay();
+        });
+    });
+
+    document.querySelectorAll('.nbtn').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+            document.querySelectorAll('.nbtn').forEach(b=>b.classList.remove('active'));
+            btn.classList.add('active');
+            selectedNodeType=btn.dataset.nodeType;
+        });
+    });
+
+    // Set initial active states
+    // monomial active set in HTML
+    // equispaced active set in HTML
+
+    function initEvalButton() {
+        document.getElementById('eval-btn').addEventListener('click',function(){
+            if(!pFunc){domCache.evalOutput.innerHTML='<div class="text-red-500">Compute first</div>';return;}
+            const evalStr=domCache.evalX.value.trim();
+            if(!evalStr){domCache.evalOutput.innerHTML='<div class="text-red-500">Enter x values</div>';return;}
+            let evalX;
+            try{evalX=evalStr.split(',').map(s=>{const v=math.evaluate(s.trim());if(!isFinite(v))throw new Error('Invalid');return v;});}
+            catch(e){domCache.evalOutput.innerHTML='<div class="text-red-500">Invalid x values</div>';return;}
+            const evalY=evalX.map(xx=>pFunc(xx));
+            const outputDiv=domCache.evalOutput; outputDiv.innerHTML='';
+            let tableHTML;
+            if(originalFunc){
+                const errors=evalX.map(xx=>Math.abs(originalFunc(xx)-pFunc(xx)));
+                tableHTML=`<div class="flex justify-center space-x-8">
+                    <table class="border-collapse border border-gray-300"><thead><tr><th colspan="2" class="border px-4 py-2">Point evaluations</th></tr></thead><tbody>
+                    ${evalX.map((xx,i)=>`<tr><td class="border px-4 py-2">$p(${formatNumber(xx)})$</td><td class="border px-4 py-2">$ ${toFraction(evalY[i])} $</td></tr>`).join('')}</tbody></table>
+                    <table class="border-collapse border border-gray-300"><thead><tr><th colspan="2" class="border px-4 py-2">Absolute errors</th></tr></thead><tbody>
+                    ${evalX.map((xx,i)=>`<tr><td class="border px-4 py-2">$|f(${formatNumber(xx)})-p(${formatNumber(xx)})|$</td><td class="border px-4 py-2">$ ${toFraction(errors[i])} $</td></tr>`).join('')}</tbody></table></div>`;
+            } else {
+                tableHTML=`<table class="border-collapse border border-gray-300 mx-auto"><thead><tr><th colspan="2" class="border px-4 py-2">Point evaluations</th></tr></thead><tbody>
+                    ${evalX.map((xx,i)=>`<tr><td class="border px-4 py-2">$p(${formatNumber(xx)})$</td><td class="border px-4 py-2">$ ${toFraction(evalY[i])} $</td></tr>`).join('')}</tbody></table>`;
+            }
+            outputDiv.innerHTML=tableHTML;
+            renderMathInElement(outputDiv,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});
+        });
+    }
+
+    // Example buttons
+    document.getElementById('example-points-data').addEventListener('click',function(){
+        document.getElementById('custom').checked=true; updateInputDisplay();
+        document.getElementById('x_values').value='-1, 0, 1, 2, 3';
+        document.getElementById('f_values').value='0, -8, -2, 0, 4';
+        document.getElementById('endpoint_fp_values').value='0, 0';
+        document.querySelector('[data-method="clamped_cubic_spline"]').click();
+    });
+    document.getElementById('example-runge').addEventListener('click',function(){
+        document.getElementById('function').checked=true; updateInputDisplay();
+        document.getElementById('func_str').value='1/(1+25*x^2)';
+        document.getElementById('a').value='-1'; document.getElementById('b').value='1';
+        document.getElementById('n_points').value='11';
+        document.querySelector('[data-method="lagrange"]').click();
+        document.querySelector('[data-node-type="equispaced"]').click();
+    });
+    document.getElementById('example-hermite-func').addEventListener('click',function(){
+        document.getElementById('function').checked=true; updateInputDisplay();
+        document.getElementById('func_str').value='exp(-x)*cos(5*x)';
+        document.getElementById('a').value='0'; document.getElementById('b').value='3';
+        document.getElementById('n_points').value='6';
+        document.querySelector('[data-method="hermite"]').click();
+        document.querySelector('[data-node-type="equispaced"]').click();
+    });
+    document.getElementById('example-newton-func').addEventListener('click',function(){
+        document.getElementById('function').checked=true; updateInputDisplay();
+        document.getElementById('func_str').value='exp(-x)*cos(5*x)';
+        document.getElementById('a').value='0'; document.getElementById('b').value='3';
+        document.getElementById('n_points').value='6';
+        document.querySelector('[data-method="newton"]').click();
+        document.querySelector('[data-node-type="equispaced"]').click();
+    });
+    document.getElementById('example-spline').addEventListener('click',function(){
+        document.getElementById('function').checked=true; updateInputDisplay();
+        document.getElementById('func_str').value='1/(1+25*x^2)';
+        document.getElementById('a').value='-1'; document.getElementById('b').value='1';
+        document.getElementById('n_points').value='11';
+        document.querySelector('[data-method="cubic_spline"]').click();
+        document.querySelector('[data-node-type="equispaced"]').click();
+    });
+
+    window.onload=function(){
+        initDOMCache(); initEventListeners(); initEvalButton(); updateInputDisplay();
+        renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});
+        // Default view: the Points Data example (clamped spline, f'=0 at both
+        // ends) with the interpolating polynomial shown.
+        document.getElementById('show_polynomial').checked=true;
+        document.getElementById('example-points-data').click();
+        computeInterpolation();
+    };
+
+    // Info panel collapsible
+    document.getElementById('infoBtn').addEventListener('click',function(){
+      var exp=this.getAttribute('aria-expanded')==='true';
+      this.setAttribute('aria-expanded',String(!exp));
+      document.getElementById('infoBody').hidden=exp;
+      document.getElementById('infoIcon').textContent=exp?'+':'\u2212';
+    });
+    // High contrast
+    document.getElementById('ctog').addEventListener('click',function(){
+      document.documentElement.classList.toggle('hc');
+      var on=document.documentElement.classList.contains('hc');
+      var live=document.getElementById('live');live.textContent='';
+      setTimeout(function(){live.textContent='High contrast '+(on?'on':'off');},50);
+    });
+
+</script>
+
+</main>
+<!-- feedback-mark:start -->
+<button type="button" id="fb-open" class="fb-btn" aria-label="Send feedback or report a bug">
+  <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+  </svg>
+  <span>Feedback</span>
+</button>
+<div class="fb-bd" id="fb-bd" role="dialog" aria-modal="true" aria-labelledby="fb-title" hidden>
+  <div class="fb-dlg">
+    <div class="fb-hd">
+      <h2 id="fb-title">Feedback / report a bug</h2>
+      <button type="button" class="fb-x" id="fb-x" aria-label="Close">&times;</button>
+    </div>
+    <form id="fb-form" class="fb-body" novalidate>
+      <label for="fb-text">Share your thoughts.</label>
+      <textarea id="fb-text" name="feedback" required aria-required="true"></textarea>
+      <label for="fb-email">Email <span class="fb-opt">(optional, so we can reply)</span></label>
+      <input id="fb-email" name="email" type="email" autocomplete="email">
+      <input type="text" name="botcheck" class="fb-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="fb-msg" id="fb-msg" role="status" aria-live="polite"></div>
+    </form>
+    <div class="fb-ft">
+      <button type="button" class="fb-cancel" id="fb-cancel">Cancel</button>
+      <button type="submit" form="fb-form" class="fb-send" id="fb-send">Send</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var ACCESS_KEY = '1b02c5d6-09a9-4536-93f4-a01e0459e743';
+  var configured = !!ACCESS_KEY;
+
+  var bd = document.getElementById('fb-bd');
+  if (!bd) return;
+  var closeBtn = document.getElementById('fb-x');
+  var cancelBtn = document.getElementById('fb-cancel');
+  var form = document.getElementById('fb-form');
+  var textEl = document.getElementById('fb-text');
+  var emailEl = document.getElementById('fb-email');
+  var sendBtn = document.getElementById('fb-send');
+  var msg = document.getElementById('fb-msg');
+  var lastFocus = null;
+
+  function showMsg(text, kind) {
+    msg.textContent = text;
+    msg.className = 'fb-msg ' + (kind === 'ok' ? 'fb-ok' : 'fb-err');
+  }
+  function clearMsg() { msg.textContent = ''; msg.className = 'fb-msg'; }
+
+  function open(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    lastFocus = document.activeElement;
+    bd.hidden = false;
+    requestAnimationFrame(function () { bd.classList.add('fb-open'); });
+    clearMsg();
+    setTimeout(function () { textEl.focus(); }, 50);
+    document.addEventListener('keydown', onKey);
+  }
+  function close() {
+    bd.classList.remove('fb-open');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(function () {
+      bd.hidden = true;
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }, 150);
+  }
+  function onKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'Tab') {
+      var f = bd.querySelectorAll('button,textarea,input:not(.fb-hp),[tabindex]:not([tabindex="-1"])');
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  Array.prototype.forEach.call(
+    document.querySelectorAll('#fb-open, [data-fb-open]'),
+    function (t) { t.addEventListener('click', open); }
+  );
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  bd.addEventListener('click', function (e) { if (e.target === bd) close(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = textEl.value.trim();
+    if (!text) { showMsg('Please enter some feedback.', 'err'); textEl.focus(); return; }
+    if (!configured) {
+      showMsg("Feedback isn't wired up yet \u2014 the site owner needs to add an access key.", 'err');
+      return;
+    }
+    var page = (document.title || location.pathname).trim();
+    var payload = {
+      access_key: ACCESS_KEY,
+      subject: '[Feedback] ' + page,
+      from_name: 'Math Tools feedback',
+      page: page,
+      url: location.href,
+      feedback: text,
+      email: emailEl.value.trim(),
+      botcheck: form.botcheck.value
+    };
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sending\u2026';
+    fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json().catch(function () { return {success: r.ok}; }); })
+      .then(function (data) {
+        if (data && data.success) {
+          showMsg('Thanks \u2014 your feedback was sent.', 'ok');
+          textEl.value = ''; emailEl.value = '';
+          setTimeout(close, 1400);
+        } else {
+          showMsg((data && data.message) || "Sorry, that didn't go through. Try again later.", 'err');
+        }
+      })
+      .catch(function () {
+        showMsg("Network error \u2014 please try again.", 'err');
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send';
+      });
+  });
+})();
+</script>
+<!-- feedback-mark:end -->
+<!-- usage-tracking:start -->
+<script>
+/* Lightweight usage tracking: auto-instruments common interactions and sends
+   custom events to Google Analytics. Guarded so a missing/blocked gtag never
+   breaks the tool, and delegated so it never conflicts with the page's own
+   listeners. */
+(function () {
+  function trackEvent(name, params) {
+    try { if (typeof gtag === 'function') gtag('event', name, params || {}); } catch (e) {}
+  }
+  function labelFor(el) {
+    var t = el.getAttribute('aria-label') || el.id ||
+            (el.value && el.type !== 'text' ? el.value : '') ||
+            (el.textContent || '').replace(/\s+/g, ' ').trim() ||
+            el.name || el.type || 'unknown';
+    return String(t).slice(0, 64);
+  }
+  document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    var el = e.target.closest('button,[role="button"],a.btn,input[type="button"],input[type="submit"],[data-track]');
+    if (!el) return;
+    trackEvent('ui_click', { event_category: 'interaction', event_label: labelFor(el) });
+  }, true);
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.matches) return;
+    if (el.matches('select')) {
+      trackEvent('select_change', { event_category: 'interaction', event_label: el.id || labelFor(el), option: String(el.value).slice(0, 64) });
+    } else if (el.matches('input[type="file"]')) {
+      trackEvent('file_upload', { event_category: 'interaction', event_label: el.id || labelFor(el) });
+    }
+  }, true);
+})();
+</script>
+<!-- usage-tracking:end -->
+</body>
+</html>
