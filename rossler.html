@@ -1143,12 +1143,28 @@ function speedSteps(){
 }
 function startAnimLoop(){
   var N=PA.t1.x.length;
-  function tick(){
+  var last=null;
+  /* Pace the trace by elapsed wall-clock time, not by a fixed step per frame.
+     A fixed per-frame step ties the animation speed to the frame rate, so once
+     the trace grows long and a frame costs more than one refresh interval the
+     motion visibly slows and appears to stall near the end. Advancing by
+     (samples-per-ms x elapsed) holds a constant apparent speed and always runs
+     to the end. PA.idx becomes a fractional accumulator; only its floor is ever
+     used as an array index. */
+  function tick(now){
     if(!PA.running)return;
-    PA.idx+=speedSteps();
-    if(PA.idx>=N){PA.idx=N-1;PA.renderFn(PA.idx);setProgress(N-1,N);stopParticles();say('Animation complete.');return;}
-    PA.renderFn(PA.idx);
-    setProgress(PA.idx, N);
+    if(last==null)last=now;
+    var dt=now-last;last=now;
+    /* >=1 guarantees forward progress; the upper bound stops a backgrounded
+       tab or a GC pause from teleporting the head across the whole orbit. */
+    PA.idx+=Math.min(Math.max((speedSteps()/16.7)*dt,1),N/40);
+    var done=PA.idx>=N-1;
+    var i=done?N-1:Math.floor(PA.idx);
+    /* A single failed render (transient WebGL/Plotly hiccup) must never kill
+       the loop and leave the animation frozen with the button stuck on Stop. */
+    try{PA.renderFn(i);}catch(e){}
+    setProgress(i, N);
+    if(done){stopParticles();say('Animation complete.');return;}
     PA.rafId=requestAnimationFrame(tick);
   }
   PA.rafId=requestAnimationFrame(tick);
@@ -1192,16 +1208,26 @@ function launchParticles(){
    Jet-coloured trace (cmin=0, cmax=1) sliced per-frame so colors map to
    actual elapsed time, with a black marker at the current head. */
 function renderAttractorFrame(idx){
-  var t1=PA.t1;
+  var t1=PA.t1, disp=PA.disp;
   var c=parseFloat(document.getElementById('c').value);
   var t=(idx*DT).toFixed(1);
   var mobile=(typeof window!=='undefined')&&window.innerWidth<640;
-  var d=smoothTrace(t1,idx,6000);
-  var line={color:d.t,colorscale:'Jet',width:3,
+  /* Slice a growing prefix of the curve pre-smoothed once in
+     launchAnimateAttractor, instead of re-decimating and re-splining the whole
+     [0..idx] prefix every frame. The old per-frame smoothTrace was O(idx) work
+     that also grew to tens of thousands of points near the end - the stutter
+     and stall. The smoothed curve is time-uniform, so the fraction idx/(N-1)
+     maps linearly to a position in it; append the exact current sample so the
+     line still meets the marker. */
+  var N=t1.x.length, L=disp.x.length;
+  var m=Math.min(L-1, Math.round((L-1)*(idx/(N-1))));
+  var xs=disp.x.slice(0,m+1), ys=disp.y.slice(0,m+1), zs=disp.z.slice(0,m+1), ts=disp.t.slice(0,m+1);
+  xs.push(t1.x[idx]); ys.push(t1.y[idx]); zs.push(t1.z[idx]); ts.push(t1.t[idx]);
+  var line={color:ts,colorscale:'Jet',width:3,
             cauto:false,cmin:0,cmax:1,showscale:!mobile};
   if(!mobile)line.colorbar=makeColorbar(t1.x.length);
   Plotly.react('plot',[
-    {x:d.x, y:d.y, z:d.z,
+    {x:xs, y:ys, z:zs,
      type:'scatter3d', mode:'lines', line:line, showlegend:false},
     {x:[t1.x[idx]], y:[t1.y[idx]], z:[t1.z[idx]],
      type:'scatter3d', mode:'markers', marker:{size:6, color:'#000'}, showlegend:false}
@@ -1213,6 +1239,11 @@ function launchAnimateAttractor(){
   var v=readParams();
   var Np=currentStaticN();
   PA.t1=solveRossler(v.a,v.b,v.c,v.x0,v.y0,v.z0,Np,v.method);
+  /* Pre-smooth the whole display curve ONCE (same base budget the per-frame
+     path used, so the look is unchanged); each frame then just slices a growing
+     prefix. Rebuilding it every frame was O(idx) and ballooned to tens of
+     thousands of points near the end - the source of the stutter/stall. */
+  PA.disp=smoothTrace(PA.t1,undefined,6000);
   PA.t2=null; PA.idx=0; PA.running=true; PA.mode='attractor'; PA.renderFn=renderAttractorFrame;
   setProgress(0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');

@@ -1329,12 +1329,29 @@ function speedSteps(){
 
 function startAnimLoop(){
   var N=PA.t1.x.length;
-  function tick(){
+  var last=null;
+  /* Pace the trace by elapsed wall-clock time, not by a fixed step per frame.
+     A fixed per-frame step ties the animation speed to the frame rate, so once
+     the trace grows long and a frame costs more than one refresh interval the
+     motion visibly slows and appears to stall near the end. Advancing by
+     (samples-per-ms x elapsed) holds a constant apparent speed and always runs
+     to the end - a slow frame is simply followed by a proportionally larger
+     step instead of losing ground. PA.idx becomes a fractional accumulator;
+     only its floor is ever used as an array index. */
+  function tick(now){
     if(!PA.running)return;
-    PA.idx+=speedSteps();
-    if(PA.idx>=N){PA.idx=N-1;PA.renderFn(PA.idx);setProgress(100,N-1,N);stopParticles();say('Animation complete.');return;}
-    PA.renderFn(PA.idx);
-    setProgress((PA.idx/(N-1))*100, PA.idx, N);
+    if(last==null)last=now;
+    var dt=now-last;last=now;
+    /* >=1 guarantees forward progress; the upper bound stops a backgrounded
+       tab or a GC pause from teleporting the head across the whole orbit. */
+    PA.idx+=Math.min(Math.max((speedSteps()/16.7)*dt,1),N/40);
+    var done=PA.idx>=N-1;
+    var i=done?N-1:Math.floor(PA.idx);
+    /* A single failed render (transient WebGL/Plotly hiccup) must never kill
+       the loop and leave the animation frozen with the button stuck on Stop. */
+    try{PA.renderFn(i);}catch(e){}
+    setProgress((i/(N-1))*100, i, N);
+    if(done){stopParticles();say('Animation complete.');return;}
     PA.rafId=requestAnimationFrame(tick);
   }
   PA.rafId=requestAnimationFrame(tick);
@@ -1364,21 +1381,27 @@ function launchParticles(){
 
 function launchAnimateAttractor(){
   // Traces the trajectory already shown in the static plot -- reuses the
-  // cached curve instead of recomputing it; only solves if the cache is
-  // missing or the parameters have changed since the last render.
+  // cached full-resolution solve instead of recomputing it; only solves if the
+  // cache is missing or the parameters have changed since the last render.
   stopParticles();
   var v=readParams();
   applyLargeRhoDefaults(v);
-  if(LAST_TR&&LAST_TR_KEY===trajKey(v)&&LAST_DISP){
-    PA.t1=LAST_TR;PA.disp=LAST_DISP;PA.dispStride=LAST_DISP_STRIDE;
+  if(LAST_TR&&LAST_TR_KEY===trajKey(v)){
+    PA.t1=LAST_TR;
   }else{
     PA.t1=solveLorenz(v.sigma,v.rho,v.beta,v.x0,v.y0,v.z0,staticN(v),v.method);
-    PA.disp=decimate(PA.t1);PA.dispStride=dispStrideFor(PA.t1);
-    LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);LAST_DISP=PA.disp;LAST_DISP_STRIDE=PA.dispStride;
+    LAST_TR=PA.t1;LAST_TR_KEY=trajKey(v);
+    LAST_DISP=decimate(PA.t1);LAST_DISP_STRIDE=dispStrideFor(PA.t1);
   }
-  /* PA.disp is the SAME decimated curve the static plot drew, so the trace
-     grows a stable prefix of identical vertices - same smoothness, and a
-     slice per frame (no re-decimation jitter, no O(idx) work). */
+  /* Trace a LIGHT decimated curve (ANIM_DISPLAY_PTS), NOT the full static curve
+     (up to ~30k pts). Each frame re-renders a growing prefix via Plotly.react,
+     so an unbounded prefix makes the final frames many times heavier than the
+     first - the animation stutters and stalls as it nears the end. Capping the
+     traced curve keeps every frame's render cost flat, so it stays smooth the
+     whole way; the full-res PA.t1 still positions the marker exactly. The
+     stride matches decimate()'s internal stride so the prefix math lines up. */
+  PA.disp=decimate(PA.t1,undefined,ANIM_DISPLAY_PTS);
+  PA.dispStride=(PA.t1.x.length>ANIM_DISPLAY_PTS)?Math.ceil(PA.t1.x.length/ANIM_DISPLAY_PTS):1;
   PA.t2=null;PA.idx=0;PA.running=true;PA.mode='attractor';PA.renderFn=renderAttractorFrame;
   setProgress(0, 0, PA.t1.x.length);
   var ab=document.getElementById('animateAttractorBtn');ab.textContent='Stop';ab.classList.add('abtn-running');
