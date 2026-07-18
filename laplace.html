@@ -176,6 +176,16 @@ h1 { font-size:1.75rem; font-weight:800; text-align:center; margin:0 0 .25rem;
 }
 .txt-input:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 .fn-err { margin-top:.35rem; font-size:.8125rem; font-weight:600; color:#b91c1c; display:none; }
+.fn-presets { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; margin-top:.45rem; }
+.fn-presets-lbl { font-size:.8125rem; font-weight:700; color:var(--txt2); margin-right:.15rem; }
+.fn-chip {
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.8125rem; font-weight:600; color:var(--blue);
+  background:var(--card); border:1.5px solid var(--bdr); border-radius:999px;
+  padding:.2rem .6rem; cursor:pointer; white-space:nowrap;
+}
+.fn-chip:hover { background:rgba(29,78,216,.08); border-color:var(--blue); }
+.fn-chip:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
 
 /* s-display (LaTeX label above number input) */
 .s-display {
@@ -1142,10 +1152,33 @@ function detectOsc(src){
   return { omega:omega, kind:kind, sign:sign, env:env };
 }
 
+/* The transform only exists where f(t)e^{-st} -> 0. If f grows too fast
+   (e.g. cosh t, e^{2t}) the integral diverges, yet quadrature would still
+   return a finite, meaningless number. Probe the tail: overflow, or a
+   non-decaying integrand, means divergence at this s. */
+function customConverges(s){
+  if(!CF.ok) return false;
+  var f=CF.f;
+  var g=function(t){ var v=f(t); return isFinite(v) ? v*Math.exp(-s*t) : NaN; };
+  var R=130/s, peak=0;
+  for(var i=0;i<=40;i++){
+    var a=Math.abs(g(R*i/40));
+    if(!isFinite(a)) return false;          /* grows faster than e^{-st} damps */
+    if(a>peak) peak=a;
+  }
+  if(peak===0) return true;
+  var r1=Math.abs(g(R)), r2=Math.abs(g(2*R));
+  if(!isFinite(r1)||!isFinite(r2)) return false;
+  if(r1<=peak*1e-4) return true;            /* tail already negligible */
+  return r2<r1*0.5;                          /* still decaying fast enough */
+}
+
 /* Numerical Laplace transform of the custom f: Ooura-Mori when f is a
-   detected sinusoid×envelope, otherwise Gauss-Laguerre. */
+   detected sinusoid×envelope, otherwise Gauss-Laguerre. Returns NaN where
+   the integral diverges. */
 function customTransform(s){
   if(!CF.ok) return 0;
+  if(!customConverges(s)) return NaN;
   var o=CF.osc;
   if(o){
     var g=function(x){ var e=o.env(x); return isFinite(e)?e*Math.exp(-s*x):0; };
@@ -1587,12 +1620,18 @@ function buildParams(id) {
   slot.innerHTML = '';
   var fn = FUNCS[id];
   if (fn.custom) {
+    var presets = ['sin(5t)', 'exp(-t)*sin(3t)', 't*cos(2t)', 'exp(-0.5t)*cos(4t)'];
+    var chips = presets.map(function(ex){
+      return '<button type="button" class="fn-chip" data-expr="'+ex+'">'+ex+'</button>';
+    }).join('');
     var div = document.createElement('div');
     div.className = 'ctrl ctrl-param ctrl-custom';
     div.innerHTML =
       '<label for="fnCustom">\\(f(t) =\\)</label>'+
       '<input type="text" id="fnCustom" class="txt-input" spellcheck="false" autocapitalize="off" '+
         'autocomplete="off" value="'+CF.src+'" aria-label="custom f of t expression">'+
+      '<div class="fn-presets" role="group" aria-label="oscillatory examples">'+
+        '<span class="fn-presets-lbl">Examples:</span>'+chips+'</div>'+
       '<div id="fnErr" class="fn-err" role="alert"></div>';
     slot.appendChild(div);
     mjTypeset([div.querySelector('label')]);
@@ -1601,6 +1640,13 @@ function buildParams(id) {
     inp.addEventListener('change', apply);
     inp.addEventListener('input', apply);
     inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); apply(); } });
+    div.querySelectorAll('.fn-chip').forEach(function(chip){
+      chip.addEventListener('click', function(){
+        inp.value = chip.getAttribute('data-expr');
+        apply();
+        inp.focus();
+      });
+    });
     return;
   }
   if (!fn.params.length) {
@@ -1849,8 +1895,13 @@ function computeData(N) {
   var osc = OSC[ST.id];
   var netArea = osc ? laplaceOsc(osc, s, ST.p)
               : (fn.custom ? customTransform(s) : laplaceGL(fEval, s, brk));
-  var posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
-  var negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
+  var posArea, negArea;
+  if (fn.custom && !isFinite(netArea)) {
+    posArea = negArea = NaN;                 /* diverges: no meaningful breakdown */
+  } else {
+    posArea = laplaceGL(function(t){ return Math.max(fEval(t), 0); }, s, brk);
+    negArea = laplaceGL(function(t){ return Math.max(-fEval(t), 0); }, s, brk);
+  }
 
   return {
     tArr:tArr, fArr:fArr, wArr:wArr, gArr:gArr,
@@ -1949,20 +2000,27 @@ function drawFs() {
   if (finite.length > 4) {
     var lo = finite[Math.floor(finite.length * 0.03)];
     var hi = finite[Math.floor(finite.length * 0.97)];
-    if (isFinite(FatS)) { lo = Math.min(lo, FatS); hi = Math.max(hi, FatS); }
     var span = Math.max(hi - lo, 0.05);
     yLo = lo - span * 0.18;
     yHi = hi + span * 0.18;
+    /* Frame the window on the bulk (3rd–97th percentile), not the pole.
+       Only stretch to the current-s value if it isn't itself a near-pole
+       spike, so approaching a pole can never blow the axis up. */
+    if (isFinite(FatS) && FatS >= yLo - span && FatS <= yHi + span) {
+      yLo = Math.min(yLo, FatS); yHi = Math.max(yHi, FatS);
+    }
   } else if (isFinite(FatS)) {
     var half = Math.max(Math.abs(FatS) * 0.6, 0.5);
     yLo = FatS - half; yHi = FatS + half;
   } else {
     yLo = -1; yHi = 1;
   }
-  var FArr = rawF.map(function(v){
-    if (v === null) return null;
-    return (v >= yLo && v <= yHi) ? v : null;
-  });
+  /* Keep finite values even when they run past the window: Plotly clips them
+     to the axis range, so at a pole the curve visibly sweeps off the top (or
+     bottom) and leaves the window instead of vanishing. Only true gaps — where
+     the transform diverges / is undefined — are broken (null), so the trace
+     stops at the pole rather than drawing a line across the divergent region. */
+  var FArr = rawF.map(function(v){ return (v === null || !isFinite(v)) ? null : v; });
 
   var dotY = (isFinite(FatS) && FatS >= yLo && FatS <= yHi) ? FatS : null;
 
@@ -1978,6 +2036,22 @@ function drawFs() {
         fillcolor:'rgba(239,68,68,.07)',line:{width:0}});
       annotations.push({x:av/2,y:yLo+(yHi-yLo)*0.08,
         text:'outside ROC',showarrow:false,
+        font:{size:11,color:'#dc2626'},bgcolor:'rgba(255,255,255,.82)'});
+    }
+  }
+  /* Custom f: mark the abscissa of convergence. The integral diverges below
+     it (shaded), and F(s) has a pole there — the curve sweeps up to that
+     vertical asymptote from the convergent side. */
+  if (fn.custom) {
+    var sigma = null;
+    for (var si = 0; si < rawF.length; si++) { if (rawF[si] !== null) { sigma = sArr[si]; break; } }
+    if (sigma !== null && sigma > 0.07) {
+      shapes.push({type:'rect',x0:0.05,x1:sigma,y0:yLo,y1:yHi,
+        fillcolor:'rgba(239,68,68,.07)',line:{width:0}});
+      shapes.push({type:'line',x0:sigma,x1:sigma,y0:yLo,y1:yHi,
+        line:{color:'#dc2626',width:1.5,dash:'dot'}});
+      annotations.push({x:sigma/2,y:yLo+(yHi-yLo)*0.5,
+        text:'diverges',showarrow:false,
         font:{size:11,color:'#dc2626'},bgcolor:'rgba(255,255,255,.82)'});
     }
   }
@@ -2025,9 +2099,10 @@ function updateAreaBar(d) {
   ['aopApprox','cellExact','aopBar','cellErr'].forEach(function(elid){
     document.getElementById(elid).style.display = disp;
   });
-  document.getElementById('aPos').textContent = d.posArea.toFixed(5);
-  document.getElementById('aNeg').textContent = d.negArea.toFixed(5);
-  document.getElementById('aNet').textContent = d.netArea.toFixed(5);
+  var cell = function(v){ return isFinite(v) ? v.toFixed(5) : 'diverges'; };
+  document.getElementById('aPos').textContent = cell(d.posArea);
+  document.getElementById('aNeg').textContent = cell(d.negArea);
+  document.getElementById('aNet').textContent = cell(d.netArea);
   if (custom) return;
   var Fs = d.Fs, relErr;
   if (isFinite(Fs)&&Math.abs(Fs)>1e-10) { var e=Math.abs((d.netArea-Fs)/Fs); relErr=e<0.0005?e.toExponential(1):e.toFixed(4); }
@@ -2048,16 +2123,23 @@ function updateFormula(d) {
   var id=ST.id, fn=FUNCS[id], s=ST.s;
   if (fn.custom) {
     var box0=document.getElementById('formulaBox');
-    var num=(d&&isFinite(d.netArea))?d.netArea.toFixed(6):'\\text{—}';
     var lf0=CF.ok?CF.latex:'f(t)';
-    var method=(CF.ok&&CF.osc)
-      ? 'a detected sinusoid, so \\(F(s)\\) uses the <strong>Ooura–Mori</strong> DE-Fourier rule at \\(\\omega='+(+CF.osc.omega.toFixed(3))+'\\)'
-      : '\\(F(s)\\) is computed by <strong>Gauss–Laguerre</strong> quadrature';
+    var diverges=!(d&&isFinite(d.netArea));
+    var valLine, note;
+    if (diverges) {
+      valLine='<div class="fm-val" style="color:#7f1d1d">\\( s='+s.toFixed(2)+'\\): the integral \\(\\int_0^\\infty f(t)e^{-st}\\,dt\\) does not converge.</div>';
+      note='<div class="thm-note"><strong>Diverges here:</strong> \\(f(t)e^{-st}\\) does not decay at this \\(s\\) (it grows, or stays bounded away from \\(0\\)), so \\(F(s)\\) is undefined. Increase \\(s\\) past the region of convergence.</div>';
+    } else {
+      var method=(CF.ok&&CF.osc)
+        ? 'a detected sinusoid, so \\(F(s)\\) uses the <strong>Ooura–Mori</strong> DE-Fourier rule at \\(\\omega='+(+CF.osc.omega.toFixed(3))+'\\)'
+        : '\\(F(s)\\) is computed by <strong>Gauss–Laguerre</strong> quadrature';
+      valLine='<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')\\approx '+d.netArea.toFixed(6)+' \\)</div>';
+      note='<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed form on offer — '+method+', and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
+    }
     box0.innerHTML=
       '<div class="fm-main">\\[ \\mathcal{L}\\{f(t)\\}\\;=\\;\\int_0^{\\infty} f(t)\\,e^{-st}\\,dt \\]</div>'+
       '<div class="fm-params">\\( f(t)='+lf0+' \\)</div>'+
-      '<div class="fm-val">\\( s='+s.toFixed(2)+',\\quad F('+s.toFixed(2)+')\\approx '+num+' \\)</div>'+
-      '<div class="thm-note"><strong>Numerical only:</strong> this \\(f\\) has no closed form on offer — '+method+', and no exact comparison is shown. Convergence needs \\(f(t)e^{-st}\\to 0\\); pick \\(s\\) large enough if the value looks unstable.</div>';
+      valLine+note;
     typesetFormula(box0);
     return;
   }
