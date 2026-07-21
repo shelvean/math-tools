@@ -490,20 +490,20 @@ table.eq-table tr.acc-active td{background:var(--info);}
 
     <!-- Arrow length -->
     <div class="cfield cfield-sm">
-      <label for="arrowScale">Arrow length</label>
-      <input type="number" id="arrowScale" value="1.5" min="0.1" max="2" step="0.1">
+      <label for="arrowLength">Arrow length</label>
+      <input type="number" id="arrowLength" value="18" min="5" max="50" step="1">
     </div>
 
     <!-- Field opacity -->
     <div class="cfield cfield-sm">
       <label for="arrowOpacity">Field opacity</label>
-      <input type="number" id="arrowOpacity" value="0.6" min="0.05" max="1" step="0.05">
+      <input type="number" id="arrowOpacity" value="0.5" min="0.05" max="1" step="0.05">
     </div>
 
-    <!-- Trajectory arrowhead size -->
-    <div class="cfield cfield-sm">
-      <label for="trajHeadSize">Arrowhead size</label>
-      <input type="number" id="trajHeadSize" value="0" min="0" max="20" step="0.5" aria-label="Trajectory arrowhead size in pixels (0 to disable)">
+    <!-- Variable arrow length -->
+    <div class="cfield cfield-chk">
+      <input type="checkbox" id="variableArrows" checked>
+      <label for="variableArrows">Variable length</label>
     </div>
 
     <!-- Trajectory color -->
@@ -515,6 +515,28 @@ table.eq-table tr.acc-active td{background:var(--info);}
         <option value="#dc2626">Red</option>
         <option value="#000000" selected>Black</option>
       </select>
+    </div>
+
+    <!-- Trajectory thickness -->
+    <div class="cfield cfield-sm">
+      <label for="trajThickness">Thickness</label>
+      <select id="trajThickness">
+        <option value="2" selected>Normal</option>
+        <option value="1.2">Fine</option>
+        <option value="0.7">Finer</option>
+      </select>
+    </div>
+
+    <!-- Trajectory arrowhead size -->
+    <div class="cfield cfield-sm">
+      <label for="trajHeadSize">Arrowhead size</label>
+      <input type="number" id="trajHeadSize" value="5.5" min="1" max="20" step="0.5" aria-label="Trajectory arrowhead size in pixels">
+    </div>
+
+    <!-- Trajectory arrowheads per trajectory -->
+    <div class="cfield cfield-sm">
+      <label for="trajHeadCount">Arrows/traj</label>
+      <input type="number" id="trajHeadCount" value="0" min="0" max="40" step="1" aria-label="Number of directional arrowheads per trajectory (0 to disable)">
     </div>
 
     <!-- Field color -->
@@ -1459,7 +1481,8 @@ function drawPortrait(){
   var ctx=canvas.getContext('2d');
   var M=getM(),a=M.a,b=M.b,c=M.c,d=M.d;
   var arrowCount=parseInt(document.getElementById('arrowCount').value)||30;
-  var arrowScale=parseFloat(document.getElementById('arrowScale').value)||1.2;
+  var arrowLength=parseFloat(document.getElementById('arrowLength').value)||18;
+  var variableArrows=document.getElementById('variableArrows').checked;
   var opacity=parseFloat(document.getElementById('arrowOpacity').value)||0.30;
   var fcolor=document.getElementById('fieldColor').value||'#000000';
   var showGrid=document.getElementById('showGrid').checked;
@@ -1505,7 +1528,8 @@ function drawPortrait(){
   if(showFieldChk)
   fieldArrows.forEach(function(ar){
     var nf=Math.min(ar.mag/refMag,1),sf=Math.sqrt(nf);
-    var dl=20*arrowScale*(0.55+0.45*sf);
+    var dl=arrowLength;
+    if(variableArrows){dl=arrowLength*(0.55+0.45*sf);}/* floor at 55% of full size */
     var dcx=ar.dx/ar.mag,dcy=-ar.dy/ar.mag;
     var headLen=Math.max(dl*0.35,5),headHW=headLen*0.5;
     var shaftLen=dl-headLen*0.4;
@@ -1558,42 +1582,46 @@ function drawPortrait(){
   /* Trajectories with directional arrowheads */
   var trajColorPick=(document.getElementById('trajColor')||{}).value||'#000000';
   function getTrajColor(idx){return trajColorPick==='multicolor'?COLORS[idx%COLORS.length]:trajColorPick;}
+  var twIn=parseFloat(document.getElementById('trajThickness').value);
+  var trajWidth=isFinite(twIn)&&twIn>0?twIn:2;
   trajectories.forEach(function(traj,idx){
     if(traj.length<2)return;
     var color=getTrajColor(idx);
     ctx.save();
-    ctx.strokeStyle=color;ctx.lineWidth=2;
+    ctx.strokeStyle=color;ctx.lineWidth=trajWidth;
     ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash([]);
     ctx.globalAlpha=0.85;
     ctx.beginPath();ctx.moveTo(traj[0].cx,traj[0].cy);
     for(var i=1;i<traj.length;i++)ctx.lineTo(traj[i].cx,traj[i].cy);
     ctx.stroke();
 
-    /* Directional arrowheads - adaptive spacing, max 8, min 60px separation.
-       A head size of 0 disables arrowheads entirely. */
+    /* Directional arrowheads, uniformly placed by arc length.
+       Arrows/traj of 0 disables arrowheads entirely. */
     var headSzIn=parseFloat(document.getElementById('trajHeadSize').value);
-    if(isFinite(headSzIn)&&headSzIn>0){
-      var totalLen=0;
-      for(var i=1;i<traj.length;i++){var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;totalLen+=Math.sqrt(ddx*ddx+ddy*ddy);}
-      var arrowSz=headSzIn;
-      var maxArr=8,arrowSp=Math.max(100,totalLen/(maxArr+1));
-      ctx.fillStyle=color;ctx.globalAlpha=0.92;
-      var accum=arrowSp*0.45,placed=[];
-      for(var i=1;i<traj.length;i++){
-        var ddx=traj[i].cx-traj[i-1].cx,ddy=traj[i].cy-traj[i-1].cy;
-        var seg=Math.sqrt(ddx*ddx+ddy*ddy);if(seg<0.5)continue;
-        accum+=seg;
-        if(accum>=arrowSp){
-          var ax=traj[i].cx,ay=traj[i].cy;
-          var tooClose=false;
-          for(var k=0;k<placed.length;k++){var ex=ax-placed[k].x,ey=ay-placed[k].y;if(ex*ex+ey*ey<3600){tooClose=true;break;}}
-          if(tooClose)continue;
-          accum=0;placed.push({x:ax,y:ay});
-          var ang=Math.atan2(ddy,ddx);
+    var arrowSize=isFinite(headSzIn)&&headSzIn>0?headSzIn:5.5;
+    var headCntIn=parseInt(document.getElementById('trajHeadCount').value,10);
+    var arrowCnt=isFinite(headCntIn)&&headCntIn>=0?headCntIn:8;
+    if(arrowCnt>0){
+      var cum=new Array(traj.length);cum[0]=0;
+      for(var i=1;i<traj.length;i++){var dx=traj[i].cx-traj[i-1].cx,dy=traj[i].cy-traj[i-1].cy;cum[i]=cum[i-1]+Math.sqrt(dx*dx+dy*dy);}
+      var totalLen=cum[traj.length-1];
+      if(totalLen>2*arrowSize){
+        ctx.fillStyle=color;ctx.globalAlpha=0.92;
+        var j=1;
+        for(var k=1;k<=arrowCnt;k++){
+          var s=totalLen*k/(arrowCnt+1);
+          while(j<cum.length-1&&cum[j]<s)j++;
+          var segLen=cum[j]-cum[j-1];
+          if(segLen<=1e-9)continue;
+          var t=(s-cum[j-1])/segLen;
+          var ax=traj[j-1].cx+t*(traj[j].cx-traj[j-1].cx);
+          var ay=traj[j-1].cy+t*(traj[j].cy-traj[j-1].cy);
+          var dx=traj[j].cx-traj[j-1].cx,dy=traj[j].cy-traj[j-1].cy;
+          var ang=Math.atan2(dy,dx);
           ctx.beginPath();
-          ctx.moveTo(ax+arrowSz*Math.cos(ang),ay+arrowSz*Math.sin(ang));
-          ctx.lineTo(ax-arrowSz*Math.cos(ang-Math.PI/3.2),ay-arrowSz*Math.sin(ang-Math.PI/3.2));
-          ctx.lineTo(ax-arrowSz*Math.cos(ang+Math.PI/3.2),ay-arrowSz*Math.sin(ang+Math.PI/3.2));
+          ctx.moveTo(ax+arrowSize*Math.cos(ang),ay+arrowSize*Math.sin(ang));
+          ctx.lineTo(ax-arrowSize*Math.cos(ang-Math.PI/3.2),ay-arrowSize*Math.sin(ang-Math.PI/3.2));
+          ctx.lineTo(ax-arrowSize*Math.cos(ang+Math.PI/3.2),ay-arrowSize*Math.sin(ang+Math.PI/3.2));
           ctx.closePath();ctx.fill();
         }
       }
@@ -1837,7 +1865,9 @@ document.addEventListener('DOMContentLoaded',function(){
 
   /* Settings throttled */
   var thDraw=throttle(drawPortrait,80);
-  ['arrowCount','arrowScale','arrowOpacity','trajHeadSize'].forEach(function(id){document.getElementById(id).addEventListener('input',thDraw);});
+  ['arrowCount','arrowLength','arrowOpacity','trajHeadSize','trajHeadCount'].forEach(function(id){document.getElementById(id).addEventListener('input',thDraw);});
+  document.getElementById('variableArrows').addEventListener('change',drawPortrait);
+  document.getElementById('trajThickness').addEventListener('change',drawPortrait);
   document.getElementById('trajColor').addEventListener('change',drawPortrait);
   document.getElementById('fieldColor').addEventListener('change',drawPortrait);
   document.getElementById('showField').addEventListener('change',drawPortrait);
