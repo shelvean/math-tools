@@ -1500,7 +1500,19 @@ var lastDrag={x:0,y:0,down:false,canvas:null};
    before scheduling, so the deferred render reads the newest coordinates). */
 var _renderRAF = null;
 var _raf = window.requestAnimationFrame || function(cb){ return setTimeout(cb,16); };
+/* Interactive-quality gate. The fine (supersampled, bilinear) render in
+   renderBif costs several times a plain render - fine for a settled diagram
+   but too heavy to run on every frame of a continuous gesture. While gestures
+   fire we render the fast path (INTERACTING=true); ~180ms after the last one
+   we drop back to the fine path and repaint once, so the view the user lands
+   on is the high-quality one. */
+var INTERACTING = false;
+var _hiqTimer = null;
+
 function scheduleRender(){
+  INTERACTING = true;
+  if(_hiqTimer) clearTimeout(_hiqTimer);
+  _hiqTimer = setTimeout(function(){ INTERACTING=false; renderAll(); }, 180);
   if(_renderRAF!==null) return;
   _renderRAF = _raf(function(){ _renderRAF=null; renderAll(); });
 }
@@ -2797,25 +2809,38 @@ function renderBif(){
   var W=BW-PAD.l-PAD.r, H=BH-PAD.t-PAD.b;
   if(W<10||H<10){ctx.restore();return;}
 
-  /* ── Pixel-fill the dots (ImageData for speed) ── */
-  var imgW=Math.round(W*dpr), imgH=Math.round(H*dpr);
+  /* ── Pixel-fill the dots (ImageData for speed) ──
+     The density buffer is supersampled SS× beyond the device grid and then
+     smoothly downscaled on blit. Combined with the bilinear splat below, each
+     iterate lands as a sub-pixel speck instead of a full device pixel, so the
+     attractor reads as fine powder and the periodic branches resolve as thin
+     crisp lines rather than chunky dots. */
+  var fine = !INTERACTING;         /* supersample + bilinear only when settled */
+  var SS = fine ? 2 : 1;
+  var jStep = fine ? 1 : 2;        /* subsample iterates during gestures */
+  var wq = jStep;                  /* weight scale to keep preview density */
+  var imgW=Math.round(W*dpr*SS), imgH=Math.round(H*dpr*SS);
   var RSc=getRenderScratch(imgW,imgH);
   var imgData=RSc.imgData;
   var d=imgData.data;
 
   var pRange=VBIF.pMax-VBIF.pMin, xRange=VBIF.xMax-VBIF.xMin;
 
-  /* Density accumulation with sub-pixel y-splatting. Each iterate's
-     vertical position is split between the two nearest pixel rows
-     proportional to its fractional offset - this anti-aliases the
-     periodic branches so they read as smooth lines instead of jagged
-     staircases when the attractor sits between rows. The colour for a
-     pixel is the colour of the (unique) column that wrote to it. */
+  /* Density accumulation with bilinear sub-pixel splatting. Each iterate's
+     (parameter, x) position is spread across the four nearest supersampled
+     cells in proportion to its fractional offset in both axes. Spreading in x
+     as well as y (rather than snapping every column onto one hard pixel
+     column) is what turns the plot from chunky dots into fine powder: an
+     iterate contributes a total weight of 1, distributed as a soft speck, so
+     sparse chaotic regions read as a faint dusting while periodic branches -
+     where every iterate in a column piles onto the same spot - still saturate
+     into thin crisp lines. The colour for a cell is the colour of the first
+     column that wrote to it (adjacent columns carry near-identical colour). */
   var nPix = imgW*imgH;
   var count = RSc.count;
   var pxColor = RSc.pxColor;
   var hasColor = RSc.hasColor;
-  var hMax = imgH-1;
+  var hMax = imgH-1, wMax = imgW-1;
 
   /* Draw the live frame, or - while a recompute has not yet produced any
      columns - the last completed frame, so the diagram never blanks. Points
@@ -2826,46 +2851,55 @@ function renderBif(){
   for(var col=0;col<SRC.N_done;col++){
     var p=SRC.pArr[col];
     if(p<VBIF.pMin||p>VBIF.pMax)continue;
-    var px=Math.round((p-VBIF.pMin)/pRange*(imgW-1));
-    if(px<0||px>=imgW)continue;
+    var pxf=(p-VBIF.pMin)/pRange*wMax;
+    if(pxf<0||pxf>wMax)continue;
+    /* Fine: spread across the two nearest columns. Fast path: snap to one
+       column (fxr=0 collapses the bilinear splat to the cheaper y-only splat
+       used during gestures). */
+    var pxLo, fxr;
+    if(fine){ pxLo=Math.floor(pxf); fxr=pxf-pxLo; }
+    else    { pxLo=Math.round(pxf); fxr=0; }
+    var pxHi=pxLo+1, wxL=1-fxr;
 
     var R=SRC.colColors[col*4], G=SRC.colColors[col*4+1];
     var B2=SRC.colColors[col*4+2];
 
-    for(var j=0;j<SRC.xCounts[col];j++){
+    /* During gestures, deposit every jStep-th iterate and scale its weight up
+       to match, so the fast preview keeps the same density at a fraction of
+       the accumulation cost. Settled renders visit every iterate. */
+    var cnt=SRC.xCounts[col];
+    for(var j=0;j<cnt;j+=jStep){
       var xv=SRC.xArrs[col][j];
       if(xv<VBIF.xMin||xv>VBIF.xMax)continue;
       var pyf = hMax - (xv-VBIF.xMin)/xRange*hMax;
       if(pyf<0||pyf>hMax)continue;
-      var pyLo = Math.floor(pyf);
-      var frac = pyf - pyLo;
-      var pyHi = pyLo + 1;
+      var pyLo = Math.floor(pyf), fyr=pyf-pyLo, pyHi=pyLo+1;
+      var wyLo=(1-fyr)*wq, wyHi=fyr*wq;
 
+      /* four-cell bilinear deposit; each guarded against the buffer edge */
+      var rowLo=pyLo*imgW, rowHi=pyHi*imgW, idx;
       if(pyLo>=0 && pyLo<imgH){
-        var idxL = pyLo*imgW + px;
-        count[idxL] += (1-frac);
-        if(!hasColor[idxL]){
-          var cL=idxL*3;
-          pxColor[cL]=R; pxColor[cL+1]=G; pxColor[cL+2]=B2;
-          hasColor[idxL]=1;
-        }
+        if(pxLo>=0){ idx=rowLo+pxLo; count[idx]+=wxL*wyLo;
+          if(!hasColor[idx]){var c0=idx*3;pxColor[c0]=R;pxColor[c0+1]=G;pxColor[c0+2]=B2;hasColor[idx]=1;} }
+        if(pxHi<=wMax && fxr>0){ idx=rowLo+pxHi; count[idx]+=fxr*wyLo;
+          if(!hasColor[idx]){var c1=idx*3;pxColor[c1]=R;pxColor[c1+1]=G;pxColor[c1+2]=B2;hasColor[idx]=1;} }
       }
-      if(pyHi>=0 && pyHi<imgH && frac>0){
-        var idxH = pyHi*imgW + px;
-        count[idxH] += frac;
-        if(!hasColor[idxH]){
-          var cH=idxH*3;
-          pxColor[cH]=R; pxColor[cH+1]=G; pxColor[cH+2]=B2;
-          hasColor[idxH]=1;
-        }
+      if(pyHi<imgH && wyHi>0){
+        if(pxLo>=0){ idx=rowHi+pxLo; count[idx]+=wxL*wyHi;
+          if(!hasColor[idx]){var c2=idx*3;pxColor[c2]=R;pxColor[c2+1]=G;pxColor[c2+2]=B2;hasColor[idx]=1;} }
+        if(pxHi<=wMax && fxr>0){ idx=rowHi+pxHi; count[idx]+=fxr*wyHi;
+          if(!hasColor[idx]){var c3=idx*3;pxColor[c3]=R;pxColor[c3+1]=G;pxColor[c3+2]=B2;hasColor[idx]=1;} }
       }
     }
   }
 
   /* Tone-mapped composite onto the white background. K controls how
-     quickly density saturates - small K keeps chaos soft, large K
-     darkens early. K≈0.5 gives ~39% alpha at 1 hit, ~99% at 10. */
-  var K = 0.5;
+     quickly density saturates - small K keeps chaos soft (fine powder),
+     large K darkens early. With the supersampled bilinear splat each cell
+     holds a fraction of an iterate, so K is set low: a lone speck stays
+     faint and only genuinely dense loci (the periodic branches, chaotic
+     band edges) build up toward opacity. */
+  var K = 0.30;
   for(var i=0;i<nPix;i++){
     var c=count[i]; if(c<=0) continue;
     var alpha = 1 - Math.exp(-c*K);
@@ -2884,6 +2918,9 @@ function renderBif(){
   tc.putImageData(imgData,0,0);
   offCtx.save();
   offCtx.setTransform(1,0,0,1,0,0);
+  /* Smoothly downscale the SS-supersampled buffer to the device grid so the
+     sub-pixel specks average into fine anti-aliased powder. */
+  offCtx.imageSmoothingEnabled=true; offCtx.imageSmoothingQuality='high';
   offCtx.drawImage(tempCanvas, Math.round(PAD.l*dpr), Math.round(PAD.t*dpr), Math.round(W*dpr), Math.round(H*dpr));
   offCtx.restore();
 
