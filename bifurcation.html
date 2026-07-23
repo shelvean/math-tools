@@ -1360,6 +1360,16 @@ var BDATA = {
   colColors: null   /* per-column RGBA based on λ */
 };
 
+/* Last fully-computed frame, kept so the diagram never blanks during a
+   recompute. BDATA.N_done is atomic - it is 0 from the moment a progressive
+   level starts (allocBDATA) until every shard of that level finishes - so a
+   recompute would otherwise leave the canvas empty for the whole level (very
+   visible on slower maps like the sine map, which flash blank while scrolling).
+   renderBif falls back to this snapshot whenever the live frame has no columns
+   yet; the stored points are in world (p,x) coords, so they map correctly into
+   whatever the current view happens to be. */
+var BDATA_PREV = null;
+
 /* View state - visible window (changes with zoom/pan) */
 var VBIF = { pMin:2.5, pMax:4, xMin:0, xMax:1, dflt:{pMin:2.5,pMax:4,xMin:0,xMax:1} };
 var VLYA = { pMin:2.5, pMax:4, lyaMin:-1.6, lyaMax:0.9, dflt:{pMin:2.5,pMax:4,lyaMin:-1.6,lyaMax:0.9} };
@@ -2101,6 +2111,22 @@ function applyZoomBoost(cfg){
 }
 
 function allocBDATA(N){
+  /* Snapshot the current fully-computed frame before we throw its arrays
+     away, so renderBif can keep showing it until the new level lands. Only
+     snapshot a complete frame (N_done===N_cols) - a half-filled one would
+     draw a partial diagram. allocBDATA replaces the array references below
+     rather than mutating them, so these refs stay valid and independent. */
+  if(BDATA.N_done>0 && BDATA.N_done===BDATA.N_cols){
+    BDATA_PREV = {
+      mapId:     ST.mapId,
+      N_done:    BDATA.N_done,
+      pArr:      BDATA.pArr,
+      xArrs:     BDATA.xArrs,
+      xCounts:   BDATA.xCounts,
+      lyaArr:    BDATA.lyaArr,
+      colColors: BDATA.colColors
+    };
+  }
   BDATA.N_cols = N;
   BDATA.N_done = 0;
   BDATA.pArr     = new Float32Array(N);
@@ -2791,17 +2817,23 @@ function renderBif(){
   var hasColor = RSc.hasColor;
   var hMax = imgH-1;
 
-  for(var col=0;col<BDATA.N_done;col++){
-    var p=BDATA.pArr[col];
+  /* Draw the live frame, or - while a recompute has not yet produced any
+     columns - the last completed frame, so the diagram never blanks. Points
+     are stored in world (p,x) coords and clipped to the current view below,
+     so an older frame renders correctly under the current zoom/pan. */
+  var SRC = (BDATA.N_done>0) ? BDATA
+          : ((BDATA_PREV && BDATA_PREV.mapId===ST.mapId) ? BDATA_PREV : BDATA);
+  for(var col=0;col<SRC.N_done;col++){
+    var p=SRC.pArr[col];
     if(p<VBIF.pMin||p>VBIF.pMax)continue;
     var px=Math.round((p-VBIF.pMin)/pRange*(imgW-1));
     if(px<0||px>=imgW)continue;
 
-    var R=BDATA.colColors[col*4], G=BDATA.colColors[col*4+1];
-    var B2=BDATA.colColors[col*4+2];
+    var R=SRC.colColors[col*4], G=SRC.colColors[col*4+1];
+    var B2=SRC.colColors[col*4+2];
 
-    for(var j=0;j<BDATA.xCounts[col];j++){
-      var xv=BDATA.xArrs[col][j];
+    for(var j=0;j<SRC.xCounts[col];j++){
+      var xv=SRC.xArrs[col][j];
       if(xv<VBIF.xMin||xv>VBIF.xMax)continue;
       var pyf = hMax - (xv-VBIF.xMin)/xRange*hMax;
       if(pyf<0||pyf>hMax)continue;
@@ -3151,13 +3183,17 @@ function renderLya(){
     ctx.restore();
   }
 
-  /* Draw Lyapunov curve with colour by sign */
-  if(BDATA.N_done>1){
+  /* Draw Lyapunov curve with colour by sign. Like renderBif, fall back to the
+     last completed frame while a recompute has produced no columns yet, so the
+     curve never blanks mid-scroll. */
+  var LSRC = (BDATA.N_done>0) ? BDATA
+           : ((BDATA_PREV && BDATA_PREV.mapId===ST.mapId) ? BDATA_PREV : BDATA);
+  if(LSRC.N_done>1){
     var prevCx=null, prevCy=null, prevLya=null;
-    for(var col=0;col<BDATA.N_done;col++){
-      var p=BDATA.pArr[col];
+    for(var col=0;col<LSRC.N_done;col++){
+      var p=LSRC.pArr[col];
       if(p<VLYA.pMin||p>VLYA.pMax){prevCx=null;continue;}
-      var lv=BDATA.lyaArr[col];
+      var lv=LSRC.lyaArr[col];
       if(!isFinite(lv)){prevCx=null;continue;}
       var cx=PAD.l+(p-VLYA.pMin)/pRange*W;
       var cy=PAD.t+H-(lv-VLYA.lyaMin)/lRange*H;
