@@ -115,6 +115,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 }
 .poly-scroll-box::-webkit-scrollbar{width:6px;height:6px;}
 .poly-scroll-box::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px;}
+/* Monomial coefficient list: one a_j = value per chip, wraps instead of overflowing */
+.coef-list{display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem 1.5rem;margin:.6rem 0 .2rem;}
+.coef-list span{white-space:nowrap;}
 /* Panel: pwrap/phdr for plot and output panels */
 .pwrap{border:2px solid var(--bdr2);border-radius:var(--r);overflow:hidden;background:var(--card);margin-bottom:.875rem;}
 .phdr{padding:.35rem .75rem;display:flex;align-items:center;gap:.4rem;background:var(--sect);border-bottom:1px solid var(--bdr2);font-size:.8125rem;font-weight:700;color:var(--txt2);}
@@ -767,7 +770,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 <footer class="footer" role="contentinfo">
   <p class="footer-copy">&copy; 2026 Shelvean Kapita - Department of Mathematics, Texas A&amp;M University. Educational content licensed under <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License (CC BY 4.0)</a>; source code released under the <a href="https://opensource.org/licenses/MIT">MIT License</a>.</p>
   <p class="footer-a11y"><strong>Accessibility:</strong> This tool is designed to meet <a href="https://www.w3.org/TR/WCAG21/">WCAG 2.1 AA</a> standards. It includes keyboard navigation, screen reader support via MathJax, high-contrast mode, and visible focus indicators. If you encounter any accessibility issues, please contact <a href="mailto:kapita@tamu.edu">kapita@tamu.edu</a>.</p>
-  <p class="footer-modified">Last modified: March 2026.</p>
+  <p class="footer-modified">Last modified: September 2026.</p>
 </footer>
 </main>
 
@@ -1078,11 +1081,20 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
             if (method === 'monomial') {
                 const V = x.map(xi => Array.from({length:n}, (_,j) => Math.pow(xi,j)));
                 const coeffs = solveLinearSystem(V, y);
+                // Zero out round-off noise: a term a_j x^j whose largest possible
+                // contribution on the data interval is negligible relative to the
+                // data scale (e.g. 9.9e-12 x^9 for an even function) is not real.
+                const xScale = Math.max(...x.map(Math.abs));
+                const yScale = Math.max(...y.map(Math.abs));
+                for (let j = 0; j < n; j++) {
+                    const contrib = Math.abs(coeffs[j]) * Math.pow(xScale, j);
+                    if (contrib < 1e-12 || (yScale > 0 && contrib < 1e-10 * yScale)) coeffs[j] = 0;
+                }
                 // Matrix
                 matrixDiv = document.createElement('div'); matrixDiv.id = 'matrix-section';
                 let vRows = V.map(row => row.map(v=>formatNumber(v)).join(' & ')+' \\\\ ');
                 let vMat = '\\begin{pmatrix}'+vRows.join('')+'\\end{pmatrix}\\begin{pmatrix}'+
-                    Array.from({length:n},(_,i)=>'a_'+i).join(' \\\\ ')+'\\end{pmatrix}=\\begin{pmatrix}'+
+                    Array.from({length:n},(_,i)=>'a_{'+i+'}').join(' \\\\ ')+'\\end{pmatrix}=\\begin{pmatrix}'+
                     y.map(yy=>toFraction(yy)).join(' \\\\ ')+'\\end{pmatrix}';
                 const vanDiv = document.createElement('div');
                 katex.render(vMat, vanDiv, {throwOnError:false, displayMode:true});
@@ -1091,18 +1103,23 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
                 polynomialDiv = document.createElement('div'); polynomialDiv.id = 'polynomial-section';
                 const rawTerms = [];
                 for (let j = n-1; j >= 0; j--) {
-                    const a = coeffs[j]; if (Math.abs(a) < 1e-12) continue;
+                    const a = coeffs[j]; if (a === 0) continue;
                     let ct = toFraction(a); if (ct === '0') continue;
                     const sign = ct.startsWith('-') ? '-' : '+';
                     ct = ct.replace(/^-/,'');
-                    const cs = (ct==='1'&&j!==0)?'':ct;
+                    let cs = (ct==='1'&&j!==0)?'':ct;
+                    // A scientific-notation coefficient (c \cdot 10^{k}) followed by x^j
+                    // reads as 10^{k}x^{j}; parenthesize it.
+                    if (j !== 0 && cs.indexOf('\\cdot') !== -1) cs = '\\left(' + cs + '\\right)';
                     const vt = j===0?'':(j===1?'x':'x^{'+j+'}');
                     rawTerms.push({ sign, tex: cs+vt });
                 }
                 polynomialDiv.appendChild(renderPolyScrollBox(rawTerms, 'p(x) ='));
-                // coefficients line
-                const cDiv = document.createElement('div');
-                katex.render(coeffs.map((a,j)=>'a_{'+j+'}='+toFraction(a)).join(',\\quad'), cDiv, {throwOnError:false,displayMode:true});
+                // coefficients list: one chip per a_j so the row wraps instead of overflowing
+                const cDiv = document.createElement('div'); cDiv.className = 'coef-list';
+                cDiv.setAttribute('aria-label', 'Monomial coefficients');
+                cDiv.innerHTML = coeffs.map((a,j)=>'<span>'+katex.renderToString('a_{'+j+'} = '+toFraction(a))+'</span>').join('');
+                renderMathInElement(cDiv);
                 polynomialDiv.appendChild(cDiv); hasPolynomial = true;
                 pFunc = (xx) => { let r=0; for(let j=0;j<n;j++) r+=coeffs[j]*Math.pow(xx,j); return isFinite(r)?r:NaN; };
             }
@@ -1123,7 +1140,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
                     let yt = toFraction(yj); if(yt==='0') continue;
                     const sign = yt.startsWith('-')?'-':'+';
                     yt = yt.replace(/^-/,'');
-                    rawTerms2.push({ sign, tex: (yt==='1'?'':yt)+'\\ell_'+j+'(x)' });
+                    rawTerms2.push({ sign, tex: (yt==='1'?'':yt)+'\\ell_{'+j+'}(x)' });
                 }
                 polynomialDiv.appendChild(renderPolyScrollBox(rawTerms2, 'p(x) ='));
                 const cardsDiv = document.createElement('div'); cardsDiv.className = 'flex flex-col space-y-2';
