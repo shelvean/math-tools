@@ -1070,9 +1070,17 @@ function drawTabOutline(pdf,poly,x,y){
 
 function parseRosterText(text){
   /* Each line -> {first, last, section}. last/section are '' when not given.
-     "Last, First"           -> first "First", last "Last", no section
-     "Last, First, Section"  -> first "First", last "Last", section "Section"
-     anything else           -> first word is the first name, the rest is the last name */
+     "Last, First"              -> first "First", last "Last", no section
+     "Last, First, Section"     -> first "First", last "Last", section "Section"
+     "First [MI] Course ###-### Last"  -> a course/section code (e.g. "Math 410-565")
+       embedded in plain text with no commas - whatever precedes it is the
+       first name, whatever follows is the last name. This is what a roster
+       pasted as plain space-aligned columns (no tabs/commas surviving the
+       paste) looks like, and it must be tried before the blind
+       first-word/rest-of-line split below, which would otherwise swallow
+       the course/section text into the "last name".
+     anything else              -> first word is the first name, the rest is the last name */
+  var sectionRe=/([A-Za-z]{2,}\.?\s+\d{2,5}-\d{1,5})/;
   return text.split(/\r\n|\r|\n/).map(function(line){
     line=line.trim();
     if(!line) return null;
@@ -1084,6 +1092,12 @@ function parseRosterText(text){
     }
     if(parts.length===2&&parts[0]&&parts[1]){
       return {first:parts[1], last:parts[0], section:''};
+    }
+    var sm=line.match(sectionRe);
+    if(sm){
+      var before=line.slice(0,sm.index).trim();
+      var after=line.slice(sm.index+sm[0].length).trim();
+      if(before&&after) return {first:before, last:after, section:sm[1].trim()};
     }
     var words=line.split(/\s+/).filter(Boolean);
     if(words.length>1) return {first:words[0], last:words.slice(1).join(' '), section:''};
