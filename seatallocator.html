@@ -351,6 +351,84 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
 
   <div id="status" class="status" role="alert" aria-live="assertive"></div>
 
+  <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
+    <summary>🏷 Print seat stickers with student names (optional)</summary>
+    <div style="margin:.5rem 0 .1rem;">
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker will show that student's name (or initials, if the name doesn't fit) and their assigned seat - lift it off the printed sheet and stick it on that student's exam copy.</p>
+      <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
+      <div class="cf" style="margin-bottom:.5rem;">
+        <label for="namesInput">Student names (one per line, e.g. "Last, First" or "First Last")</label>
+        <textarea id="namesInput" rows="4" style="width:100%;font:inherit;padding:.4rem .5rem;border:2px solid var(--bdr);border-radius:.4rem;background:var(--card);color:var(--txt);resize:vertical;" placeholder="Doe, Jane&#10;Smith, John&#10;…"></textarea>
+        <div id="namesHint" style="font-size:.8rem;color:var(--muted);margin-top:.2rem;"></div>
+      </div>
+      <div class="cbar" style="margin-bottom:.5rem;">
+        <div class="cf cf-num">
+          <label for="namesFile">Or upload a roster file (.txt/.csv)</label>
+          <input type="file" id="namesFile" accept=".txt,.csv">
+        </div>
+        <div class="cf cf-room">
+          <label for="labelPreset">Label sheet</label>
+          <select id="labelPreset">
+            <option value="avery5160">Avery 5160 - Letter, 1"×2⅝", 30/sheet</option>
+            <option value="avery5163">Avery 5163 - Letter, 2"×4", 10/sheet</option>
+            <option value="custom">Custom size…</option>
+          </select>
+        </div>
+        <div class="cf">
+          <label style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
+            <input type="checkbox" id="useInitials" style="width:auto;min-height:auto;"> Use initials only
+          </label>
+        </div>
+      </div>
+      <div class="cbar" id="customSizeWrap" style="display:none;margin-bottom:.5rem;">
+        <div class="cf" style="flex:0 1 110px;">
+          <label for="custPage">Paper</label>
+          <select id="custPage"><option value="letter">Letter</option><option value="a4">A4</option></select>
+        </div>
+        <div class="cf" style="flex:0 1 90px;">
+          <label for="custW">Width (mm)</label>
+          <input type="number" id="custW" min="10" max="200" step="0.5" placeholder="63.5">
+        </div>
+        <div class="cf" style="flex:0 1 90px;">
+          <label for="custH">Height (mm)</label>
+          <input type="number" id="custH" min="10" max="200" step="0.5" placeholder="33.9">
+        </div>
+        <div class="cf" style="flex:0 1 80px;">
+          <label for="custCols">Columns</label>
+          <input type="number" id="custCols" min="1" max="20" step="1" placeholder="3">
+        </div>
+        <div class="cf" style="flex:0 1 80px;">
+          <label for="custRows">Rows</label>
+          <input type="number" id="custRows" min="1" max="30" step="1" placeholder="8">
+        </div>
+        <div class="cf" style="flex:0 1 90px;">
+          <label for="custGapX">Gap X (mm)</label>
+          <input type="number" id="custGapX" min="0" max="30" step="0.5" placeholder="0">
+        </div>
+        <div class="cf" style="flex:0 1 90px;">
+          <label for="custGapY">Gap Y (mm)</label>
+          <input type="number" id="custGapY" min="0" max="30" step="0.5" placeholder="0">
+        </div>
+      </div>
+      <div class="cbar" style="margin-bottom:.5rem;">
+        <div class="cf" style="flex:0 1 130px;">
+          <label for="offX">Nudge right (mm)</label>
+          <input type="number" id="offX" step="0.5" value="0">
+        </div>
+        <div class="cf" style="flex:0 1 130px;">
+          <label for="offY">Nudge down (mm)</label>
+          <input type="number" id="offY" step="0.5" value="0">
+        </div>
+        <div class="cf" style="flex:2 1 220px;justify-content:flex-end;">
+          <label style="visibility:hidden;">.</label>
+          <span style="font-size:.8rem;color:var(--muted);">If stickers are misaligned on your printed sheet, print one test page, measure the offset, and adjust these before re-printing.</span>
+        </div>
+      </div>
+      <div id="stkStatus" class="status" role="status"></div>
+      <button id="stkBtn" class="btn btn-pd" type="button" disabled>🏷 Generate Stickers (PDF)</button>
+    </div>
+  </details>
+
   <dl class="stats" id="stats" style="display:none" role="region" aria-label="Statistics" aria-live="polite">
     <div class="sc"><dt class="sl">Seats</dt>      <dd class="sv" style="color:#1e40af" id="s-tot">-</dd></div>
     <div class="sc"><dt class="sl">Left-hand</dt>  <dd class="sv" style="color:#92400e" id="s-lh">-</dd></div>
@@ -930,6 +1008,155 @@ function parseExcluded(raw){
 
 var APP={selected:[],outputData:[]};
 
+/* ══════════════════════════════════════════════════════
+   SEAT STICKERS  (name + seat labels printable as sticker sheets)
+══════════════════════════════════════════════════════ */
+var PT_PER_MM=72/25.4;
+function mm(v){return v*PT_PER_MM;}
+var LABEL_PRESETS={
+  avery5160:{name:'Avery 5160 (Letter, 1"×2⅝", 30/sheet)', page:'letter', labelW:2.625*72, labelH:1*72, cols:3, rows:10, marginLeft:0.1875*72, marginTop:0.5*72, pitchX:2.75*72, pitchY:1*72},
+  avery5163:{name:'Avery 5163 (Letter, 2"×4", 10/sheet)',  page:'letter', labelW:4*72,     labelH:2*72, cols:2, rows:5,  marginLeft:0.125*72,  marginTop:0.5*72, pitchX:4.125*72,pitchY:2*72}
+};
+
+function parseRosterText(text){
+  return text.split(/\r\n|\r|\n/).map(function(line){
+    line=line.trim();
+    if(!line) return null;
+    line=line.replace(/^"(.*)"$/,'$1').trim();
+    /* "Last, First" (single comma, two non-empty parts) -> "First Last" */
+    var m=line.match(/^([^,]+),\s*([^,]+)$/);
+    if(m){
+      var last=m[1].trim(), first=m[2].trim();
+      if(last&&first) return first+' '+last;
+    }
+    return line;
+  }).filter(function(x){return x!==null && x!=='';});
+}
+
+function toInitials(name){
+  var parts=name.trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '';
+  if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+}
+
+function fitFontSize(pdf,text,maxWidthPt,maxSize,minSize){
+  var size=maxSize;
+  pdf.setFont('helvetica','bold');
+  while(size>minSize){
+    pdf.setFontSize(size);
+    if(pdf.getTextWidth(text)<=maxWidthPt) return size;
+    size-=0.5;
+  }
+  pdf.setFontSize(minSize);
+  return minSize;
+}
+
+function getLabelConfig(preset){
+  var offX=mm(parseFloat(document.getElementById('offX').value)||0);
+  var offY=mm(parseFloat(document.getElementById('offY').value)||0);
+  if(preset==='custom'){
+    var pageFmt=document.getElementById('custPage').value;
+    var w=parseFloat(document.getElementById('custW').value);
+    var h=parseFloat(document.getElementById('custH').value);
+    var cols=parseInt(document.getElementById('custCols').value,10);
+    var rows=parseInt(document.getElementById('custRows').value,10);
+    var gapX=parseFloat(document.getElementById('custGapX').value)||0;
+    var gapY=parseFloat(document.getElementById('custGapY').value)||0;
+    if(!w||!h||!cols||!rows||cols<1||rows<1) return null;
+    var labelW=mm(w),labelH=mm(h),pitchX=mm(w+gapX),pitchY=mm(h+gapY);
+    var pageW=pageFmt==='a4'?595.28:612, pageH=pageFmt==='a4'?841.89:792;
+    var totalW=cols*labelW+(cols-1)*mm(gapX), totalH=rows*labelH+(rows-1)*mm(gapY);
+    return {name:'Custom ('+w+'×'+h+'mm, '+cols+'×'+rows+')', pageFmt:pageFmt,labelW:labelW,labelH:labelH,cols:cols,rows:rows,
+            marginLeft:(pageW-totalW)/2+offX, marginTop:(pageH-totalH)/2+offY, pitchX:pitchX,pitchY:pitchY};
+  }
+  var p=LABEL_PRESETS[preset];
+  if(!p) return null;
+  return {name:p.name,pageFmt:p.page,labelW:p.labelW,labelH:p.labelH,cols:p.cols,rows:p.rows,
+          marginLeft:p.marginLeft+offX,marginTop:p.marginTop+offY,pitchX:p.pitchX,pitchY:p.pitchY};
+}
+
+function showStkStatus(msg,type){var e=document.getElementById('stkStatus');e.textContent=msg;e.className='status on '+(type==='err'?'s-err':'s-ok');say(msg);}
+
+function updateNamesCount(){
+  var hint=document.getElementById('namesHint');
+  if(!hint) return;
+  var n=parseRosterText(document.getElementById('namesInput').value).length;
+  var seatN=APP.selected.length;
+  if(!n){hint.textContent='';return;}
+  var t=n+' name'+(n!==1?'s':'')+' entered';
+  if(seatN) t+=' · '+seatN+' seat'+(seatN!==1?'s':'')+' allocated'+(n!==seatN?' (counts don’t match yet)':' ✓');
+  hint.textContent=t;
+}
+
+document.getElementById('namesInput').addEventListener('input',updateNamesCount);
+document.getElementById('namesFile').addEventListener('change',function(e){
+  var f=e.target.files&&e.target.files[0];
+  if(!f) return;
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    document.getElementById('namesInput').value=ev.target.result;
+    updateNamesCount();
+    say('Roster file loaded.');
+  };
+  reader.onerror=function(){showStkStatus('Could not read that file.','err');};
+  reader.readAsText(f);
+});
+document.getElementById('labelPreset').addEventListener('change',function(){
+  document.getElementById('customSizeWrap').style.display=this.value==='custom'?'flex':'none';
+});
+
+document.getElementById('stkBtn').addEventListener('click',function(){
+  var btn=this,orig=btn.innerHTML;
+  if(!APP.selected.length){showStkStatus('Allocate seats first.','err');return;}
+  var names=parseRosterText(document.getElementById('namesInput').value);
+  if(!names.length){showStkStatus('Paste or upload a roster of student names first.','err');return;}
+  if(names.length!==APP.selected.length){
+    showStkStatus('You entered '+names.length+' name(s) but '+APP.selected.length+' seat(s) were allocated. Enter exactly '+APP.selected.length+' names, one per line, in the same order as your roster.','err');
+    return;
+  }
+  var preset=document.getElementById('labelPreset').value;
+  var cfg=getLabelConfig(preset);
+  if(!cfg){showStkStatus('Fill in a valid custom label width, height, columns and rows.','err');return;}
+  var useInit=document.getElementById('useInitials').checked;
+  btn.innerHTML='⏳ …';btn.disabled=true;
+  try{
+    var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
+    var perPage=cfg.cols*cfg.rows;
+    var pad=6;
+    for(var i=0;i<names.length;i++){
+      var posOnPage=i%perPage;
+      if(i>0&&posOnPage===0) pdf.addPage(cfg.pageFmt,'portrait');
+      var col=posOnPage%cfg.cols, row=Math.floor(posOnPage/cfg.cols);
+      var x=cfg.marginLeft+col*cfg.pitchX, y=cfg.marginTop+row*cfg.pitchY;
+      pdf.setDrawColor(210);pdf.setLineWidth(0.4);
+      pdf.rect(x,y,cfg.labelW,cfg.labelH);
+      var seat=APP.selected[i], full=names[i];
+      var display=useInit?toInitials(full):full;
+      var maxTextW=Math.max(cfg.labelW-2*pad,10);
+      var nameSize=fitFontSize(pdf,display,maxTextW,Math.min(16,cfg.labelH*0.55),6);
+      if(!useInit){
+        pdf.setFontSize(nameSize);
+        if(pdf.getTextWidth(display)>maxTextW&&nameSize<=6){
+          display=toInitials(full);
+          nameSize=fitFontSize(pdf,display,maxTextW,Math.min(16,cfg.labelH*0.55),6);
+        }
+      }
+      pdf.setFont('helvetica','bold');pdf.setFontSize(nameSize);pdf.setTextColor(20);
+      pdf.text(display,x+cfg.labelW/2,y+cfg.labelH*0.42,{align:'center'});
+      var seatSize=fitFontSize(pdf,'Seat '+seat,maxTextW,Math.min(20,cfg.labelH*0.42),7);
+      pdf.setFont('helvetica','bold');pdf.setFontSize(seatSize);pdf.setTextColor(29,78,216);
+      pdf.text('Seat '+seat,x+cfg.labelW/2,y+cfg.labelH*0.78,{align:'center'});
+    }
+    pdf.save('seat_stickers.pdf');
+    showStkStatus('Generated '+names.length+' sticker'+(names.length!==1?'s':'')+' - '+cfg.name+'.','ok');
+  }catch(e){
+    showStkStatus('Sticker error: '+e.message,'err');
+  }finally{
+    btn.innerHTML=orig;btn.disabled=!APP.selected.length;
+  }
+});
+
 document.getElementById('goBtn').addEventListener('click',function(){
   clearStatus();
   var key=document.getElementById('roomSel').value;
@@ -965,6 +1192,8 @@ document.getElementById('goBtn').addEventListener('click',function(){
   document.getElementById('vizWrap').style.display='flex';
   document.getElementById('txBtn').disabled=false;
   document.getElementById('pdBtn').disabled=false;
+  document.getElementById('stkBtn').disabled=false;
+  updateNamesCount();
   var msg='Allocated '+n+' student'+(n!==1?'s':'')+'.';
   showStatus(msg,'ok');say(msg);
 });
@@ -976,8 +1205,10 @@ document.getElementById('clBtn').addEventListener('click',function(){
   document.getElementById('vizWrap').style.display='none';
   document.getElementById('txBtn').disabled=true;
   document.getElementById('pdBtn').disabled=true;
+  document.getElementById('stkBtn').disabled=true;
   clearStatus();Plotly.purge('chart');
   APP.selected=[];APP.outputData=[];say('Cleared.');
+  updateNamesCount();
 });
 
 document.getElementById('txBtn').addEventListener('click',function(){
