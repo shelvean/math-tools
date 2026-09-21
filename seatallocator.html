@@ -354,11 +354,11 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker will show that student's name (or initials, if the name doesn't fit) and their assigned seat - lift it off the printed sheet and stick it on that student's exam copy.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker will show that student's name (or initials, if the name doesn't fit), their course/section in parentheses if you add one, and their assigned seat - lift it off the printed sheet and stick it on that student's exam copy.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
-        <label for="namesInput">Student names (one per line, e.g. "Last, First" or "First Last")</label>
-        <textarea id="namesInput" rows="4" style="width:100%;font:inherit;padding:.4rem .5rem;border:2px solid var(--bdr);border-radius:.4rem;background:var(--card);color:var(--txt);resize:vertical;" placeholder="Doe, Jane&#10;Smith, John&#10;…"></textarea>
+        <label for="namesInput">Student names (one per line: "Last, First" - optionally add a section, e.g. "Last, First, Section")</label>
+        <textarea id="namesInput" rows="4" style="width:100%;font:inherit;padding:.4rem .5rem;border:2px solid var(--bdr);border-radius:.4rem;background:var(--card);color:var(--txt);resize:vertical;" placeholder="Doe, Jane&#10;Jordan, Michael, Math 140-523&#10;…"></textarea>
         <div id="namesHint" style="font-size:.8rem;color:var(--muted);margin-top:.2rem;"></div>
       </div>
       <div class="cbar" style="margin-bottom:.5rem;">
@@ -1019,18 +1019,24 @@ var LABEL_PRESETS={
 };
 
 function parseRosterText(text){
+  /* Each line -> {name, section}. section is '' when not given.
+     "Last, First"           -> name "First Last", no section
+     "Last, First, Section"  -> name "First Last", section "Section"
+     anything else           -> the whole line as name, no section */
   return text.split(/\r\n|\r|\n/).map(function(line){
     line=line.trim();
     if(!line) return null;
     line=line.replace(/^"(.*)"$/,'$1').trim();
-    /* "Last, First" (single comma, two non-empty parts) -> "First Last" */
-    var m=line.match(/^([^,]+),\s*([^,]+)$/);
-    if(m){
-      var last=m[1].trim(), first=m[2].trim();
-      if(last&&first) return first+' '+last;
+    if(!line) return null;
+    var parts=line.split(',').map(function(p){return p.trim();});
+    if(parts.length===3&&parts[0]&&parts[1]){
+      return {name:parts[1]+' '+parts[0], section:parts[2]};
     }
-    return line;
-  }).filter(function(x){return x!==null && x!=='';});
+    if(parts.length===2&&parts[0]&&parts[1]){
+      return {name:parts[1]+' '+parts[0], section:''};
+    }
+    return {name:line, section:''};
+  }).filter(function(x){return x!==null && x.name!=='';});
 }
 
 function toInitials(name){
@@ -1131,22 +1137,34 @@ document.getElementById('stkBtn').addEventListener('click',function(){
       var x=cfg.marginLeft+col*cfg.pitchX, y=cfg.marginTop+row*cfg.pitchY;
       pdf.setDrawColor(210);pdf.setLineWidth(0.4);
       pdf.rect(x,y,cfg.labelW,cfg.labelH);
-      var seat=APP.selected[i], full=names[i];
+      var seat=APP.selected[i], entry=names[i], full=entry.name, section=entry.section;
+      var hasSection=!!section;
       var display=useInit?toInitials(full):full;
       var maxTextW=Math.max(cfg.labelW-2*pad,10);
-      var nameSize=fitFontSize(pdf,display,maxTextW,Math.min(16,cfg.labelH*0.55),6);
+      var nameMax=hasSection?Math.min(13,cfg.labelH*0.30):Math.min(16,cfg.labelH*0.55);
+      var nameSize=fitFontSize(pdf,display,maxTextW,nameMax,6);
       if(!useInit){
         pdf.setFontSize(nameSize);
         if(pdf.getTextWidth(display)>maxTextW&&nameSize<=6){
           display=toInitials(full);
-          nameSize=fitFontSize(pdf,display,maxTextW,Math.min(16,cfg.labelH*0.55),6);
+          nameSize=fitFontSize(pdf,display,maxTextW,nameMax,6);
         }
       }
+      var yName=y+cfg.labelH*(hasSection?0.30:0.42);
+      var ySeat=y+cfg.labelH*(hasSection?0.84:0.78);
       pdf.setFont('helvetica','bold');pdf.setFontSize(nameSize);pdf.setTextColor(20);
-      pdf.text(display,x+cfg.labelW/2,y+cfg.labelH*0.42,{align:'center'});
-      var seatSize=fitFontSize(pdf,'Seat '+seat,maxTextW,Math.min(20,cfg.labelH*0.42),7);
+      pdf.text(display,x+cfg.labelW/2,yName,{align:'center'});
+      if(hasSection){
+        var sectionText='('+section+')';
+        var sectionMax=Math.min(10,cfg.labelH*0.22);
+        var sectionSize=fitFontSize(pdf,sectionText,maxTextW,sectionMax,6);
+        pdf.setFont('helvetica','bold');pdf.setFontSize(sectionSize);pdf.setTextColor(107,114,128);
+        pdf.text(sectionText,x+cfg.labelW/2,y+cfg.labelH*0.58,{align:'center'});
+      }
+      var seatMax=hasSection?Math.min(14,cfg.labelH*0.30):Math.min(20,cfg.labelH*0.42);
+      var seatSize=fitFontSize(pdf,'Seat '+seat,maxTextW,seatMax,7);
       pdf.setFont('helvetica','bold');pdf.setFontSize(seatSize);pdf.setTextColor(29,78,216);
-      pdf.text('Seat '+seat,x+cfg.labelW/2,y+cfg.labelH*0.78,{align:'center'});
+      pdf.text('Seat '+seat,x+cfg.labelW/2,ySeat,{align:'center'});
     }
     pdf.save('seat_stickers.pdf');
     showStkStatus('Generated '+names.length+' sticker'+(names.length!==1?'s':'')+' - '+cfg.name+'.','ok');
