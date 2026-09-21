@@ -354,7 +354,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker will show that student's name (or initials, if the name doesn't fit), their course/section in parentheses if you add one, and their assigned seat - lift it off the printed sheet and stick it on that student's exam copy. <strong>Stickers print in seating order - front row to back, left to right</strong> - not roster order, so you can walk the room and place them in order as you go.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker shows the student's name, their course/section in parentheses in the middle if you add one, and their seat on the last line - lift it off the printed sheet and stick it on that student's exam copy. Long names keep the full first name and shorten the last name to fit (e.g. "Michael Jorda…"); check "Use initials only" below to always show initials instead. <strong>Stickers print in seating order - front row to back, left to right</strong> - not roster order, so you can walk the room and place them in order as you go.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First" - optionally add a section, e.g. "Last, First, Section")</label>
@@ -1028,10 +1028,10 @@ var LABEL_PRESETS={
 };
 
 function parseRosterText(text){
-  /* Each line -> {name, section}. section is '' when not given.
-     "Last, First"           -> name "First Last", no section
-     "Last, First, Section"  -> name "First Last", section "Section"
-     anything else           -> the whole line as name, no section */
+  /* Each line -> {first, last, section}. last/section are '' when not given.
+     "Last, First"           -> first "First", last "Last", no section
+     "Last, First, Section"  -> first "First", last "Last", section "Section"
+     anything else           -> first word is the first name, the rest is the last name */
   return text.split(/\r\n|\r|\n/).map(function(line){
     line=line.trim();
     if(!line) return null;
@@ -1039,20 +1039,20 @@ function parseRosterText(text){
     if(!line) return null;
     var parts=line.split(',').map(function(p){return p.trim();});
     if(parts.length===3&&parts[0]&&parts[1]){
-      return {name:parts[1]+' '+parts[0], section:parts[2]};
+      return {first:parts[1], last:parts[0], section:parts[2]};
     }
     if(parts.length===2&&parts[0]&&parts[1]){
-      return {name:parts[1]+' '+parts[0], section:''};
+      return {first:parts[1], last:parts[0], section:''};
     }
-    return {name:line, section:''};
-  }).filter(function(x){return x!==null && x.name!=='';});
+    var words=line.split(/\s+/).filter(Boolean);
+    if(words.length>1) return {first:words[0], last:words.slice(1).join(' '), section:''};
+    return {first:line, last:'', section:''};
+  }).filter(function(x){return x!==null && (x.first!==''||x.last!=='');});
 }
 
-function toInitials(name){
-  var parts=name.trim().split(/\s+/).filter(Boolean);
-  if(!parts.length) return '';
-  if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
-  return (parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+function toInitials(first,last){
+  if(!last) return (first.slice(0,2)||'').toUpperCase();
+  return (first[0]+last[0]).toUpperCase();
 }
 
 function fitFontSize(pdf,text,maxWidthPt,maxSize,minSize){
@@ -1065,6 +1065,32 @@ function fitFontSize(pdf,text,maxWidthPt,maxSize,minSize){
   }
   pdf.setFontSize(minSize);
   return minSize;
+}
+
+/* Long-name strategy: never jump straight to bare initials. Try the full
+   "First Last" name, shrinking the font down to minSize; if it still
+   doesn't fit, keep the first name whole and drop letters off the end of
+   the last name (marked with an ellipsis) until it fits; only if even the
+   bare first name overflows does the first name itself get trimmed too. */
+function fitNameDisplay(pdf,first,last,maxWidthPt,maxSize,minSize){
+  pdf.setFont('helvetica','bold');
+  var full=last?(first+' '+last):first;
+  for(var size=maxSize;size>=minSize;size-=0.5){
+    pdf.setFontSize(size);
+    if(pdf.getTextWidth(full)<=maxWidthPt) return {text:full,size:size};
+  }
+  pdf.setFontSize(minSize);
+  if(last){
+    for(var k=last.length-1;k>=0;k--){
+      var cand=k>0?(first+' '+last.slice(0,k)+'…'):(first+'…');
+      if(pdf.getTextWidth(cand)<=maxWidthPt) return {text:cand,size:minSize};
+    }
+  }
+  for(var j=first.length-1;j>=1;j--){
+    var cand2=first.slice(0,j)+'…';
+    if(pdf.getTextWidth(cand2)<=maxWidthPt) return {text:cand2,size:minSize};
+  }
+  return {text:(first.slice(0,1)||last.slice(0,1)||'?')+'…',size:minSize};
 }
 
 function getLabelConfig(preset){
@@ -1155,18 +1181,17 @@ document.getElementById('stkBtn').addEventListener('click',function(){
       var x=cfg.marginLeft+col*cfg.pitchX, y=cfg.marginTop+row*cfg.pitchY;
       pdf.setDrawColor(210);pdf.setLineWidth(0.4);
       pdf.rect(x,y,cfg.labelW,cfg.labelH);
-      var seat=order[i].seat, entry=order[i].entry, full=entry.name, section=entry.section;
+      var seat=order[i].seat, entry=order[i].entry, first=entry.first, last=entry.last, section=entry.section;
       var hasSection=!!section;
-      var display=useInit?toInitials(full):full;
       var maxTextW=Math.max(cfg.labelW-2*pad,10);
       var nameMax=hasSection?Math.min(13,cfg.labelH*0.30):Math.min(16,cfg.labelH*0.55);
-      var nameSize=fitFontSize(pdf,display,maxTextW,nameMax,6);
-      if(!useInit){
-        pdf.setFontSize(nameSize);
-        if(pdf.getTextWidth(display)>maxTextW&&nameSize<=6){
-          display=toInitials(full);
-          nameSize=fitFontSize(pdf,display,maxTextW,nameMax,6);
-        }
+      var display,nameSize;
+      if(useInit){
+        display=toInitials(first,last);
+        nameSize=fitFontSize(pdf,display,maxTextW,nameMax,6);
+      }else{
+        var fit=fitNameDisplay(pdf,first,last,maxTextW,nameMax,6);
+        display=fit.text;nameSize=fit.size;
       }
       var yName=y+cfg.labelH*(hasSection?0.30:0.42);
       var ySeat=y+cfg.labelH*(hasSection?0.84:0.78);
