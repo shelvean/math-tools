@@ -1228,15 +1228,21 @@ document.getElementById('stkBtn').addEventListener('click',function(){
     }
     var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
     var perPage=cfg.cols*cfg.rows;
-    var pad=6;
+    var pad=8;
+    /* Extra headroom beyond the padded width: getTextWidth() measures jsPDF's
+       own Helvetica metrics, but most PDF viewers/printers substitute a
+       similar system font (e.g. Arial) that isn't pixel-identical, and bold
+       glyphs can have a touch more visual ink than their advance width. A
+       flat 5% margin keeps fitted text from riding right up against - or
+       past - the printed edge. */
+    var WIDTH_SAFETY=0.95;
     var shapePoly=cfg.shape?TAB_SHAPES[cfg.shape]:null;
     /* Die-cut tabs taper toward the left/right ends, so the safe text width
        depends on how close a line sits to the top/bottom edge - flat labels
        just use the constant padded width for every line as before. */
     function lineMaxW(yFrac){
-      if(!shapePoly) return Math.max(cfg.labelW-2*pad,10);
-      var w=shapeWidthAtY(shapePoly,cfg.labelH*yFrac);
-      return w?Math.max(w-2*pad,10):Math.max(cfg.labelW-2*pad,10);
+      var raw=shapePoly?(shapeWidthAtY(shapePoly,cfg.labelH*yFrac)||cfg.labelW):cfg.labelW;
+      return Math.max((raw-2*pad)*WIDTH_SAFETY,10);
     }
     for(var i=0;i<order.length;i++){
       var posOnPage=i%perPage;
@@ -1269,7 +1275,9 @@ document.getElementById('stkBtn').addEventListener('click',function(){
         pdf.setFont('helvetica','bold');pdf.setFontSize(sectionSize);pdf.setTextColor(107,114,128);
         pdf.text(sectionText,x+cfg.labelW/2,y+cfg.labelH*0.58,{align:'center'});
       }
-      var seatMax=hasSection?Math.min(14,cfg.labelH*0.30):Math.min(20,cfg.labelH*0.42);
+      /* Same size cap as the name line - the seat stays easy to spot through
+         its bold weight and blue color, not by dwarfing the student's name. */
+      var seatMax=nameMax;
       var seatSize=fitFontSize(pdf,'Seat '+seat,lineMaxW(seatFrac),seatMax,7);
       pdf.setFont('helvetica','bold');pdf.setFontSize(seatSize);pdf.setTextColor(29,78,216);
       pdf.text('Seat '+seat,x+cfg.labelW/2,ySeat,{align:'center'});
