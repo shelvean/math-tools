@@ -12,7 +12,6 @@
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
 <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js"></script>
 <script src="vendor/jspdf@2.5.1/jspdf.umd.min.js"></script>
-<script src="vendor/docx@9.7.1/docx.iife.min.js"></script>
 <style>
 :root{
   --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;--info:#eff6ff;--inf-b:#93c5fd;
@@ -355,7 +354,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker shows the student's name on top, their course/section in parentheses in the middle if you add one, and their seat on the last line - lift it off the printed sheet and stick it on that student's exam copy. Names print as first and middle initial plus full last name (e.g. "M. J. Rahim") to keep them short and reliably on one line; check "Use initials only" below for bare initials instead ("MR"). <strong>Stickers print in seat order - A1, A2, A3… row by row</strong> - not roster order, so you can walk the room and place them in order as you go. Choose <strong>Word (.docx)</strong> if you want to review or hand-tweak a sticker before printing, or <strong>PDF</strong> for a fixed, print-ready sheet.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong> (line <em>k</em> = student <em>k</em>). Each sticker shows the student's name on top, their course/section in parentheses in the middle if you add one, and their seat on the last line - lift it off the printed sheet and stick it on that student's exam copy. Names print as first and middle initial plus full last name (e.g. "M. J. Rahim") to keep them short and reliably on one line; check "Use initials only" below for bare initials instead ("MR"). <strong>Stickers print in seat order - A1, A2, A3… row by row</strong> - not roster order, so you can walk the room and place them in order as you go.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First" - optionally add a section, e.g. "Last, First, Section")</label>
@@ -376,13 +375,6 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
             <option value="avery14433">Avery 14433 - 8-Tab Dividers, 1.31"×.66", 40/sheet</option>
             <option value="avery14438">Avery 14438 - 5-Tab Dividers, 3.84"×2", 8/sheet</option>
             <option value="custom">Custom size…</option>
-          </select>
-        </div>
-        <div class="cf" style="flex:0 1 150px;">
-          <label for="stkFormat">File format</label>
-          <select id="stkFormat">
-            <option value="docx">Word (.docx) - editable</option>
-            <option value="pdf">PDF - print-ready</option>
           </select>
         </div>
         <div class="cf">
@@ -436,7 +428,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
         </div>
       </div>
       <div id="stkStatus" class="status" role="status"></div>
-      <button id="stkBtn" class="btn btn-pd" type="button" disabled>🏷 Generate Stickers (Word)</button>
+      <button id="stkBtn" class="btn btn-pd" type="button" disabled>🏷 Generate Stickers (PDF)</button>
     </div>
   </details>
 
@@ -1227,10 +1219,6 @@ document.getElementById('namesFile').addEventListener('change',function(e){
 document.getElementById('labelPreset').addEventListener('change',function(){
   document.getElementById('customSizeWrap').style.display=this.value==='custom'?'flex':'none';
 });
-document.getElementById('stkFormat').addEventListener('change',function(){
-  document.getElementById('stkBtn').innerHTML='🏷 Generate Stickers ('+(this.value==='docx'?'Word':'PDF')+')';
-});
-
 function generateStickersPdf(cfg,order,useInit){
   var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
   var perPage=cfg.cols*cfg.rows;
@@ -1294,178 +1282,6 @@ function generateStickersPdf(cfg,order,useInit){
   pdf.save('seat_stickers.pdf');
 }
 
-function ptToTwip(pt){return Math.round(pt*20);}
-
-/* Same visual proportions as the PDF version (seat capped to the name's own
-   size, section smaller/secondary), expressed in docx's half-point font
-   units instead of jsPDF points. */
-function stickerFontHalfPt(cfg,hasSection){
-  var nameMaxPt=hasSection?Math.min(13,cfg.labelH*0.26):Math.min(15,cfg.labelH*0.40);
-  var sectionMaxPt=Math.min(9,cfg.labelH*0.16);
-  return {
-    name:Math.max(Math.round(nameMaxPt*2),12),
-    section:Math.max(Math.round(sectionMaxPt*2),12),
-    seat:Math.max(Math.round(nameMaxPt*2),12)
-  };
-}
-
-/* Builds and downloads the sticker sheet as a .docx: one continuous table
-   so Word paginates it naturally, with narrow spacer rows/columns matching
-   the real gap Avery leaves between labels on the physical sheet (measured
-   from Avery's own Word templates for these presets). Word can't draw the
-   die-cut tabs' curved edge, so shaped presets get no border and a text
-   area inset to each tab's narrowest safe width instead of a full rectangle. */
-async function generateStickersDocx(cfg,order,useInit){
-  var d=window.docx;
-  var shapePoly=cfg.shape?TAB_SHAPES[cfg.shape]:null;
-  var gapXpt=Math.max(cfg.pitchX-cfg.labelW,0);
-  var gapYpt=Math.max(cfg.pitchY-cfg.labelH,0);
-  var hasGapCols=gapXpt>1, hasGapRows=gapYpt>1;
-
-  var safeWpt=cfg.labelW;
-  if(shapePoly){
-    var w1=shapeWidthAtY(shapePoly,cfg.labelH*0.30)||cfg.labelW;
-    var w2=shapeWidthAtY(shapePoly,cfg.labelH*0.58)||cfg.labelW;
-    var w3=shapeWidthAtY(shapePoly,cfg.labelH*0.84)||cfg.labelW;
-    safeWpt=Math.max(Math.min(w1,w2,w3)-6,20);
-  }
-  var insetPt=Math.max((cfg.labelW-safeWpt)/2,4);
-
-  var thin={style:d.BorderStyle.SINGLE,size:2,color:'D0D0D0'};
-  var none={style:d.BorderStyle.NONE,size:0,color:'FFFFFF'};
-  var cellBorders=shapePoly?{top:none,bottom:none,left:none,right:none}:{top:thin,bottom:thin,left:thin,right:thin};
-  var gapBorders={top:none,bottom:none,left:none,right:none};
-
-  function line(text,halfPt,colorHex,afterTwip){
-    return new d.Paragraph({
-      alignment:d.AlignmentType.CENTER,
-      spacing:{before:0,after:afterTwip||0},
-      children:[new d.TextRun({text:text,bold:true,size:halfPt,color:colorHex,font:'Arial'})]
-    });
-  }
-
-  /* Word auto-wraps text that's too wide for a cell rather than letting it
-     spill past the edge - fine for a name with spaces, but a long single
-     word (no jsPDF-style width measurement is available here to fit it
-     precisely) can wrap character-by-character and push "Seat ..." off
-     the visible label entirely. A rough character budget from the cell's
-     safe width and font size heads that off before it happens. */
-  function fitCellText(text,halfPt,availWpt){
-    var charWpt=(halfPt/2)*0.56;
-    var maxChars=Math.max(Math.floor(availWpt/charWpt),4);
-    if(text.length<=maxChars) return text;
-    return text.slice(0,maxChars-1)+'…';
-  }
-
-  function makeCell(item){
-    var seat=item.seat, entry=item.entry, first=entry.first, last=entry.last, section=entry.section;
-    var hasSection=!!section;
-    var sizes=stickerFontHalfPt(cfg,hasSection);
-    var availWpt=safeWpt-2*4;
-    var nameText;
-    if(useInit) nameText=toInitials(first,last);
-    else{
-      var initials=firstMiddleInitials(first);
-      var charWpt=(sizes.name/2)*0.56;
-      var lastBudget=Math.max(availWpt-(initials.length+1)*charWpt,charWpt*3);
-      var lastFit=last?fitCellText(last,sizes.name,lastBudget):'';
-      nameText=lastFit?(initials+' '+lastFit):initials;
-    }
-    var sectionText=hasSection?fitCellText('('+section+')',sizes.section,availWpt):'';
-    var children=[line(nameText,sizes.name,'111827',hasSection?20:60)];
-    if(hasSection) children.push(line(sectionText,sizes.section,'6B7280',20));
-    children.push(line('Seat '+seat,sizes.seat,'1D4ED8',0));
-    return new d.TableCell({
-      width:{size:ptToTwip(cfg.labelW),type:d.WidthType.DXA},
-      margins:{left:ptToTwip(insetPt),right:ptToTwip(insetPt),top:ptToTwip(4),bottom:ptToTwip(4)},
-      verticalAlign:d.VerticalAlign.CENTER,
-      borders:cellBorders,
-      children:children
-    });
-  }
-  function gapCell(widthPt){
-    return new d.TableCell({width:{size:ptToTwip(widthPt),type:d.WidthType.DXA},borders:gapBorders,children:[new d.Paragraph('')]});
-  }
-
-  var colWidths=[];
-  for(var c=0;c<cfg.cols;c++){
-    colWidths.push(ptToTwip(cfg.labelW));
-    if(hasGapCols&&c<cfg.cols-1) colWidths.push(ptToTwip(gapXpt));
-  }
-
-  /* One table per physical sheet, with an explicit page break between them,
-     rather than one continuous table left to flow across pages on its own.
-     Row-height rounding differs enough between renderers (observed: some
-     versions of Word/LibreOffice grow an "exact" height row a hair past
-     what's asked, silently losing a row per page) that relying on natural
-     table flow can quietly shift every sheet after the first out of
-     alignment with the physical label sheet loaded in the printer. Forcing
-     the break after exactly cfg.rows rows keeps each page's grid matching
-     one physical sheet no matter how any given renderer measures row
-     height. */
-  var perPage=cfg.cols*cfg.rows;
-  var pageChildren=[];
-  for(var p=0;p*perPage<order.length;p++){
-    /* An empty paragraph is the only way docx.js exposes a forced page
-       break, but the paragraph mark itself still occupies a line at the
-       Normal style's default size (~14pt) at the top of the new page,
-       silently eating into the first table's row space there and losing
-       a row. Sizing the mark down to near-zero (run.size + zeroed
-       spacing/line height) keeps the break without that cost. */
-    if(p>0) pageChildren.push(new d.Paragraph({
-      pageBreakBefore:true,
-      spacing:{before:0,after:0,line:1},
-      run:{size:2},
-      children:[]
-    }));
-    var rows=[];
-    for(var rr=0;rr<cfg.rows;rr++){
-      var cells=[];
-      for(var c2=0;c2<cfg.cols;c2++){
-        var item=order[p*perPage+rr*cfg.cols+c2];
-        cells.push(item?makeCell(item):gapCell(cfg.labelW));
-        if(hasGapCols&&c2<cfg.cols-1) cells.push(gapCell(gapXpt));
-      }
-      rows.push(new d.TableRow({height:{value:ptToTwip(cfg.labelH),rule:d.HeightRule.EXACT},children:cells}));
-      if(hasGapRows&&rr<cfg.rows-1){
-        var grow=colWidths.map(function(w){return gapCell(w/20);});
-        rows.push(new d.TableRow({height:{value:ptToTwip(gapYpt),rule:d.HeightRule.EXACT},children:grow}));
-      }
-    }
-    pageChildren.push(new d.Table({columnWidths:colWidths,layout:d.TableLayoutType.FIXED,width:{size:colWidths.reduce(function(a,b){return a+b;},0),type:d.WidthType.DXA},rows:rows}));
-  }
-
-  var pageWpt=cfg.pageFmt==='a4'?595.28:612, pageHpt=cfg.pageFmt==='a4'?841.89:792;
-  var contentWpt=cfg.cols*cfg.labelW+(hasGapCols?(cfg.cols-1)*gapXpt:0);
-  var contentHptPerSheet=cfg.rows*cfg.labelH+(hasGapRows?(cfg.rows-1)*gapYpt:0);
-  /* A right/bottom margin computed to land content EXACTLY on the page
-     boundary leaves zero slack - twip rounding in whichever app renders
-     this can then tip the last row/column over onto a spurious extra
-     page (observed: a 10-row sheet losing its 10th row to page 2 even
-     though the arithmetic said it fit exactly). A few points of give
-     costs nothing - it only trims blank margin below/right of the last
-     label, never shifts any label's position - so it's pure insurance. */
-  var EDGE_SLACK=6;
-  var doc=new d.Document({
-    sections:[{
-      properties:{page:{
-        size:{width:ptToTwip(pageWpt),height:ptToTwip(pageHpt)},
-        margin:{
-          top:ptToTwip(cfg.marginTop),
-          left:ptToTwip(cfg.marginLeft),
-          right:ptToTwip(Math.max(pageWpt-cfg.marginLeft-contentWpt-EDGE_SLACK,0)),
-          bottom:ptToTwip(Math.max(pageHpt-cfg.marginTop-contentHptPerSheet-EDGE_SLACK,0))
-        }
-      }},
-      children:pageChildren
-    }]
-  });
-  var blob=await d.Packer.toBlob(doc);
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement('a');a.href=url;a.download='seat_stickers.docx';a.click();
-  URL.revokeObjectURL(url);
-}
-
 document.getElementById('stkBtn').addEventListener('click',function(){
   var btn=this,orig=btn.innerHTML;
   if(!APP.selected.length){showStkStatus('Allocate seats first.','err');return;}
@@ -1479,7 +1295,6 @@ document.getElementById('stkBtn').addEventListener('click',function(){
   var cfg=getLabelConfig(preset);
   if(!cfg){showStkStatus('Fill in a valid custom label width, height, columns and rows.','err');return;}
   var useInit=document.getElementById('useInitials').checked;
-  var format=document.getElementById('stkFormat').value;
   btn.innerHTML='⏳ …';btn.disabled=true;
   /* Print order follows the seat ID itself (A1, A2, … row by row) rather
      than roster order, so a proctor can walk the room in a predictable
@@ -1491,16 +1306,10 @@ document.getElementById('stkBtn').addEventListener('click',function(){
     return a.sc.col-b.sc.col;
   });
   function finish(msg,type){btn.innerHTML=orig;btn.disabled=!APP.selected.length;showStkStatus(msg,type);}
-  if(format==='docx'){
-    generateStickersDocx(cfg,order,useInit).then(function(){
-      finish('Generated '+order.length+' sticker'+(order.length!==1?'s':'')+' - '+cfg.name+' (Word).','ok');
-    }).catch(function(e){finish('Sticker error: '+e.message,'err');});
-  }else{
-    try{
-      generateStickersPdf(cfg,order,useInit);
-      finish('Generated '+order.length+' sticker'+(order.length!==1?'s':'')+' - '+cfg.name+'.','ok');
-    }catch(e){finish('Sticker error: '+e.message,'err');}
-  }
+  try{
+    generateStickersPdf(cfg,order,useInit);
+    finish('Generated '+order.length+' sticker'+(order.length!==1?'s':'')+' - '+cfg.name+'.','ok');
+  }catch(e){finish('Sticker error: '+e.message,'err');}
 });
 
 document.getElementById('goBtn').addEventListener('click',function(){
