@@ -354,7 +354,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>E. D. Christia / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. All three lines fit within the actual printed label outline. <strong>Stickers print in seat-ID order: A1, A2, …, then B1, B2, …, with seat numbers ascending within each row</strong>. Student-to-seat assignments remain unchanged. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>E. D. Christia / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. All three lines fit within the actual printed label outline. <strong>Stickers print in seating order - front row to back, left to right</strong>. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First Middle, MATH-140-510" or "First Middle Last MATH-140-510")</label>
@@ -1178,22 +1178,6 @@ function arrangeStickerLines(pdf,cfg,poly,first,last,section,seat){
   });
 }
 
-/* Natural seat order independent of the room's visual row arrangement.
-   For example: A1, A2, A10, B1, B2, ... .  A suffix, when a room
-   uses one, is compared naturally too (F2-1 before F2-10). */
-function compareStickerSeatIds(left,right){
-  var a=String(left||'').trim(),b=String(right||'').trim();
-  var am=/^([A-Za-z]+)(\d+)(.*)$/.exec(a),bm=/^([A-Za-z]+)(\d+)(.*)$/.exec(b);
-  if(am&&bm){
-    var row=am[1].localeCompare(bm[1],undefined,{numeric:true,sensitivity:'base'});
-    if(row)return row;
-    var num=Number(am[2])-Number(bm[2]);
-    if(num)return num;
-    return am[3].localeCompare(bm[3],undefined,{numeric:true,sensitivity:'base'});
-  }
-  return a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'});
-}
-
 function getLabelConfig(preset){
   var offX=mm(parseFloat(document.getElementById('offX').value)||0);
   var offY=mm(parseFloat(document.getElementById('offY').value)||0);
@@ -1268,12 +1252,15 @@ document.getElementById('stkBtn').addEventListener('click',function(){
   if(!cfg){showStkStatus('Enter custom dimensions that fit entirely on the selected paper, including any print offsets.','err');return;}
   btn.innerHTML='⏳ …';btn.disabled=true;
   try{
-    /* Preserve each roster entry's original assigned seat, then print labels
-       by row ID (A, B, C, ...) and seat number (1, 2, 3, ..., 10, 11).
-       Do not use lexicographic seat sorting (A10 must follow A9), nor
-       physical row indices (the classroom layout may list back rows first). */
+    /* Print order follows the room, front row to back, left to right within
+       each row - not roster order - so a proctor can walk in and place
+       stickers in the order they reach the desks. */
     var order=names.map(function(entry,i){return {entry:entry,seat:APP.selected[i]};});
-    order.sort(function(a,b){return compareStickerSeatIds(a.seat,b.seat);});
+    if(APP.layout){
+      var seatCoords=buildSeatCoords(APP.layout);
+      order.forEach(function(o){o.rc=seatCoords[o.seat]||{r:0,c:0};});
+      order.sort(function(a,b){return a.rc.r-b.rc.r||a.rc.c-b.rc.c;});
+    }
     var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
     var perPage=cfg.cols*cfg.rows;
     var shapePoly=cfg.shape?TAB_SHAPES[cfg.shape]:null;
@@ -1295,7 +1282,7 @@ document.getElementById('stkBtn').addEventListener('click',function(){
       });
     }
     pdf.save('seat_stickers.pdf');
-    showStkStatus('Generated '+names.length+' sticker'+(names.length!==1?'s':'')+' in ascending row/seat order - '+cfg.name+'.','ok');
+    showStkStatus('Generated '+names.length+' sticker'+(names.length!==1?'s':'')+' - '+cfg.name+'.','ok');
   }catch(e){
     showStkStatus('Sticker error: '+e.message,'err');
   }finally{
