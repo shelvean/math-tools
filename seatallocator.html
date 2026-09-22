@@ -354,7 +354,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>E. D. Christia / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. All three lines fit within the actual printed label outline. <strong>Stickers print in seat-ID order: A1, A2, …, then B1, B2, …, with seat numbers ascending within each row</strong> - not roster order or room layout, so graded tests can be filed and handed back by seat ID. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. All three lines fit within the actual printed label outline. <strong>Stickers print in seat-ID order: A1, A2, …, then B1, B2, …, with seat numbers ascending within each row</strong> - not roster order or room layout, so graded tests can be filed and handed back by seat ID. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First Middle, MATH-140-510" or "First Middle Last MATH-140-510")</label>
@@ -376,6 +376,11 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
             <option value="avery14438">Avery 14438 - 5-Tab Dividers, 3.84"×2", 8/sheet</option>
             <option value="custom">Custom size…</option>
           </select>
+        </div>
+        <div class="cf">
+          <label style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
+            <input type="checkbox" id="randomizeRoster" checked style="width:auto;min-height:auto;"> Randomize which student gets which seat
+          </label>
         </div>
       </div>
       <div class="cbar" id="customSizeWrap" style="display:none;margin-bottom:.5rem;">
@@ -1268,12 +1273,23 @@ document.getElementById('stkBtn').addEventListener('click',function(){
   if(!cfg){showStkStatus('Enter custom dimensions that fit entirely on the selected paper, including any print offsets.','err');return;}
   btn.innerHTML='⏳ …';btn.disabled=true;
   try{
-    /* Print order follows the seat ID itself, alphanumerically row by row
-       (A1, A2, ... A10, B1, B2, ...) - not roster order or the room's
-       physical layout - so a batch of graded tests can be filed/handed
-       back by seat ID without hunting through the stack. */
-    var order=names.map(function(entry,i){return {entry:entry,seat:APP.selected[i]};});
-    order.sort(function(a,b){return compareStickerSeatIds(a.seat,b.seat);});
+    /* Which student ends up in which seat is independent of the random
+       seat SELECTION already performed by Allocate Seats (that only
+       picks which desks are used, for spacing). Here, a fixed seat
+       sequence (alphanumeric by seat ID) is paired with the roster -
+       shuffled first if "Randomize which student gets which seat" is
+       checked, left in pasted/uploaded order otherwise. Either way,
+       stickers always PRINT in that same seat-ID order (A1, A2, ...
+       A10, B1, ...), independent of which pairing mode was used. */
+    var seatSeq=APP.selected.slice().sort(compareStickerSeatIds);
+    var roster=names.slice();
+    if(document.getElementById('randomizeRoster').checked){
+      for(var ri=roster.length-1;ri>0;ri--){
+        var rj=Math.floor(Math.random()*(ri+1));
+        var tmp=roster[ri];roster[ri]=roster[rj];roster[rj]=tmp;
+      }
+    }
+    var order=roster.map(function(entry,i){return {entry:entry,seat:seatSeq[i]};});
     var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
     var perPage=cfg.cols*cfg.rows;
     var shapePoly=cfg.shape?TAB_SHAPES[cfg.shape]:null;
@@ -1320,7 +1336,11 @@ document.getElementById('goBtn').addEventListener('click',function(){
   var selected=allocate(usable,n,layout,lhSeats);
   APP.selected=selected;
   APP.layout=layout;
-  APP.outputData=selected.map(function(s,i){return (i+1)+'	'+s;});
+  /* Numbered alphanumerically by seat ID (A1, A2, ... B1, ...), not by the
+     order seats were picked in, so "line k" here means the same seat as
+     "line k" of the pasted roster does in the sticker generator below
+     when its randomize option is off. */
+  APP.outputData=selected.slice().sort(compareStickerSeatIds).map(function(s,i){return (i+1)+'	'+s;});
   /* stats */
   var tot=countSeats(layout),lh=countType(layout,'leftHanded'),
       mv=countType(layout,'moveable'),br=countType(layout,'broken');
