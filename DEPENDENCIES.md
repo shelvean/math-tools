@@ -33,6 +33,7 @@ redistribution.
 | Plotly | 2.24.1 | `vendor/plotly@2.24.1/plotly.min.js` | `registry.npmjs.org/plotly.js-dist-min/-/plotly.js-dist-min-2.24.1.tgz` | MIT | 2026-06-09 |
 | three.js | r128 (0.128.0) | `vendor/three@r128/three.min.js` | `registry.npmjs.org/three/-/three-0.128.0.tgz` | MIT | 2026-06-09 |
 | jsPDF | 2.5.1 | `vendor/jspdf@2.5.1/jspdf.umd.min.js` | `registry.npmjs.org/jspdf/-/jspdf-2.5.1.tgz` | MIT | 2026-06-09 |
+| docx | 9.7.1 | `vendor/docx@9.7.1/docx.iife.min.js` | `registry.npmjs.org/docx/-/docx-9.7.1.tgz` (`dist/index.iife.js`, minified locally with terser - no minified IIFE build is published) | MIT | 2026-09-21 |
 | topojson | 3.0.2 | `vendor/topojson@3.0.2/topojson.min.js` | `registry.npmjs.org/topojson/-/topojson-3.0.2.tgz` | ISC | 2026-06-09 |
 | pdf-lib | 1.17.1 | `vendor/pdf-lib@1.17.1/pdf-lib.min.js` | `registry.npmjs.org/pdf-lib/-/pdf-lib-1.17.1.tgz` | MIT | 2026-06-09 |
 | pdf.js (pdfjs-dist) | 3.11.174 | `vendor/pdfjs-dist@3.11.174/build/` (pdf + worker) | `registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-3.11.174.tgz` | Apache-2.0 | 2026-06-09 |
