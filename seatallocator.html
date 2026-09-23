@@ -354,7 +354,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. Fill in <strong>Instructor</strong> below to squeeze your name onto that same course line, e.g. <strong>MATH 140-523-Kapita</strong>. All three lines fit within the actual printed label outline. <strong>Stickers print in seat-ID order: A1, A2, …, then B1, B2, …, with seat numbers ascending within each row</strong> - not roster order or room layout, so graded tests can be filed and handed back by seat ID. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. Fill in <strong>Instructor</strong> below to squeeze your name onto that same course line, e.g. <strong>MATH 140-523-Kapita</strong>. Add a <strong>4th column with a seat ID</strong> (e.g. <strong>Cooper, Evan, MATH 151-501, D12</strong>) to pin that student to a literal seat, bypassing Allocate Seats for them - leave it off for students you want seated from the room's random pool as usual, or leave it off every line to ignore this entirely. All three lines fit within the actual printed label outline. <strong>Stickers print in seat-ID order: A1, A2, …, then B1, B2, …, with seat numbers ascending within each row</strong> - not roster order or room layout, so graded tests can be filed and handed back by seat ID. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First Middle, MATH-140-510" or "First Middle Last MATH-140-510")</label>
@@ -1087,6 +1087,18 @@ function parseRosterText(text){
   return text.split(/\r\n|\r|\n/).map(function(line){
     line=line.trim().replace(/^"(.*)"$/,'$1').trim();
     if(!line)return null;
+    /* An optional trailing "Last, First, Section, SeatID" column pins that
+       student to a literal seat (e.g. "Cooper, Evan, math 151-501, D12"),
+       independent of whatever Allocate Seats picked. Pulled off before the
+       rest of the line is parsed so it's never mistaken for section text. */
+    var seat='',rawPieces=line.split(',').map(function(p){return p.trim();});
+    if(rawPieces.length>=3){
+      var lastPiece=rawPieces[rawPieces.length-1];
+      if(/^[A-Za-z]+\d+[A-Za-z0-9-]*$/.test(lastPiece)){
+        seat=lastPiece.toUpperCase();
+        line=rawPieces.slice(0,-1).join(', ');
+      }
+    }
     var section=detectStickerCourse(line), pieces=line.split(',').map(function(p){return p.trim();});
     var first='',last='';
     if(pieces.length>=2 && stripStickerCourse(pieces[0]) && stripStickerCourse(pieces[1])){
@@ -1099,7 +1111,7 @@ function parseRosterText(text){
       if(words.length>=2){first=words.slice(0,-1).join(' ');last=words[words.length-1];}
       else first=words[0]||'';
     }
-    return first||last?{first:first,last:last,section:section}:null;
+    return first||last?{first:first,last:last,section:section,seat:seat}:null;
   }).filter(Boolean);
 }
 /* One initial from the first given name, one from the middle name if given,
@@ -1270,35 +1282,62 @@ document.getElementById('labelPreset').addEventListener('change',function(){
 
 document.getElementById('stkBtn').addEventListener('click',function(){
   var btn=this,orig=btn.innerHTML;
-  if(!APP.selected.length){showStkStatus('Allocate seats first.','err');return;}
   var names=parseRosterText(document.getElementById('namesInput').value);
   if(!names.length){showStkStatus('Paste or upload a roster of student names first.','err');return;}
-  if(names.length!==APP.selected.length){
-    showStkStatus('You entered '+names.length+' name(s) but '+APP.selected.length+' seat(s) were allocated. Enter exactly '+APP.selected.length+' names, one per line, in the same order as your roster.','err');
-    return;
-  }
-  var preset=document.getElementById('labelPreset').value;
-  var cfg=getLabelConfig(preset);
-  if(!cfg){showStkStatus('Enter custom dimensions that fit entirely on the selected paper, including any print offsets.','err');return;}
-  btn.innerHTML='⏳ …';btn.disabled=true;
-  try{
-    /* Which student ends up in which seat is independent of the random
-       seat SELECTION already performed by Allocate Seats (that only
-       picks which desks are used, for spacing). Here, a fixed seat
-       sequence (alphanumeric by seat ID) is paired with the roster -
-       shuffled first if "Randomize which student gets which seat" is
-       checked, left in pasted/uploaded order otherwise. Either way,
-       stickers always PRINT in that same seat-ID order (A1, A2, ...
-       A10, B1, ...), independent of which pairing mode was used. */
-    var seatSeq=APP.selected.slice().sort(compareStickerSeatIds);
-    var roster=names.slice();
+  /* An optional 4th roster column pins a student to a literal seat,
+     independent of Allocate Seats - that student's seat is used exactly
+     as given, and Allocate Seats' output only matters for whoever is
+     left. If every student is pinned, Allocate Seats isn't needed at all. */
+  var pinned=names.filter(function(n){return n.seat;});
+  var unpinned=names.filter(function(n){return !n.seat;});
+  var seenPins=Object.create(null),dupeSeat=null;
+  pinned.forEach(function(n){
+    if(seenPins[n.seat]) dupeSeat=n.seat;
+    seenPins[n.seat]=true;
+  });
+  if(dupeSeat){showStkStatus('Seat '+dupeSeat+' is preassigned to more than one student.','err');return;}
+  var order;
+  if(!unpinned.length){
+    order=pinned.map(function(entry){return {entry:entry,seat:entry.seat};});
+  }else{
+    if(!APP.selected.length){
+      showStkStatus(pinned.length?'Allocate seats first (for the students without a preassigned seat).':'Allocate seats first.','err');
+      return;
+    }
+    if(!pinned.length && names.length!==APP.selected.length){
+      showStkStatus('You entered '+names.length+' name(s) but '+APP.selected.length+' seat(s) were allocated. Enter exactly '+APP.selected.length+' names, one per line, in the same order as your roster.','err');
+      return;
+    }
+    /* Which student ends up in which of the remaining seats is independent
+       of the random seat SELECTION already performed by Allocate Seats
+       (that only picks which desks are used, for spacing). Here, a fixed
+       seat sequence (alphanumeric by seat ID, preassigned seats excluded)
+       is paired with the unpinned roster - shuffled first if "Randomize
+       which student gets which seat" is checked, left in pasted/uploaded
+       order otherwise. */
+    var seatSeq=APP.selected.filter(function(s){return !seenPins[s];}).sort(compareStickerSeatIds);
+    if(unpinned.length>seatSeq.length){
+      showStkStatus('Not enough allocated seats for the '+unpinned.length+' student(s) without a preassigned seat (only '+seatSeq.length+' left after excluding preassigned seats). Allocate more seats or preassign the rest.','err');
+      return;
+    }
+    var roster=unpinned.slice();
     if(document.getElementById('randomizeRoster').checked){
       for(var ri=roster.length-1;ri>0;ri--){
         var rj=Math.floor(Math.random()*(ri+1));
         var tmp=roster[ri];roster[ri]=roster[rj];roster[rj]=tmp;
       }
     }
-    var order=roster.map(function(entry,i){return {entry:entry,seat:seatSeq[i]};});
+    order=pinned.map(function(entry){return {entry:entry,seat:entry.seat};})
+      .concat(roster.map(function(entry,i){return {entry:entry,seat:seatSeq[i]};}));
+  }
+  var preset=document.getElementById('labelPreset').value;
+  var cfg=getLabelConfig(preset);
+  if(!cfg){showStkStatus('Enter custom dimensions that fit entirely on the selected paper, including any print offsets.','err');return;}
+  btn.innerHTML='⏳ …';btn.disabled=true;
+  try{
+    /* Stickers always print in seat-ID order, whether a seat came from a
+       preassigned column or from Allocate Seats' random pool. */
+    order.sort(function(a,b){return compareStickerSeatIds(a.seat,b.seat);});
     var instructor=document.getElementById('instructorName').value;
     var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
     var perPage=cfg.cols*cfg.rows;
