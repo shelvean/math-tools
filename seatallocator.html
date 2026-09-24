@@ -1373,11 +1373,26 @@ document.getElementById('stkBtn').addEventListener('click',function(){
       showStkStatus('Not enough allocated seats for the '+unpinned.length+' student(s) without a preassigned seat (only '+seatSeq.length+' left after excluding preassigned seats). Allocate more seats or preassign the rest.','err');
       return;
     }
-    var roster=unpinned.slice();
-    if(document.getElementById('randomizeRoster').checked){
-      for(var ri=roster.length-1;ri>0;ri--){
-        var rj=Math.floor(Math.random()*(ri+1));
-        var tmp=roster[ri];roster[ri]=roster[rj];roster[rj]=tmp;
+    /* The random student<->seat shuffle is pinned to the current roster
+       text + allocated seats + checkbox state, and cached, so regenerating
+       (e.g. after switching Print order) reuses the same shuffle instead of
+       drawing a new one each click - "Classroom Map" and "Alphabetical
+       Order" then show the same underlying assignment, just sorted
+       differently. Pasting a different roster, reallocating seats, or
+       toggling the checkbox naturally busts the cache. */
+    var randomizeChecked=document.getElementById('randomizeRoster').checked;
+    var shuffleSig=document.getElementById('namesInput').value+'|'+APP.selected.join(',')+'|'+randomizeChecked;
+    var roster;
+    if(randomizeChecked&&APP.stickerShuffleCache&&APP.stickerShuffleCache.sig===shuffleSig){
+      roster=APP.stickerShuffleCache.roster;
+    }else{
+      roster=unpinned.slice();
+      if(randomizeChecked){
+        for(var ri=roster.length-1;ri>0;ri--){
+          var rj=Math.floor(Math.random()*(ri+1));
+          var tmp=roster[ri];roster[ri]=roster[rj];roster[rj]=tmp;
+        }
+        APP.stickerShuffleCache={sig:shuffleSig,roster:roster};
       }
     }
     order=pinned.map(function(entry){return {entry:entry,seat:entry.seat};})
