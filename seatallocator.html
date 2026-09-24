@@ -354,7 +354,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. Fill in <strong>Instructor</strong> below to squeeze your name onto that same course line, e.g. <strong>MATH 140-523-Jones</strong>. Add a <strong>4th column with a seat ID</strong> (e.g. <strong>Cooper, Evan, MATH 151-501, D12</strong>) to pin that student to a literal seat, bypassing Allocate Seats for them - leave it off for students you want seated from the room's random pool as usual, or leave it off every line to ignore this entirely. All three lines fit within the actual printed label outline. <strong>Stickers print in seat-ID order: A1, A2, …, then B1, B2, …, with seat numbers ascending within each row</strong> - not roster order or room layout, so graded tests can be filed and handed back by seat ID. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. Fill in <strong>Instructor</strong> below to squeeze your name onto that same course line, e.g. <strong>MATH 140-523-Jones</strong>. Add a <strong>4th column with a seat ID</strong> (e.g. <strong>Cooper, Evan, MATH 151-501, D12</strong>) to pin that student to a literal seat, bypassing Allocate Seats for them - leave it off for students you want seated from the room's random pool as usual, or leave it off every line to ignore this entirely. All three lines fit within the actual printed label outline. Choose <strong>Print order</strong> below: <strong>Classroom Map</strong> prints by seat ID (A1, A2, …, then B1, B2, …) so graded tests can be filed and handed back by seat, or <strong>Alphabetical Order</strong> prints by last name instead - either way this is independent of roster order. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First Middle, MATH-140-510" or "First Middle Last MATH-140-510"; optionally add a 4th column with a seat ID if that student's seat is pre-assigned)</label>
@@ -380,6 +380,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
         <div class="cf" style="flex:0 1 160px;">
           <label for="instructorName">Instructor Last Name (optional)</label>
           <input type="text" id="instructorName" placeholder="Jones" style="width:100%;font:inherit;padding:.4rem .5rem;border:2px solid var(--bdr);border-radius:.4rem;background:var(--card);color:var(--txt);">
+        </div>
+        <div class="cf" style="flex:0 1 170px;">
+          <label for="stickerOrder">Print order</label>
+          <select id="stickerOrder">
+            <option value="seatId">Classroom Map (seat order)</option>
+            <option value="alpha">Alphabetical Order (Last Name)</option>
+          </select>
         </div>
         <div class="cf">
           <label style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
@@ -1342,9 +1349,19 @@ document.getElementById('stkBtn').addEventListener('click',function(){
   if(!cfg){showStkStatus('Enter custom dimensions that fit entirely on the selected paper, including any print offsets.','err');return;}
   btn.innerHTML='⏳ …';btn.disabled=true;
   try{
-    /* Stickers always print in seat-ID order, whether a seat came from a
-       preassigned column or from Allocate Seats' random pool. */
-    order.sort(function(a,b){return compareStickerSeatIds(a.seat,b.seat);});
+    /* Print order is independent of how each seat was assigned (random
+       pool or preassigned column) - it's purely how the printed stack is
+       organized. "Classroom Map" sorts by seat ID (A1, A2, ... B1, ...);
+       "Alphabetical Order" sorts by last name, then first name instead. */
+    if(document.getElementById('stickerOrder').value==='alpha'){
+      order.sort(function(a,b){
+        var byLast=String(a.entry.last).localeCompare(String(b.entry.last),undefined,{sensitivity:'base'});
+        if(byLast)return byLast;
+        return String(a.entry.first).localeCompare(String(b.entry.first),undefined,{sensitivity:'base'});
+      });
+    }else{
+      order.sort(function(a,b){return compareStickerSeatIds(a.seat,b.seat);});
+    }
     var instructor=document.getElementById('instructorName').value;
     var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
     var perPage=cfg.cols*cfg.rows;
