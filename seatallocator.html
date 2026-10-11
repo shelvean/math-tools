@@ -346,6 +346,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
       <select id="seatStyle">
         <option value="spread">Spread out (exam spacing)</option>
         <option value="dense">Dense, from the front (shared room)</option>
+        <option value="section">By section, dense from the front (shared room)</option>
       </select>
     </div>
   </div>
@@ -407,9 +408,10 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
           </label>
         </div>
         <div class="cf">
-          <label style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
+          <label id="randomizeRosterLabel" style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
             <input type="checkbox" id="randomizeRoster" checked style="width:auto;min-height:auto;"> Randomize which student gets which seat
           </label>
+          <span id="randomizeRosterNote" style="display:none;font-weight:400;color:var(--muted);font-size:.85em;">Ignored - "By section" always randomizes within each section.</span>
         </div>
       </div>
       <div class="cbar" id="customSizeWrap" style="display:none;margin-bottom:.5rem;">
@@ -1200,6 +1202,32 @@ function parseRosterText(text){
     return first||last?{first:first,last:last,section:section,seat:seat}:null;
   }).filter(Boolean);
 }
+/* "By section" roster pairing: groups students by their parsed section text
+   (case/whitespace-insensitive match, so "Math140-523" and "MATH 140-523"
+   land in the same group), keeps groups in the order their section first
+   appears in the pasted roster, shuffles students within each group, and
+   concatenates the groups back into one list. Zipped against a dense,
+   front-to-back seat sequence (seatStyle "section" forces allocateDense),
+   this fills each section into its own contiguous front-to-back block of
+   seats - one section's block ends and the next begins wherever the first
+   section's count runs out, so a row can still be split between two
+   sections if a section's count doesn't land on a row boundary, but no
+   seats are skipped and every section is clustered, not interleaved. */
+function groupRosterBySection(roster){
+  var order=[],groups=Object.create(null);
+  roster.forEach(function(e){
+    var key=String(e.section||'').trim().toUpperCase().replace(/\s+/g,' ');
+    if(!groups[key]){groups[key]=[];order.push(key);}
+    groups[key].push(e);
+  });
+  var out=[];
+  order.forEach(function(key){
+    var g=groups[key];
+    shuffle(g);
+    out=out.concat(g);
+  });
+  return out;
+}
 /* One initial from the first given name, one from the middle name if given,
    then at most eight letters of the surname.  A missing middle name does
    not create a blank initial.  Spaces/hyphens in a surname do not consume
@@ -1372,6 +1400,14 @@ document.getElementById('namesFile').addEventListener('change',function(e){
 document.getElementById('labelPreset').addEventListener('change',function(){
   document.getElementById('customSizeWrap').style.display=this.value==='custom'?'flex':'none';
 });
+function syncRandomizeRosterNote(){
+  var bySection=document.getElementById('seatStyle').value==='section';
+  document.getElementById('randomizeRoster').disabled=bySection;
+  document.getElementById('randomizeRosterLabel').style.opacity=bySection?'.55':'1';
+  document.getElementById('randomizeRosterNote').style.display=bySection?'inline':'none';
+}
+document.getElementById('seatStyle').addEventListener('change',syncRandomizeRosterNote);
+syncRandomizeRosterNote();
 
 /* Synthetic names for trying the sticker feature out - never real students.
    Embedded directly (rather than fetched from roster_example_85.csv) so the
@@ -1440,36 +1476,40 @@ document.getElementById('stkBtn').addEventListener('click',function(){
        (that only picks which desks are used, for spacing). Here, a fixed
        seat sequence - Allocate Seats' own order, preassigned seats
        excluded, matching the Roster (TXT) numbering exactly - is paired
-       with the unpinned roster, shuffled first if "Randomize which
-       student gets which seat" is checked, left in pasted/uploaded order
-       otherwise. Final print order (seat-ID or alphabetical) is applied
-       separately, below, after this pairing. */
+       with the unpinned roster, arranged one of three ways: left in
+       pasted/uploaded order, globally shuffled ("Randomize which student
+       gets which seat"), or grouped by section and shuffled within each
+       group (Seating style "By section" - each section then lands in its
+       own contiguous block of the dense front-to-back seat sequence).
+       Final print order (seat-ID or alphabetical) is applied separately,
+       below, after this pairing. */
     var seatSeq=APP.selected.filter(function(s){return !seenPins[s];});
     if(unpinned.length>seatSeq.length){
       showStkStatus('Not enough allocated seats for the '+unpinned.length+' student(s) without a preassigned seat (only '+seatSeq.length+' left after excluding preassigned seats). Allocate more seats or preassign the rest.','err');
       return;
     }
-    /* The random student<->seat shuffle is pinned to the current roster
-       text + allocated seats + checkbox state, and cached, so regenerating
-       (e.g. after switching Print order) reuses the same shuffle instead of
+    /* The student<->seat arrangement is pinned to the current roster text +
+       allocated seats + arrangement mode, and cached, so regenerating (e.g.
+       after switching Print order) reuses the same arrangement instead of
        drawing a new one each click - "Classroom Map" and "Alphabetical
        Order" then show the same underlying assignment, just sorted
        differently. Pasting a different roster, reallocating seats, or
-       toggling the checkbox naturally busts the cache. */
+       switching modes naturally busts the cache. */
+    var bySection=document.getElementById('seatStyle').value==='section';
     var randomizeChecked=document.getElementById('randomizeRoster').checked;
-    var shuffleSig=document.getElementById('namesInput').value+'|'+APP.selected.join(',')+'|'+randomizeChecked;
+    var pairMode=bySection?'section':(randomizeChecked?'random':'asis');
+    var shuffleSig=document.getElementById('namesInput').value+'|'+APP.selected.join(',')+'|'+pairMode;
     var roster;
-    if(randomizeChecked&&APP.stickerShuffleCache&&APP.stickerShuffleCache.sig===shuffleSig){
+    if(pairMode!=='asis'&&APP.stickerShuffleCache&&APP.stickerShuffleCache.sig===shuffleSig){
       roster=APP.stickerShuffleCache.roster;
     }else{
-      roster=unpinned.slice();
-      if(randomizeChecked){
-        for(var ri=roster.length-1;ri>0;ri--){
-          var rj=Math.floor(Math.random()*(ri+1));
-          var tmp=roster[ri];roster[ri]=roster[rj];roster[rj]=tmp;
-        }
-        APP.stickerShuffleCache={sig:shuffleSig,roster:roster};
+      if(pairMode==='section'){
+        roster=groupRosterBySection(unpinned);
+      }else{
+        roster=unpinned.slice();
+        if(pairMode==='random') shuffle(roster);
       }
+      if(pairMode!=='asis') APP.stickerShuffleCache={sig:shuffleSig,roster:roster};
     }
     order=pinned.map(function(entry){return {entry:entry,seat:entry.seat};})
       .concat(roster.map(function(entry,i){return {entry:entry,seat:seatSeq[i]};}));
@@ -1537,7 +1577,8 @@ document.getElementById('goBtn').addEventListener('click',function(){
   var lhSeats=buildUsableLH(layout,excluded);
   var totalAvail=usable.length+lhSeats.length;
   if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+lhSeats.length+' left-handed) - '+n+' requested.','err');return;}
-  var dense=document.getElementById('seatStyle').value==='dense';
+  var seatStyleVal=document.getElementById('seatStyle').value;
+  var dense=seatStyleVal==='dense'||seatStyleVal==='section';
   var selected=dense?allocateDense(usable,n,layout,lhSeats):allocate(usable,n,layout,lhSeats);
   APP.selected=selected;
   APP.layout=layout;
@@ -1567,7 +1608,8 @@ document.getElementById('goBtn').addEventListener('click',function(){
   document.getElementById('pdBtn').disabled=false;
   document.getElementById('stkBtn').disabled=false;
   updateNamesCount();
-  var msg='Allocated '+n+' student'+(n!==1?'s':'')+(dense?' (dense, front-packed).':'.');
+  var denseNote=seatStyleVal==='section'?' (dense, front-packed, by section).':(dense?' (dense, front-packed).':'.');
+  var msg='Allocated '+n+' student'+(n!==1?'s':'')+denseNote;
   showStatus(msg,'ok');say(msg);
 });
 
