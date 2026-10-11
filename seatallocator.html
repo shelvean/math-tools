@@ -341,6 +341,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
       <label for="excl">Leave empty <span style="font-weight:400;color:var(--muted)">(e.g. A5, H12)</span></label>
       <input type="text" id="excl" placeholder="A5, H12 …">
     </div>
+    <div class="cf" style="flex:0 1 220px;">
+      <label for="seatStyle">Seating style</label>
+      <select id="seatStyle">
+        <option value="spread">Spread out (exam spacing)</option>
+        <option value="dense">Dense, from the front (shared room)</option>
+      </select>
+    </div>
   </div>
 
   <div class="abar" role="group" aria-label="Actions">
@@ -393,6 +400,11 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
             <option value="seatId">Classroom Map (seat order)</option>
             <option value="alpha">Alphabetical Order (Last Name)</option>
           </select>
+        </div>
+        <div class="cf">
+          <label style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
+            <input type="checkbox" id="fullFirstName" style="width:auto;min-height:auto;"> Print full first name
+          </label>
         </div>
         <div class="cf">
           <label style="display:flex;align-items:center;gap:.35rem;font-weight:600;white-space:nowrap;">
@@ -741,11 +753,14 @@ function pickByPosition(entries,k,phase){
   return picked;
 }
 
-/* {r:rowIndex, c:colIndex} for every seat. layout.rows[0] is the front row
-   (buildUsable/allocate fill from index 0 first; the old front-row-packing
-   bug this replaced confirms index 0 is the front, not the back), so
-   ascending r is a front-to-back walk of the room and ascending c is
-   left-to-right within a row. */
+/* {r:rowIndex, c:colIndex} for every seat. r is just the seat's position in
+   layout.rows - it does NOT tell you which end is the front of the room (that
+   varies per layout and isn't tracked here); only the row's real printed
+   letter does; row A/B is always the front. allocate()'s own distance math
+   only cares about relative spacing, so it's direction-agnostic and doesn't
+   need to know which end is which; anything that needs the true front (e.g.
+   allocateDense) must sort by real row letter instead of by r. Ascending c
+   is left-to-right within a row. */
 function buildSeatCoords(layout){
   var coords={};
   layout.rows.forEach(function(r,ri){
@@ -945,6 +960,40 @@ function allocate(usable,n,layout,lhSeats){
 
   shuffle(best);
   return best;
+}
+
+/* Dense, front-packed alternative to allocate()'s spread-out dispersion -
+   for sharing a room with other sections/instructors, where you want your
+   students clustered together (not interleaved with another section's
+   empty-looking gaps) and easy to find at the front when handing back
+   exams. Fills seats in physical reading order (front row to back, left
+   to right within a row) with no spacing, taking left-handed seats inline
+   as encountered rather than holding them back as a last resort - any
+   gap in the result is a genuinely unusable seat (broken/excluded), not
+   a deliberate skip.
+   "Front row to back" means by real row letter (A, then B, then C, ...),
+   not by raw array position - row A is always the front, but it sits at
+   whichever end of layout.rows that particular room happens to list it
+   (last, for every standard room in this app). A room split into several
+   physically separate sections (e.g. ILCB_111) repeats letters per
+   section, so this fills every section's A row(s) before moving on to the
+   B rows, keeping each section's own front-to-back order (array position
+   is the tiebreak for rows sharing a letter, so sections stay in listed
+   order) rather than treating the whole room as one single-ended hallway. */
+function allocateDense(usable,n,layout,lhSeats){
+  var coords=buildSeatCoords(layout);
+  var rowLetter={};
+  layout.rows.forEach(function(r,ri){ rowLetter[ri]=rowIdChar(layout,r); });
+  var pool=usable.slice();
+  if(lhSeats) lhSeats.forEach(function(s){pool.push(s);});
+  pool.sort(function(a,b){
+    var ca=coords[a],cb=coords[b];
+    var la=rowLetter[ca.r],lb=rowLetter[cb.r];
+    if(la<lb) return -1;
+    if(la>lb) return 1;
+    return ca.r-cb.r||ca.c-cb.c;
+  });
+  return pool.slice(0,n);
 }
 
 /* ── colorscale: z 0-7 (8 bands) ── */
@@ -1154,12 +1203,16 @@ function parseRosterText(text){
 /* One initial from the first given name, one from the middle name if given,
    then at most eight letters of the surname.  A missing middle name does
    not create a blank initial.  Spaces/hyphens in a surname do not consume
-   its eight-letter allowance. */
-function formatStickerName(first,last){
+   its eight-letter allowance. With fullFirst, the first given name is kept
+   whole instead of reduced to an initial (e.g. to tell apart twins who
+   share a first initial) - any middle name still abbreviates. */
+function formatStickerName(first,last,fullFirst){
   var given=String(first||'').trim().split(/\s+/).filter(Boolean);
   var surname=String(last||'').replace(/[^\p{L}]/gu,'').slice(0,8);
-  var initials=given.slice(0,2).map(function(n){return n.charAt(0).toUpperCase()+'.';});
-  return initials.concat(surname?[surname]:[]).join(' ') || surname;
+  var parts=given.slice(0,2).map(function(n,i){
+    return (fullFirst&&i===0)?(n.charAt(0).toUpperCase()+n.slice(1)):(n.charAt(0).toUpperCase()+'.');
+  });
+  return parts.concat(surname?[surname]:[]).join(' ') || surname;
 }
 
 /* Centre each line in the wide middle of the tab.  Line widths are measured
@@ -1192,8 +1245,8 @@ function lineSafeBox(cfg,poly,top,bottom){
    detected course, and a modest seat number.  Names never wrap.  All text
    is measured against the narrowest part of the actual die-cut outline
    over its entire glyph height; only exceptionally narrow labels shrink. */
-function arrangeStickerLines(pdf,cfg,poly,first,last,section,seat,instructor){
-  var name=formatStickerName(first,last);
+function arrangeStickerLines(pdf,cfg,poly,first,last,section,seat,instructor,fullFirst){
+  var name=formatStickerName(first,last,fullFirst);
   var course=detectStickerCourse(section)||String(section||'').trim();
   /* Squeeze the instructor's name onto the same course/section line
      rather than giving it a fourth line the label may not have room
@@ -1440,6 +1493,7 @@ document.getElementById('stkBtn').addEventListener('click',function(){
       order.sort(function(a,b){return compareStickerSeatIds(a.seat,b.seat);});
     }
     var instructor=document.getElementById('instructorName').value;
+    var fullFirst=document.getElementById('fullFirstName').checked;
     var pdf=new window.jspdf.jsPDF({orientation:'portrait',unit:'pt',format:cfg.pageFmt});
     var perPage=cfg.cols*cfg.rows;
     var shapePoly=cfg.shape?TAB_SHAPES[cfg.shape]:null;
@@ -1452,7 +1506,7 @@ document.getElementById('stkBtn').addEventListener('click',function(){
       else{pdf.setDrawColor(210);pdf.setLineWidth(0.4);pdf.rect(x,y,cfg.labelW,cfg.labelH);}
       var seat=order[i].seat,entry=order[i].entry;
       var lines=arrangeStickerLines(pdf,cfg,shapePoly,entry.first,entry.last,
-                                    entry.section,seat,instructor);
+                                    entry.section,seat,instructor,fullFirst);
       lines.forEach(function(line){
         pdf.setFont('helvetica',line.font);
         pdf.setFontSize(line.size);
@@ -1483,7 +1537,8 @@ document.getElementById('goBtn').addEventListener('click',function(){
   var lhSeats=buildUsableLH(layout,excluded);
   var totalAvail=usable.length+lhSeats.length;
   if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+lhSeats.length+' left-handed) - '+n+' requested.','err');return;}
-  var selected=allocate(usable,n,layout,lhSeats);
+  var dense=document.getElementById('seatStyle').value==='dense';
+  var selected=dense?allocateDense(usable,n,layout,lhSeats):allocate(usable,n,layout,lhSeats);
   APP.selected=selected;
   APP.layout=layout;
   /* Left in the order Allocate Seats picked them - not sorted by seat ID -
@@ -1512,7 +1567,7 @@ document.getElementById('goBtn').addEventListener('click',function(){
   document.getElementById('pdBtn').disabled=false;
   document.getElementById('stkBtn').disabled=false;
   updateNamesCount();
-  var msg='Allocated '+n+' student'+(n!==1?'s':'')+'.';
+  var msg='Allocated '+n+' student'+(n!==1?'s':'')+(dense?' (dense, front-packed).':'.');
   showStatus(msg,'ok');say(msg);
 });
 
