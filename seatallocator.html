@@ -363,7 +363,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
   <details class="blurb-howto" id="stickerPanel" style="margin-bottom:.875rem;">
     <summary>🏷 Print seat stickers with student names (optional)</summary>
     <div style="margin:.5rem 0 .1rem;">
-      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. Fill in <strong>Instructor</strong> below to squeeze your name onto that same course line, e.g. <strong>MATH 140-523-Jones</strong>. A 4th column can instead carry that one student's own seat ID or instructor - add a <strong>seat ID</strong> (e.g. <strong>Cooper, Evan, MATH 151-501, D12</strong>) to pin them to a literal seat, bypassing Allocate Seats; or, when sharing one room/roster across several instructors, add that <strong>student's own instructor last name</strong> instead (e.g. <strong>Doe, Jane, MATH 140-510, Jones</strong> alongside <strong>Smith, Sam, MATH 140-523, Peters</strong> in the same paste) so each sticker shows the right instructor even though the Instructor field below can only hold one name - it's used for every line that doesn't carry its own 4th column. Leave the 4th column off entirely to ignore both. All three lines fit within the actual printed label outline. Choose <strong>Print order</strong> below: <strong>Classroom Map</strong> prints by seat ID (A1, A2, …, then B1, B2, …) so graded tests can be filed and handed back by seat, or <strong>Alphabetical Order</strong> prints by last name instead - either way this is independent of roster order. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
+      <p style="margin:.2rem 0 .5rem;">Paste or upload your roster, <strong>one student per line, in the same order used for the Roster (TXT) download above</strong>. Each label uses the same compact, three-line layout: <strong>first initial, middle initial, first 8 letters of the last name</strong>; detected course (for example <strong>MATH 140-510</strong>); and a small seat ID. For example: <strong>T. J. Doe / MATH 140-510 / SEAT G121</strong>. Course codes are detected from the roster even when they appear beside a name. Fill in <strong>Instructor</strong> below to squeeze your name onto that same course line, e.g. <strong>MATH 140-523-Jones</strong>. A 4th column can instead carry that one student's own seat ID or instructor - add a <strong>seat ID</strong> (e.g. <strong>Cooper, Evan, MATH 151-501, D12</strong>) to pin them to a literal seat, bypassing Allocate Seats; or, when sharing one room/roster across several instructors, add that <strong>student's own instructor last name</strong> instead (e.g. <strong>Doe, Jane, MATH 140-510, Jones</strong> alongside <strong>Smith, Sam, MATH 140-523, Peters</strong> in the same paste) so each sticker shows the right instructor even though the Instructor field below can only hold one name. An instructor only needs to be typed <strong>once per section</strong> - every other line sharing that same section automatically picks it up too, pinned seats included, so you don't have to repeat it on every line. The Instructor field below is used only as a fallback, for any section with no instructor anywhere in the roster. Leave the 4th column off entirely to ignore both. All three lines fit within the actual printed label outline. Choose <strong>Print order</strong> below: <strong>Classroom Map</strong> prints by seat ID (A1, A2, …, then B1, B2, …) so graded tests can be filed and handed back by seat, or <strong>Alphabetical Order</strong> prints by last name instead - either way this is independent of roster order. Print at <strong>100% / Actual Size</strong> without scaling or fitting to page.</p>
       <p style="margin:.2rem 0 .6rem;color:var(--muted);font-size:.85rem;">Names are processed entirely in your browser to build the PDF - nothing is uploaded or saved anywhere.</p>
       <div class="cf" style="margin-bottom:.5rem;">
         <label for="namesInput">Student names (one per line: "Last, First Middle, MATH-140-510" or "First Middle Last MATH-140-510"; optionally add a 4th column with that student's seat ID if pre-assigned, or their own instructor's last name if sharing the roster across several instructors)</label>
@@ -1168,7 +1168,7 @@ function stripStickerCourse(value){
 function parseRosterText(text){
   /* 'Last, First Middle, MATH-140-510' is preferred; unpunctuated
      'First Middle Last MATH-140-510' is supported as well. */
-  return text.split(/\r\n|\r|\n/).map(function(line){
+  var entries=text.split(/\r\n|\r|\n/).map(function(line){
     line=line.trim().replace(/^"(.*)"$/,'$1').trim();
     if(!line)return null;
     /* An optional trailing 4th column is either a seat ID (pins that student
@@ -1209,12 +1209,37 @@ function parseRosterText(text){
     }
     return first||last?{first:first,last:last,section:section,seat:seat,instructor:instructor}:null;
   }).filter(Boolean);
+  return propagateInstructorBySection(entries);
+}
+/* An instructor only has to be typed once per section in the whole pasted
+   roster - every other line sharing that same section (case/whitespace-
+   insensitive match) automatically inherits it, including pinned-seat lines
+   (whose own 4th column held the seat ID instead of an instructor name).
+   First instructor seen for a section wins if a roster ever lists more than
+   one for the same section by mistake. The single Instructor Last Name
+   field remains the fallback only for a section with no instructor anywhere
+   in the roster (see groupRosterBySection and the sticker-generation loop
+   below, both of which already treat a blank entry.instructor that way). */
+function propagateInstructorBySection(entries){
+  var bySection=Object.create(null);
+  entries.forEach(function(e){
+    if(!e.instructor) return;
+    var key=String(e.section||'').trim().toUpperCase().replace(/\s+/g,' ');
+    if(!(key in bySection)) bySection[key]=e.instructor;
+  });
+  entries.forEach(function(e){
+    if(e.instructor) return;
+    var key=String(e.section||'').trim().toUpperCase().replace(/\s+/g,' ');
+    if(key in bySection) e.instructor=bySection[key];
+  });
+  return entries;
 }
 /* "By section" roster pairing: groups students first by instructor (each
-   student's own 4th-column instructor if given, else the single Instructor
-   Last Name field - see parseRosterText), then by their parsed section text
-   within that instructor's group (case/whitespace-insensitive match, so
-   "Math140-523" and "MATH 140-523" land in the same group). An instructor
+   student's own 4th-column instructor if given or propagated, else the
+   single Instructor Last Name field - see parseRosterText), then by their
+   parsed section text within that instructor's group (case/whitespace-
+   insensitive match, so "Math140-523" and "MATH 140-523" land in the same
+   group). An instructor
    who teaches several sections (e.g. Jones: 510, 512) therefore keeps ALL
    of their students in one unbroken block - sub-divided by section inside
    it - rather than that block being split apart by another instructor's
@@ -1433,8 +1458,8 @@ document.getElementById('seatStyle').addEventListener('change',syncRandomizeRost
 syncRandomizeRosterNote();
 
 /* Synthetic names for trying the sticker feature out - never real students.
-   Embedded directly (rather than fetched from roster_example_85.csv) so the
-   button works identically online and from an offline/distributed copy. */
+   Embedded directly (rather than fetched from roster_example_500.csv) so
+   the button works identically online and from an offline/distributed copy. */
 var EXAMPLE_FIRST_NAMES=['James','Mary','Robert','Patricia','John','Jennifer','Michael','Linda','David','Elizabeth',
   'William','Barbara','Richard','Susan','Joseph','Jessica','Thomas','Sarah','Charles','Karen',
   'Christopher','Nancy','Daniel','Lisa','Matthew','Betty','Anthony','Margaret','Mark','Sandra',
