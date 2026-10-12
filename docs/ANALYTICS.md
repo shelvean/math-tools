@@ -1,9 +1,14 @@
 # Counting preprint downloads in Google Analytics
 
-The front page (`index.html`) sends a custom event to Google Analytics 4
-(property `G-LEQE004C92`) every time a visitor clicks a preprint link in the
-Recent News list. The script lives between the `link-tracking:start` and
-`link-tracking:end` markers near the bottom of `index.html`.
+A visitor reaches a manuscript in two steps: the Preprints list on the front
+page (`index.html`) links to that paper's landing page (`preprint-*.html`),
+and the landing page carries the button that opens the PDF. The download
+event is sent from the landing page, so it counts an actual PDF open rather
+than a click on a title.
+
+The script that sends it lives between the `link-tracking:start` and
+`link-tracking:end` markers near the bottom of each page, and reports to
+Google Analytics 4 property `G-LEQE004C92`.
 
 ## What is sent
 
@@ -19,8 +24,13 @@ the link text. `file_name` is the PDF's basename, e.g.
 
 Any link tagged `data-track="preprint"` is counted wherever it appears on the
 page, and any `.pdf` or arXiv link inside `.news-list` is counted even
-without the tag, so new entries need no extra wiring beyond a
-`data-track-label` with the paper's name.
+without the tag. A new paper therefore needs no extra wiring: give its
+landing-page PDF button `data-track="preprint"` and a `data-track-label`
+holding the paper's name.
+
+Front-page titles link to landing pages rather than to PDFs, so they are not
+tagged and send no event. Each paper is counted once, where the download
+happens.
 
 ## One-time setup in GA4 (required to see counts per paper)
 
@@ -62,7 +72,9 @@ file, so a renamed PDF appears under both its old and new names.
 ## What cannot be counted
 
 Analytics runs as JavaScript inside HTML pages, so it sees only clicks made
-on this site. A visitor who opens a PDF URL directly, from an email, a search
+on this site. A visitor who lands on a PDF straight from a search result
+never loads a page script and is not counted; the landing pages exist partly
+so that search engines have an HTML page to rank ahead of the raw PDF. A visitor who opens a PDF URL directly, from an email, a search
 result, or an arXiv listing, never loads the page script and is not counted.
 GitHub Pages does not expose server logs, so there is no way to count those
 direct fetches from this repository.
