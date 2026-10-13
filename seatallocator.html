@@ -1084,7 +1084,14 @@ function buildGeoSeats(geo){
         row:row.letter, num:num,
         accessible:(geo.accessible&&geo.accessible[id])||null,
         broken:(geo.broken||[]).indexOf(id)>=0,
-        rowIndex:ri, slotIndex:si
+        rowIndex:ri, slotIndex:si,
+        /* This seat's left-to-right position within its OWN row, as a
+           0 (leftmost) to 1 (rightmost) fraction - comparable across rows
+           of different widths, unlike slotIndex. Used to sort by angular
+           sector (a wedge spanning every row, near radius to far) instead
+           of by row (a radial band spanning the full width) - see
+           allocateSectorGeo below. */
+        sector:n>1?si/(n-1):0.5
       };
     });
   });
@@ -1177,6 +1184,27 @@ function allocateDenseGeo(usable,n,geo,accessibleSeats){
   if(accessibleSeats) accessibleSeats.forEach(function(s){pool.push(s);});
   pool.sort(function(a,b){
     return seats[a].rowIndex-seats[b].rowIndex||seats[a].x-seats[b].x;
+  });
+  return pool.slice(0,n);
+}
+/* Sector allocation for a geo room - used for "By instructor/section"
+   instead of allocateDenseGeo's row-major order. A contiguous chunk of a
+   row-major sequence is a radial band (the front K rows, full width) -
+   fine for "pack the front densely," wrong for splitting between
+   instructors, since it would seat every instructor's group across the
+   SAME rows at different radii rather than giving each one its own
+   walkable wedge. Sorting by each seat's sector fraction (left-to-right
+   position within its own row, comparable across rows of different
+   widths) instead makes a contiguous chunk a true angular wedge spanning
+   every row from near radius to far - the sequence sweeps left to right,
+   picking up roughly one seat per row at a time, rather than exhausting
+   one row before the next. rowIndex only breaks the rare exact tie. */
+function allocateSectorGeo(usable,n,geo,accessibleSeats){
+  var seats=buildGeoSeats(geo);
+  var pool=usable.slice();
+  if(accessibleSeats) accessibleSeats.forEach(function(s){pool.push(s);});
+  pool.sort(function(a,b){
+    return seats[a].sector-seats[b].sector||seats[a].rowIndex-seats[b].rowIndex;
   });
   return pool.slice(0,n);
 }
@@ -1858,7 +1886,10 @@ function handleAllocateGeo(geo){
   if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+accessibleSeats.length+' accessible) - '+n+' requested.','err');return;}
   var seatStyleVal=document.getElementById('seatStyle').value;
   var dense=seatStyleVal==='dense'||seatStyleVal==='section';
-  var selected=dense?allocateDenseGeo(usable,n,geo,accessibleSeats):allocateGeo(usable,n,geo,accessibleSeats);
+  /* "By instructor/section" uses sector (angular wedge) order here, not
+     allocateDenseGeo's row-major order - see allocateSectorGeo's comment. */
+  var selected=seatStyleVal==='section'?allocateSectorGeo(usable,n,geo,accessibleSeats):
+               (dense?allocateDenseGeo(usable,n,geo,accessibleSeats):allocateGeo(usable,n,geo,accessibleSeats));
   APP.selected=selected;
   APP.layout=null;
   APP.outputData=selected.map(function(s,i){return (i+1)+'\t'+s;});
