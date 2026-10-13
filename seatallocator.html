@@ -280,7 +280,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
       HECC 200 &middot; HECC 203 &middot; HECC 207 &middot; HECC 209 &middot;
       HELD 100 &middot; HELD 105 &middot; HELD 107 &middot; HELD 109 &middot; HELD 111 &middot;
       HELD 113 &middot; HELD 200 &middot;
-      ILCB 111 &middot; ILSB 1105 &middot;
+      ILCB 111 &middot; ILCB 226 &middot; ILSB 1105 &middot;
       MPHY 203 &middot; MPHY 204 &middot; MPHY 205 &middot; RICH 114
     </p>
     <details class="blurb-howto">
@@ -329,6 +329,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
         <option value="HELD_113">HELD 113</option>
         <option value="HELD_200">HELD 200</option>
         <option value="ILCB_111">ILCB 111</option>
+        <option value="ILCB_226">ILCB 226</option>
         <option value="ILSB_1105">ILSB 1105</option>
         <option value="MPHY_203">MPHY 203</option>
         <option value="MPHY_204">MPHY 204</option>
@@ -468,7 +469,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
 
   <dl class="stats" id="stats" style="display:none" role="region" aria-label="Statistics" aria-live="polite">
     <div class="sc"><dt class="sl">Seats</dt>      <dd class="sv" style="color:#1e40af" id="s-tot">-</dd></div>
-    <div class="sc"><dt class="sl">Left-hand</dt>  <dd class="sv" style="color:#92400e" id="s-lh">-</dd></div>
+    <div class="sc"><dt class="sl" id="s-lh-label">Left-hand</dt>  <dd class="sv" style="color:#92400e" id="s-lh">-</dd></div>
     <div class="sc"><dt class="sl">Moveable</dt>   <dd class="sv" style="color:#0e7490" id="s-mv">-</dd></div>
     <div class="sc"><dt class="sl">Broken</dt>     <dd class="sv" style="color:#b91c1c" id="s-br">-</dd></div>
     <div class="sc"><dt class="sl">Excluded</dt>   <dd class="sv" style="color:#92400e" id="s-ex">-</dd></div>
@@ -1003,6 +1004,223 @@ function allocateDense(usable,n,layout,lhSeats){
     return ca.r-cb.r||ca.c-cb.c;
   });
   return pool.slice(0,n);
+}
+
+/* ── Geo rooms: true-geometry classrooms (curved/arena layouts) ──────────
+   A second, fully independent room system for rooms whose seats don't sit
+   on a rectangular row/column grid - arena and fan-shaped lecture halls
+   with genuinely curved, concentric rows. Deliberately separate from
+   LAYOUTS/render()/allocate()/allocateDense() above: nothing in this
+   section is called by, or changes the behavior of, any existing room.
+   A grid room idealizes a curved room as straight rows with padding; this
+   instead gives each seat its own true (x,y), so the map actually looks
+   like the room.
+   Source floor plans for these rooms are CAD exports with no extractable
+   seat text (confirmed: the PDF's text layer holds 4 words total - a
+   title - everything else, including every seat number, is vector
+   outlines/paths). Row and seat numbers here were transcribed by eye from
+   the rendered floor plan; each seat's (x,y) is then computed from simple
+   per-row arc parameters (radius + evenly-spaced slots) rather than
+   hand-traced pixel coordinates, since the rows are genuinely concentric
+   arcs around the stage - this reproduces the real curvature without
+   needing to trace all ~300 seats individually. This is a first-pass
+   transcription: double-check accessible-seat positions against the
+   official floor plan before relying on them for real accommodations.
+   Seat IDs are the row letter + the seat's own printed number - a row's
+   center-aisle gap (a `null` in its slots list) still takes up arc space
+   but isn't a seat, and doesn't renumber the seats after it, matching the
+   numbers printed on the real floor plan (e.g. row A's seats are
+   1,2,3,4,8,9,10,11 - 5,6,7 are a real gap, not missing data). */
+function geoRange(n){var a=[];for(var i=1;i<=n;i++)a.push(i);return a;}
+var GEO_ROW_DEPTH=40, GEO_BASE_RADIUS=70, GEO_SEAT_ARC=15.5;
+var GEO_LAYOUTS={
+  'ILCB_226':{
+    label:'ILCB 226',
+    rows:[
+      {letter:'A',slots:[1,2,3,4,null,null,null,8,9,10,11]},
+      {letter:'B',slots:[1,2,3,4,5,6,7,null,null,10,11,12,13,14,15,16,17,18,19,20]},
+      {letter:'C',slots:[1,2,3,4,5,6,7,8,9,10,null,null,null,null,15,16,17,18,19,20,21,22,23,24]},
+      {letter:'D',slots:geoRange(24)},
+      {letter:'E',slots:geoRange(30)},
+      {letter:'F',slots:geoRange(30)},
+      {letter:'G',slots:geoRange(29)},
+      {letter:'H',slots:geoRange(29)},
+      {letter:'J',slots:geoRange(28)},
+      {letter:'K',slots:geoRange(29)},
+      {letter:'L',slots:geoRange(25)},
+      {letter:'M',slots:geoRange(23)}
+    ],
+    /* Legend: A=wheelchair accessible, B=bariatric, T=transfer-arm seat */
+    accessible:{
+      A4:'wheelchair',
+      B7:'transferArm',
+      C10:'transferArm',
+      D16:'transferArm',
+      E16:'transferArm',E1:'bariatric',E30:'bariatric',
+      E10:'wheelchair',E11:'wheelchair',E14:'wheelchair',E15:'wheelchair'
+    },
+    broken:[]
+  }
+};
+/* {seatID:{x,y,row,num,accessible,broken,rowIndex,slotIndex}} for every
+   seat - row A (index 0) has the smallest radius, exactly like every grid
+   room's "row A is the front" convention, just on a curve instead of a
+   line. Slots are spaced by a constant arc-length (not a constant angle),
+   so seats stay a consistent physical width apart regardless of radius,
+   and each row is centered on the same forward axis (angle 90°). */
+function buildGeoSeats(geo){
+  var seats={};
+  geo.rows.forEach(function(row,ri){
+    var radius=GEO_BASE_RADIUS+ri*GEO_ROW_DEPTH;
+    var n=row.slots.length;
+    var anglePerSlot=GEO_SEAT_ARC/radius;
+    var totalAngle=anglePerSlot*(n-1);
+    row.slots.forEach(function(num,si){
+      if(num==null) return;
+      var angle=Math.PI/2+totalAngle/2-si*anglePerSlot;
+      var id=row.letter+num;
+      seats[id]={
+        x:radius*Math.cos(angle), y:radius*Math.sin(angle),
+        row:row.letter, num:num,
+        accessible:(geo.accessible&&geo.accessible[id])||null,
+        broken:(geo.broken||[]).indexOf(id)>=0,
+        rowIndex:ri, slotIndex:si
+      };
+    });
+  });
+  return seats;
+}
+function countSeatsGeoRoom(geo){return Object.keys(buildGeoSeats(geo)).length;}
+function countTypeGeoRoom(geo,key){
+  var seats=buildGeoSeats(geo),n=0;
+  Object.keys(seats).forEach(function(id){
+    var s=seats[id];
+    if(key==='broken'&&s.broken) n++;
+    if(key==='accessible'&&s.accessible) n++;
+  });
+  return n;
+}
+/* Regular seats only - accessible (wheelchair/bariatric/transfer-arm)
+   seats excluded here, used as last resort in allocateGeo(), the same
+   role left-handed seats play for grid rooms. */
+function buildUsableGeo(geo,excluded){
+  var seats=buildGeoSeats(geo),usable=[];
+  Object.keys(seats).forEach(function(id){
+    var s=seats[id];
+    if(s.broken||s.accessible) return;
+    if(excluded.includes(id)) return;
+    usable.push(id);
+  });
+  return usable;
+}
+function buildUsableAccessibleGeo(geo,excluded){
+  var seats=buildGeoSeats(geo),usable=[];
+  Object.keys(seats).forEach(function(id){
+    var s=seats[id];
+    if(s.broken||!s.accessible) return;
+    if(excluded.includes(id)) return;
+    usable.push(id);
+  });
+  return usable;
+}
+/* Spread-out allocation for a geo room: the same greedy farthest-first
+   k-dispersion as allocate() above, but scored on true Euclidean distance
+   instead of grid row/col distance - allocate()'s row/column run-penalty
+   heuristic is grid-specific and doesn't have a curved-coordinate
+   equivalent, so this is a simpler maximin spread (still 3 random seeds,
+   keep the best). */
+function allocateGeo(usable,n,geo,accessibleSeats){
+  var seats=buildGeoSeats(geo);
+  function dist(a,b){var dx=seats[a].x-seats[b].x,dy=seats[a].y-seats[b].y;return Math.sqrt(dx*dx+dy*dy);}
+  var pool=usable.slice();
+  if(pool.length<n&&accessibleSeats) accessibleSeats.forEach(function(s){pool.push(s);});
+  function greedyRun(seedIdx){
+    var avail=pool.slice();
+    var sel=[avail.splice(seedIdx,1)[0]];
+    var minD={};
+    avail.forEach(function(s){minD[s]=dist(s,sel[0]);});
+    while(sel.length<n&&avail.length){
+      var best=-Infinity,bi=0;
+      for(var i=0;i<avail.length;i++){
+        var sc=minD[avail[i]]+Math.random()*0.5;
+        if(sc>best){best=sc;bi=i;}
+      }
+      var pick=avail.splice(bi,1)[0];
+      sel.push(pick);
+      avail.forEach(function(s){var d=dist(s,pick);if(d<minD[s])minD[s]=d;});
+    }
+    return sel;
+  }
+  function score(sel){
+    var m=Infinity;
+    for(var i=0;i<sel.length;i++)
+      for(var j=i+1;j<sel.length;j++){var d=dist(sel[i],sel[j]);if(d<m)m=d;}
+    return m;
+  }
+  var best=null,bestScore=-1;
+  for(var t=0;t<3;t++){
+    var si=Math.floor(Math.random()*pool.length);
+    var sel=greedyRun(si);
+    var sc=score(sel);
+    if(sc>bestScore){bestScore=sc;best=sel;}
+  }
+  shuffle(best);
+  return best;
+}
+/* Dense, front-packed allocation for a geo room: fills seats by true
+   row order (row A/front first, exactly like allocateDense() above),
+   then left-to-right by actual x position within a row - the curved
+   equivalent of ascending column index. */
+function allocateDenseGeo(usable,n,geo,accessibleSeats){
+  var seats=buildGeoSeats(geo);
+  var pool=usable.slice();
+  if(accessibleSeats) accessibleSeats.forEach(function(s){pool.push(s);});
+  pool.sort(function(a,b){
+    return seats[a].rowIndex-seats[b].rowIndex||seats[a].x-seats[b].x;
+  });
+  return pool.slice(0,n);
+}
+/* Classroom map for a geo room: a Plotly scatter trace (not the heatmap
+   render() uses) so curved rows render as curves instead of being forced
+   onto straight grid lines. Plotly.toImage (used by the Map PDF export)
+   and the chart div work identically regardless of trace type, so that
+   export path needs no changes for geo rooms. */
+function renderGeo(geo,selected,excluded){
+  var seats=buildGeoSeats(geo);
+  var ids=Object.keys(seats);
+  var xs=[],ys=[],colors=[],text=[],hover=[];
+  var COLOR={excl:'#9ca3af',avail:'#86efac',alloc:'#16a34a',broken:'#374151',accessible:'#fbbf24'};
+  ids.forEach(function(id){
+    var s=seats[id];
+    xs.push(s.x); ys.push(s.y);
+    var lbl=seatLabel(s.row,s.num);
+    text.push(lbl);
+    var color,status;
+    if(s.broken){color=COLOR.broken;status='Broken (excluded)';}
+    else if(excluded.includes(id)){color=COLOR.excl;status='Excluded';}
+    else if(selected.includes(id)){color=COLOR.alloc;status='Student '+(selected.indexOf(id)+1)+'<br><i>Allocated</i>';}
+    else if(s.accessible){color=COLOR.accessible;status='Available ('+s.accessible+')';}
+    else{color=COLOR.avail;status='Available';}
+    colors.push(color);
+    hover.push('<b>'+lbl+'</b><br>'+status);
+  });
+  var xRange=[Math.min.apply(null,xs)-30,Math.max.apply(null,xs)+30];
+  var yRange=[Math.min.apply(null,ys)-30,Math.max.apply(null,ys)+30];
+  var chartW=820, chartH=chartW*(yRange[1]-yRange[0])/(xRange[1]-xRange[0]);
+  Plotly.newPlot('chart',[{
+    x:xs, y:ys, mode:'markers+text', type:'scatter',
+    marker:{size:15,color:colors,line:{width:1,color:'rgba(0,0,0,.25)'},symbol:'square'},
+    text:text, textposition:'middle center', textfont:{size:7,color:'#111827'},
+    customdata:hover, hovertemplate:'%{customdata}<extra></extra>'
+  }],{
+    title:{text:'Classroom Map (true shape)', font:{size:14,color:'#111827'}},
+    xaxis:{visible:false, range:xRange, fixedrange:true, scaleanchor:'y'},
+    yaxis:{visible:false, range:yRange, fixedrange:true},
+    margin:{t:30,b:10,l:10,r:10},
+    width:chartW, height:chartH,
+    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'#fafafa',
+    font:{family:'-apple-system,Arial,sans-serif', color:'#374151'}
+  },{responsive:false, displaylogo:false, displayModeBar:false, scrollZoom:false});
 }
 
 /* ── colorscale: z 0-7 (8 bands) ── */
@@ -1628,9 +1846,50 @@ document.getElementById('stkBtn').addEventListener('click',function(){
   }
 });
 
+function handleAllocateGeo(geo){
+  var numRaw=document.getElementById('numStu').value;
+  if(!numRaw){showStatus('Enter the number of students.','err');return;}
+  var n=parseInt(numRaw,10);
+  if(isNaN(n)||n<1){showStatus('Enter a valid number ≥ 1.','err');return;}
+  var excluded=parseExcluded(document.getElementById('excl').value);
+  var usable=buildUsableGeo(geo,excluded);
+  var accessibleSeats=buildUsableAccessibleGeo(geo,excluded);
+  var totalAvail=usable.length+accessibleSeats.length;
+  if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+accessibleSeats.length+' accessible) - '+n+' requested.','err');return;}
+  var seatStyleVal=document.getElementById('seatStyle').value;
+  var dense=seatStyleVal==='dense'||seatStyleVal==='section';
+  var selected=dense?allocateDenseGeo(usable,n,geo,accessibleSeats):allocateGeo(usable,n,geo,accessibleSeats);
+  APP.selected=selected;
+  APP.layout=null;
+  APP.outputData=selected.map(function(s,i){return (i+1)+'\t'+s;});
+  var br=countTypeGeoRoom(geo,'broken'), ac=countTypeGeoRoom(geo,'accessible');
+  document.getElementById('s-tot').textContent=countSeatsGeoRoom(geo);
+  document.getElementById('s-lh').textContent=ac||'-';
+  document.getElementById('s-mv').textContent='-';
+  document.getElementById('s-br').textContent=br||'-';
+  document.getElementById('s-ex').textContent=excluded.length||'0';
+  document.getElementById('s-av').textContent=totalAvail;
+  document.getElementById('s-al').textContent=n;
+  document.getElementById('s-em').textContent=totalAvail-n;
+  document.getElementById('s-fr').textContent=Math.round(n/totalAvail*100)+'%';
+  document.getElementById('stats').style.display='flex';
+  renderGeo(geo,selected,excluded);
+  document.getElementById('legend').style.display='flex';
+  document.getElementById('vizWrap').style.display='flex';
+  document.getElementById('txBtn').disabled=false;
+  document.getElementById('pdBtn').disabled=false;
+  document.getElementById('stkBtn').disabled=false;
+  updateNamesCount();
+  var denseNote=seatStyleVal==='section'?' (dense, front-packed, by section).':(dense?' (dense, front-packed).':'.');
+  var msg='Allocated '+n+' student'+(n!==1?'s':'')+denseNote;
+  showStatus(msg,'ok');say(msg);
+}
 document.getElementById('goBtn').addEventListener('click',function(){
   clearStatus();
   var key=document.getElementById('roomSel').value;
+  var geo=GEO_LAYOUTS[key];
+  if(geo){ document.getElementById('s-lh-label').textContent='Accessible'; handleAllocateGeo(geo); return; }
+  document.getElementById('s-lh-label').textContent='Left-hand';
   var layout=LAYOUTS[key];
   if(!layout){showStatus('Unknown classroom.','err');return;}
   var numRaw=document.getElementById('numStu').value;
