@@ -12,6 +12,10 @@
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-LEQE004C92');</script>
 <script src="vendor/plotly-cartesian@2.27.0/plotly-cartesian.min.js"></script>
 <script src="vendor/jspdf@2.5.1/jspdf.umd.min.js"></script>
+<script src="vendor/xlsx@0.18.5/xlsx.full.min.js"></script>
+<script src="vendor/jszip@3.10.1/jszip.min.js"></script>
+<script src="vendor/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 <style>
 :root{
   --bg:#f0f2f5;--card:#fff;--sect:#f8f9fb;--info:#eff6ff;--inf-b:#93c5fd;
@@ -383,8 +387,9 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
       </div>
       <div class="cbar" style="margin-bottom:.5rem;">
         <div class="cf cf-num">
-          <label for="namesFile">Or upload a roster file (.txt/.csv)</label>
-          <input type="file" id="namesFile" accept=".txt,.csv">
+          <label for="namesFile">Or upload a roster file (.txt/.csv/.xlsx/.docx/.pdf)</label>
+          <input type="file" id="namesFile" accept=".txt,.csv,.xlsx,.docx,.pdf">
+          <span style="display:block;font-weight:400;color:var(--muted);font-size:.85em;margin-top:.2rem;">.xlsx/.docx read the first sheet or table; .pdf reconstructs columns from the exported text, which works for a simple roster table but isn't guaranteed for an elaborate layout, and can't read a scanned (image-only) PDF. Check the roster box below after uploading either one.</span>
         </div>
         <div class="cf cf-room">
           <label for="labelPreset">Label sheet</label>
@@ -1824,17 +1829,139 @@ function updateNamesCount(){
 }
 
 document.getElementById('namesInput').addEventListener('input',updateNamesCount);
+/* .xlsx: read the first sheet as CSV text - parseRosterText already
+   understands comma-separated lines, so nothing downstream needs to
+   change. Later sheets are ignored; most roster exports only have one. */
+function extractTextFromXlsx(arrayBuffer){
+  if(typeof XLSX==='undefined') throw new Error('Excel support failed to load (vendor/xlsx@0.18.5) - check your internet connection or try a .csv instead');
+  var workbook=XLSX.read(arrayBuffer,{type:'array'});
+  var sheet=workbook.Sheets[workbook.SheetNames[0]];
+  if(!sheet) throw new Error('that workbook has no sheets');
+  return XLSX.utils.sheet_to_csv(sheet,{blankrows:false});
+}
+/* .docx: a Word file is a zip of XML - unzip word/document.xml with the
+   already-vendored JSZip rather than pulling in a dedicated docx library.
+   A roster typed into a table (the common case) becomes one roster line
+   per table row, cells joined by commas exactly like a pasted CSV line;
+   a roster typed as plain paragraphs instead falls back to one line per
+   paragraph. Nested tables aren't unwound specially - rare for a roster. */
+async function extractTextFromDocx(arrayBuffer){
+  if(typeof JSZip==='undefined') throw new Error('Word support failed to load (vendor/jszip@3.10.1) - check your internet connection or try a .csv instead');
+  var zip=await JSZip.loadAsync(arrayBuffer);
+  var entry=zip.file('word/document.xml');
+  if(!entry) throw new Error('that doesn’t look like a Word .docx file (no word/document.xml inside it)');
+  var xml=await entry.async('text');
+  var doc=new DOMParser().parseFromString(xml,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length) throw new Error('could not parse that .docx file’s contents');
+  function cellText(cell){
+    var t=cell.getElementsByTagName('w:t'),s='';
+    for(var i=0;i<t.length;i++) s+=t[i].textContent;
+    return s.trim();
+  }
+  var lines=[],tables=doc.getElementsByTagName('w:tbl');
+  for(var ti=0;ti<tables.length;ti++){
+    var rows=tables[ti].getElementsByTagName('w:tr');
+    for(var ri=0;ri<rows.length;ri++){
+      var cells=rows[ri].getElementsByTagName('w:tc'),texts=[];
+      for(var ci=0;ci<cells.length;ci++) texts.push(cellText(cells[ci]));
+      var line=texts.join(', ').trim();
+      if(line.replace(/,/g,'').trim()) lines.push(line);
+    }
+  }
+  if(!lines.length){
+    var paras=doc.getElementsByTagName('w:p');
+    for(var pi=0;pi<paras.length;pi++){
+      var t=cellText(paras[pi]);
+      if(t) lines.push(t);
+    }
+  }
+  if(!lines.length) throw new Error('no text found in that .docx file');
+  return lines.join('\n');
+}
+/* .pdf: pdf.js gives positioned text runs, not rows/columns, so table
+   structure has to be reconstructed by eye - items are grouped into
+   visual lines by matching y-position, then within a line a wide
+   horizontal gap (most of a character's width) between runs is read as
+   a column break and becomes a comma, a smaller gap becomes a plain
+   space. Best-effort: works well for a simple exported roster table, not
+   guaranteed for an elaborate layout, and a scanned (image-only) PDF has
+   no text to extract at all. */
+async function extractTextFromPdf(arrayBuffer){
+  if(typeof pdfjsLib==='undefined') throw new Error('PDF support failed to load (vendor/pdfjs-dist@3.11.174) - check your internet connection or try a .csv instead');
+  var pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  var lines=[];
+  for(var p=1;p<=pdf.numPages;p++){
+    var page=await pdf.getPage(p);
+    var content=await page.getTextContent();
+    var items=content.items.filter(function(it){return it.str&&it.str.trim();});
+    items.sort(function(a,b){
+      var dy=b.transform[5]-a.transform[5];
+      return Math.abs(dy)>2?dy:a.transform[4]-b.transform[4];
+    });
+    var curY=null,curLine=[],pageLines=[];
+    items.forEach(function(it){
+      var y=it.transform[5];
+      if(curY===null||Math.abs(y-curY)>2){
+        if(curLine.length) pageLines.push(curLine);
+        curLine=[it];curY=y;
+      }else curLine.push(it);
+    });
+    if(curLine.length) pageLines.push(curLine);
+    pageLines.forEach(function(line){
+      var text='',prevEndX=null;
+      line.forEach(function(it){
+        var x=it.transform[4],fontSize=Math.abs(it.transform[0])||10;
+        if(prevEndX!==null){
+          var gap=x-prevEndX;
+          if(gap>fontSize*0.9) text+=', ';
+          else if(gap>fontSize*0.15) text+=' ';
+        }
+        text+=it.str;
+        prevEndX=x+(it.width||0);
+      });
+      if(text.trim()) lines.push(text.trim());
+    });
+  }
+  if(!lines.length) throw new Error('no extractable text found in that PDF (it may be a scanned image)');
+  return lines.join('\n');
+}
 document.getElementById('namesFile').addEventListener('change',function(e){
   var f=e.target.files&&e.target.files[0];
   if(!f) return;
-  var reader=new FileReader();
-  reader.onload=function(ev){
-    document.getElementById('namesInput').value=ev.target.result;
-    updateNamesCount();
-    say('Roster file loaded.');
+  var name=f.name.toLowerCase(),dot=name.lastIndexOf('.');
+  var ext=dot>=0?name.slice(dot):'';
+  var input=document.getElementById('namesInput');
+  if(ext==='.csv'||ext==='.txt'){
+    var textReader=new FileReader();
+    textReader.onload=function(ev){
+      input.value=ev.target.result;
+      updateNamesCount();
+      say('Roster file loaded.');
+    };
+    textReader.onerror=function(){showStkStatus('Could not read that file.','err');};
+    textReader.readAsText(f);
+    return;
+  }
+  if(ext!=='.xlsx'&&ext!=='.docx'&&ext!=='.pdf'){
+    showStkStatus('Unsupported file type - upload a .txt, .csv, .xlsx, .docx, or .pdf roster.','err');
+    return;
+  }
+  var binReader=new FileReader();
+  binReader.onerror=function(){showStkStatus('Could not read that file.','err');};
+  binReader.onload=async function(ev){
+    try{
+      var buf=ev.target.result,text;
+      if(ext==='.xlsx') text=extractTextFromXlsx(buf);
+      else if(ext==='.docx') text=await extractTextFromDocx(buf);
+      else text=await extractTextFromPdf(buf);
+      input.value=text;
+      updateNamesCount();
+      say('Roster file loaded.');
+    }catch(err){
+      showStkStatus('Could not read that file - '+(err&&err.message?err.message:String(err))+'.','err');
+    }
   };
-  reader.onerror=function(){showStkStatus('Could not read that file.','err');};
-  reader.readAsText(f);
+  binReader.readAsArrayBuffer(f);
 });
 document.getElementById('labelPreset').addEventListener('change',function(){
   document.getElementById('customSizeWrap').style.display=this.value==='custom'?'flex':'none';

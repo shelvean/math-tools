@@ -158,7 +158,9 @@ Vendoring is being rolled out tool by tool. **Vendored so far:**
   `geometry2d` (+D3), `graphtransform` (+D3), `bifurcation-family` (+D3),
   `detviz` (+D3+three.js), `cooling` (+Plotly 2.27.0), `integration` (MathJax tex-svg
   + Plotly 2.27.0), `fourier` (+math.js+Plotly 2.24.1), `bisection`, `pendulum_wave`,
-  `seatallocator` (jsPDF+Plotly 2.27.0)
+  `seatallocator` (jsPDF+Plotly 2.27.0, +xlsx 0.18.5, +JSZip 3.10.1, +pdf.js 3.11.174
+  with its worker repointed to the vendored copy - roster upload accepts
+  .xlsx/.docx/.pdf in addition to .txt/.csv)
 
 The MathJax `tex-svg.js` entry (SVG output, used by `integration`) is also vendored.
 - Google-Fonts batch (self-hosted woff2 + config normalized, 4): `double_potential`,
