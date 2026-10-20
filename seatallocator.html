@@ -340,6 +340,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
     <div class="cf cf-num">
       <label for="numStu">Students</label>
       <input type="number" id="numStu" min="1" max="999" placeholder="e.g. 130">
+      <span id="numStuSpreadNote" style="display:none;font-weight:400;color:var(--muted);font-size:.85em;">Ignored - paste your roster below first; each section's size comes from it.</span>
     </div>
     <div class="cf cf-excl">
       <label for="excl">Leave empty <span style="font-weight:400;color:var(--muted)">(e.g. A5, H12)</span></label>
@@ -351,6 +352,7 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 1.25rem;color:
         <option value="spread">Spread out (exam spacing)</option>
         <option value="dense">Dense, from the front (shared room)</option>
         <option value="section">By instructor/section, dense from the front (shared room)</option>
+        <option value="sectionSpread">By instructor/section, spread out (shared room)</option>
       </select>
     </div>
   </div>
@@ -1006,6 +1008,39 @@ function allocateDense(usable,n,layout,lhSeats){
   return pool.slice(0,n);
 }
 
+/* "By instructor/section, spread out": each section gets its own zone of
+   the room - a contiguous front-to-back slice of the same dense order
+   allocateDense uses, sized by proportionalZoneSizes - and within that
+   zone, allocate()'s own dispersion picks that section's seats with real
+   exam spacing, leaving the zone's unused seats as gaps rather than
+   packing it solid. Zones are carved out in the order the roster's
+   sections first appear (sizes[] must already be in that order), so
+   section 1 always ends up nearer the front than section 2. Returns one
+   array of seat IDs per zone (not a single flat list) so the caller can
+   tell which seats belong to which section without re-deriving it. */
+function allocateSectionSpread(usable,lhSeats,layout,sizes){
+  var coords=buildSeatCoords(layout);
+  var rowLetter={};
+  layout.rows.forEach(function(r,ri){ rowLetter[ri]=rowIdChar(layout,r); });
+  var pool=usable.slice();
+  if(lhSeats) lhSeats.forEach(function(s){pool.push(s);});
+  pool.sort(function(a,b){
+    var ca=coords[a],cb=coords[b];
+    var la=rowLetter[ca.r],lb=rowLetter[cb.r];
+    if(la<lb) return -1;
+    if(la>lb) return 1;
+    return ca.r-cb.r||ca.c-cb.c;
+  });
+  var zoneSizes=proportionalZoneSizes(sizes,pool.length);
+  var groups=[],cursor=0;
+  for(var i=0;i<sizes.length;i++){
+    var zone=pool.slice(cursor,cursor+zoneSizes[i]);
+    cursor+=zoneSizes[i];
+    groups.push(sizes[i]>0?allocate(zone,sizes[i],layout,[]):[]);
+  }
+  return groups;
+}
+
 /* ── Geo rooms: true-geometry classrooms (curved/arena layouts) ──────────
    A second, fully independent room system for rooms whose seats don't sit
    on a rectangular row/column grid - arena and fan-shaped lecture halls
@@ -1207,6 +1242,27 @@ function allocateSectorGeo(usable,n,geo,accessibleSeats){
     return seats[a].sector-seats[b].sector||seats[a].rowIndex-seats[b].rowIndex;
   });
   return pool.slice(0,n);
+}
+/* Geo-room equivalent of allocateSectionSpread(): each section gets its
+   own angular wedge (a contiguous slice of allocateSectorGeo's sector
+   order, sized by proportionalZoneSizes), and allocateGeo's Euclidean
+   dispersion spreads that section's seats out within its own wedge
+   instead of packing it solid. Returns one array of seat IDs per zone. */
+function allocateSectionSpreadGeo(usable,accessibleSeats,geo,sizes){
+  var seats=buildGeoSeats(geo);
+  var pool=usable.slice();
+  if(accessibleSeats) accessibleSeats.forEach(function(s){pool.push(s);});
+  pool.sort(function(a,b){
+    return seats[a].sector-seats[b].sector||seats[a].rowIndex-seats[b].rowIndex;
+  });
+  var zoneSizes=proportionalZoneSizes(sizes,pool.length);
+  var groups=[],cursor=0;
+  for(var i=0;i<sizes.length;i++){
+    var zone=pool.slice(cursor,cursor+zoneSizes[i]);
+    cursor+=zoneSizes[i];
+    groups.push(sizes[i]>0?allocateGeo(zone,sizes[i],geo,[]):[]);
+  }
+  return groups;
 }
 /* Classroom map for a geo room: a Plotly scatter trace (not the heatmap
    render() uses) so curved rows render as curves instead of being forced
@@ -1567,6 +1623,42 @@ function groupRosterBySection(roster,defaultInstructor){
   });
   return out;
 }
+/* Each group's size, in the exact same instructor->section order
+   groupRosterBySection emits them in (derived from its own output, not a
+   parallel re-implementation of its grouping loop, so the two can never
+   drift apart) - used by "By instructor/section, spread out" to size each
+   section's zone before any seat is chosen. */
+function sectionGroupCounts(roster,defaultInstructor){
+  var grouped=groupRosterBySection(roster,defaultInstructor),out=[],prevKey=null;
+  grouped.forEach(function(e){
+    var instrKey=String(e.instructor||defaultInstructor||'').trim().toUpperCase();
+    var secKey=String(e.section||'').trim().toUpperCase().replace(/\s+/g,' ');
+    var key=instrKey+'\u0000'+secKey;
+    if(key!==prevKey){out.push({instructor:instrKey,section:secKey,count:0});prevKey=key;}
+    out[out.length-1].count++;
+  });
+  return out;
+}
+/* Splits a room's total available capacity across several zones so each
+   zone gets at least its required size, plus a share of whatever's left
+   over proportional to that size - so a 40-seat and a 4-seat section both
+   get roughly the same ratio of breathing room, not the same seat count
+   of it. Largest-remainder method keeps the zone sizes summing to exactly
+   totalCapacity despite the rounding. */
+function proportionalZoneSizes(sizes,totalCapacity){
+  var totalStudents=sizes.reduce(function(a,b){return a+b;},0);
+  if(totalStudents<=0) return sizes.slice();
+  var slack=totalCapacity-totalStudents;
+  var raw=sizes.map(function(s){return slack*s/totalStudents;});
+  var floors=raw.map(Math.floor);
+  var used=floors.reduce(function(a,b){return a+b;},0);
+  var remainder=slack-used;
+  var order=sizes.map(function(s,i){return i;}).sort(function(a,b){
+    return (raw[b]-floors[b])-(raw[a]-floors[a]);
+  });
+  for(var k=0;k<remainder;k++) floors[order[k%order.length]]++;
+  return sizes.map(function(s,i){return s+floors[i];});
+}
 /* One initial from the first given name, one from the middle name if given,
    then at most eight letters of the surname.  A missing middle name does
    not create a blank initial.  Spaces/hyphens in a surname do not consume
@@ -1748,10 +1840,12 @@ document.getElementById('labelPreset').addEventListener('change',function(){
   document.getElementById('customSizeWrap').style.display=this.value==='custom'?'flex':'none';
 });
 function syncRandomizeRosterNote(){
-  var bySection=document.getElementById('seatStyle').value==='section';
+  var styleVal=document.getElementById('seatStyle').value;
+  var bySection=styleVal==='section'||styleVal==='sectionSpread';
   document.getElementById('randomizeRoster').disabled=bySection;
   document.getElementById('randomizeRosterLabel').style.opacity=bySection?'.55':'1';
   document.getElementById('randomizeRosterNote').style.display=bySection?'inline':'none';
+  document.getElementById('numStuSpreadNote').style.display=styleVal==='sectionSpread'?'inline':'none';
 }
 document.getElementById('seatStyle').addEventListener('change',syncRandomizeRosterNote);
 syncRandomizeRosterNote();
@@ -1842,10 +1936,27 @@ document.getElementById('stkBtn').addEventListener('click',function(){
        Order" then show the same underlying assignment, just sorted
        differently. Pasting a different roster, reallocating seats, or
        switching modes naturally busts the cache. */
-    var bySection=document.getElementById('seatStyle').value==='section';
+    var seatStyleValForPairing=document.getElementById('seatStyle').value;
+    var bySection=seatStyleValForPairing==='section'||seatStyleValForPairing==='sectionSpread';
     var randomizeChecked=document.getElementById('randomizeRoster').checked;
     var pairMode=bySection?'section':(randomizeChecked?'random':'asis');
     var defaultInstructorForGrouping=document.getElementById('instructorName').value;
+    /* "By instructor/section, spread out" baked each section's zone size
+       into APP.selected back when Allocate Seats ran - if the roster's
+       section breakdown has since changed (a line added/removed/re-
+       sectioned, or the Instructor field edited), those zones no longer
+       line up with today's groups, so pairing by position would quietly
+       hand students someone else's zone instead of failing loudly. */
+    if(seatStyleValForPairing==='sectionSpread'){
+      var currentSizes=sectionGroupCounts(unpinned,defaultInstructorForGrouping).map(function(g){return g.count;});
+      var spreadSizes=APP.sectionSpreadSizes;
+      var sizesMatch=spreadSizes&&spreadSizes.length===currentSizes.length&&
+          spreadSizes.every(function(v,i){return v===currentSizes[i];});
+      if(!sizesMatch){
+        showStkStatus('The roster’s sections have changed since Allocate Seats last ran - click Allocate Seats again so each section’s zone matches the current roster.','err');
+        return;
+      }
+    }
     /* The global Instructor field is also part of the "By section" grouping
        key (it's the fallback instructor for any line without its own 4th
        column), so changing it must bust the cache too, not just the
@@ -1920,23 +2031,63 @@ document.getElementById('stkBtn').addEventListener('click',function(){
   }
 });
 
+/* "By instructor/section, spread out" needs every section's size before it
+   can size each section's zone - unlike dense grouping, which only needs
+   a contiguous order and can be sliced by the roster later - so it reads
+   the pasted roster itself instead of the Students field. Returns null
+   (after showing its own error) when the roster isn't ready yet. */
+function readSectionSizesForSpread(){
+  var roster=parseRosterText(document.getElementById('namesInput').value);
+  if(!roster.length){
+    showStatus('Paste your roster below first (with each student’s section) - "By instructor/section, spread out" needs every section’s size before it can allocate seats.','err');
+    return null;
+  }
+  /* Pinned students (their own seat ID in a 4th roster column) bypass
+     Allocate Seats entirely, same as every other seating style - so zone
+     sizes only cover the unpinned students who'll actually be matched to
+     these seats later, and their preassigned seats are kept out of the
+     pool so nothing else gets allocated on top of them. */
+  var pinnedSeats=roster.filter(function(e){return e.seat;}).map(function(e){return e.seat;});
+  var unpinned=roster.filter(function(e){return !e.seat;});
+  if(!unpinned.length){
+    showStatus('Every student in the pasted roster already has a preassigned seat - nothing left for "By instructor/section, spread out" to allocate.','err');
+    return null;
+  }
+  var defaultInstructor=document.getElementById('instructorName').value;
+  var groups=sectionGroupCounts(unpinned,defaultInstructor);
+  var sizes=groups.map(function(g){return g.count;});
+  return {groups:groups,sizes:sizes,n:sizes.reduce(function(a,b){return a+b;},0),pinnedSeats:pinnedSeats};
+}
 function handleAllocateGeo(geo){
-  var numRaw=document.getElementById('numStu').value;
-  if(!numRaw){showStatus('Enter the number of students.','err');return;}
-  var n=parseInt(numRaw,10);
-  if(isNaN(n)||n<1){showStatus('Enter a valid number ≥ 1.','err');return;}
+  var seatStyleVal=document.getElementById('seatStyle').value;
+  var spreadInfo=null,n;
+  if(seatStyleVal==='sectionSpread'){
+    spreadInfo=readSectionSizesForSpread();
+    if(!spreadInfo) return;
+    n=spreadInfo.n;
+  }else{
+    var numRaw=document.getElementById('numStu').value;
+    if(!numRaw){showStatus('Enter the number of students.','err');return;}
+    n=parseInt(numRaw,10);
+    if(isNaN(n)||n<1){showStatus('Enter a valid number ≥ 1.','err');return;}
+  }
   var excluded=parseExcluded(document.getElementById('excl').value);
+  if(spreadInfo) excluded=excluded.concat(spreadInfo.pinnedSeats);
   var usable=buildUsableGeo(geo,excluded);
   var accessibleSeats=buildUsableAccessibleGeo(geo,excluded);
   var totalAvail=usable.length+accessibleSeats.length;
-  if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+accessibleSeats.length+' accessible) - '+n+' requested.','err');return;}
-  var seatStyleVal=document.getElementById('seatStyle').value;
+  if(totalAvail<n){
+    showStatus('Only '+totalAvail+' usable seats ('+accessibleSeats.length+' accessible) - '+n+(spreadInfo?' needed for the pasted roster.':' requested.'),'err');
+    return;
+  }
   var dense=seatStyleVal==='dense'||seatStyleVal==='section';
   /* "By instructor/section" uses sector (angular wedge) order here, not
      allocateDenseGeo's row-major order - see allocateSectorGeo's comment. */
-  var selected=seatStyleVal==='section'?allocateSectorGeo(usable,n,geo,accessibleSeats):
+  var selected=spreadInfo?[].concat.apply([],allocateSectionSpreadGeo(usable,accessibleSeats,geo,spreadInfo.sizes)):
+               seatStyleVal==='section'?allocateSectorGeo(usable,n,geo,accessibleSeats):
                (dense?allocateDenseGeo(usable,n,geo,accessibleSeats):allocateGeo(usable,n,geo,accessibleSeats));
   APP.selected=selected;
+  APP.sectionSpreadSizes=spreadInfo?spreadInfo.sizes.slice():null;
   APP.layout=null;
   APP.outputData=selected.map(function(s,i){return (i+1)+'\t'+s;});
   var br=countTypeGeoRoom(geo,'broken'), ac=countTypeGeoRoom(geo,'accessible');
@@ -1957,7 +2108,8 @@ function handleAllocateGeo(geo){
   document.getElementById('pdBtn').disabled=false;
   document.getElementById('stkBtn').disabled=false;
   updateNamesCount();
-  var denseNote=seatStyleVal==='section'?' (dense, front-packed, by section).':(dense?' (dense, front-packed).':'.');
+  var denseNote=seatStyleVal==='sectionSpread'?' (spread out, each section in its own zone).':
+      seatStyleVal==='section'?' (dense, front-packed, by section).':(dense?' (dense, front-packed).':'.');
   var msg='Allocated '+n+' student'+(n!==1?'s':'')+denseNote;
   showStatus(msg,'ok');say(msg);
 }
@@ -1969,19 +2121,32 @@ document.getElementById('goBtn').addEventListener('click',function(){
   document.getElementById('s-lh-label').textContent='Left-hand';
   var layout=LAYOUTS[key];
   if(!layout){showStatus('Unknown classroom.','err');return;}
-  var numRaw=document.getElementById('numStu').value;
-  if(!numRaw){showStatus('Enter the number of students.','err');return;}
-  var n=parseInt(numRaw,10);
-  if(isNaN(n)||n<1){showStatus('Enter a valid number ≥ 1.','err');return;}
+  var seatStyleVal=document.getElementById('seatStyle').value;
+  var spreadInfo=null,n;
+  if(seatStyleVal==='sectionSpread'){
+    spreadInfo=readSectionSizesForSpread();
+    if(!spreadInfo) return;
+    n=spreadInfo.n;
+  }else{
+    var numRaw=document.getElementById('numStu').value;
+    if(!numRaw){showStatus('Enter the number of students.','err');return;}
+    n=parseInt(numRaw,10);
+    if(isNaN(n)||n<1){showStatus('Enter a valid number ≥ 1.','err');return;}
+  }
   var excluded=parseExcluded(document.getElementById('excl').value);
+  if(spreadInfo) excluded=excluded.concat(spreadInfo.pinnedSeats);
   var usable=buildUsable(layout,excluded);
   var lhSeats=buildUsableLH(layout,excluded);
   var totalAvail=usable.length+lhSeats.length;
-  if(totalAvail<n){showStatus('Only '+totalAvail+' usable seats ('+lhSeats.length+' left-handed) - '+n+' requested.','err');return;}
-  var seatStyleVal=document.getElementById('seatStyle').value;
+  if(totalAvail<n){
+    showStatus('Only '+totalAvail+' usable seats ('+lhSeats.length+' left-handed) - '+n+(spreadInfo?' needed for the pasted roster.':' requested.'),'err');
+    return;
+  }
   var dense=seatStyleVal==='dense'||seatStyleVal==='section';
-  var selected=dense?allocateDense(usable,n,layout,lhSeats):allocate(usable,n,layout,lhSeats);
+  var selected=spreadInfo?[].concat.apply([],allocateSectionSpread(usable,lhSeats,layout,spreadInfo.sizes)):
+               (dense?allocateDense(usable,n,layout,lhSeats):allocate(usable,n,layout,lhSeats));
   APP.selected=selected;
+  APP.sectionSpreadSizes=spreadInfo?spreadInfo.sizes.slice():null;
   APP.layout=layout;
   /* Left in the order Allocate Seats picked them - not sorted by seat ID -
      so the numbering looks and behaves like an actual random assignment
@@ -2009,7 +2174,8 @@ document.getElementById('goBtn').addEventListener('click',function(){
   document.getElementById('pdBtn').disabled=false;
   document.getElementById('stkBtn').disabled=false;
   updateNamesCount();
-  var denseNote=seatStyleVal==='section'?' (dense, front-packed, by section).':(dense?' (dense, front-packed).':'.');
+  var denseNote=seatStyleVal==='sectionSpread'?' (spread out, each section in its own zone).':
+      seatStyleVal==='section'?' (dense, front-packed, by section).':(dense?' (dense, front-packed).':'.');
   var msg='Allocated '+n+' student'+(n!==1?'s':'')+denseNote;
   showStatus(msg,'ok');say(msg);
 });
