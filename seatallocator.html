@@ -1418,12 +1418,36 @@ function detectStickerCourse(value){
 function stripStickerCourse(value){
   return String(value||'').replace(/\bMATH\s*[-\s]?\s*\d{3,4}(?:\s*[-–—]\s*\d{2,4})?\b/ig,' ').replace(/\s+/g,' ').trim();
 }
+/* A header row from an uploaded roster file ("Name,Section,Instructor" and
+   the like) isn't a student - every comma-separated cell on it is some
+   form of a column label rather than real data. Checked against only the
+   first non-blank line, so a real student farther down never gets
+   second-guessed just for sharing a word with a header. */
+var ROSTER_HEADER_WORDS=/^(name|full ?name|student( ?name| ?id)?|last( ?name)?|lastname|surname|family ?name|first( ?name)?|firstname|given ?name|middle( ?name)?|mi|m\.i\.|section|sec|course|class|crn|instructor|professor|prof|teacher|email|e-?mail|id|uin|banner ?id|seat( ?id| ?number)?|row|number|no\.?|#)$/i;
+function isRosterHeaderLine(line){
+  var cells=line.split(',').map(function(s){return s.trim().toLowerCase();}).filter(Boolean);
+  return cells.length>0 && cells.every(function(c){return ROSTER_HEADER_WORDS.test(c);});
+}
+/* Registrar/LMS rosters commonly carry a placeholder "Test Student" (or
+   "Student, Test") row used for testing the export itself - never a real
+   student, so it's dropped regardless of which name field it lands in. */
+function isTestStudentName(first,last){
+  var f=String(first||'').trim().toLowerCase(),l=String(last||'').trim().toLowerCase();
+  if(f==='test'||l==='test')return true;
+  var combo=(f+' '+l).trim();
+  return combo==='test student'||combo==='student test';
+}
 function parseRosterText(text){
   /* 'Last, First Middle, MATH-140-510' is preferred; unpunctuated
      'First Middle Last MATH-140-510' is supported as well. */
+  var sawFirstLine=false;
   var entries=text.split(/\r\n|\r|\n/).map(function(line){
     line=line.trim().replace(/^"(.*)"$/,'$1').trim();
     if(!line)return null;
+    if(!sawFirstLine){
+      sawFirstLine=true;
+      if(isRosterHeaderLine(line))return null;
+    }
     /* An optional trailing 4th column is either a seat ID (pins that student
        to a literal seat, e.g. "Cooper, Evan, math 151-501, D12",
        independent of whatever Allocate Seats picked) or, when it doesn't
@@ -1472,7 +1496,9 @@ function parseRosterText(text){
       if(words.length>=2){first=words.slice(0,-1).join(' ');last=words[words.length-1];}
       else first=words[0]||'';
     }
-    return first||last?{first:first,last:last,section:section,seat:seat,instructor:instructor}:null;
+    if(!(first||last))return null;
+    if(isTestStudentName(first,last))return null;
+    return {first:first,last:last,section:section,seat:seat,instructor:instructor};
   }).filter(Boolean);
   return propagateInstructorBySection(entries);
 }
