@@ -4,6 +4,8 @@
 import os, re
 from collections import OrderedDict
 
+from add_nav_menu import BLOCK as NAV_MENU_BLOCK
+
 BASE = '/home/user/math-tools'
 LABELS_DIR = os.path.join(BASE, 'labels')
 
@@ -263,7 +265,7 @@ def generate_page(label, tool_list):
       .tool-card .card-link:hover {{ transform: none; }}
     }}
   </style>
-</head>
+{NAV_MENU_BLOCK}</head>
 <body>
   <a href="#main-content" class="skip-link">Skip to main content</a>
   <div id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
