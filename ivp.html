@@ -114,6 +114,13 @@ h1{font-size:1.75rem;font-weight:800;text-align:center;margin:0 0 .25rem;letter-
 .mopt[aria-pressed=true] .mchk{opacity:1;}
 .mopt[aria-disabled=true]{opacity:.4;cursor:not-allowed;}
 .mopt[aria-disabled=true]:hover{background:transparent;color:var(--txt2);}
+/* Course mode (?methods=euler,heun,rk4): a short list of methods as plain toggle buttons. */
+.mflat{display:grid;grid-template-columns:repeat(auto-fit,minmax(11.5rem,1fr));gap:.5rem;}
+.mflat .mopt{width:auto;min-height:40px;padding:.4rem .65rem;border:2px solid var(--bdr2);border-radius:.45rem;background:var(--card);}
+.mflat .mopt:hover{border-color:var(--blue);}
+.mflat .mopt[aria-pressed=true]{border-color:var(--blue);}
+.mflat .mopt .mopt-lbl{white-space:normal;}
+html.course .info-panel, html.course #adaptBlock, html.course .course-hide, html.course a[href="bvp.html"]{display:none !important;}
 /* Two-col */
 .two-col{display:flex;gap:1.25rem;align-items:flex-start;margin-bottom:.875rem;}
 .col-ctrl{flex:0 0 340px;min-width:0;}
@@ -1334,6 +1341,30 @@ var FAMS = [
 var selected = {};   /* id -> bool */
 ['euler','rk4'].forEach(function(id){ selected[id]=true; });
 
+/* Course mode. ?methods=euler,heun,rk4 trims the tool to a short list of methods, shown as plain buttons without
+   the method families, and hides the adaptive step size, stability and method-description parts.
+   ?start=euler,heun chooses the methods that begin selected (default: all of them). */
+var COURSE = (function(){
+  var q = new URLSearchParams(location.search);
+  var ids = (q.get('methods') || '').split(',').map(function(s){ return s.trim(); })
+    .filter(function(id, i, a){ return METBY[id] && a.indexOf(id) === i; });
+  if (!ids.length) return null;
+  var st = (q.get('start') || '').split(',').filter(function(id){ return ids.indexOf(id) >= 0; });
+  return {ids: ids, start: st.length ? st : ids.slice()};
+})();
+if (COURSE){
+  document.documentElement.classList.add('course');
+  FAMS = [{key:'course', name:'Methods', ids:COURSE.ids}];
+  selected = {};
+  COURSE.start.forEach(function(id){ selected[id]=true; });
+}
+function courseLayout(){
+  var sb = document.getElementById('stabSecBtn'), sw = sb && sb.closest('.pwrap');
+  if (sw) sw.classList.add('course-hide');
+  var eb = document.getElementById('errSecBtn'), ew = eb && eb.closest('.pwrap');
+  if (ew) ew.classList.add('pw-span');
+}
+
 /* Explicit Runge-Kutta starter used to bootstrap each multistep method,
    chosen to match the method's order (Heun = improved Euler for order 2). */
 var STARTER = {2:'heun', 3:'rk3', 4:'rk4', 5:'dopri5'};
@@ -1516,6 +1547,17 @@ var EXAMPLES = [
     f:'y - t^2 + 1', exact:'', t0:'0', y0:'0.5', tEnd:'2', h:0.2,
     lam:{val:-2, min:-50, max:5}, note:'Type any f(t,y). Leave the exact solution blank to use a numerical reference (stable even when stiff).'}
 ];
+if (COURSE){
+  var COURSE_EX = ['burden','exp','linear1','gauss','cosine','logistic','blowup','custom'];
+  EXAMPLES = COURSE_EX.map(function(id){ return EXAMPLES.filter(function(e){ return e.id === id; })[0]; }).filter(Boolean);
+  EXAMPLES.forEach(function(e){
+    if (e.group !== 'Custom') e.group = 'Examples';
+    delete e.methods; e.adaptive = false;
+  });
+  EXAMPLES.forEach(function(e){
+    if (e.id === 'blowup') e.note = 'The true solution y = 1/(1 \u2212 t) grows without bound as t approaches 1. Compare how closely each method follows it near the end of the interval.';
+  });
+}
 var exById = {}; EXAMPLES.forEach(function(e){ exById[e.id]=e; });
 var currentEx = EXAMPLES[0];
 
@@ -1984,9 +2026,29 @@ function closeMethodMenus(){
     if (trig) trig.setAttribute('aria-expanded','false');
   });
 }
+function buildCourseButtons(host){
+  var wrap=document.createElement('div'); wrap.className='mflat';
+  COURSE.ids.forEach(function(id){
+    var m=METBY[id];
+    var o=document.createElement('button');
+    o.type='button'; o.className='mopt'; o.dataset.method=id;
+    o.setAttribute('aria-pressed', selected[id]?'true':'false');
+    o.innerHTML='<span class="mdot" style="background:'+m.color+'"></span>'+
+      '<span class="mopt-lbl">'+m.label+' <span class="badge">order '+m.order+'</span></span><span class="mchk" aria-hidden="true">\u2713</span>';
+    o.addEventListener('click', function(){
+      selected[id]=!selected[id];
+      o.setAttribute('aria-pressed', selected[id]?'true':'false');
+      refreshStabSelect();
+      solve();
+    });
+    wrap.appendChild(o);
+  });
+  host.appendChild(wrap);
+}
 function buildMethodButtons(){
   var host=document.getElementById('methodGrid');
   host.innerHTML='';
+  if (COURSE){ buildCourseButtons(host); return; }
   var wrap=document.createElement('div'); wrap.className='mgroups';
   FAMS.forEach(function(fam){
     var nSel=fam.ids.filter(function(id){return selected[id];}).length;
@@ -3031,7 +3093,7 @@ function solve(opts){
 function setBusy(id,on){ var el=document.getElementById(id); if(el) el.classList.toggle('on',!!on); }
 function renderHeavy(P){
   var needConv = isOpen('convSecBody');
-  var needStab = !adaptiveMode && isOpen('stabSecBody');
+  var needStab = !adaptiveMode && !COURSE && isOpen('stabSecBody');
   if(!needConv && !needStab) return;
   /* These two panels are the only genuinely heavy work (a convergence sweep
      over many step counts, and a stability grid). Flag them as "Computing…"
@@ -3064,6 +3126,7 @@ function scheduleSolve(){
    Init
    ============================================================ */
 function init(){
+  if (COURSE) courseLayout();
   buildMethodButtons();
   buildExCombo();
   refreshStabSelect();
@@ -3130,7 +3193,7 @@ function init(){
     copySolution(document.getElementById('copyFmtSel').value);
   });
   document.getElementById('resetBtn').addEventListener('click', function(){
-    selected={}; ['euler','rk4'].forEach(function(id){selected[id]=true;});
+    selected={}; (COURSE ? COURSE.start : ['euler','rk4']).forEach(function(id){selected[id]=true;});
     document.getElementById('adaptChk').checked=false; updateAdaptiveUI();
     buildMethodButtons(); refreshStabSelect();
     loadExample(EXAMPLES[0].id);
