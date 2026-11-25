@@ -116,7 +116,10 @@ def process(path):
         if '</head>' not in html:
             print(f"  FAIL {os.path.basename(path)} (no </head>)")
             return None
-        html = html.replace('</head>', BLOCK + '</head>', 1)
+        # Keep the nav-menu block ahead of the ?embed=1 block (add_embed_mode.py),
+        # which sits last in <head>, so re-running either script is a no-op.
+        anchor = '<!-- embed-mode:start -->' if '<!-- embed-mode:start -->' in html else '</head>'
+        html = html.replace(anchor, BLOCK + anchor, 1)
     if html == original:
         return 'unchanged'
     with open(path, 'w', encoding='utf-8') as f:
