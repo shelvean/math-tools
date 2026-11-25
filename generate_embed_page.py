@@ -199,8 +199,10 @@ BODY_TOP = r"""<body>
       <li>Paste the code where the tool should appear, then save and view the chapter.</li>
     </ol>
     <p>The embedded version shows only the tool. This site's menus, the tool's title and introduction, the footer and
-      the feedback button are hidden. The code also adds an ordinary link under the frame. PDF and print exports
-      cannot run interactive content, so readers of those versions still get a working link.</p>
+      the feedback button are hidden. The contrast button sits directly under the tool. A tool taller than the frame
+      scrolls inside it, so choose a height that shows the tool at its starting size. The code also adds an ordinary
+      link under the frame. PDF and print exports cannot run interactive content, so readers of those versions still
+      get a working link.</p>
     <p>If Pressbooks removes the <code>&lt;iframe&gt;</code> when you save, your Pressbooks network may only accept embeds
       from approved sites. Ask your network administrator to allow <code>shelvean.github.io</code>.</p>
     <p>Any tool can also be embedded by hand: add <code>?embed=1</code> to its address, e.g.

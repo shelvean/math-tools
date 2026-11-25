@@ -14,6 +14,12 @@ same way. The only addition to the #783 block is `div.main-nav`, the
 wrapper around the site nav on matrixvectorviz and transformations2d. It goes just before </head>, after the nav-menu
 block, between embed-mode:start and embed-mode:end comments.
 
+In the frame the page is laid out for the frame's height. The tool no longer
+stretches to fill it (the pages set min-height: 100vh on the body, which left
+a large blank area under a tool shorter than its frame), the contrast button
+sits directly under the tool instead of at the bottom corner of the frame, and
+anything taller than the frame scrolls inside it instead of being cut off.
+
 Embed mode is opt-in rather than triggered by "am I inside an iframe?",
 because desktop-preview.html iframes the normal pages and must keep
 showing them as they are.
@@ -53,6 +59,9 @@ html.embed main > h1, html.embed header[role="banner"] > h1 { position: absolute
 html.embed a[id^="fnref"] { display: none !important; }
 html.embed header[role="banner"] { margin: 0 !important; padding: 0 !important; }
 html.embed main.card { max-width: none !important; margin: 0 auto !important; padding: 8px 10px !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+html.embed { height: 100% !important; overflow: hidden !important; }
+html.embed body { height: 100% !important; min-height: 0 !important; overflow-y: auto !important; }
+html.embed .contrast-toggle, html.embed .ctoggle, html.embed .hctog { position: static !important; margin: 8px 10px 10px auto !important; }
 </style>
 <!-- embed-mode:end -->
 """
